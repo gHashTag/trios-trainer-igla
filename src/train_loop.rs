@@ -297,10 +297,10 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let muon_wd = 0.01f64;
     let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
     let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
-    let mut opt_proj = MuonOptimizer::new(args.hidden * DIM, args.lr as f64 * 0.5, 0.95, muon_wd);
-    let mut opt_attn_down = MuonOptimizer::new(d * args.hidden, args.lr as f64 * 0.5, 0.95, muon_wd);
-    let mut opt_attn_up = MuonOptimizer::new(args.hidden * d, args.lr as f64 * 0.5, 0.95, muon_wd);
-    let mut opt_head = MuonOptimizer::new(VOCAB * args.hidden, args.lr as f64 * 0.5, 0.95, muon_wd);
+    let mut opt_proj = AdamW::new(args.hidden * DIM, wd);
+    let mut opt_attn_down = MuonOptimizer::with_matrix_shape(d * args.hidden, d, args.hidden, args.lr as f64 * 0.5, 0.95, muon_wd);
+    let mut opt_attn_up = MuonOptimizer::with_matrix_shape(args.hidden * d, args.hidden, d, args.lr as f64 * 0.5, 0.95, muon_wd);
+    let mut opt_head = MuonOptimizer::with_matrix_shape(VOCAB * args.hidden, VOCAB, args.hidden, args.lr as f64 * 0.5, 0.95, muon_wd);
 
     let init_bpb = evaluate(&model, &val);
     eprintln!("Initial val_bpb={:.4}", init_bpb);
@@ -349,7 +349,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 
         opt_embed.update(&mut model.embed, &ge, lr);
         for (ci, oc) in opt_ctx.iter_mut().enumerate() { oc.update(&mut model.ctx[ci], &gc[ci], lr); }
-        opt_proj.step(&mut model.proj, &gp);
+        opt_proj.update(&mut model.proj, &gp, lr);
         opt_attn_down.step(&mut model.attn_down, &g_ad);
         opt_attn_up.step(&mut model.attn_up, &g_au);
         opt_head.step(&mut model.lm_head, &gh);
