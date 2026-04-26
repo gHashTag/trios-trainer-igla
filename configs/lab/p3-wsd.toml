@@ -1,0 +1,39 @@
+name = "p3-wsd"
+steps = 30000
+seed = 43
+target_bpb = 1.85
+champion_bpb = 2.2393
+
+[model]
+d_model = 256
+n_layers = 2
+n_heads = 4
+vocab_size = 256
+seq_len = 128
+hybrid_attn = true
+
+[optimizer]
+kind = "adamw"
+lr = 0.004
+beta1 = 0.9
+beta2 = 0.999
+weight_decay = 0.01
+schedule = "wsd"
+warmup_steps = 1000
+
+[data]
+corpus = "fineweb"
+train_path = "/data/fineweb_train.bin"
+val_path = "/data/fineweb_val.bin"
+batch_size = 32
+batch_tokens = 4096
+
+[objective]
+w_ce = 0.5
+w_jepa = 0.25
+w_nca = 0.25
+
+[ledger]
+jsonl_path = "assertions/lab/p3_curves.jsonl"
+push = false
+embargo_path = "assertions/embargo.txt"

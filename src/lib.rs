@@ -13,6 +13,7 @@ pub mod model;
 pub mod model_hybrid_attn;
 pub mod objective;
 pub mod optimizer;
+pub mod mup;
 pub mod race;
 pub mod train_loop;
 

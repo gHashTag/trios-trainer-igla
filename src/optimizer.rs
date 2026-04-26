@@ -462,6 +462,7 @@ fn newton_schulz_cubic(m: &[f32], rows: usize, cols: usize) -> Vec<f32> {
 pub enum OptimizerKind {
     AdamW(AdamWCpu),
     Muon(MuonOptimizer),
+    MuonCwd(MuonCwd),
 }
 
 impl OptimizerKind {
@@ -469,6 +470,7 @@ impl OptimizerKind {
         match self {
             OptimizerKind::AdamW(opt) => opt.step(params, grads),
             OptimizerKind::Muon(opt) => opt.step(params, grads),
+            OptimizerKind::MuonCwd(opt) => opt.step(params, grads),
         }
     }
 
@@ -476,7 +478,48 @@ impl OptimizerKind {
         match self {
             OptimizerKind::AdamW(opt) => opt.reset(),
             OptimizerKind::Muon(opt) => opt.reset(),
+            OptimizerKind::MuonCwd(opt) => opt.reset(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MuonCwd {
+    pub inner: MuonOptimizer,
+    pub cwd_lambda: f64,
+}
+
+impl MuonCwd {
+    pub fn new(param_count: usize, lr: f64, momentum: f64, weight_decay: f64, cwd_lambda: f64) -> Self {
+        Self {
+            inner: MuonOptimizer::new(param_count, lr, momentum, weight_decay),
+            cwd_lambda,
+        }
+    }
+
+    pub fn step(&mut self, params: &mut [f32], gradients: &[f32]) {
+        assert_eq!(params.len(), gradients.len());
+        let n = params.len();
+        let lr = self.inner.lr as f32;
+        let wd = self.cwd_lambda as f32;
+
+        for i in 0..n {
+            let mom_sign = self.inner.momentum_buffer[i].signum();
+            let grad_sign = gradients[i].signum();
+            if mom_sign * grad_sign > 0.0 {
+                params[i] *= 1.0 - lr * wd;
+            }
+        }
+
+        self.inner.step(params, gradients);
+    }
+
+    pub fn step_count(&self) -> usize {
+        self.inner.step_count()
+    }
+
+    pub fn reset(&mut self) {
+        self.inner.reset();
     }
 }
 
@@ -503,6 +546,67 @@ pub fn phi_lr_schedule(step: usize, base_lr: f64, warmup_steps: usize) -> f64 {
         // φ-based decay: LR = base_lr * φ^(-(step - warmup) / warmup)
         let decay_steps = (step - warmup_steps) as f64 / warmup_steps as f64;
         base_lr * phi.powf(-decay_steps)
+    }
+}
+
+/// Schedule-Free AdamW interpolation (Defazio et al. 2024).
+///
+/// Key idea: instead of a fixed LR schedule, interpolate between
+/// the "online" iterate x_t and the "average" iterate z_t:
+///   y_t = (1 - beta1) * z_t + beta1 * x_t
+///   c_{t+1} = 1 / (t + 1)
+///   z_{t+1} = z_t - lr * gradient(y_t) * c_{t+1}
+///   x_{t+1} = x_t - lr * gradient(y_t)
+///
+/// The final model is z_t (the "averaged" iterate), not x_t.
+/// No explicit schedule needed — the interpolation handles annealing.
+pub fn schedule_free_lr(step: usize, base_lr: f64, _warmup_steps: usize) -> f64 {
+    let c = 1.0 / (step as f64 + 1.0);
+    base_lr * c.sqrt()
+}
+
+/// Schedule-Free mixing coefficient c_{t+1} = 1/(t+1).
+pub fn sf_mixing_coeff(step: usize) -> f64 {
+    1.0 / (step as f64 + 1.0)
+}
+
+/// Schedule-Free interpolation: y_t = (1 - beta1) * z + beta1 * x
+pub fn sf_interpolate(z: &[f32], x: &[f32], beta1: f32) -> Vec<f32> {
+    assert_eq!(z.len(), x.len());
+    z.iter().zip(x.iter())
+        .map(|(&zi, &xi)| (1.0 - beta1) * zi + beta1 * xi)
+        .collect()
+}
+
+/// Warmup-Stable-Decay (WSD) learning rate schedule.
+///
+/// Reference: Wen et al. 2024 "WSD: Warmup-Stable-Decay"
+///
+/// Three phases:
+/// 1. Warmup: linear ramp from 0 to base_lr over warmup_steps
+/// 2. Stable: constant base_lr from warmup to decay_start
+/// 3. Decay: cosine decay from base_lr to min_lr over remaining steps
+///
+/// Default split: warmup 1K, stable 24K, decay 5K (30K total)
+pub fn wsd_lr(
+    step: usize,
+    total_steps: usize,
+    base_lr: f64,
+    warmup_steps: usize,
+    decay_ratio: f64,
+) -> f64 {
+    let decay_start = ((1.0 - decay_ratio) * total_steps as f64) as usize;
+    let min_lr = base_lr * 0.01;
+
+    if step < warmup_steps {
+        base_lr * step as f64 / warmup_steps.max(1) as f64
+    } else if step < decay_start {
+        base_lr
+    } else {
+        let decay_steps = total_steps - decay_start;
+        if decay_steps == 0 { return min_lr; }
+        let progress = (step - decay_start) as f64 / decay_steps as f64;
+        min_lr + (base_lr - min_lr) * 0.5 * (1.0 + (std::f64::consts::PI * progress).cos())
     }
 }
 
@@ -744,5 +848,54 @@ mod tests {
         assert!((opt.ns_a - 1.5).abs() < 1e-4);
         assert!((opt.ns_b - (-0.5)).abs() < 1e-4);
         assert!((opt.ns_c - 0.0).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_schedule_free_lr_decays() {
+        let base = 0.004;
+        let lr_0 = schedule_free_lr(0, base, 100);
+        let lr_100 = schedule_free_lr(100, base, 100);
+        let lr_1000 = schedule_free_lr(1000, base, 100);
+        assert!(lr_0 > lr_100);
+        assert!(lr_100 > lr_1000);
+    }
+
+    #[test]
+    fn test_sf_mixing_coeff() {
+        assert!((sf_mixing_coeff(0) - 1.0).abs() < 1e-9);
+        assert!((sf_mixing_coeff(9) - 0.1).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_sf_interpolate() {
+        let z = vec![1.0f32, 2.0];
+        let x = vec![3.0f32, 4.0];
+        let y = sf_interpolate(&z, &x, 0.618);
+        assert!((y[0] - (0.382 * 1.0 + 0.618 * 3.0)).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_wsd_warmup() {
+        let lr = wsd_lr(0, 30000, 0.004, 1000, 0.167);
+        assert!((lr).abs() < 1e-9);
+        let lr_500 = wsd_lr(500, 30000, 0.004, 1000, 0.167);
+        assert!((lr_500 - 0.002).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_wsd_stable() {
+        let lr_5k = wsd_lr(5000, 30000, 0.004, 1000, 0.167);
+        assert!((lr_5k - 0.004).abs() < 1e-9);
+        let lr_20k = wsd_lr(20000, 30000, 0.004, 1000, 0.167);
+        assert!((lr_20k - 0.004).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_wsd_decay() {
+        let decay_start = ((1.0 - 0.167) * 30000.0) as usize;
+        let lr_at_decay = wsd_lr(decay_start + 1, 30000, 0.004, 1000, 0.167);
+        assert!(lr_at_decay < 0.004);
+        let lr_end = wsd_lr(29999, 30000, 0.004, 1000, 0.167);
+        assert!(lr_end < lr_at_decay);
     }
 }
