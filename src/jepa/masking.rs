@@ -51,11 +51,7 @@ pub struct MaskResult {
 /// let result = mask_spans(100, MaskConfig::default(), &mut rng);
 /// assert_eq!(result.spans.len(), 2);
 /// ```
-pub fn mask_spans(
-    seq_len: usize,
-    config: MaskConfig,
-    rng: &mut impl Rng,
-) -> MaskResult {
+pub fn mask_spans(seq_len: usize, config: MaskConfig, rng: &mut impl Rng) -> MaskResult {
     let mut mask = vec![false; seq_len];
     let mut spans = Vec::new();
 
@@ -115,9 +111,7 @@ pub fn spans_non_overlapping(spans: &[(usize, usize)]) -> bool {
 }
 
 /// Partition sequence into context and target positions
-pub fn partition_context_target(
-    mask: &[bool],
-) -> (Vec<usize>, Vec<usize>) {
+pub fn partition_context_target(mask: &[bool]) -> (Vec<usize>, Vec<usize>) {
     let mut context = Vec::new();
     let mut target = Vec::new();
 
@@ -135,8 +129,8 @@ pub fn partition_context_target(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
     use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_mask_ratio_approximate() {

@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::time::Instant;
-use trios_trainer::trinity_3k::{Trinity3kConfig, Trinity3kModel, AdamWConfig};
+use trios_trainer::trinity_3k::{AdamWConfig, Trinity3kConfig, Trinity3kModel};
 
 const LN_2: f32 = std::f32::consts::LN_2;
 
@@ -97,9 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         max_seq_len: seq_len,
     };
 
-    println!(
-        "=== Trinity3k Transformer on TinyShakespeare ==="
-    );
+    println!("=== Trinity3k Transformer on TinyShakespeare ===");
     println!(
         "vocab={} hidden={} heads={} head_dim={} layers={} seq={} params={}",
         vocab_size,
@@ -110,10 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         seq_len,
         config.total_params()
     );
-    println!(
-        "steps={} seed={} lr={} wd={}",
-        steps, seed, base_lr, wd
-    );
+    println!("steps={} seed={} lr={} wd={}", steps, seed, base_lr, wd);
 
     let mut model = Trinity3kModel::new(config)?;
     println!("Model created successfully");

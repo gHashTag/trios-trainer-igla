@@ -16,19 +16,31 @@ fn make_test_config(embargo_path: &str) -> TrainConfig {
         target_bpb: 1.50,
         champion_bpb: Some(2.2393),
         model: ModelConfig {
-            d_model: 256, n_layers: 2, n_heads: 4,
-            vocab_size: 1000, seq_len: 64, hybrid_attn: false,
+            d_model: 256,
+            n_layers: 2,
+            n_heads: 4,
+            vocab_size: 1000,
+            seq_len: 64,
+            hybrid_attn: false,
         },
         optimizer: OptimizerConfig {
-            kind: "adamw".into(), lr: 0.004, beta1: 0.9,
-            beta2: 0.95, weight_decay: 0.04,
-            schedule: "phi".into(), warmup_steps: 500,
+            kind: "adamw".into(),
+            lr: 0.004,
+            beta1: 0.9,
+            beta2: 0.95,
+            weight_decay: 0.04,
+            schedule: "phi".into(),
+            warmup_steps: 500,
         },
         data: DataConfig {
-            corpus: "test".into(), batch_size: 1, batch_tokens: 1024,
+            corpus: "test".into(),
+            batch_size: 1,
+            batch_tokens: 1024,
         },
         objective: ObjectiveConfig {
-            w_ce: 1.0, w_jepa: 0.0, w_nca: 0.0,
+            w_ce: 1.0,
+            w_jepa: 0.0,
+            w_nca: 0.0,
         },
         ledger: LedgerConfig {
             jsonl_path: "/tmp/trios_test_embargo_results.jsonl".into(),
@@ -50,9 +62,18 @@ fn embargo_rejects_known_sha() {
     // the embargo file is parsed correctly by checking non-embargo case
     // and verifying the file content is read.
     let content = std::fs::read_to_string(&embargo_path).unwrap();
-    assert!(content.contains("477e3377"), "embargo must contain test SHA");
-    assert!(content.contains("b3ee6a36"), "embargo must contain test SHA");
-    assert!(content.contains("deadbeef"), "embargo must contain test SHA");
+    assert!(
+        content.contains("477e3377"),
+        "embargo must contain test SHA"
+    );
+    assert!(
+        content.contains("b3ee6a36"),
+        "embargo must contain test SHA"
+    );
+    assert!(
+        content.contains("deadbeef"),
+        "embargo must contain test SHA"
+    );
 }
 
 #[test]
@@ -159,7 +180,10 @@ fn triplet_format_in_row() {
     cfg.ledger.jsonl_path = jsonl.to_str().unwrap().into();
 
     if let Ok(row) = ledger::emit_row(&cfg, 2.0, 5000) {
-        assert!(row.agent.contains("trios-trainer-"), "agent must be trios-trainer-*");
+        assert!(
+            row.agent.contains("trios-trainer-"),
+            "agent must be trios-trainer-*"
+        );
         assert!(!row.sha.is_empty(), "SHA must be populated");
         assert!(!row.ts.is_empty(), "timestamp must be populated");
         assert_eq!(row.seed, 43);
@@ -172,10 +196,15 @@ fn triplet_format_in_row() {
 fn embargo_list_with_comments_and_blanks() {
     let dir = tempfile::tempdir().unwrap();
     let embargo_path = dir.path().join(".embargo");
-    std::fs::write(&embargo_path, "# comment\n\n477e3377\n  \n# another\nb3ee6a36\n").unwrap();
+    std::fs::write(
+        &embargo_path,
+        "# comment\n\n477e3377\n  \n# another\nb3ee6a36\n",
+    )
+    .unwrap();
 
     let content = std::fs::read_to_string(&embargo_path).unwrap();
-    let shas: Vec<&str> = content.lines()
+    let shas: Vec<&str> = content
+        .lines()
         .map(|l| l.trim())
         .filter(|l| !l.is_empty() && !l.starts_with('#'))
         .collect();

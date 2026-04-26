@@ -66,12 +66,12 @@ use std::process::ExitCode;
 use clap::Parser;
 use serde_json::Value;
 
+use trios_trainer::invariants::{IGLA_TARGET_BPB, VICTORY_SEED_TARGET};
 use trios_trainer::race::victory::{
-    check_victory, stat_strength, SeedResult, TtestReport, VictoryError,
-    VictoryReport, JEPA_PROXY_BPB_FLOOR,
+    check_victory, stat_strength, SeedResult, TtestReport, VictoryError, VictoryReport,
+    JEPA_PROXY_BPB_FLOOR,
 };
 use trios_trainer::race::victory::{TTEST_ALPHA, TTEST_BASELINE_MU0, TTEST_EFFECT_SIZE_MIN};
-use trios_trainer::invariants::{IGLA_TARGET_BPB, VICTORY_SEED_TARGET};
 
 /// CLI for adjudicating the IGLA RACE victory predicate against a
 /// JSONL seed-results ledger.
@@ -194,13 +194,13 @@ fn row_to_seed_result(v: &Value, line_no: usize) -> Result<SeedResult, LedgerErr
         reason: "row is not a JSON object".into(),
     })?;
 
-    let seed = obj
-        .get("seed")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| LedgerError::MalformedRow {
-            line_no,
-            reason: "missing or non-u64 `seed`".into(),
-        })?;
+    let seed =
+        obj.get("seed")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| LedgerError::MalformedRow {
+                line_no,
+                reason: "missing or non-u64 `seed`".into(),
+            })?;
     let bpb = obj
         .get("bpb")
         .and_then(Value::as_f64)
@@ -208,13 +208,13 @@ fn row_to_seed_result(v: &Value, line_no: usize) -> Result<SeedResult, LedgerErr
             line_no,
             reason: "missing or non-f64 `bpb`".into(),
         })?;
-    let step = obj
-        .get("step")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| LedgerError::MalformedRow {
-            line_no,
-            reason: "missing or non-u64 `step`".into(),
-        })?;
+    let step =
+        obj.get("step")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| LedgerError::MalformedRow {
+                line_no,
+                reason: "missing or non-u64 `step`".into(),
+            })?;
     let sha = obj
         .get("sha")
         .and_then(Value::as_str)
@@ -242,11 +242,10 @@ pub fn parse_ledger(text: &str) -> Result<Vec<SeedResult>, LedgerError> {
         if line.is_empty() {
             continue;
         }
-        let value: Value =
-            serde_json::from_str(line).map_err(|e| LedgerError::MalformedRow {
-                line_no,
-                reason: format!("invalid JSON: {}", e),
-            })?;
+        let value: Value = serde_json::from_str(line).map_err(|e| LedgerError::MalformedRow {
+            line_no,
+            reason: format!("invalid JSON: {}", e),
+        })?;
         if is_header_row(&value) {
             continue;
         }
@@ -311,7 +310,11 @@ fn render_human(verdict: &LedgerVerdict, rows: &[SeedResult], verbose: bool) -> 
             let _ = writeln!(s, "   winning_seeds     : {:?}", report.winning_seeds);
             let _ = writeln!(s, "   min_bpb           : {:.6}", report.min_bpb);
             let _ = writeln!(s, "   mean_bpb          : {:.6}", report.mean_bpb);
-            let _ = writeln!(s, "   t_stat / -t_crit  : {:.4} < -{:.4}", ttest.t_statistic, ttest.df);
+            let _ = writeln!(
+                s,
+                "   t_stat / -t_crit  : {:.4} < -{:.4}",
+                ttest.t_statistic, ttest.df
+            );
         }
         LedgerVerdict::GateOkStatWeak { report, ttest } => {
             let _ = writeln!(s, " VERDICT             : NECESSARY-OK / STAT-WEAK");
@@ -465,7 +468,8 @@ mod tests {
     /// `assertions/seed_results.jsonl` on main.
     #[test]
     fn empty_ledger_yields_empty_verdict() {
-        let header = r#"{"_schema":"trios.assertions.seed_results.v1","_target":1.5,"_warmup":4000}"#;
+        let header =
+            r#"{"_schema":"trios.assertions.seed_results.v1","_target":1.5,"_warmup":4000}"#;
         let v = evaluate_ledger(header).unwrap();
         assert_eq!(v, LedgerVerdict::Empty);
         assert_eq!(v.exit_code(), 5);
@@ -490,11 +494,7 @@ mod tests {
         ]
         .join("\n");
         let v = evaluate_ledger(&rows).unwrap();
-        assert!(
-            v.is_victory(),
-            "expected Victory, got {:?}",
-            v
-        );
+        assert!(v.is_victory(), "expected Victory, got {:?}", v);
         assert_eq!(v.exit_code(), 0);
     }
 
@@ -516,7 +516,10 @@ mod tests {
                 assert!(ttest.t_statistic < 0.0);
                 assert!(report.mean_bpb < TTEST_BASELINE_MU0);
             }
-            other => panic!("expected Victory (zero variance with mean < target passes), got {:?}", other),
+            other => panic!(
+                "expected Victory (zero variance with mean < target passes), got {:?}",
+                other
+            ),
         }
     }
 
@@ -685,10 +688,9 @@ mod tests {
     /// rejects an ordinary row.
     #[test]
     fn header_detection_round_trip() {
-        let header: Value = serde_json::from_str(
-            r#"{"_schema":"trios.assertions.seed_results.v1","_target":1.5}"#,
-        )
-        .unwrap();
+        let header: Value =
+            serde_json::from_str(r#"{"_schema":"trios.assertions.seed_results.v1","_target":1.5}"#)
+                .unwrap();
         let row: Value =
             serde_json::from_str(r#"{"seed":1,"bpb":1.4,"step":5000,"sha":"a"}"#).unwrap();
         assert!(is_header_row(&header));

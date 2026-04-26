@@ -1,7 +1,7 @@
 //! GF16 Test Binary - Quantization and accuracy benchmarks
 
-use trios_trainer::gf16::{GF16, benchmark_quantization};
 use std::time::Instant;
+use trios_trainer::gf16::{benchmark_quantization, GF16};
 
 fn main() {
     println!("=== GF16 Test Suite ===\n");
@@ -43,15 +43,19 @@ fn test_basic_conversions() {
     for &v in &values {
         let gf = GF16::from_f32(v);
         let back = gf.to_f32();
-        println!("  f32: {:10.4} -> GF16: {:10.4} -> f32: {:10.4} (error: {:.6}%)",
-                 v, gf, back, ((back - v).abs() / v.abs().max(1e-10) * 100.0));
+        println!(
+            "  f32: {:10.4} -> GF16: {:10.4} -> f32: {:10.4} (error: {:.6}%)",
+            v,
+            gf,
+            back,
+            ((back - v).abs() / v.abs().max(1e-10) * 100.0)
+        );
     }
 }
 
 fn test_roundtrip_accuracy() {
     let test_values = vec![
-        0.001, 0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0,
-        0.0001, 0.00001, -0.5, -2.5, -10.0,
+        0.001, 0.01, 0.1, 0.5, 1.0, 2.0, 5.0, 10.0, 100.0, 0.0001, 0.00001, -0.5, -2.5, -10.0,
     ];
 
     let mut max_rel_error = 0.0f64;
@@ -91,23 +95,49 @@ fn test_phi_distance() {
     let phi = 1.618_033_988_749_895_f64;
     let inv_phi = 1.0 / phi;
     let gf16_phi_dist = GF16::phi_distance();
-    let exp_mant_ratio = 6.0 / 9.0;  // GF16's 6:9 split
+    let exp_mant_ratio = 6.0 / 9.0; // GF16's 6:9 split
 
     println!("  Golden ratio (φ):      {:.15}", phi);
     println!("  Inverse φ (1/φ):      {:.15}", inv_phi);
     println!("  GF16 exp:mant ratio:  {:.6}", exp_mant_ratio);
     println!("  GF16 φ-distance:      {:.6}", gf16_phi_dist);
-    println!("  Expected φ-distance:  {:.6}", (exp_mant_ratio - inv_phi).abs());
-    println!("  Matches specification: {}", (gf16_phi_dist - 0.0486).abs() < 0.001);
+    println!(
+        "  Expected φ-distance:  {:.6}",
+        (exp_mant_ratio - inv_phi).abs()
+    );
+    println!(
+        "  Matches specification: {}",
+        (gf16_phi_dist - 0.0486).abs() < 0.001
+    );
 }
 
 fn test_special_values() {
-    println!("  Zero:        {} -> f32: {}", GF16::ZERO, GF16::ZERO.to_f32());
-    println!("  Neg Zero:    {} -> f32: {}", GF16::NEG_ZERO, GF16::NEG_ZERO.to_f32());
-    println!("  Infinity:    {} -> f32: {}", GF16::INF, GF16::INF.to_f32());
-    println!("  Neg Infinity:{} -> f32: {}", GF16::NEG_INF, GF16::NEG_INF.to_f32());
-    println!("  NaN:         {} -> f32: {} (is_nan: {})",
-             GF16::NAN, GF16::NAN.to_f32(), GF16::NAN.is_nan());
+    println!(
+        "  Zero:        {} -> f32: {}",
+        GF16::ZERO,
+        GF16::ZERO.to_f32()
+    );
+    println!(
+        "  Neg Zero:    {} -> f32: {}",
+        GF16::NEG_ZERO,
+        GF16::NEG_ZERO.to_f32()
+    );
+    println!(
+        "  Infinity:    {} -> f32: {}",
+        GF16::INF,
+        GF16::INF.to_f32()
+    );
+    println!(
+        "  Neg Infinity:{} -> f32: {}",
+        GF16::NEG_INF,
+        GF16::NEG_INF.to_f32()
+    );
+    println!(
+        "  NaN:         {} -> f32: {} (is_nan: {})",
+        GF16::NAN,
+        GF16::NAN.to_f32(),
+        GF16::NAN.is_nan()
+    );
 
     // Test special value properties
     assert!(GF16::NAN.is_nan());
@@ -123,19 +153,35 @@ fn test_range_boundaries() {
 
     // Test near minimum
     let tiny = GF16::from_f32(1e-20);
-    println!("  Very small (1e-20): {} -> {}", GF16::from_bits(tiny.0), tiny.to_f32());
+    println!(
+        "  Very small (1e-20): {} -> {}",
+        GF16::from_bits(tiny.0),
+        tiny.to_f32()
+    );
     println!("    Clamped to zero: {}", tiny.to_f32() == 0.0);
 
     let min_pos = GF16::from_f32(1e-9);
-    println!("  Small (1e-9):       {} -> {}", GF16::from_bits(min_pos.0), min_pos.to_f32());
+    println!(
+        "  Small (1e-9):       {} -> {}",
+        GF16::from_bits(min_pos.0),
+        min_pos.to_f32()
+    );
 
     // Test near maximum
     let huge = GF16::from_f32(1e20);
-    println!("  Very large (1e20):  {} -> {}", GF16::from_bits(huge.0), huge.to_f32());
+    println!(
+        "  Very large (1e20):  {} -> {}",
+        GF16::from_bits(huge.0),
+        huge.to_f32()
+    );
     println!("    Clamped to inf: {}", huge.is_infinite());
 
     let large = GF16::from_f32(1e9);
-    println!("  Large (1e9):        {} -> {}", GF16::from_bits(large.0), large.to_f32());
+    println!(
+        "  Large (1e9):        {} -> {}",
+        GF16::from_bits(large.0),
+        large.to_f32()
+    );
     println!("    Is finite: {}", large.is_finite());
 }
 

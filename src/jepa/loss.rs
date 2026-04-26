@@ -31,7 +31,11 @@ pub struct JepaLoss {
 impl JepaLoss {
     /// Create a new loss result
     pub fn new(total: f64, prediction: f64, variance: f64) -> Self {
-        Self { total, prediction, variance }
+        Self {
+            total,
+            prediction,
+            variance,
+        }
     }
 
     /// Check if variance indicates collapse (< 0.01)
@@ -52,12 +56,12 @@ impl JepaLoss {
 ///
 /// The total loss is: prediction_loss - variance * anti_collapse_weight
 /// This encourages matching predictions while maintaining representation diversity.
-pub fn compute_jepa_loss(
-    predicted: &[f32],
-    target: &[f32],
-    config: JepaLossConfig,
-) -> JepaLoss {
-    assert_eq!(predicted.len(), target.len(), "predicted and target must have same length");
+pub fn compute_jepa_loss(predicted: &[f32], target: &[f32], config: JepaLossConfig) -> JepaLoss {
+    assert_eq!(
+        predicted.len(),
+        target.len(),
+        "predicted and target must have same length"
+    );
 
     let (pred_norm, tgt_norm) = if config.use_l2_normalization {
         (l2_normalize(predicted), l2_normalize(target))
@@ -70,14 +74,16 @@ pub fn compute_jepa_loss(
         .iter()
         .zip(tgt_norm.iter())
         .map(|(p, t)| (p - t).powi(2) as f64)
-        .sum::<f64>() / pred_norm.len() as f64;
+        .sum::<f64>()
+        / pred_norm.len() as f64;
 
     // Variance computation (for anti-collapse)
     let mean = tgt_norm.iter().sum::<f32>() as f64 / tgt_norm.len() as f64;
     let variance = tgt_norm
         .iter()
         .map(|t| (*t as f64 - mean).powi(2))
-        .sum::<f64>() / tgt_norm.len() as f64;
+        .sum::<f64>()
+        / tgt_norm.len() as f64;
 
     // Total loss with anti-collapse
     let total = prediction_loss - variance * config.anti_collapse_weight;
@@ -112,7 +118,8 @@ pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
     a.iter()
         .zip(b.iter())
         .map(|(x, y)| (x - y).powi(2) as f64)
-        .sum::<f64>() / a.len() as f64
+        .sum::<f64>()
+        / a.len() as f64
 }
 
 /// Compute cosine similarity (higher = more similar)

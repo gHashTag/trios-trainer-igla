@@ -521,7 +521,11 @@ pub fn phi_lr_schedule(step: usize, base_lr: f64, warmup_steps: usize) -> f64 {
 /// Learning rate as f64
 #[cfg(feature = "trios-integration")]
 #[inline]
-pub fn lr_schedule_54_f64(schedule_type: trios_phi_schedule::LrScheduleType, step: usize, max_steps: usize) -> f64 {
+pub fn lr_schedule_54_f64(
+    schedule_type: trios_phi_schedule::LrScheduleType,
+    step: usize,
+    max_steps: usize,
+) -> f64 {
     trios_phi_schedule::lr_schedule_54(schedule_type, step, max_steps) as f64
 }
 
@@ -686,10 +690,15 @@ mod tests {
 
     #[test]
     fn test_newton_schulz_cubic_legacy() {
-        let identity: Vec<f32> = (0..4).map(|i| if i % 5 == 0 { 1.0f32 } else { 0.0f32 }).collect();
+        let identity: Vec<f32> = (0..4)
+            .map(|i| if i % 5 == 0 { 1.0f32 } else { 0.0f32 })
+            .collect();
         let result = newton_schulz_cubic(&identity, 2, 2);
         for i in 0..4 {
-            assert!((result[i] - identity[i]).abs() < 0.01, "cubic NS should preserve identity");
+            assert!(
+                (result[i] - identity[i]).abs() < 0.01,
+                "cubic NS should preserve identity"
+            );
         }
     }
 
@@ -709,7 +718,9 @@ mod tests {
 
     #[test]
     fn test_newton_schulz_5_finite_output() {
-        let identity: Vec<f32> = (0..4).map(|i| if i % 5 == 0 { 1.0f32 } else { 0.0f32 }).collect();
+        let identity: Vec<f32> = (0..4)
+            .map(|i| if i % 5 == 0 { 1.0f32 } else { 0.0f32 })
+            .collect();
         let result = newton_schulz_5(&identity, 2, 2, 3.4445, -4.7750, 2.0315);
         for &r in &result {
             assert!(r.is_finite(), "NS5 output should be finite");
@@ -739,8 +750,7 @@ mod tests {
 
     #[test]
     fn test_muon_custom_ns_coefficients() {
-        let opt = MuonOptimizer::new(16, 0.02, 0.95, 0.01)
-            .with_ns_coefficients(1.5, -0.5, 0.0);
+        let opt = MuonOptimizer::new(16, 0.02, 0.95, 0.01).with_ns_coefficients(1.5, -0.5, 0.0);
         assert!((opt.ns_a - 1.5).abs() < 1e-4);
         assert!((opt.ns_b - (-0.5)).abs() < 1e-4);
         assert!((opt.ns_c - 0.0).abs() < 1e-4);

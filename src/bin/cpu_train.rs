@@ -25,7 +25,9 @@ fn softmax(v: &mut [f32]) {
 }
 
 fn rng_next(s: &mut u64) -> f32 {
-    *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *s = s
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     let t = ((*s >> 33) as f32) / (u32::MAX as f32);
     t * 2.0 - 1.0
 }
@@ -43,7 +45,8 @@ impl BigramHash {
     }
 
     fn hash(&self, curr: usize, prev: usize) -> usize {
-        ((36313u32.wrapping_mul(curr as u32)) ^ (27191u32.wrapping_mul(prev as u32))) as usize % (self.vocab - 1)
+        ((36313u32.wrapping_mul(curr as u32)) ^ (27191u32.wrapping_mul(prev as u32))) as usize
+            % (self.vocab - 1)
     }
 
     fn forward(&self, tokens: &[usize]) -> Vec<Vec<f32>> {
@@ -75,18 +78,34 @@ struct SmearGate {
 
 impl SmearGate {
     fn new(dim: usize) -> Self {
-        Self { gate: vec![0.0f32; dim] }
+        Self {
+            gate: vec![0.0f32; dim],
+        }
     }
 
     fn forward(&self, xs: &[Vec<f32>]) -> Vec<Vec<f32>> {
         let mut out = Vec::with_capacity(xs.len());
         for (i, x) in xs.iter().enumerate() {
-            let g: Vec<f32> = self.gate.iter().map(|&g| 1.0 / (1.0 + (-g).exp())).collect();
+            let g: Vec<f32> = self
+                .gate
+                .iter()
+                .map(|&g| 1.0 / (1.0 + (-g).exp()))
+                .collect();
             if i == 0 {
-                out.push(x.iter().zip(g.iter()).map(|(xi, gi)| xi * (1.0 - gi)).collect());
+                out.push(
+                    x.iter()
+                        .zip(g.iter())
+                        .map(|(xi, gi)| xi * (1.0 - gi))
+                        .collect(),
+                );
             } else {
-                out.push(x.iter().zip(g.iter()).zip(xs[i - 1].iter())
-                    .map(|((xi, gi), pi)| xi * (1.0 - gi) + pi * gi).collect());
+                out.push(
+                    x.iter()
+                        .zip(g.iter())
+                        .zip(xs[i - 1].iter())
+                        .map(|((xi, gi), pi)| xi * (1.0 - gi) + pi * gi)
+                        .collect(),
+                );
             }
         }
         out
@@ -127,16 +146,20 @@ impl FFNLayer {
 
     #[allow(clippy::needless_range_loop)]
     fn forward(&self, x: &[f32]) -> Vec<f32> {
-        let hidden: Vec<f32> = (0..self.d_ff).map(|r| {
-            let row = &self.w1[r * self.d_model..(r + 1) * self.d_model];
-            let sum: f32 = row.iter().zip(x.iter()).map(|(&w, &xi)| w * xi).sum();
-            (sum + self.b1[r]).max(0.0)
-        }).collect();
-        (0..self.d_model).map(|r| {
-            let row = &self.w2[r * self.d_ff..(r + 1) * self.d_ff];
-            let sum: f32 = row.iter().zip(hidden.iter()).map(|(&w, &h)| w * h).sum();
-            sum + self.b2[r]
-        }).collect()
+        let hidden: Vec<f32> = (0..self.d_ff)
+            .map(|r| {
+                let row = &self.w1[r * self.d_model..(r + 1) * self.d_model];
+                let sum: f32 = row.iter().zip(x.iter()).map(|(&w, &xi)| w * xi).sum();
+                (sum + self.b1[r]).max(0.0)
+            })
+            .collect();
+        (0..self.d_model)
+            .map(|r| {
+                let row = &self.w2[r * self.d_ff..(r + 1) * self.d_ff];
+                let sum: f32 = row.iter().zip(hidden.iter()).map(|(&w, &h)| w * h).sum();
+                sum + self.b2[r]
+            })
+            .collect()
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -149,7 +172,10 @@ impl FFNLayer {
             hidden[r] = row.iter().zip(x.iter()).map(|(&w, &xi)| w * xi).sum();
         }
         let activated: Vec<f32> = hidden.iter().map(|&h| h.max(0.0)).collect();
-        let relu_mask: Vec<f32> = hidden.iter().map(|&h| if h > 0.0 { 1.0 } else { 0.0 }).collect();
+        let relu_mask: Vec<f32> = hidden
+            .iter()
+            .map(|&h| if h > 0.0 { 1.0 } else { 0.0 })
+            .collect();
 
         let mut d_w2 = vec![0.0f32; d * ff];
         let mut d_b2 = vec![0.0f32; d];
@@ -195,7 +221,15 @@ struct AdamW {
 
 impl AdamW {
     fn new(size: usize, lr: f32) -> Self {
-        Self { m: vec![0.0; size], v: vec![0.0; size], lr, beta1: 0.9, beta2: 0.999, wd: 0.01, step: 0 }
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            lr,
+            beta1: 0.9,
+            beta2: 0.999,
+            wd: 0.01,
+            step: 0,
+        }
     }
 
     fn step(&mut self, params: &mut [f32], grads: &[f32]) {
@@ -231,7 +265,7 @@ impl CpuModel {
         let lm_head: Vec<f32> = (0..vocab * dim).map(|_| rng_next(&mut s) * 0.02).collect();
         let bigram = BigramHash::new(vocab, dim, &mut s);
         let smear = SmearGate::new(dim);
-        
+
         let ffn_layers = if std::env::args().any(|a| a == "--ffn") {
             let mut layers = Vec::new();
             // Read --ffn-layers argument, default to 2 if not present
@@ -244,8 +278,17 @@ impl CpuModel {
         } else {
             Vec::new()
         };
-        
-        Self { embed, lm_head, bigram, smear, ffn_layers, bigram_scale: 0.1, vocab, dim }
+
+        Self {
+            embed,
+            lm_head,
+            bigram,
+            smear,
+            ffn_layers,
+            bigram_scale: 0.1,
+            vocab,
+            dim,
+        }
     }
 
     #[allow(dead_code)]
@@ -253,13 +296,21 @@ impl CpuModel {
         let d = self.dim;
         let v = self.vocab;
 
-        let tok_emb: Vec<Vec<f32>> = tokens.iter()
+        let tok_emb: Vec<Vec<f32>> = tokens
+            .iter()
             .map(|&id| self.embed[(id % v) * d..((id % v) + 1) * d].to_vec())
             .collect();
 
         let bigram_emb = self.bigram.forward(tokens);
-        let mut xs: Vec<Vec<f32>> = tok_emb.iter().zip(bigram_emb.iter())
-            .map(|(t, b)| t.iter().zip(b.iter()).map(|(ti, bi)| ti + bi * self.bigram_scale).collect())
+        let mut xs: Vec<Vec<f32>> = tok_emb
+            .iter()
+            .zip(bigram_emb.iter())
+            .map(|(t, b)| {
+                t.iter()
+                    .zip(b.iter())
+                    .map(|(ti, bi)| ti + bi * self.bigram_scale)
+                    .collect()
+            })
             .collect();
 
         xs = self.smear.forward(&xs);
@@ -282,28 +333,45 @@ impl CpuModel {
         let v = self.vocab;
         let n = tokens.len();
 
-        let tok_emb: Vec<Vec<f32>> = tokens.iter()
+        let tok_emb: Vec<Vec<f32>> = tokens
+            .iter()
             .map(|&id| self.embed[(id % v) * d..((id % v) + 1) * d].to_vec())
             .collect();
         let bigram_emb = self.bigram.forward(tokens);
-        let xs: Vec<Vec<f32>> = tok_emb.iter().zip(bigram_emb.iter())
-            .map(|(t, b)| t.iter().zip(b.iter()).map(|(ti, bi)| ti + bi * self.bigram_scale).collect())
+        let xs: Vec<Vec<f32>> = tok_emb
+            .iter()
+            .zip(bigram_emb.iter())
+            .map(|(t, b)| {
+                t.iter()
+                    .zip(b.iter())
+                    .map(|(ti, bi)| ti + bi * self.bigram_scale)
+                    .collect()
+            })
             .collect();
         let xs_smeared = self.smear.forward(&xs);
 
         let xs_final: Vec<Vec<f32>> = if !self.ffn_layers.is_empty() {
             let mut current = xs_smeared;
             for ffn_layer in &self.ffn_layers {
-                let normed: Vec<Vec<f32>> = current.iter().map(|x| {
-                    let mean = x.iter().sum::<f32>() / d as f32;
-                    let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / d as f32;
-                    let std = (var + 1e-5).sqrt();
-                    x.iter().map(|v| (v - mean) / std).collect()
-                }).collect();
+                let normed: Vec<Vec<f32>> = current
+                    .iter()
+                    .map(|x| {
+                        let mean = x.iter().sum::<f32>() / d as f32;
+                        let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / d as f32;
+                        let std = (var + 1e-5).sqrt();
+                        x.iter().map(|v| (v - mean) / std).collect()
+                    })
+                    .collect();
                 let ffn_out: Vec<Vec<f32>> = normed.iter().map(|x| ffn_layer.forward(x)).collect();
-                current = (0..n).map(|i| {
-                    current[i].iter().zip(ffn_out[i].iter()).map(|(&a, &b)| a + b).collect()
-                }).collect();
+                current = (0..n)
+                    .map(|i| {
+                        current[i]
+                            .iter()
+                            .zip(ffn_out[i].iter())
+                            .map(|(&a, &b)| a + b)
+                            .collect()
+                    })
+                    .collect();
             }
             current
         } else {
@@ -344,7 +412,13 @@ impl CpuModel {
         (loss, d_logits, d_hidden)
     }
 
-    fn train_step(&mut self, tokens: &[usize], opt_embed: &mut AdamW, opt_head: &mut AdamW, lr: f32) -> f32 {
+    fn train_step(
+        &mut self,
+        tokens: &[usize],
+        opt_embed: &mut AdamW,
+        opt_head: &mut AdamW,
+        lr: f32,
+    ) -> f32 {
         let d = self.dim;
         let v = self.vocab;
         let n = tokens.len();
@@ -352,12 +426,20 @@ impl CpuModel {
         let (loss, d_logits, _d_hidden) = self.loss_and_grad(tokens);
 
         // Recompute forward activations
-        let tok_emb: Vec<Vec<f32>> = tokens.iter()
+        let tok_emb: Vec<Vec<f32>> = tokens
+            .iter()
             .map(|&id| self.embed[(id % v) * d..((id % v) + 1) * d].to_vec())
             .collect();
         let bigram_emb = self.bigram.forward(tokens);
-        let xs: Vec<Vec<f32>> = tok_emb.iter().zip(bigram_emb.iter())
-            .map(|(t, b)| t.iter().zip(b.iter()).map(|(ti, bi)| ti + bi * self.bigram_scale).collect())
+        let xs: Vec<Vec<f32>> = tok_emb
+            .iter()
+            .zip(bigram_emb.iter())
+            .map(|(t, b)| {
+                t.iter()
+                    .zip(b.iter())
+                    .map(|(ti, bi)| ti + bi * self.bigram_scale)
+                    .collect()
+            })
             .collect();
         let xs_smeared = self.smear.forward(&xs);
 
@@ -377,20 +459,29 @@ impl CpuModel {
             // Forward: xs_final = smeared + ffn1(layernorm(smeared)) + ffn2(...) + ...
             let mut xs_final = xs_smeared.clone();
             let mut normed_activations = Vec::new();
-            
+
             for ffn_layer in &self.ffn_layers {
-                let normed: Vec<Vec<f32>> = xs_final.iter().map(|x| {
-                    let mean = x.iter().sum::<f32>() / d as f32;
-                    let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / d as f32;
-                    let std = (var + 1e-5).sqrt();
-                    x.iter().map(|v| (v - mean) / std).collect()
-                }).collect();
+                let normed: Vec<Vec<f32>> = xs_final
+                    .iter()
+                    .map(|x| {
+                        let mean = x.iter().sum::<f32>() / d as f32;
+                        let var = x.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / d as f32;
+                        let std = (var + 1e-5).sqrt();
+                        x.iter().map(|v| (v - mean) / std).collect()
+                    })
+                    .collect();
                 normed_activations.push(normed.clone());
-                
+
                 let ffn_out: Vec<Vec<f32>> = normed.iter().map(|x| ffn_layer.forward(x)).collect();
-                xs_final = (0..n).map(|i| {
-                    xs_final[i].iter().zip(ffn_out[i].iter()).map(|(&a, &b)| a + b).collect()
-                }).collect();
+                xs_final = (0..n)
+                    .map(|i| {
+                        xs_final[i]
+                            .iter()
+                            .zip(ffn_out[i].iter())
+                            .map(|(&a, &b)| a + b)
+                            .collect()
+                    })
+                    .collect();
             }
 
             // d_lm_head
@@ -408,10 +499,10 @@ impl CpuModel {
             let mut d_to_emb = vec![vec![0.0f32; d]; n];
             let mut current_grad = d_from_logits.clone();
             let mut all_layer_grads = Vec::with_capacity(self.ffn_layers.len());
-            
+
             for (layer_idx, ffn_layer) in self.ffn_layers.iter().rev().enumerate() {
                 let normed = &normed_activations[self.ffn_layers.len() - 1 - layer_idx];
-                
+
                 let mut layer_grads = Vec::with_capacity(n);
                 for (i, normed_row) in normed.iter().enumerate() {
                     let gi = i.min(n - 2);
@@ -419,7 +510,7 @@ impl CpuModel {
                     layer_grads.push((dw1, db1, dw2, db2));
                 }
                 all_layer_grads.push(layer_grads);
-                
+
                 // Compute gradient flowing to previous layer (through layer norm)
                 for (i, d_to_emb_row) in d_to_emb.iter_mut().enumerate().take(n) {
                     let x = &xs_smeared[i];
@@ -427,20 +518,27 @@ impl CpuModel {
                     let var = x.iter().map(|vv| (vv - mean).powi(2)).sum::<f32>() / d as f32;
                     let std = (var + 1e-5).sqrt();
                     let nn = d as f32;
-                    let dx_sum: f32 = current_grad[i.min(n-2)].iter().sum();
-                    let dx_xm_sum: f32 = current_grad[i.min(n-2)].iter().zip(x.iter()).map(|(&g, &xi)| g * (xi - mean)).sum();
+                    let dx_sum: f32 = current_grad[i.min(n - 2)].iter().sum();
+                    let dx_xm_sum: f32 = current_grad[i.min(n - 2)]
+                        .iter()
+                        .zip(x.iter())
+                        .map(|(&g, &xi)| g * (xi - mean))
+                        .sum();
                     let inv_n_std = 1.0 / (nn * std);
                     let inv_var_eps = 1.0 / (var + 1e-5);
-                    
+
                     for (j, de) in d_to_emb_row.iter_mut().enumerate() {
                         let xm = x[j] - mean;
-                        *de = inv_n_std * (nn * current_grad[i.min(n-2)][j] - dx_sum - xm * inv_var_eps * dx_xm_sum);
+                        *de = inv_n_std
+                            * (nn * current_grad[i.min(n - 2)][j]
+                                - dx_sum
+                                - xm * inv_var_eps * dx_xm_sum);
                     }
                 }
-                
+
                 current_grad = d_to_emb.clone();
             }
-            
+
             // Final gradient: residual + FFN path
             for (i, d_to_emb_row) in d_to_emb.iter_mut().enumerate() {
                 let gi = i.min(n - 2);
@@ -448,16 +546,24 @@ impl CpuModel {
                     *de += d_from_logits[gi][j];
                 }
             }
-            
+
             // Phase 2: Apply all parameter updates
             let n_layers = self.ffn_layers.len();
             for (layer_idx, layer_grads) in all_layer_grads.into_iter().enumerate() {
                 let layer_mut = &mut self.ffn_layers[n_layers - 1 - layer_idx];
                 for (dw1, db1, dw2, db2) in layer_grads.into_iter() {
-                    for (k, &g) in dw1.iter().enumerate() { layer_mut.w1[k] -= lr * g; }
-                    for (k, &g) in db1.iter().enumerate() { layer_mut.b1[k] -= lr * g; }
-                    for (k, &g) in dw2.iter().enumerate() { layer_mut.w2[k] -= lr * g; }
-                    for (k, &g) in db2.iter().enumerate() { layer_mut.b2[k] -= lr * g; }
+                    for (k, &g) in dw1.iter().enumerate() {
+                        layer_mut.w1[k] -= lr * g;
+                    }
+                    for (k, &g) in db1.iter().enumerate() {
+                        layer_mut.b1[k] -= lr * g;
+                    }
+                    for (k, &g) in dw2.iter().enumerate() {
+                        layer_mut.w2[k] -= lr * g;
+                    }
+                    for (k, &g) in db2.iter().enumerate() {
+                        layer_mut.b2[k] -= lr * g;
+                    }
                 }
             }
 
@@ -500,7 +606,9 @@ impl CpuModel {
         let mut n = 0usize;
         for c in (0..eval_tokens.len()).step_by(seq_len + 1) {
             let end = (c + seq_len + 1).min(eval_tokens.len());
-            if end - c < 3 { continue; }
+            if end - c < 3 {
+                continue;
+            }
             let seq = &eval_tokens[c..end];
             let (loss, _, _) = self.loss_and_grad(seq);
             if loss.is_finite() {
@@ -508,7 +616,9 @@ impl CpuModel {
                 n += 1;
             }
         }
-        if n == 0 { return f32::MAX; }
+        if n == 0 {
+            return f32::MAX;
+        }
         total_bpb / n as f32
     }
 }
@@ -525,12 +635,19 @@ fn main() {
     let tokens: Vec<usize> = raw_tokens.iter().map(|&t| t % vocab).collect();
 
     println!("=== trios CPU Training (Analytical Backprop) ===");
-    println!("vocab={} dim={} seq={} steps={} seed={} lr={}", vocab, dim, seq, steps, seed, lr);
+    println!(
+        "vocab={} dim={} seq={} steps={} seed={} lr={}",
+        vocab, dim, seq, steps, seed, lr
+    );
 
     let train_end = (tokens.len() as f64 * 0.9) as usize;
     let train_tokens = &tokens[..train_end];
     let val_tokens = &tokens[train_end..];
-    println!("Dataset: {} train / {} val tokens", train_tokens.len(), val_tokens.len());
+    println!(
+        "Dataset: {} train / {} val tokens",
+        train_tokens.len(),
+        val_tokens.len()
+    );
 
     let mut model = CpuModel::new(vocab, dim, seed);
     let mut opt_embed = AdamW::new(vocab * dim, lr);
@@ -539,7 +656,10 @@ fn main() {
     let init_bpb = model.eval_bpb(val_tokens, seq);
     println!("Initial val BPB: {:.4}", init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>8}", "step", "train_loss", "val_bpb", "best_bpb", "ms");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
+        "step", "train_loss", "val_bpb", "best_bpb", "ms"
+    );
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
@@ -558,7 +678,9 @@ fn main() {
         };
 
         let offset = {
-            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng_state = rng_state
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             (rng_state as usize) % (data_len.saturating_sub(seq + 1))
         };
         let batch = &train_tokens[offset..offset + seq + 1];
@@ -570,16 +692,23 @@ fn main() {
             if val_bpb < best_bpb && val_bpb.is_finite() {
                 best_bpb = val_bpb;
             }
-            println!("{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                step, train_loss, val_bpb, best_bpb, ms);
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                step, train_loss, val_bpb, best_bpb, ms
+            );
         }
     }
 
     let total = t0.elapsed();
     println!();
     println!("=== Training Complete ===");
-    println!("Time: {:.1}s | Init BPB: {:.4} | Best BPB: {:.4} | Delta: {:.4}",
-        total.as_secs_f64(), init_bpb, best_bpb, init_bpb - best_bpb);
+    println!(
+        "Time: {:.1}s | Init BPB: {:.4} | Best BPB: {:.4} | Delta: {:.4}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        init_bpb - best_bpb
+    );
 
     let _ = fs::create_dir_all(".trinity/results");
     let result_json = serde_json::json!({
@@ -598,8 +727,14 @@ fn main() {
     });
 
     let rpath = format!(".trinity/results/cpu_train_seed{}.json", seed);
-    fs::File::create(&rpath).unwrap()
-        .write_all(serde_json::to_string_pretty(&result_json).unwrap().as_bytes()).unwrap();
+    fs::File::create(&rpath)
+        .unwrap()
+        .write_all(
+            serde_json::to_string_pretty(&result_json)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     println!("Results: {}", rpath);
 }
 
