@@ -11,6 +11,7 @@ pub mod jepa;
 pub mod ledger;
 pub mod model;
 pub mod model_hybrid_attn;
+pub mod mup;
 pub mod objective;
 pub mod optimizer;
 pub mod race;
