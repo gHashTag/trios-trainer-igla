@@ -43,7 +43,7 @@ impl Default for LayerDims {
 /// # Example
 ///
 /// ```
-/// use trios_train_cpu::forward::matmul;
+/// use trios_trainer::forward::matmul;
 ///
 /// let a = vec![1.0f32, 2.0, 3.0, 4.0]; // 2x2
 /// let b = vec![2.0f32, 0.0, 1.0, 2.0]; // 2x2

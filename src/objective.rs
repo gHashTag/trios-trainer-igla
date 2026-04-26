@@ -1,3 +1,9 @@
+#![allow(
+    clippy::type_complexity,
+    clippy::redundant_closure,
+    clippy::manual_range_contains,
+    dead_code
+)]
 //! Multi-Objective Loss + ASHA Rung Schedules + NCA Auxiliary Loss.
 //!
 //! Migrated from `trios-train-cpu/src/objective.rs`.
@@ -14,7 +20,11 @@ pub struct ObjectiveWeights {
 
 impl Default for ObjectiveWeights {
     fn default() -> Self {
-        Self { ntp: 0.5, jepa: 0.25, nca: 0.25 }
+        Self {
+            ntp: 0.5,
+            jepa: 0.25,
+            nca: 0.25,
+        }
     }
 }
 
@@ -31,7 +41,10 @@ pub struct CombinedLoss {
     pub components: ComponentLosses,
 }
 
-pub fn compute_combined_loss(components: ComponentLosses, weights: ObjectiveWeights) -> CombinedLoss {
+pub fn compute_combined_loss(
+    components: ComponentLosses,
+    weights: ObjectiveWeights,
+) -> CombinedLoss {
     let total = components.ntp * weights.ntp
         + components.jepa * weights.jepa
         + components.nca * weights.nca;
@@ -42,17 +55,21 @@ pub fn nca_entropy_constraint(entropy: f64) -> f64 {
     const MIN: f64 = 1.5;
     const MAX: f64 = 2.8;
     const SCALE: f64 = 100.0;
-    if entropy < MIN { (MIN - entropy).powi(2) * SCALE }
-    else if entropy > MAX { (entropy - MAX).powi(2) * SCALE }
-    else { 0.0 }
+    if entropy < MIN {
+        (MIN - entropy).powi(2) * SCALE
+    } else if entropy > MAX {
+        (entropy - MAX).powi(2) * SCALE
+    } else {
+        0.0
+    }
 }
 
 pub fn get_rung_schedule(arch: &str) -> Vec<u32> {
     match arch {
-        "jepa"   => vec![3000, 9000, 27000],
-        "attn"   => vec![1000, 3000, 9000, 27000],
+        "jepa" => vec![3000, 9000, 27000],
+        "attn" => vec![1000, 3000, 9000, 27000],
         "hybrid" => vec![2000, 6000, 18000],
-        _        => vec![1000, 3000, 9000, 27000],
+        _ => vec![1000, 3000, 9000, 27000],
     }
 }
 
@@ -72,13 +89,23 @@ pub struct NcaObjective {
 
 impl Default for NcaObjective {
     fn default() -> Self {
-        Self { grid_size: 81, k_states: 9, rollout_steps: 128, entropy_min: 1.5, entropy_max: 2.8, weight: 0.25 }
+        Self {
+            grid_size: 81,
+            k_states: 9,
+            rollout_steps: 128,
+            entropy_min: 1.5,
+            entropy_max: 2.8,
+            weight: 0.25,
+        }
     }
 }
 
 impl NcaObjective {
     pub fn new(weight: f64) -> Self {
-        Self { weight, ..Self::default() }
+        Self {
+            weight,
+            ..Self::default()
+        }
     }
 
     pub fn grid_dim(&self) -> usize {
@@ -90,7 +117,9 @@ impl NcaObjective {
         let mut state = Vec::with_capacity(n);
         let mut s = seed;
         for _ in 0..n {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let idx = (s >> 33) as usize % self.k_states;
             state.push(idx as f32);
         }
@@ -113,7 +142,9 @@ impl NcaObjective {
                     let s = state[nidx] as usize;
                     counts[s.min(self.k_states - 1)] += rule.neighbor_weight;
                 }
-                let best = counts.iter().enumerate()
+                let best = counts
+                    .iter()
+                    .enumerate()
                     .max_by_key(|(_, &c)| c)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
@@ -131,7 +162,11 @@ impl NcaObjective {
             entropies.push(shannon_entropy(&state, self.k_states));
         }
         let final_entropy = entropies.last().copied().unwrap_or(0.0);
-        NcaRolloutResult { final_state: state, entropies, final_entropy }
+        NcaRolloutResult {
+            final_state: state,
+            entropies,
+            final_entropy,
+        }
     }
 
     pub fn compute_loss(&self, predicted: &[f32], target: &[f32], nca_state: &[f32]) -> f64 {
@@ -151,13 +186,21 @@ pub struct NcaTransitionRule {
 
 impl Default for NcaTransitionRule {
     fn default() -> Self {
-        Self { center_weight: 2, neighbor_weight: 1, latent_id: 0 }
+        Self {
+            center_weight: 2,
+            neighbor_weight: 1,
+            latent_id: 0,
+        }
     }
 }
 
 impl NcaTransitionRule {
     pub fn from_seed(seed: u64) -> Self {
-        Self { center_weight: 2, neighbor_weight: 1, latent_id: seed }
+        Self {
+            center_weight: 2,
+            neighbor_weight: 1,
+            latent_id: seed,
+        }
     }
 }
 
@@ -170,7 +213,9 @@ pub struct NcaRolloutResult {
 
 pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
     let n = state.len() as f64;
-    if n == 0.0 { return 0.0; }
+    if n == 0.0 {
+        return 0.0;
+    }
     let mut counts = vec![0usize; k_states];
     for &s in state {
         let idx = (s.round() as usize).min(k_states - 1);
@@ -188,15 +233,27 @@ pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
 
 pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len());
-    if a.is_empty() { return 0.0; }
+    if a.is_empty() {
+        return 0.0;
+    }
     let n = a.len() as f64;
-    a.iter().zip(b.iter())
+    a.iter()
+        .zip(b.iter())
         .map(|(&x, &y)| (x - y) as f64 * (x - y) as f64)
-        .sum::<f64>() / n
+        .sum::<f64>()
+        / n
 }
 
-pub fn nca_entropy_loss(state: &[f32], k_states: usize, entropy_min: f64, entropy_max: f64, weight: f64) -> (f64, f64) {
-    if state.is_empty() { return (0.0, 0.0); }
+pub fn nca_entropy_loss(
+    state: &[f32],
+    k_states: usize,
+    entropy_min: f64,
+    entropy_max: f64,
+    weight: f64,
+) -> (f64, f64) {
+    if state.is_empty() {
+        return (0.0, 0.0);
+    }
     let entropy = shannon_entropy(state, k_states);
     let penalty = if entropy < entropy_min {
         (entropy_min - entropy).powi(2) * 100.0
@@ -234,7 +291,11 @@ pub fn combined_loss(logits: &[f32], targets: &[usize]) -> f64 {
 }
 
 pub fn build(cfg: &crate::config::ObjectiveConfig) -> anyhow::Result<Objective> {
-    Ok(Objective { w_ce: cfg.w_ce, w_jepa: cfg.w_jepa, w_nca: cfg.w_nca })
+    Ok(Objective {
+        w_ce: cfg.w_ce,
+        w_jepa: cfg.w_jepa,
+        w_nca: cfg.w_nca,
+    })
 }
 
 pub fn build_fn(_cfg: &str) -> Box<dyn Fn(&[f32], &[usize]) -> f64> {
@@ -243,7 +304,11 @@ pub fn build_fn(_cfg: &str) -> Box<dyn Fn(&[f32], &[usize]) -> f64> {
 
 impl Objective {
     pub fn from_config(cfg: &crate::config::ObjectiveConfig) -> Self {
-        Self { w_ce: cfg.w_ce, w_jepa: cfg.w_jepa, w_nca: cfg.w_nca }
+        Self {
+            w_ce: cfg.w_ce,
+            w_jepa: cfg.w_jepa,
+            w_nca: cfg.w_nca,
+        }
     }
 }
 
@@ -254,7 +319,11 @@ pub struct Objective {
 }
 
 pub fn build_from_config(cfg: &crate::config::ObjectiveConfig) -> Objective {
-    Objective { w_ce: cfg.w_ce, w_jepa: cfg.w_jepa, w_nca: cfg.w_nca }
+    Objective {
+        w_ce: cfg.w_ce,
+        w_jepa: cfg.w_jepa,
+        w_nca: cfg.w_nca,
+    }
 }
 
 #[cfg(test)]
@@ -263,7 +332,11 @@ mod tests {
 
     #[test]
     fn test_combined_loss_weights() {
-        let c = ComponentLosses { ntp: 2.0, jepa: 1.0, nca: 0.5 };
+        let c = ComponentLosses {
+            ntp: 2.0,
+            jepa: 1.0,
+            nca: 0.5,
+        };
         let r = compute_combined_loss(c, ObjectiveWeights::default());
         assert!((r.total - 1.375).abs() < 1e-9);
     }
@@ -313,7 +386,9 @@ mod tests {
         let nca = NcaObjective::default();
         let grid = nca.init_grid(42);
         assert_eq!(grid.len(), 81);
-        for &s in &grid { assert!(s >= 0.0 && s < 9.0); }
+        for &s in &grid {
+            assert!(s >= 0.0 && s < 9.0);
+        }
     }
 
     #[test]

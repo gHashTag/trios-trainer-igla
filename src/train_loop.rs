@@ -1,9 +1,10 @@
+#![allow(clippy::let_unit_value, clippy::manual_is_multiple_of, dead_code)]
 //! Training loop wired to ASHA + victory gate from `trios-igla-race`
 //! (when the `trios-integration` feature is enabled) or to a local stub
 //! constant (default build).
 
+use crate::{ledger, TrainConfig};
 use anyhow::Result;
-use crate::{TrainConfig, ledger};
 
 /// Target BPB for IGLA RACE Gate-2.
 ///
@@ -29,7 +30,8 @@ pub fn run(cfg: &TrainConfig) -> Result<RunOutcome> {
         if (cfg.target_bpb - IGLA_TARGET_BPB).abs() > 1e-9 {
             tracing::warn!(
                 "config.target_bpb {} != trios_igla_race::IGLA_TARGET_BPB {} — using config value",
-                cfg.target_bpb, IGLA_TARGET_BPB
+                cfg.target_bpb,
+                IGLA_TARGET_BPB
             );
         }
     }
@@ -45,9 +47,9 @@ pub fn run(cfg: &TrainConfig) -> Result<RunOutcome> {
 
     // -------- 1) build model — L-T1 champion reproduction
     let _model = crate::champion::build(&cfg.model, cfg.seed)?;
-    let _opt   = crate::optimizer::build(&cfg.optimizer)?;
-    let _data  = crate::data::build(&cfg.data)?;
-    let _obj   = crate::objective::build(&cfg.objective)?;
+    let _opt = crate::optimizer::build(&cfg.optimizer)?;
+    let _data = crate::data::build(&cfg.data)?;
+    let _obj = crate::objective::build(&cfg.objective)?;
 
     // -------- 2) train loop (skeleton; full migration in follow-up PR)
     let mut bpb = f64::INFINITY;

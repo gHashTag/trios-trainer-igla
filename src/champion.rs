@@ -1,3 +1,4 @@
+#![allow(clippy::needless_range_loop, dead_code, unused_variables)]
 //! Champion NgramModel — proven architecture from commit 2446855
 //!
 //! Architecture: dim=64, hidden=384, layer norm, projection, separate ctx
@@ -5,8 +6,8 @@
 //!
 //! This reproduces the exact model that achieved the champion result.
 
-use anyhow::Result;
 use crate::config::ModelConfig;
+use anyhow::Result;
 
 const DIM: usize = 64;
 const HIDDEN: usize = 384;
@@ -27,7 +28,9 @@ impl NgramModel {
     pub fn new(seed: u64, vocab: usize) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let lim = (6.0f32 / (3 * DIM) as f32).sqrt();
@@ -98,8 +101,10 @@ impl NgramModel {
 
     /// Count parameters
     pub fn param_count(&self, vocab: usize) -> usize {
-        self.embed.len() + self.ctx.iter().map(|c| c.len()).sum::<usize>()
-            + self.proj.len() + self.lm_head.len()
+        self.embed.len()
+            + self.ctx.iter().map(|c| c.len()).sum::<usize>()
+            + self.proj.len()
+            + self.lm_head.len()
     }
 }
 
@@ -107,7 +112,6 @@ impl NgramModel {
 pub fn build(cfg: &ModelConfig, seed: u64) -> Result<NgramModel> {
     Ok(NgramModel::from_config(cfg, seed))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -125,7 +129,8 @@ mod tests {
     #[test]
     fn test_hidden_computation() {
         let model = NgramModel::new(42, 128);
-        let context = vec![10, 20, 30, 40];
+        // NUM_CTX = 4 ctx_weights; need context.len() >= NUM_CTX + 1 = 5
+        let context = vec![10, 20, 30, 40, 50];
         let hidden = model.compute_hidden(&context, 128);
         assert_eq!(hidden.len(), HIDDEN);
         assert!(hidden.iter().all(|h| h.is_finite()));
