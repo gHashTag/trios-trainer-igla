@@ -138,7 +138,7 @@ impl GF8 {
     }
 
     /// Range of representable values
-    pub const MIN_POSITIVE: f32 = 2.0_f32.powi(-3);  // 2^(-3) ≈ 0.125
+    pub const MIN_POSITIVE: f32 = 0.125_f32;  // 2^(-3) = 0.125 (powi not const in Rust 1.90)
     pub const MAX: f32 = 15.75;  // (2 - 1/16) * 2^4
 }
 

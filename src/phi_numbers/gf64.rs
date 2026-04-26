@@ -140,8 +140,9 @@ impl GF64 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f64 = 2.0_f64.powi(-1048575);
-    pub const MAX: f64 = (2.0 - 2.0_f64.powi(-42)) * 2.0_f64.powi(1048575);
+    /// Note: powi not const in Rust 1.90, using f64 bounds instead
+    pub const MIN_POSITIVE: f64 = f64::MIN_POSITIVE;  // ~2.23e-308 (effectively 0)
+    pub const MAX: f64 = f64::MAX;  // ~1.80e308 (effectively infinity)
 }
 
 impl Clone for GF64 {
