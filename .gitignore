@@ -8,11 +8,13 @@ Cargo.lock.bak
 .vscode/
 *.swp
 
-# Local ledger artifacts
-/assertions/
+# Local ledger artifacts (transient files only)
 /checkpoints/
 /data/
 *.jsonl.tmp
+# Tracked canonical mirrors live under assertions/ — see MIGRATION.md.
+assertions/local-*
+assertions/*.tmp
 
 # Build cache
 .cargo/
