@@ -1,19 +1,37 @@
-//! Model module — facade. Concrete impls are migrated from
-//! `trios-train-cpu/src/transformer.rs` + `hybrid_attn.rs` in the follow-up PR.
+//! Model module with NgramModel stub (L-T1)
+//!
+//! This file contains the champion model implementation.
+//! During L-T1, we provide a stub to allow compilation.
 
-use anyhow::Result;
-use crate::config::ModelConfig;
+use crate::model_hybrid_attn::HybridAttn;
 
-pub struct Model {
-    pub d_model: usize,
-    pub n_layers: usize,
-    pub hybrid: bool,
+/// N-gram model (placeholder for L-T1)
+///
+/// This is the minimal placeholder that allows the build to succeed.
+/// The actual champion implementation will be merged from
+/// `crates/trios-train-cpu/src/transformer.rs` and `hybrid_attn.rs`.
+pub struct NgramModel {
+    _private: (),
 }
 
-pub fn build(cfg: &ModelConfig) -> Result<Model> {
-    Ok(Model {
-        d_model: cfg.d_model,
-        n_layers: cfg.n_layers,
-        hybrid: cfg.hybrid_attn,
-    })
+impl NgramModel {
+    pub fn new() -> Self {
+        Self { _private: () }
+    }
+
+    /// Placeholder forward pass
+    pub fn forward(&self, _tokens: &[usize]) -> Vec<f32> {
+        vec![] // Placeholder - returns empty
+    }
+
+    /// Placeholder parameter count
+    pub fn param_count(&self) -> usize {
+        0 // Placeholder
+    }
+}
+
+impl Default for NgramModel {
+    fn default() -> Self {
+        Self::new()
+    }
 }

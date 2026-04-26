@@ -43,8 +43,8 @@ pub fn run(cfg: &TrainConfig) -> Result<RunOutcome> {
         }
     }
 
-    // -------- 1) build model — TODO migrate from trios-train-cpu in PR-2
-    let _model = crate::model::build(&cfg.model)?;
+    // -------- 1) build model — L-T1 champion reproduction
+    let _model = crate::champion::build(&cfg.model, cfg.seed)?;
     let _opt   = crate::optimizer::build(&cfg.optimizer)?;
     let _data  = crate::data::build(&cfg.data)?;
     let _obj   = crate::objective::build(&cfg.objective)?;
