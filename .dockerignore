@@ -8,6 +8,7 @@ docs/phd/build/
 .swarm/
 .claude*/
 .parameter-golf/
-data/
+# data/ removed temporarily for stub data (TODO: re-add when using real FineWeb)
+# data/
 checkpoints/
 node_modules/
