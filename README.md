@@ -42,6 +42,57 @@ cargo run --release --bin trios-train -- \
     --config configs/champion.toml --seed 43
 ```
 
+## Search the needle (`trios-igla`)
+
+A second binary, `trios-igla`, is the **read-only query tool** for the IGLA
+RACE ledger. It never mutates `assertions/seed_results.jsonl` — it only
+filters, lists, and emits the canonical triplet so operators and CI can
+answer “did we find the needle yet?” without ad-hoc shell pipelines.
+
+Triplet (R7):
+
+```text
+BPB=<v> @ step=<N> seed=<S> sha=<7c> jsonl_row=<L> gate_status=<g>
+```
+
+| Command | Effect | Exit code |
+|---|---|---|
+| `trios-igla search --seed 43 --bpb-max 1.85 --step-min 4000` | Filter ledger; one triplet per match. Flags: `--seed`, `--bpb-max`, `--step-min`, `--sha`, `--gate-status`. | 0 hit, 2 no-match |
+| `trios-igla list --last 5` | Last N rows in triplet form (default 10). | 0 |
+| `trios-igla gate --target 1.85` | Gate-2 quorum: PASS iff ≥3 distinct seeds satisfy `bpb < target` AND `step >= 4000`. | 0 PASS, 2 NOT YET |
+| `trios-igla check 2446855` | R9 embargo refusal against `assertions/embargo.txt`. | 0 clean, 1 embargoed |
+| `trios-igla triplet 0` | Canonical R7 triplet for a row index (0-based). | 0 |
+
+Common flags:
+- `--ledger <path>` (default `assertions/seed_results.jsonl`)
+- `--embargo <path>` (default `assertions/embargo.txt`)
+
+### Quickstart
+
+```bash
+cargo build --release --bin trios-igla
+BIN=./target/release/trios-igla
+
+# Did anyone hit the target yet?
+$BIN search --bpb-max 1.85 --step-min 4000
+
+# Print last 5 rows for a glance
+$BIN list --last 5
+
+# Gate-2 verdict in CI
+$BIN gate --target 1.85 || echo "NOT YET—keep training"
+
+# Refuse to act on an embargoed SHA
+$BIN check 477e3377   # exit 1
+$BIN check 2446855    # exit 0 (champion)
+```
+
+Gate-2 anchors used by `trios-igla gate`:
+- target: `1.85` (`igla::DEFAULT_TARGET_BPB`, overridable via `--target`)
+- step floor: `4000` (`igla::STEP_MIN_FOR_LEDGER`, R8)
+- quorum: `3` distinct seeds (`igla::GATE2_SEED_QUORUM`)
+- champion: `2.2393 @ 27K seed=43 sha=2446855` ([`gHashTag/trios@2446855`](https://github.com/gHashTag/trios/commit/2446855))
+
 ## Run on Railway
 
 ```bash
@@ -78,6 +129,21 @@ docker run --rm \
 | `TRIOS_LR` | from config | Overrides `optimizer.lr` (must stay in INV-8 band) |
 | `TRIOS_LEDGER_PUSH` | `0` | If `1`, commits + pushes each row to `assertions/seed_results.jsonl` |
 | `RUST_LOG` | `info` | Log level |
+
+### Library API
+
+Everything `trios-igla` does is also exposed from the library so the
+training loop, CI gates, and the `trios-train` binary can reuse it:
+
+```rust
+use trios_trainer::igla::{
+    self, SearchFilter, gate2_seed_count, is_embargoed, render_triplet,
+};
+
+let rows = igla::read_ledger("assertions/seed_results.jsonl".as_ref())?;
+let count = gate2_seed_count(&rows, igla::DEFAULT_TARGET_BPB);
+assert!(count >= igla::GATE2_SEED_QUORUM, "Gate-2 not yet reached");
+```
 
 ## Configs
 

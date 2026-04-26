@@ -5,6 +5,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod data;
 pub mod gf16;
+pub mod igla;
 pub mod invariants;
 pub mod jepa;
 pub mod ledger;

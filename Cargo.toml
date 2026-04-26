@@ -21,6 +21,10 @@ name = "trios-train"
 path = "src/bin/trios-train.rs"
 
 [[bin]]
+name = "trios-igla"
+path = "src/bin/trios-igla.rs"
+
+[[bin]]
 name = "hybrid_train"
 path = "src/bin/hybrid_train.rs"
 
