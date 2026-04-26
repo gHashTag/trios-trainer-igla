@@ -26,7 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /work
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
-COPY crates/trios-trainer/configs /configs
+COPY configs /configs
 
 ENV RUST_LOG=info
 ENV TRIOS_CONFIG=/configs/gate2-attempt.toml
