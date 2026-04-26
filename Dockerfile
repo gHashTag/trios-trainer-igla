@@ -32,3 +32,4 @@ ENV TRIOS_CONFIG=/configs/gate2-attempt.toml
 
 ENTRYPOINT ["/usr/local/bin/trios-train"]
 CMD ["--config", "/configs/gate2-attempt.toml"]
+# Railway cache invalidation: Mon Apr 27 00:34:24 +07 2026
