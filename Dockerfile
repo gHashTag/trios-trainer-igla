@@ -3,8 +3,9 @@
 # Run:     docker run --rm -e TRIOS_SEED=43 -v $PWD/assertions:/work/assertions ghcr.io/ghashtag/trios-trainer-igla
 
 # ---------- builder ----------
-# Bump to 1.90 (slim) — `is_multiple_of` for unsigned integers stabilized in 1.87.
-FROM rust:1.90-slim AS builder
+# rust:1.90-slim-bookworm — bookworm base so libc matches the runtime stage.
+# (`is_multiple_of` for unsigned ints stabilized in 1.87.)
+FROM rust:1.90-slim-bookworm AS builder
 
 # git is required at runtime for ledger row push; we install in builder for cargo + final stage gets binary only
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -18,7 +19,7 @@ COPY . .
 RUN cargo build --release --bin trios-train -p trios-trainer
 
 # ---------- runtime ----------
-# distroless is too minimal (no git for ledger push). Use slim Debian.
+# Same Debian release as the builder — GLIBC must match.
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
