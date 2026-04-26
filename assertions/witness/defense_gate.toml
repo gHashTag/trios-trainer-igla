@@ -1,0 +1,73 @@
+# Phase C LD defense-package witness manifest.
+#
+# Immutable per R10: only the defense_gate lane on a fresh ONE SHOT
+# may bump these literals.  Any change to the floors below MUST
+# sibling-commit a matching change to tools/defense_gate/src/lib.rs.
+#
+# Refs: ONE SHOT v2.0 §3 Phase C · §5 falsification table row 4
+#       https://github.com/gHashTag/trios/issues/265
+
+[lane]
+id = "defense_gate"
+name = "Phase C LD defense-package gate"
+phase = "C"
+owner = "phd-monograph-auditor"
+rule = "examiner-pack >= 50 sections, qa >= 30 pairs, slides >= 30 frames"
+
+[floors]
+# Pre-registered floors.  Source of truth lives in
+# tools/defense_gate/src/lib.rs as `EXAMINER_MIN_SECTIONS`,
+# `QA_MIN_PAIRS`, `SLIDES_MIN_FRAMES`.
+examiner_min_sections = 50
+qa_min_pairs = 30
+slides_min_frames = 30
+
+[layout]
+# Where the gate looks for the three required defense files.
+default_defense_dir = "docs/phd/defense"
+examiner_pack = "examiner-pack.tex"
+qa = "qa.tex"
+slides = "slides.tex"
+
+[witness]
+# Single-line invocations.
+strict = "cargo run -p defense-gate"
+report = "cargo run -p defense-gate -- --report"
+anchors = "cargo run -p defense-gate -- --print-anchors"
+exit_admit = 0
+exit_defense_dir_error = 100
+exit_examiner_pack_too_short = 101
+exit_qa_pairs_below_floor = 102
+exit_slides_below_floor = 103
+exit_missing_defense_file = 104
+
+[mirror]
+# Constants that MUST equal the Rust source of truth.
+rust_source = "tools/defense_gate/src/lib.rs"
+rust_examiner_const = "EXAMINER_MIN_SECTIONS"
+rust_qa_const = "QA_MIN_PAIRS"
+rust_slides_const = "SLIDES_MIN_FRAMES"
+
+[anchor]
+trinity_identity = "phi^2 + phi^-2 = 3"
+zenodo_doi = "10.5281/zenodo.19227877"
+
+[provenance]
+one_shot = "https://github.com/gHashTag/trios/issues/265"
+claim_comment = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321207318"
+sibling_done_merge_order = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321205357"
+sibling_done_citetheorem = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321191520"
+agent = "perplexity-computer-defense-gate"
+
+[r5_disclosure]
+# Honesty bookkeeping: at the time this manifest lands, `docs/phd/defense/`
+# does not exist on `main` (LD body fill is queue-bot-blocked behind PRs
+# #304 and #305, both unmerged).
+# `docs/phd/defense/` does not exist as a directory on main, so the
+# DefenseDirError branch (100) fires before the per-file MissingDefenseFile
+# branch (104) gets a chance.  Once an empty `docs/phd/defense/` directory is
+# created (e.g. by the LD scaffolding) but the three files are still absent,
+# the gate transitions to REJECT(104).  Both are documented honest verdicts.
+expected_pre_merge_verdict = "REJECT(100) — DefenseDirError (docs/phd/defense/ absent on main)"
+expected_post_dir_pre_files_verdict = "REJECT(104) — MissingDefenseFile (dir present, files absent)"
+expected_post_merge_verdict = "ADMIT(0) iff all three files meet their floors; otherwise REJECT(101|102|103)"

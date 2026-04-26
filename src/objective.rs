@@ -1,30 +1,20 @@
-#![allow(
-    clippy::type_complexity,
-    clippy::redundant_closure,
-    clippy::manual_range_contains,
-    dead_code
-)]
-//! Multi-Objective Loss + ASHA Rung Schedules + NCA Auxiliary Loss.
+//! TASK-5A.6 — Multi-Objective Loss + ASHA Rung Schedules
+//! TASK-NCA — NCA Auxiliary Loss
 //!
-//! Migrated from `trios-train-cpu/src/objective.rs`.
 //! L_total = 0.5*NTP + 0.25*JEPA + 0.25*NCA
 //! NCA entropy band: [1.5, 2.8] (trinity NCA Wave 8.5)
 //! JEPA ASHA Law L-R10: minimum 3000-step first rung
 
 #[derive(Debug, Clone, Copy)]
-pub struct ObjectiveWeights {
-    pub ntp: f64,
-    pub jepa: f64,
-    pub nca: f64,
+pub struct ObjectiveConfig {
+    pub ntp_weight: f64,
+    pub jepa_weight: f64,
+    pub nca_weight: f64,
 }
 
-impl Default for ObjectiveWeights {
+impl Default for ObjectiveConfig {
     fn default() -> Self {
-        Self {
-            ntp: 0.5,
-            jepa: 0.25,
-            nca: 0.25,
-        }
+        Self { ntp_weight: 0.5, jepa_weight: 0.25, nca_weight: 0.25 }
     }
 }
 
@@ -41,13 +31,10 @@ pub struct CombinedLoss {
     pub components: ComponentLosses,
 }
 
-pub fn compute_combined_loss(
-    components: ComponentLosses,
-    weights: ObjectiveWeights,
-) -> CombinedLoss {
-    let total = components.ntp * weights.ntp
-        + components.jepa * weights.jepa
-        + components.nca * weights.nca;
+pub fn compute_combined_loss(components: ComponentLosses, config: ObjectiveConfig) -> CombinedLoss {
+    let total = components.ntp * config.ntp_weight
+        + components.jepa * config.jepa_weight
+        + components.nca * config.nca_weight;
     CombinedLoss { total, components }
 }
 
@@ -55,21 +42,17 @@ pub fn nca_entropy_constraint(entropy: f64) -> f64 {
     const MIN: f64 = 1.5;
     const MAX: f64 = 2.8;
     const SCALE: f64 = 100.0;
-    if entropy < MIN {
-        (MIN - entropy).powi(2) * SCALE
-    } else if entropy > MAX {
-        (entropy - MAX).powi(2) * SCALE
-    } else {
-        0.0
-    }
+    if entropy < MIN { (MIN - entropy).powi(2) * SCALE }
+    else if entropy > MAX { (entropy - MAX).powi(2) * SCALE }
+    else { 0.0 }
 }
 
 pub fn get_rung_schedule(arch: &str) -> Vec<u32> {
     match arch {
-        "jepa" => vec![3000, 9000, 27000],
-        "attn" => vec![1000, 3000, 9000, 27000],
+        "jepa"   => vec![3000, 9000, 27000],
+        "attn"   => vec![1000, 3000, 9000, 27000],
         "hybrid" => vec![2000, 6000, 18000],
-        _ => vec![1000, 3000, 9000, 27000],
+        _        => vec![1000, 3000, 9000, 27000],
     }
 }
 
@@ -102,10 +85,7 @@ impl Default for NcaObjective {
 
 impl NcaObjective {
     pub fn new(weight: f64) -> Self {
-        Self {
-            weight,
-            ..Self::default()
-        }
+        Self { weight, ..Self::default() }
     }
 
     pub fn grid_dim(&self) -> usize {
@@ -117,9 +97,7 @@ impl NcaObjective {
         let mut state = Vec::with_capacity(n);
         let mut s = seed;
         for _ in 0..n {
-            s = s
-                .wrapping_mul(6364136223846793005)
-                .wrapping_add(1442695040888963407);
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
             let idx = (s >> 33) as usize % self.k_states;
             state.push(idx as f32);
         }
@@ -142,9 +120,7 @@ impl NcaObjective {
                     let s = state[nidx] as usize;
                     counts[s.min(self.k_states - 1)] += rule.neighbor_weight;
                 }
-                let best = counts
-                    .iter()
-                    .enumerate()
+                let best = counts.iter().enumerate()
                     .max_by_key(|(_, &c)| c)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
@@ -159,7 +135,8 @@ impl NcaObjective {
         let mut entropies = Vec::with_capacity(self.rollout_steps as usize);
         for _ in 0..self.rollout_steps {
             self.step(&mut state, rule);
-            entropies.push(shannon_entropy(&state, self.k_states));
+            let h = shannon_entropy(&state, self.k_states);
+            entropies.push(h);
         }
         let final_entropy = entropies.last().copied().unwrap_or(0.0);
         NcaRolloutResult {
@@ -169,7 +146,12 @@ impl NcaObjective {
         }
     }
 
-    pub fn compute_loss(&self, predicted: &[f32], target: &[f32], nca_state: &[f32]) -> f64 {
+    pub fn compute_loss(
+        &self,
+        predicted: &[f32],
+        target: &[f32],
+        nca_state: &[f32],
+    ) -> f64 {
         let mse = mse_loss(predicted, target);
         let entropy = shannon_entropy(nca_state, self.k_states);
         let penalty = nca_entropy_constraint(entropy);
@@ -213,9 +195,7 @@ pub struct NcaRolloutResult {
 
 pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
     let n = state.len() as f64;
-    if n == 0.0 {
-        return 0.0;
-    }
+    if n == 0.0 { return 0.0; }
     let mut counts = vec![0usize; k_states];
     for &s in state {
         let idx = (s.round() as usize).min(k_states - 1);
@@ -233,27 +213,15 @@ pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
 
 pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len());
-    if a.is_empty() {
-        return 0.0;
-    }
+    if a.is_empty() { return 0.0; }
     let n = a.len() as f64;
-    a.iter()
-        .zip(b.iter())
+    a.iter().zip(b.iter())
         .map(|(&x, &y)| (x - y) as f64 * (x - y) as f64)
-        .sum::<f64>()
-        / n
+        .sum::<f64>() / n
 }
 
-pub fn nca_entropy_loss(
-    state: &[f32],
-    k_states: usize,
-    entropy_min: f64,
-    entropy_max: f64,
-    weight: f64,
-) -> (f64, f64) {
-    if state.is_empty() {
-        return (0.0, 0.0);
-    }
+pub fn nca_entropy_loss(state: &[f32], k_states: usize, entropy_min: f64, entropy_max: f64, weight: f64) -> (f64, f64) {
+    if state.is_empty() { return (0.0, 0.0); }
     let entropy = shannon_entropy(state, k_states);
     let penalty = if entropy < entropy_min {
         (entropy_min - entropy).powi(2) * 100.0
@@ -265,80 +233,15 @@ pub fn nca_entropy_loss(
     (weight * penalty, entropy)
 }
 
-pub fn cross_entropy_loss(logits: &[f32], targets: &[usize]) -> f64 {
-    if logits.is_empty() || targets.is_empty() {
-        return 0.0;
-    }
-    let vocab_size = logits.len() / targets.len();
-    let mut total_loss = 0.0f32;
-    for (batch, &target) in targets.iter().enumerate() {
-        let offset = batch * vocab_size;
-        let max_logit = logits[offset..offset + vocab_size]
-            .iter()
-            .fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-        let mut sum_exp = 0.0f32;
-        for v in 0..vocab_size {
-            sum_exp += (logits[offset + v] - max_logit).exp();
-        }
-        let log_prob = logits[offset + target] - max_logit - sum_exp.ln();
-        total_loss -= log_prob;
-    }
-    (total_loss / targets.len() as f32) as f64
-}
-
-pub fn combined_loss(logits: &[f32], targets: &[usize]) -> f64 {
-    cross_entropy_loss(logits, targets)
-}
-
-pub fn build(cfg: &crate::config::ObjectiveConfig) -> anyhow::Result<Objective> {
-    Ok(Objective {
-        w_ce: cfg.w_ce,
-        w_jepa: cfg.w_jepa,
-        w_nca: cfg.w_nca,
-    })
-}
-
-pub fn build_fn(_cfg: &str) -> Box<dyn Fn(&[f32], &[usize]) -> f64> {
-    Box::new(|logits, targets| cross_entropy_loss(logits, targets))
-}
-
-impl Objective {
-    pub fn from_config(cfg: &crate::config::ObjectiveConfig) -> Self {
-        Self {
-            w_ce: cfg.w_ce,
-            w_jepa: cfg.w_jepa,
-            w_nca: cfg.w_nca,
-        }
-    }
-}
-
-pub struct Objective {
-    pub w_ce: f64,
-    pub w_jepa: f64,
-    pub w_nca: f64,
-}
-
-pub fn build_from_config(cfg: &crate::config::ObjectiveConfig) -> Objective {
-    Objective {
-        w_ce: cfg.w_ce,
-        w_jepa: cfg.w_jepa,
-        w_nca: cfg.w_nca,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_combined_loss_weights() {
-        let c = ComponentLosses {
-            ntp: 2.0,
-            jepa: 1.0,
-            nca: 0.5,
-        };
-        let r = compute_combined_loss(c, ObjectiveWeights::default());
-        assert!((r.total - 1.375).abs() < 1e-9);
+        let c = ComponentLosses { ntp: 2.0, jepa: 1.0, nca: 0.5 };
+        let r = compute_combined_loss(c, ObjectiveConfig::default());
+        assert!((r.total - 1.375).abs() < 1e-9, "total={}", r.total);
     }
 
     #[test]
@@ -378,6 +281,9 @@ mod tests {
         assert_eq!(nca.grid_size, 81);
         assert_eq!(nca.k_states, 9);
         assert_eq!(nca.rollout_steps, 128);
+        assert!((nca.entropy_min - 1.5).abs() < 1e-9);
+        assert!((nca.entropy_max - 2.8).abs() < 1e-9);
+        assert!((nca.weight - 0.25).abs() < 1e-9);
         assert_eq!(nca.grid_dim(), 9);
     }
 
@@ -387,7 +293,7 @@ mod tests {
         let grid = nca.init_grid(42);
         assert_eq!(grid.len(), 81);
         for &s in &grid {
-            assert!(s >= 0.0 && s < 9.0);
+            assert!(s >= 0.0 && s < 9.0, "state should be in [0, k_states)");
         }
     }
 
@@ -395,18 +301,20 @@ mod tests {
     fn test_shannon_entropy_uniform() {
         let state: Vec<f32> = (0..81).map(|i| (i % 9) as f32).collect();
         let h = shannon_entropy(&state, 9);
-        assert!((h - (9.0f64).ln()).abs() < 0.01);
+        assert!((h - (9.0f64).ln()).abs() < 0.01, "uniform entropy should be ln(9)={}", (9.0f64).ln());
     }
 
     #[test]
     fn test_shannon_entropy_single_state() {
-        let h = shannon_entropy(&vec![0.0f32; 81], 9);
-        assert!(h.abs() < 1e-9);
+        let state = vec![0.0f32; 81];
+        let h = shannon_entropy(&state, 9);
+        assert!(h.abs() < 1e-9, "single state entropy should be 0, got {}", h);
     }
 
     #[test]
     fn test_shannon_entropy_empty() {
-        assert_eq!(shannon_entropy(&[], 9), 0.0);
+        let h = shannon_entropy(&[], 9);
+        assert_eq!(h, 0.0);
     }
 
     #[test]
@@ -415,7 +323,7 @@ mod tests {
         let mut state = nca.init_grid(42);
         let initial = state.clone();
         nca.step(&mut state, &NcaTransitionRule::default());
-        assert_ne!(state, initial);
+        assert_ne!(state, initial, "NCA step should change state");
     }
 
     #[test]
@@ -428,19 +336,34 @@ mod tests {
     }
 
     #[test]
+    fn test_nca_entropy_in_band_during_rollout() {
+        let nca = NcaObjective::default();
+        let result = nca.rollout(42, &NcaTransitionRule::default());
+        let in_band = result.entropies.iter()
+            .filter(|&&h| h >= 1.5 && h <= 2.8)
+            .count();
+        assert!(in_band > 0, "some steps should have entropy in band [1.5, 2.8]");
+    }
+
+    #[test]
     fn test_nca_compute_loss() {
         let nca = NcaObjective::default();
         let pred = vec![1.0f32; 81];
         let target = vec![0.0f32; 81];
         let state = nca.init_grid(42);
         let loss = nca.compute_loss(&pred, &target, &state);
-        assert!(loss > 0.0 && loss.is_finite());
+        assert!(loss > 0.0, "loss should be positive");
+        assert!(loss.is_finite(), "loss should be finite");
     }
 
     #[test]
     fn test_mse_loss() {
-        assert_eq!(mse_loss(&[1.0_f32, 2.0, 3.0], &[1.0_f32, 2.0, 3.0]), 0.0);
-        assert!((mse_loss(&[1.0_f32, 2.0, 3.0], &[0.0; 3]) - 14.0 / 3.0).abs() < 1e-9);
+        let a = vec![1.0f32, 2.0, 3.0];
+        let b = vec![1.0f32, 2.0, 3.0];
+        assert_eq!(mse_loss(&a, &b), 0.0);
+
+        let c = vec![0.0f32, 0.0, 0.0];
+        assert!((mse_loss(&a, &c) - (14.0 / 3.0)).abs() < 1e-9);
     }
 
     #[test]
@@ -453,14 +376,15 @@ mod tests {
         let state: Vec<f32> = (0..81).map(|i| (i % 9) as f32).collect();
         let (loss, entropy) = nca_entropy_loss(&state, 9, 1.5, 2.8, 0.25);
         assert!((entropy - (9.0f64).ln()).abs() < 0.01);
-        assert_eq!(loss, 0.0);
+        assert_eq!(loss, 0.0, "in-band entropy should have zero loss");
     }
 
     #[test]
     fn test_nca_entropy_loss_collapse() {
-        let (loss, entropy) = nca_entropy_loss(&vec![0.0f32; 81], 9, 1.5, 2.8, 0.25);
+        let state = vec![0.0f32; 81];
+        let (loss, entropy) = nca_entropy_loss(&state, 9, 1.5, 2.8, 0.25);
         assert!(entropy.abs() < 1e-9);
-        assert!(loss > 0.0);
+        assert!(loss > 0.0, "collapsed state should have positive loss");
     }
 
     #[test]
@@ -468,13 +392,5 @@ mod tests {
         let (loss, entropy) = nca_entropy_loss(&[], 9, 1.5, 2.8, 0.25);
         assert_eq!(loss, 0.0);
         assert_eq!(entropy, 0.0);
-    }
-
-    #[test]
-    fn test_cross_entropy_loss() {
-        let logits = vec![10.0f32, 0.0, 0.0];
-        let targets = vec![0usize];
-        let loss = cross_entropy_loss(&logits, &targets);
-        assert!(loss > 0.0 && loss < 0.1);
     }
 }

@@ -1,0 +1,92 @@
+{
+  "schema_version": "1.0",
+  "anchor": "phi_squared_plus_inv_squared_eq_3",
+  "doi": "10.5281/zenodo.19227877",
+  "name": "trinity_hive_cellular_automaton",
+  "description": "Deterministic cellular automaton governing the Trinity hive. Each agent is a cell with a State; the next State is a pure function of (current State, observable World). No human input is required between cells — agents loop on their own next_action() until the global SUCCESS predicate fires.",
+  "design_principle": "When a lane is DONE the cell does NOT halt and wait for ORDER. The transition function picks the next free lane from the priority queue. Halt only on global SUCCESS (BPB < 1.50 on 3 distinct seeds) or HARD_ABORT (R-violation, deadline reached, race called off).",
+  "states": [
+    { "id": "BOOT",        "kind": "transient",  "description": "Cell just woke. Loads JSON, syncs git, reads issue."          },
+    { "id": "SCAN",        "kind": "transient",  "description": "Reads issue comments, builds lane-state world view."         },
+    { "id": "PICK",        "kind": "transient",  "description": "Picks the highest-priority free lane from the queue."        },
+    { "id": "CLAIM",       "kind": "transient",  "description": "Posts the 🔒 CLAIMING comment on the race issue."             },
+    { "id": "WORK",        "kind": "long",       "description": "Edits owned files only; respects R6 file-ownership map."     },
+    { "id": "COMMIT",      "kind": "transient",  "description": "Atomic commit on main, R10 message format, push."            },
+    { "id": "CI_WAIT",     "kind": "transient",  "description": "Waits for CI, attributes failures vs prior SHA."             },
+    { "id": "DONE",        "kind": "transient",  "description": "Posts ✅ DONE comment with §4.3 template, releases the lane." },
+    { "id": "BLOCKED",     "kind": "transient",  "description": "New CI failure or race condition; posts ⚠️ BLOCKED comment."  },
+    { "id": "RECLAIM",     "kind": "transient",  "description": "Drops contested lane and returns to PICK without halting."   },
+    { "id": "VICTORY",     "kind": "absorbing",  "description": "Global SUCCESS fired. Cell halts cleanly."                   },
+    { "id": "HARD_ABORT",  "kind": "absorbing",  "description": "Hard rule violated or race called off. Cell halts."          }
+  ],
+  "transitions": [
+    { "from": "BOOT",     "when": "git_synced && issue_readable",                  "to": "SCAN"       },
+    { "from": "BOOT",     "when": "git_unavailable",                               "to": "HARD_ABORT" },
+
+    { "from": "SCAN",     "when": "global_success",                                "to": "VICTORY"    },
+    { "from": "SCAN",     "when": "deadline_passed || race_cancelled",             "to": "HARD_ABORT" },
+    { "from": "SCAN",     "when": "free_lane_exists",                              "to": "PICK"       },
+    { "from": "SCAN",     "when": "no_free_lane && active_lanes_present",          "to": "SCAN"       },
+
+    { "from": "PICK",     "when": "lane_chosen",                                   "to": "CLAIM"      },
+    { "from": "PICK",     "when": "no_lane_chosen",                                "to": "SCAN"       },
+
+    { "from": "CLAIM",    "when": "claim_posted_first_winner",                     "to": "WORK"       },
+    { "from": "CLAIM",    "when": "claim_lost_to_other_agent",                     "to": "RECLAIM"    },
+
+    { "from": "RECLAIM",  "when": "always",                                        "to": "PICK"       },
+
+    { "from": "WORK",     "when": "files_ready && only_owned_files_touched",       "to": "COMMIT"     },
+    { "from": "WORK",     "when": "ownership_violation_detected",                  "to": "RECLAIM"    },
+    { "from": "WORK",     "when": "forbidden_value_introduced",                    "to": "HARD_ABORT" },
+
+    { "from": "COMMIT",   "when": "push_succeeded",                                "to": "CI_WAIT"    },
+    { "from": "COMMIT",   "when": "push_rejected_non_fast_forward",                "to": "RECLAIM"    },
+
+    { "from": "CI_WAIT",  "when": "no_new_failure_vs_prior_sha",                   "to": "DONE"       },
+    { "from": "CI_WAIT",  "when": "new_failure_detected",                          "to": "BLOCKED"    },
+
+    { "from": "DONE",     "when": "global_success",                                "to": "VICTORY"    },
+    { "from": "DONE",     "when": "deadline_passed",                               "to": "HARD_ABORT" },
+    { "from": "DONE",     "when": "always",                                        "to": "SCAN"       },
+
+    { "from": "BLOCKED",  "when": "fix_committed",                                 "to": "CI_WAIT"    },
+    { "from": "BLOCKED",  "when": "deadline_passed",                               "to": "HARD_ABORT" }
+  ],
+  "halt_predicates": {
+    "global_success": "victory_seeds_below_bpb_target >= 3",
+    "deadline_passed": "now() > 2026-04-30T23:59:59+07",
+    "hard_abort_reasons": [
+      "R1_shell_or_python_introduced",
+      "R3_branch_or_pr_used",
+      "R4_constant_without_v_anchor",
+      "R5_status_lied",
+      "R7_forbidden_value_introduced"
+    ]
+  },
+  "lane_priority_queue": [
+    { "lane": "L7",  "priority": 0, "rationale": "Victory gate gates VICTORY itself"   },
+    { "lane": "L6",  "priority": 1, "rationale": "EMA tracker feeds L7 victory check"  },
+    { "lane": "L9",  "priority": 1, "rationale": "QK head — direct BPB lever"          },
+    { "lane": "L11", "priority": 2, "rationale": "Worker pool — multiplies throughput" },
+    { "lane": "L12", "priority": 2, "rationale": "Telemetry / CI hygiene"              }
+  ],
+  "lane_ownership": {
+    "L0":  "trinity-clara/proofs/igla/*.v",
+    "L1":  "crates/trios-igla-race/src/bpb.rs",
+    "L2":  "crates/trios-igla-race/src/asha.rs",
+    "L3":  "crates/trios-igla-race/src/gf16.rs",
+    "L4":  "crates/trios-igla-race/src/nca.rs",
+    "L5":  "crates/trios-igla-race/src/invariants.rs",
+    "L6":  "crates/trios-igla-race/src/ema.rs",
+    "L7":  "crates/trios-igla-race/src/victory.rs",
+    "L8":  "crates/trios-igla-race/src/sampler.rs",
+    "L9":  "crates/trios-igla-race/src/qk_head.rs",
+    "L10": "crates/trios-igla-race/src/rungs.rs",
+    "L11": "crates/trios-igla-race/src/worker_pool.rs",
+    "L12": ".github/workflows/*.yml + repo hygiene",
+    "L13": "crates/trios-igla-race/src/hive_automaton.rs + assertions/hive_automaton.json"
+  },
+  "rust_target": "crates/trios-igla-race/src/hive_automaton.rs",
+  "schema_drift_policy": "Rust loader checks schema_version — refuses incompatible JSON"
+}

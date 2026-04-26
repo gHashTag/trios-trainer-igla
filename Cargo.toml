@@ -19,6 +19,10 @@ path = "src/lib.rs"
 name = "trios-train"
 path = "src/bin/trios-train.rs"
 
+[[bin]]
+name = "hybrid_train"
+path = "src/bin/hybrid_train.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []

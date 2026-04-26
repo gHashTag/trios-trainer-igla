@@ -1,0 +1,43 @@
+# LT Phase D — page-count witness manifest
+#
+# Immutable per R10: only the LT lane on a fresh ONE SHOT may bump these
+# literals.  Any change to MIN_PAGES / MAX_PAGES MUST sibling-commit a
+# matching change to tools/page_gate/src/lib.rs.
+#
+# Refs: ONE SHOT v2.0 §3 Phase D · §5 falsification table
+#       https://github.com/gHashTag/trios/issues/265#issuecomment-4321142675
+
+[lane]
+id = "LT"
+name = "page-count gate"
+phase = "D"
+owner = "phd-monograph-auditor"
+
+[band]
+# Pre-registered admissibility window for docs/phd/main.pdf.
+min_pages = 250
+max_pages = 350
+
+[witness]
+# Single-line invocation that returns 0 iff H is admitted.
+command = "cargo run -p page-gate -- --pdf docs/phd/main.pdf"
+exit_admit = 0
+exit_below_band = 60
+exit_above_band = 61
+exit_io = 62
+exit_malformed = 63
+
+[mirror]
+# Constants that MUST equal the Rust source of truth.
+rust_source = "tools/page_gate/src/lib.rs"
+rust_min_const = "MIN_PAGES"
+rust_max_const = "MAX_PAGES"
+
+[anchor]
+trinity_identity = "phi^2 + phi^-2 = 3"
+zenodo_doi = "10.5281/zenodo.19227877"
+
+[provenance]
+one_shot = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321142675"
+claim_comment = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321150870"
+agent = "perplexity-computer-lt-page-gate"

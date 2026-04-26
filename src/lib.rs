@@ -1,26 +1,16 @@
 //! trios-trainer — portable IGLA RACE training pipeline.
-//!
-//! Single-source-of-truth for the training stack referenced by
-//! `gHashTag/trios#143`. Replaces the scattered `trios-train-cpu`,
-//! `trios-training`, `trios-training-ffi`, and `scripts/*.py` paths.
-//!
-//! # Layout
-//!
-//! - [`config`]      TOML config (champion, gate2, needle-rush variants)
-//! - [`model`]       Transformer + HybridAttn (ex `trios-train-cpu/transformer.rs` + `hybrid_attn.rs`)
-//! - [`optimizer`]   AdamW + Muon + φ-LR schedule (ex `trios-train-cpu/optimizer.rs`)
-//! - [`jepa`]        T-JEPA loss + EMA target (ex `trios-train-cpu/jepa/`)
-//! - [`objective`]   Combined loss (ex `trios-train-cpu/objective.rs`)
-//! - [`data`]        BPE tokenizer + dataloaders (ex `trios-train-cpu/tokenizer.rs`)
-//! - [`gf16`]        GoldenFloat16 (ex `trios-train-cpu/gf16.rs`)
-//! - [`checkpoint`]  Save/load + resume
-//! - [`ledger`]      Triplet-validated emit to `assertions/seed_results.jsonl`
-//!
-//! Invariants (ASHA, victory gate, embargo list) are imported from
-//! `trios-igla-race` — this crate **never** re-implements them.
+//! Single-source-of-truth for `gHashTag/trios#143`. Anchor: phi^2 + phi^-2 = 3.
 
+<<<<<<< HEAD
 pub mod backward;
 pub mod champion;
+=======
+pub mod config;
+pub mod model;
+pub mod optimizer;
+pub mod objective;
+pub mod gf16;
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 pub mod checkpoint;
 pub mod config;
 pub mod data;
@@ -34,6 +24,8 @@ pub mod model_hybrid_attn;
 pub mod objective;
 pub mod optimizer;
 pub mod train_loop;
+pub mod invariants;
+pub mod model_hybrid_attn;
 
 pub use backward::{
     clip_gradients, gelu_backward, layer_norm_backward, linear_backward,
@@ -47,8 +39,6 @@ pub use model_hybrid_attn::HybridAttn;
 pub use optimizer::{phi_lr_schedule, AdamWCpu, MuonOptimizer, OptimizerKind};
 pub use train_loop::{run, RunOutcome};
 
-/// Compile-time anchor: φ² + φ⁻² = 3 (Trinity Identity).
-/// Cross-checked against `trios_igla_race::invariants` at runtime.
 pub const TRINITY_ANCHOR: f64 = 3.0;
 
 #[cfg(test)]

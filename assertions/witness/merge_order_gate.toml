@@ -1,0 +1,61 @@
+# Phase A merge-order gate witness manifest.
+#
+# Immutable per R10: only the merge_order_gate lane on a fresh ONE SHOT
+# may bump these literals.  Any change to PHASE_A_PREREQS or
+# CHAPTER_PREFIX MUST sibling-commit a matching change to
+# tools/merge_order_gate/src/lib.rs.
+#
+# Refs: ONE SHOT v2.0 §3 Phase A · §5 falsification table
+#       https://github.com/gHashTag/trios/issues/265
+
+[lane]
+id = "merge_order_gate"
+name = "Phase A topological merge-order gate"
+phase = "A"
+owner = "phd-monograph-auditor"
+rule = "Phase A topological merge order"
+
+[registry]
+# Pre-registered Phase A prerequisite branches.  Order in this array
+# mirrors §3 Phase A of ONE SHOT v2.0; the gate itself is set-based
+# (only presence-before-chapter is enforced).
+phase_a_prereqs = [
+  "feat/phd-appendix-F-restore",
+  "feat/phd-lf-frontmatter",
+  "feat/phd-lb-springer",
+]
+chapter_prefix = "feat/phd-ch"
+
+[witness]
+# Single-line invocations.
+strict = "git log --merges --first-parent --pretty='%h %s' > /tmp/git.log && cargo run -p merge-order-gate -- --git-log /tmp/git.log"
+report = "git log --merges --first-parent --pretty='%h %s' > /tmp/git.log && cargo run -p merge-order-gate -- --report --git-log /tmp/git.log"
+exit_admit = 0
+exit_git_log_read_error = 90
+exit_malformed_merge_entry = 91
+exit_chapter_before_prereq = 92
+exit_prereq_never_merged = 93
+
+[mirror]
+# Constants that MUST equal the Rust source of truth.
+rust_source = "tools/merge_order_gate/src/lib.rs"
+rust_prereqs_const = "PHASE_A_PREREQS"
+rust_chapter_prefix_const = "CHAPTER_PREFIX"
+
+[anchor]
+trinity_identity = "phi^2 + phi^-2 = 3"
+zenodo_doi = "10.5281/zenodo.19227877"
+
+[provenance]
+one_shot = "https://github.com/gHashTag/trios/issues/265"
+claim_comment = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321193035"
+agent = "perplexity-computer-merge-order-gate"
+
+[r5_disclosure]
+# Honesty bookkeeping: at the time this manifest lands, ZERO chapter PRs
+# (`feat/phd-ch*`) have merged into `main`.  Phase A is queue-bot-blocked
+# and the merge wave has not begun.  The gate is therefore vacuously
+# ADMIT(0) on the live transcript today; it becomes load-bearing the
+# instant the first chapter merge lands.
+expected_pre_merge_verdict = "ADMIT(0) — vacuously true (no chapter merges yet)"
+expected_post_merge_verdict = "ADMIT(0) iff every chapter merge follows the three prereqs; otherwise REJECT(92|93)"

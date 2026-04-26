@@ -1,0 +1,68 @@
+# R14 retrofit witness manifest — \citetheorem{INV-N} coverage gate.
+#
+# Immutable per R10: only the citetheorem_audit lane on a fresh ONE SHOT
+# may bump these literals.  Any change to MIN_CITETHEOREM_PER_CHAPTER MUST
+# sibling-commit a matching change to tools/citetheorem_audit/src/lib.rs.
+#
+# Refs: ONE SHOT v2.0 §3 Phase D · §5 falsification table
+#       https://github.com/gHashTag/trios/issues/265
+
+[lane]
+id = "citetheorem_audit"
+name = "R14 \\citetheorem coverage audit"
+phase = "D"
+owner = "phd-monograph-auditor"
+rule = "R14"
+
+[floor]
+# Pre-registered minimum \citetheorem{INV-N} calls per chapter file.
+# A floor of zero would make the gate a no-op and break R8.
+min_citetheorem_per_chapter = 1
+
+[witness]
+# Single-line invocations.
+strict = "cargo run -p citetheorem-audit -- --chapters-dir docs/phd/chapters --assertions assertions/igla_assertions.json"
+report = "cargo run -p citetheorem-audit -- --report --chapters-dir docs/phd/chapters --assertions assertions/igla_assertions.json"
+exit_admit = 0
+exit_assertions_load_error = 80
+exit_chapters_dir_error = 81
+exit_unknown_inv_cited = 82
+exit_below_min_citations = 83
+
+[mirror]
+# Constants that MUST equal the Rust source of truth.
+rust_source = "tools/citetheorem_audit/src/lib.rs"
+rust_min_const = "MIN_CITETHEOREM_PER_CHAPTER"
+chapter_suffix = ".tex"
+
+[scope]
+# Where the audit looks.
+chapters_dir = "docs/phd/chapters"
+assertions = "assertions/igla_assertions.json"
+
+# Known INV ids on `main` at the time this manifest landed.  The list is
+# advisory only — the runtime gate dynamically reloads `assertions` and
+# treats whatever it finds as authoritative.
+known_invs = [
+  "INV-1", "INV-2", "INV-3", "INV-4", "INV-5",
+  "INV-7", "INV-8", "INV-12", "INV-13",
+]
+
+[anchor]
+trinity_identity = "phi^2 + phi^-2 = 3"
+zenodo_doi = "10.5281/zenodo.19227877"
+
+[provenance]
+one_shot = "https://github.com/gHashTag/trios/issues/265"
+claim_comment = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321179953"
+agent = "perplexity-computer-citetheorem-audit"
+
+[r5_disclosure]
+# Honesty bookkeeping: at the time this manifest lands, retrofit branches
+# `feat/phd-ch{15,23,30}-citetheorem` (HEAD d748755 / cf1cc90 / 87c9bf9
+# respectively) have NOT merged into main.  Therefore strict-mode local
+# witness is expected to REJECT with exit 83 (BelowMinCitations) on the
+# current 34-chapter set — that is the documented pre-merge verdict, not
+# a witness defect.
+expected_pre_merge_verdict = "REJECT(83) BelowMinCitations on 34 chapters"
+expected_post_merge_verdict = "ADMIT(0) once retrofit branches land"

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #![allow(
     clippy::needless_range_loop,
     clippy::manual_is_multiple_of,
@@ -101,6 +102,30 @@ pub enum HybridAttnError {
     /// Shape invariants failed (zero dimension or indivisible head split).
     Shape { d_model: usize, num_heads: usize },
     /// Non-finite tensor detected in forward pass.
+=======
+//! # Hybrid Attention Block — Gate-2 + Gate-final Architecture (L-h2 → L-f1)
+//!
+//! Causal self-attention layers used by the hybrid ngram+attn trainer.
+//! Supports 1 or 2 attention layers behind `cfg.num_attn_layers` (default 2).
+
+#[allow(clippy::needless_range_loop)]
+#[allow(clippy::too_many_arguments)]
+#[allow(clippy::doc_overindented_list_items)]
+
+use crate::invariants::{LR_SAFE_MAX, LR_SAFE_MIN, PHI_CUBE, PHI_SQ};
+
+pub const ALLOWED_QK_GAINS: [f64; 2] = [PHI_SQ, PHI_CUBE];
+
+pub const DEFAULT_QK_GAIN: f64 = PHI_SQ;
+
+pub const DEFAULT_LR: f64 = 0.0035;
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum HybridAttnError {
+    LrOutOfBand { lr: f64 },
+    QkGainOutsidePhi { qk_gain: f64 },
+    Shape { d_model: usize, num_heads: usize },
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     NonFinite,
 }
 
@@ -116,7 +141,14 @@ impl std::fmt::Display for HybridAttnError {
                 "INV-13 violation: qk_gain={qk_gain} not in pre-registered \
                  set {{φ²={PHI_SQ}, φ³={PHI_CUBE}}}",
             ),
+<<<<<<< HEAD
             Self::Shape { d_model, num_heads } => write!(
+=======
+            Self::Shape {
+                d_model,
+                num_heads,
+            } => write!(
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
                 f,
                 "shape invariant failed: d_model={d_model}, num_heads={num_heads} \
                  (both must be > 0 and d_model % num_heads == 0)",
@@ -128,6 +160,7 @@ impl std::fmt::Display for HybridAttnError {
 
 impl std::error::Error for HybridAttnError {}
 
+<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════
 // Configuration
 // ═══════════════════════════════════════════════════════════════════
@@ -149,6 +182,15 @@ pub struct HybridAttnConfig {
     /// Learning rate — **must** be in `[LR_SAFE_MIN, LR_SAFE_MAX]`.
     pub lr: f64,
     /// Number of attention layers — **must** be in `{1, 2}` (Gate-final §8).
+=======
+#[derive(Debug, Clone, Copy)]
+pub struct HybridAttnConfig {
+    pub d_model: usize,
+    pub num_heads: usize,
+    pub seq_len: usize,
+    pub qk_gain: f64,
+    pub lr: f64,
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub num_attn_layers: u8,
 }
 
@@ -166,10 +208,13 @@ impl Default for HybridAttnConfig {
 }
 
 impl HybridAttnConfig {
+<<<<<<< HEAD
     /// Validate this config against INV-1, INV-13, and the shape invariants.
     ///
     /// This is the central chokepoint: every public constructor routes
     /// through here so a single inspection audits all refusal paths.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn validate(&self) -> Result<(), HybridAttnError> {
         if !(LR_SAFE_MIN..=LR_SAFE_MAX).contains(&self.lr) {
             return Err(HybridAttnError::LrOutOfBand { lr: self.lr });
@@ -182,7 +227,14 @@ impl HybridAttnConfig {
                 qk_gain: self.qk_gain,
             });
         }
+<<<<<<< HEAD
         if self.d_model == 0 || self.num_heads == 0 || self.d_model % self.num_heads != 0 {
+=======
+        if self.d_model == 0
+            || self.num_heads == 0
+            || !self.d_model.is_multiple_of(self.num_heads)
+        {
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
             return Err(HybridAttnError::Shape {
                 d_model: self.d_model,
                 num_heads: self.num_heads,
@@ -198,6 +250,7 @@ impl HybridAttnConfig {
     }
 }
 
+<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════
 // The block itself
 // ═══════════════════════════════════════════════════════════════════
@@ -205,6 +258,8 @@ impl HybridAttnConfig {
 /// Weights are stored row-major.  Supports 1 or 2 attention layers.
 /// Layer 2 shares RoPE with layer 1 (per Gate-final DRAFT §6 lever 1).
 /// Residual + LayerNorm between layers.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 #[derive(Debug, Clone)]
 pub struct HybridAttn {
     cfg: HybridAttnConfig,
@@ -219,30 +274,42 @@ pub struct HybridAttn {
 }
 
 impl HybridAttn {
+<<<<<<< HEAD
     /// Construct with the pre-registered defaults (`φ²`, `lr=0.0035`,
     /// `d_model=64`, `num_heads=4`).
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn new() -> Result<Self, HybridAttnError> {
         Self::with_config(HybridAttnConfig::default())
     }
 
+<<<<<<< HEAD
     /// Construct with an explicit learning rate (all other values default).
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn new_with_lr(lr: f64) -> Result<Self, HybridAttnError> {
         let mut cfg = HybridAttnConfig::default();
         cfg.lr = lr;
         Self::with_config(cfg)
     }
 
+<<<<<<< HEAD
     /// Construct with an explicit qk_gain (all other values default).
     ///
     /// This refuses at construction time, **not** inside the forward pass —
     /// silent acceptance of a bad gain is a pre-registration violation.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn new_with_qk_gain(qk_gain: f64) -> Result<Self, HybridAttnError> {
         let mut cfg = HybridAttnConfig::default();
         cfg.qk_gain = qk_gain;
         Self::with_config(cfg)
     }
 
+<<<<<<< HEAD
     /// Construct with a full config.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn with_config(cfg: HybridAttnConfig) -> Result<Self, HybridAttnError> {
         cfg.validate()?;
         let d = cfg.d_model;
@@ -260,25 +327,51 @@ impl HybridAttn {
         })
     }
 
+<<<<<<< HEAD
     /// The pre-registered config.  Callers that need to re-assert
     /// invariants (e.g. the CI gate in L-h1) should use this accessor
     /// instead of clone-unwrapping internal fields.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn config(&self) -> &HybridAttnConfig {
         &self.cfg
     }
 
-    pub fn wq_mut(&mut self) -> &mut [f32] { &mut self.wq }
-    pub fn wk_mut(&mut self) -> &mut [f32] { &mut self.wk }
-    pub fn wv_mut(&mut self) -> &mut [f32] { &mut self.wv }
-    pub fn wo_mut(&mut self) -> &mut [f32] { &mut self.wo }
-
+<<<<<<< HEAD
     /// Re-assert INV-1 + INV-13 + shape at any later point.  This is
     /// cheap and idempotent, and the trainer calls it once per step as
     /// an online invariant check.
+=======
+    pub fn wq_mut(&mut self) -> &mut [f32] {
+        &mut self.wq
+    }
+
+    pub fn wk_mut(&mut self) -> &mut [f32] {
+        &mut self.wk
+    }
+
+    pub fn wv_mut(&mut self) -> &mut [f32] {
+        &mut self.wv
+    }
+
+    pub fn wo_mut(&mut self) -> &mut [f32] {
+        &mut self.wo
+    }
+
+    pub fn weights_flat_mut(&mut self) -> Vec<&mut [f32]> {
+        vec![&mut self.wq, &mut self.wk, &mut self.wv, &mut self.wo]
+    }
+
+    pub fn total_weights(&self) -> usize {
+        self.wq.len() + self.wk.len() + self.wv.len() + self.wo.len()
+    }
+
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn reassert(&self) -> Result<(), HybridAttnError> {
         self.cfg.validate()
     }
 
+<<<<<<< HEAD
     // --- RoPE -----------------------------------------------------------
 
     /// RoPE angle for position `p` and head-dim index `i` (`0 ≤ i < d_head/2`).
@@ -286,6 +379,8 @@ impl HybridAttn {
     /// We use the classical formula `θ = p / 10000^{2i / d_head}`, which
     /// has the φ-periodicity property required by INV-9 (see the
     /// `hybrid_attn_rope_periodicity` test for the concrete bound).
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     pub fn rope_angle(position: usize, head_dim_idx: usize, d_head: usize) -> f32 {
         assert!(d_head > 0, "INV: d_head must be positive");
         assert!(
@@ -297,6 +392,7 @@ impl HybridAttn {
         (position as f32) / 10_000.0_f32.powf(exp)
     }
 
+<<<<<<< HEAD
     // --- Forward pass ---------------------------------------------------
 
     /// Single-step causal attention forward pass on a batch of
@@ -308,6 +404,13 @@ impl HybridAttn {
     /// learning dynamic (`val_bpb_at_step_54000`) not wall-clock.
     /// Optimisation lives downstream in `hybrid_train.rs` (L-h1).
     pub fn forward(&self, tokens: &[f32], seq_len: usize) -> Result<Vec<f32>, HybridAttnError> {
+=======
+    pub fn forward(
+        &self,
+        tokens: &[f32],
+        seq_len: usize,
+    ) -> Result<Vec<f32>, HybridAttnError> {
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
         if tokens.iter().any(|x| !x.is_finite()) {
             return Err(HybridAttnError::NonFinite);
         }
@@ -320,8 +423,12 @@ impl HybridAttn {
             seq_len * d,
         );
 
+<<<<<<< HEAD
         let layer1_out =
             self.forward_single_layer(tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo)?;
+=======
+        let layer1_out = self.forward_single_layer(tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo)?;
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
         let residual1 = add_residual(tokens, &layer1_out);
         let normed1 = layer_norm_rows(&residual1, seq_len, d);
 
@@ -332,9 +439,13 @@ impl HybridAttn {
             return Ok(normed1);
         }
 
+<<<<<<< HEAD
         let layer2_out = self.forward_single_layer(
             &normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2,
         )?;
+=======
+        let layer2_out = self.forward_single_layer(&normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2)?;
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
         let residual2 = add_residual(&normed1, &layer2_out);
         let out = layer_norm_rows(&residual2, seq_len, d);
 
@@ -380,7 +491,12 @@ impl HybridAttn {
                 for j in 0..=i {
                     let w = scores[j];
                     for k_idx in 0..d_head {
+<<<<<<< HEAD
                         attn_out[i * d + head_offset + k_idx] += w * v[j * d + head_offset + k_idx];
+=======
+                        attn_out[i * d + head_offset + k_idx] +=
+                            w * v[j * d + head_offset + k_idx];
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
                     }
                 }
             }
@@ -394,10 +510,13 @@ impl HybridAttn {
     }
 }
 
+<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════
 // Helpers (kept private; test-visible via the `HybridAttn::forward` call)
 // ═══════════════════════════════════════════════════════════════════
 
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 fn matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
     assert_eq!(a.len(), m * k, "matmul lhs shape");
     assert_eq!(b.len(), k * n, "matmul rhs shape");
@@ -450,18 +569,24 @@ fn softmax_inplace(v: &mut [f32]) {
     }
 }
 
+<<<<<<< HEAD
 // ═══════════════════════════════════════════════════════════════════
 // Falsifier tests — R7 witnesses for INV-1, INV-13, shape, and forward
 // ═══════════════════════════════════════════════════════════════════
 
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 #[cfg(test)]
 mod falsifiers {
     use super::*;
     use crate::invariants::PHI;
 
+<<<<<<< HEAD
     /// R7 / INV-1: a learning rate outside the Coq-proven φ-band must
     /// refuse at construction time.  This is the deterministic sibling
     /// of the earlier pure-attention plateau (BPB ≈ 4.74 @ lr=0.01).
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn falsify_hybrid_diverges_bad_lr() {
         let err = HybridAttn::new_with_lr(0.02).unwrap_err();
@@ -469,6 +594,7 @@ mod falsifiers {
             matches!(err, HybridAttnError::LrOutOfBand { .. }),
             "expected LrOutOfBand, got {err:?}",
         );
+<<<<<<< HEAD
         // Lower-side witness.
         let err = HybridAttn::new_with_lr(0.0005).unwrap_err();
         assert!(matches!(err, HybridAttnError::LrOutOfBand { .. }));
@@ -479,6 +605,13 @@ mod falsifiers {
     /// R7 / INV-13: any qk_gain outside `{φ², φ³}` must refuse.  This is
     /// the Rust mirror of the pre-registered Coq lemma
     /// `counter_qk_gain_outside_phi_sq` (L-h4).
+=======
+        let err = HybridAttn::new_with_lr(0.0005).unwrap_err();
+        assert!(matches!(err, HybridAttnError::LrOutOfBand { .. }));
+        HybridAttn::new_with_lr(0.0035).expect("0.0035 is inside the band");
+    }
+
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn falsify_hybrid_qk_gain_not_phi_sq_or_phi_cube() {
         let err = HybridAttn::new_with_qk_gain(PHI).unwrap_err();
@@ -488,26 +621,39 @@ mod falsifiers {
         );
         let err = HybridAttn::new_with_qk_gain(1.0).unwrap_err();
         assert!(matches!(err, HybridAttnError::QkGainOutsidePhi { .. }));
+<<<<<<< HEAD
         // Both pre-registered gains must succeed.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
         HybridAttn::new_with_qk_gain(PHI_SQ).expect("φ² is allowed");
         HybridAttn::new_with_qk_gain(PHI_CUBE).expect("φ³ is allowed");
     }
 
+<<<<<<< HEAD
     /// Shape invariant: `d_model % num_heads != 0` must refuse.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn falsify_hybrid_shape_invariant() {
         let cfg = HybridAttnConfig {
             d_model: 64,
+<<<<<<< HEAD
             num_heads: 5, // 64 % 5 = 4 ≠ 0
+=======
+            num_heads: 5,
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
             ..HybridAttnConfig::default()
         };
         let err = HybridAttn::with_config(cfg).unwrap_err();
         assert!(matches!(err, HybridAttnError::Shape { .. }));
     }
 
+<<<<<<< HEAD
     /// Deterministic forward pass: zero weights on zero tokens must
     /// return zeros (no NaN, no Inf).  The goal is to exercise the
     /// non-finite detector on a known-good input.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn hybrid_attn_forward_roundtrip() {
         let block = HybridAttn::new().expect("defaults are valid");
@@ -519,8 +665,11 @@ mod falsifiers {
         assert!(out.iter().all(|x| x.is_finite()));
     }
 
+<<<<<<< HEAD
     /// Non-finite input must be surfaced as `Err(NonFinite)`, not
     /// propagated silently.  R5: honest refusal.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn hybrid_attn_non_finite_refused() {
         let block = HybridAttn::new().expect("defaults are valid");
@@ -532,10 +681,13 @@ mod falsifiers {
         assert_eq!(err, HybridAttnError::NonFinite);
     }
 
+<<<<<<< HEAD
     /// RoPE periodicity: for `d_head = 16`, the ratio between the
     /// frequency at index 0 and index 7 is exactly `10_000^{14/16}`.
     /// This property is the INV-9 φ-anchor hook — the actual φ-relation
     /// is proven in the Coq lemma, not re-asserted here.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn hybrid_attn_rope_periodicity() {
         let d_head = 16;
@@ -549,9 +701,12 @@ mod falsifiers {
         );
     }
 
+<<<<<<< HEAD
     /// `reassert()` must stay green for the default config.  This is
     /// called inside L-h1's training loop; regressing it breaks the
     /// online invariant sweep.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn hybrid_attn_reassert_stable() {
         let block = HybridAttn::new().expect("defaults are valid");
@@ -560,8 +715,11 @@ mod falsifiers {
         }
     }
 
+<<<<<<< HEAD
     /// L-f1 Gate-final: 2-layer forward pass with residual + LayerNorm
     /// must produce finite output on zero-initialized weights.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn twin_attn_2layer_forward_roundtrip() {
         let block = HybridAttn::new().expect("defaults are valid (num_attn_layers=2)");
@@ -571,6 +729,7 @@ mod falsifiers {
         let tokens = vec![0.0_f32; seq_len * d];
         let out = block.forward(&tokens, seq_len).unwrap();
         assert_eq!(out.len(), seq_len * d);
+<<<<<<< HEAD
         assert!(
             out.iter().all(|x| x.is_finite()),
             "2-layer output must be finite"
@@ -578,6 +737,11 @@ mod falsifiers {
     }
 
     /// L-f1 Gate-final: 1-layer mode must still work (backward compat).
+=======
+        assert!(out.iter().all(|x| x.is_finite()), "2-layer output must be finite");
+    }
+
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn twin_attn_1layer_forward_roundtrip() {
         let cfg = HybridAttnConfig {
@@ -594,7 +758,10 @@ mod falsifiers {
         assert!(out.iter().all(|x| x.is_finite()));
     }
 
+<<<<<<< HEAD
     /// L-f1 Gate-final: num_attn_layers > 2 is forbidden (§8).
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn falsify_invalid_num_attn_layers() {
         let cfg = HybridAttnConfig {
@@ -614,7 +781,10 @@ mod falsifiers {
         assert!(matches!(err0, HybridAttnError::Shape { .. }));
     }
 
+<<<<<<< HEAD
     /// L-f1 Gate-final: non-finite input rejected in 2-layer mode.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn twin_attn_2layer_nonfinite_refused() {
         let block = HybridAttn::new().expect("defaults valid");
@@ -626,8 +796,11 @@ mod falsifiers {
         assert_eq!(err, HybridAttnError::NonFinite);
     }
 
+<<<<<<< HEAD
     /// L-f1 Gate-final witness: qk_gain outside φ-band refused
     /// (Gate-final §2 falsifier 4).  Re-asserts for the DRAFT context.
+=======
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
     #[test]
     fn falsify_invalid_qk_gain() {
         for bad in [1.0, 1.5, 2.0, 3.0, 5.0] {

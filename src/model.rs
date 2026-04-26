@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #![allow(
     clippy::needless_range_loop,
     dead_code,
@@ -40,4 +41,17 @@ impl Default for NgramModel {
     fn default() -> Self {
         Self::new()
     }
+=======
+use anyhow::Result;
+use crate::config::ModelConfig;
+
+pub struct Model {
+    pub d_model: usize,
+    pub n_layers: usize,
+    pub hybrid: bool,
+}
+
+pub fn build(cfg: &ModelConfig) -> Result<Model> {
+    Ok(Model { d_model: cfg.d_model, n_layers: cfg.n_layers, hybrid: cfg.hybrid_attn })
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 }

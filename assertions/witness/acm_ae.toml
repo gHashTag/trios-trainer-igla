@@ -1,0 +1,81 @@
+# LA Phase D — ACM AE 3-badge witness manifest
+#
+# Immutable per R10: only the LA lane on a fresh ONE SHOT may bump these
+# literals. Any change MUST sibling-commit a matching change to
+# tools/acm_ae_check/src/lib.rs and artifact/expected.txt.
+#
+# Refs: ONE SHOT v2.0 §3 Phase D · §5 falsification table
+#       https://github.com/gHashTag/trios/issues/265#issuecomment-4321142675
+
+[lane]
+id = "LA"
+name = "ACM AE 3-badge pack"
+phase = "D"
+owner = "phd-monograph-auditor"
+
+[badges]
+# ACM Artifact Evaluation — three-badge target.
+functional = true
+reusable   = true
+available  = true
+
+[witness]
+# Single-line invocation that returns 0 iff all three badges PASS and the
+# artifact/output.txt fingerprint matches artifact/expected.txt.
+command           = "cargo run -p acm-ae-check -- run"
+exit_admit        = 0
+exit_functional   = 70
+exit_reusable     = 71
+exit_available    = 72
+exit_io           = 73
+exit_mismatch     = 74
+
+[mirror]
+# Constants that MUST equal the Rust source of truth.
+rust_source        = "tools/acm_ae_check/src/lib.rs"
+rust_anchor_const  = "TRINITY_ANCHOR"
+rust_doi_const     = "ZENODO_DOI"
+rust_min_pages     = "MIN_PAGES"
+rust_max_pages     = "MAX_PAGES"
+rust_lr_champion   = "LR_CHAMPION"
+
+[mirror.sibling_witnesses]
+# Disjointness invariant — verified by lib.rs::tests::exit_codes_distinct.
+l_h4_range = [50, 53]
+lt_range   = [60, 63]
+la_range   = [70, 74]
+
+[claims]
+# Files that the Available badge cites — must include the Trinity identity
+# and a persistent DOI.
+file              = "artifact/CLAIMS.md"
+required_anchors  = ["phi^2 + phi^-2 = 3", "10.5281/zenodo.19227877"]
+
+[reusable]
+# File the Reusable badge audits.
+file              = "docs/phd/reproducibility.md"
+required_needles  = [
+    "Entry points",
+    "cargo run -p trios-phd",
+    "tectonic",
+    "Hardware profile",
+    "(R1)",
+]
+
+[functional]
+# Workspace members the Functional badge requires.
+required_paths = [
+    "Cargo.toml",
+    "crates/trios-phd/Cargo.toml",
+    "tools/page_gate/Cargo.toml",
+    "tools/acm_ae_check/Cargo.toml",
+]
+
+[anchor]
+trinity_identity = "phi^2 + phi^-2 = 3"
+zenodo_doi       = "10.5281/zenodo.19227877"
+
+[provenance]
+one_shot       = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321142675"
+claim_comment  = "https://github.com/gHashTag/trios/issues/265#issuecomment-4321165414"
+agent          = "perplexity-computer-la-acm-ae"

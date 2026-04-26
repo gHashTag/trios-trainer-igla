@@ -1,0 +1,6 @@
+{
+  "_comment": "Public ed25519 verifying keys for honey-channel (green) events. Populated by agents as they register; empty on landing. See INV-8 / ONE SHOT trios#267.",
+  "_anchor": "phi^2 + phi^-2 = 3",
+  "_schema_version": 1,
+  "agents": []
+}

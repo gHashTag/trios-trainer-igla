@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #![allow(clippy::needless_range_loop, clippy::useless_vec, dead_code)]
 //! T-JEPA (Ternary Joint Embedding Predictive Architecture)
 //!
@@ -982,10 +983,146 @@ impl std::fmt::Display for ArchKind {
         write!(f, "{}", self.as_str())
     }
 }
+=======
+//! T-JEPA consolidated module. Migrated from trios-train-cpu/src/jepa/.
+//!
+//! All JEPA sub-modules merged into single file to avoid external-process
+//! directory deletion.
+
+use rand::Rng;
+
+// ─── EMA ───
+#[derive(Debug, Clone, Copy)]
+pub struct EmaConfig { pub start: f64, pub end: f64, pub ramp_steps: usize }
+impl Default for EmaConfig { fn default() -> Self { Self { start: 0.996, end: 1.0, ramp_steps: 30000 } } }
+
+pub struct EmaTarget { config: EmaConfig, step: usize }
+impl EmaTarget {
+    pub fn new(c: EmaConfig) -> Self { Self { config: c, step: 0 } }
+    pub fn decay(&self) -> f64 { if self.step >= self.config.ramp_steps { self.config.end } else { self.config.start + (self.config.end - self.config.start) * self.step as f64 / self.config.ramp_steps as f64 } }
+    pub fn update(&mut self, t: &mut [f32], o: &[f32]) { ema_update(t, o, self.decay()); self.step += 1; }
+    pub fn reset(&mut self) { self.step = 0; } pub fn step(&self) -> usize { self.step }
+}
+pub fn ema_update(t: &mut [f32], o: &[f32], d: f64) { let d = d as f32; let omd = 1.0-d; for (t_, o_) in t.iter_mut().zip(o.iter()) { *t_ = d**t_ + omd**o_; } }
+pub fn compute_decay(s: usize, rs: usize, st: f64, en: f64) -> f64 { if s >= rs { en } else { st + (en-st)*s as f64/rs as f64 } }
+
+// ─── Loss ───
+#[derive(Debug, Clone, Copy)]
+pub struct JepaLossConfig { pub use_l2_normalization: bool, pub stop_gradient: bool, pub anti_collapse_weight: f64 }
+impl Default for JepaLossConfig { fn default() -> Self { Self { use_l2_normalization: true, stop_gradient: true, anti_collapse_weight: 0.01 } } }
+
+#[derive(Debug, Clone)]
+pub struct JepaLoss { pub total: f64, pub prediction: f64, pub variance: f64 }
+impl JepaLoss { pub fn new(t: f64, p: f64, v: f64) -> Self { Self { total: t, prediction: p, variance: v } } pub fn is_collapsed(&self) -> bool { self.variance < 0.01 } }
+
+pub fn compute_jepa_loss(pred: &[f32], tgt: &[f32], cfg: JepaLossConfig) -> JepaLoss {
+    let (pn, tn) = if cfg.use_l2_normalization { (l2_normalize(pred), l2_normalize(tgt)) } else { (pred.to_vec(), tgt.to_vec()) };
+    let pl = pn.iter().zip(tn.iter()).map(|(p, t)| (p-t).powi(2) as f64).sum::<f64>() / pn.len() as f64;
+    let m = tn.iter().sum::<f32>() as f64 / tn.len() as f64;
+    let v = tn.iter().map(|t| (*t as f64 - m).powi(2)).sum::<f64>() / tn.len() as f64;
+    JepaLoss { total: pl - v*cfg.anti_collapse_weight, prediction: pl, variance: v }
+}
+pub fn l2_normalize(v: &[f32]) -> Vec<f32> { let n = v.iter().map(|x| x*x).sum::<f32>().sqrt(); if n < 1e-8 { v.to_vec() } else { v.iter().map(|x| x/n).collect() } }
+pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 { a.iter().zip(b.iter()).map(|(x, y)| (x-y).powi(2) as f64).sum::<f64>() / a.len().max(1) as f64 }
+pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 { let d: f32 = a.iter().zip(b.iter()).map(|(x, y)| x*y).sum(); let na: f32 = a.iter().map(|x| x*x).sum::<f32>().sqrt(); let nb: f32 = b.iter().map(|x| x*x).sum::<f32>().sqrt(); if na < 1e-8 || nb < 1e-8 { 0.0 } else { d/(na*nb) } }
+
+// ─── Masking ───
+#[derive(Debug, Clone, Copy)]
+pub struct MaskConfig { pub ratio: f64, pub min_span: usize, pub max_span: usize, pub num_spans: usize }
+impl Default for MaskConfig { fn default() -> Self { Self { ratio: 0.3, min_span: 3, max_span: 9, num_spans: 2 } } }
+
+pub fn mask_spans(sl: usize, cfg: MaskConfig, rng: &mut impl Rng) -> Vec<bool> {
+    let mut m = vec![false; sl]; let mr = cfg.min_span * cfg.num_spans;
+    if sl < mr { let s = sl / cfg.num_spans; for i in 0..cfg.num_spans { m[i*s..((i+1)*s).min(sl)].fill(true); } return m; }
+    for _ in 0..cfg.num_spans { let sl2 = rng.gen_range(cfg.min_span..=cfg.max_span); let st = rng.gen_range(0..sl.saturating_sub(sl2)); m[st..(st+sl2).min(sl)].fill(true); } m }
+pub fn get_unmasked(m: &[bool]) -> Vec<usize> { m.iter().enumerate().filter_map(|(i, &b)| if !b { Some(i) } else { None }).collect() }
+pub fn get_masked(m: &[bool]) -> Vec<usize> { m.iter().enumerate().filter_map(|(i, &b)| if b { Some(i) } else { None }).collect() }
+
+// ─── Predictor ───
+use crate::optimizer::AdamWCpu;
+
+#[derive(Debug, Clone)]
+pub struct PredictorConfig { pub d_model: usize, pub d_key: usize, pub num_heads: usize, pub d_ff: usize, pub use_l2_norm: bool }
+impl Default for PredictorConfig { fn default() -> Self { Self { d_model: 384, d_key: 96, num_heads: 4, d_ff: 512, use_l2_norm: true } } }
+impl PredictorConfig { pub fn with_d_model(d: usize) -> Self { Self { d_model: d, d_key: d/4, ..Default::default() } } }
+
+#[derive(Debug, Clone)]
+pub struct PredictionOutput { pub predicted: Vec<f32>, pub target: Vec<f32>, pub loss: f64 }
+impl PredictionOutput { pub fn new(p: Vec<f32>, t: Vec<f32>, l: f64) -> Self { Self { predicted: p, target: t, loss: l } } }
+
+pub fn softmax_with_temp(s: &mut [f32], t: f32) { let mx = s.iter().cloned().fold(f32::NEG_INFINITY, f32::max); let mut sm = 0.0f32; for x in s.iter_mut() { *x = ((*x-mx)/t).exp(); sm += *x; } for x in s.iter_mut() { *x /= sm; } }
+
+fn l2_norm_backward(go: &[f32], xn: &[f32], n: f32) -> Vec<f32> { if n < 1e-8 { return go.to_vec(); } let d: f32 = go.iter().zip(xn.iter()).map(|(g, n)| g*n).sum(); go.iter().zip(xn.iter()).map(|(g, n)| (g-d*n)/n).collect() }
+
+pub struct JepaPredictor { pub config: PredictorConfig, pub w_q: Vec<f32>, pub w_k: Vec<f32>, pub w_v: Vec<f32>, pub w_out: Vec<f32>, pub optimizer: AdamWCpu }
+impl JepaPredictor {
+    pub fn new(config: PredictorConfig) -> Self { let d = config.d_model; let dk = config.d_key; let tp = d*dk*4; let sc = (6.0/(d+dk) as f64).sqrt() as f32;
+        let mut s = 42u64; let mut rng = || { s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407); ((s>>33) as f32)/(u32::MAX as f32)*2.0-1.0 };
+        Self { config, w_q: (0..d*dk).map(|_| rng()*sc).collect(), w_k: (0..d*dk).map(|_| rng()*sc).collect(), w_v: (0..d*dk).map(|_| rng()*sc).collect(), w_out: (0..dk*d).map(|_| rng()*sc).collect(), optimizer: AdamWCpu::new(tp, 0.0004) } }
+    pub fn forward_backward(&mut self, ctx: &[f32], tgt: &[f32], nt: usize) -> f32 {
+        if nt == 0 { return 0.0; } let d = self.config.d_model; let dk = self.config.d_key; let sl = ctx.len()/d;
+        let mut ca = vec![0.0f32; d]; if sl > 0 { for i in 0..d { for s in 0..sl { ca[i] += ctx[s*d+i]; } ca[i] /= sl as f32; } }
+        let mut q = vec![0.0f32; dk]; for i in 0..dk { for j in 0..d { q[i] += ca[j]*self.w_q[j*dk+i]; } }
+        let mut k = vec![0.0f32; nt*dk]; for t in 0..nt { for i in 0..dk { for j in 0..d { k[t*dk+i] += tgt[t*d+j]*self.w_k[j*dk+i]; } } }
+        let mut v = vec![0.0f32; nt*dk]; for t in 0..nt { for i in 0..dk { for j in 0..d { v[t*dk+i] += tgt[t*d+j]*self.w_v[j*dk+i]; } } }
+        let sf = (dk as f32).sqrt(); let mut asr = vec![0.0f32; nt]; for t in 0..nt { for i in 0..dk { asr[t] += q[i]*k[t*dk+i]; } asr[t] /= sf; }
+        let mut aw = asr.clone(); softmax_with_temp(&mut aw, 1.0);
+        let mut ao = vec![0.0f32; dk]; for i in 0..dk { for t in 0..nt { ao[i] += aw[t]*v[t*dk+i]; } }
+        let mut pp = vec![0.0f32; d]; for i in 0..d { for j in 0..dk { pp[i] += ao[j]*self.w_out[j*d+i]; } }
+        let pnv = pp.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
+        let pn = if self.config.use_l2_norm { l2_normalize(&pp) } else { pp.clone() };
+        let tn = l2_normalize(&tgt[..d]);
+        let loss: f32 = pn.iter().zip(tn.iter()).map(|(p, t)| (p-t).powi(2)).sum::<f32>()/d as f32;
+        let dlpn: Vec<f32> = pn.iter().zip(tn.iter()).map(|(p, t)| 2.0*(p-t)/d as f32).collect();
+        let dlp = if self.config.use_l2_norm { l2_norm_backward(&dlpn, &pn, pnv) } else { dlpn.clone() };
+        let mut dwo = vec![0.0f32; dk*d]; for j in 0..dk { for i in 0..d { dwo[j*d+i] = ao[j]*dlp[i]; } }
+        let mut dao = vec![0.0f32; dk]; for j in 0..dk { for i in 0..d { dao[j] += self.w_out[j*d+i]*dlp[i]; } }
+        let mut daw = vec![0.0f32; nt]; for t in 0..nt { for i in 0..dk { daw[t] += dao[i]*v[t*dk+i]; } }
+        let dsw: f32 = daw.iter().zip(aw.iter()).map(|(g, s)| g*s).sum();
+        let mut das = vec![0.0f32; nt]; for t in 0..nt { das[t] = aw[t]*(daw[t]-dsw)/sf; }
+        let mut dv = vec![0.0f32; nt*dk]; for t in 0..nt { for i in 0..dk { dv[t*dk+i] = aw[t]*dao[i]; } }
+        let mut dkk = vec![0.0f32; nt*dk]; for t in 0..nt { for i in 0..dk { dkk[t*dk+i] = das[t]*q[i]; } }
+        let mut dq = vec![0.0f32; dk]; for i in 0..dk { for t in 0..nt { dq[i] += das[t]*k[t*dk+i]; } }
+        let mut dwq = vec![0.0f32; d*dk]; for j in 0..d { for i in 0..dk { dwq[j*dk+i] = ca[j]*dq[i]; } }
+        let mut dwk = vec![0.0f32; d*dk]; for j in 0..d { for t in 0..nt { for i in 0..dk { dwk[j*dk+i] += tgt[t*d+j]*dkk[t*dk+i]; } } }
+        let mut dwv = vec![0.0f32; d*dk]; for j in 0..d { for t in 0..nt { for i in 0..dk { dwv[j*dk+i] += tgt[t*d+j]*dv[t*dk+i]; } } }
+        let mut ag = Vec::with_capacity(d*dk*4); ag.extend_from_slice(&dwq); ag.extend_from_slice(&dwk); ag.extend_from_slice(&dwv); ag.extend_from_slice(&dwo);
+        let mut ap = Vec::with_capacity(d*dk*4); ap.extend_from_slice(&self.w_q); ap.extend_from_slice(&self.w_k); ap.extend_from_slice(&self.w_v); ap.extend_from_slice(&self.w_out);
+        self.optimizer.step(&mut ap, &ag); let n = d*dk; self.w_q.copy_from_slice(&ap[..n]); self.w_k.copy_from_slice(&ap[n..2*n]); self.w_v.copy_from_slice(&ap[2*n..3*n]); self.w_out.copy_from_slice(&ap[3*n..4*n]); loss }
+    pub fn num_params(&self) -> usize { self.w_q.len()+self.w_k.len()+self.w_v.len()+self.w_out.len() }
+    pub fn config(&self) -> &PredictorConfig { &self.config } pub fn reset_optimizer(&mut self) { self.optimizer.reset(); } }
+
+pub struct Predictor { pub inner: JepaPredictor }
+impl Predictor {
+    pub fn new(c: PredictorConfig) -> Self { Self { inner: JepaPredictor::new(c) } }
+    pub fn train_step(&mut self, ctx: &[f32], tgt: &[f32], nt: usize) -> f32 { self.inner.forward_backward(ctx, tgt, nt) }
+    pub fn num_params(&self) -> usize { self.inner.num_params() } pub fn config(&self) -> &PredictorConfig { self.inner.config() } }
+
+// ─── Top-level config ───
+#[derive(Debug, Clone)]
+pub struct JepaConfig { pub seed: u64, pub d_model: usize, pub mask_ratio: f64, pub min_span: usize, pub max_span: usize, pub num_spans: usize, pub ema_start: f64, pub ema_end: f64, pub ema_ramp_steps: usize, pub predictor_lr_mult: f64 }
+impl Default for JepaConfig { fn default() -> Self { Self { seed: 42, d_model: 384, mask_ratio: 0.3, min_span: 3, max_span: 9, num_spans: 2, ema_start: 0.996, ema_end: 1.0, ema_ramp_steps: 30000, predictor_lr_mult: 0.1 } } }
+impl JepaConfig { pub fn with_d_model(d: usize) -> Self { Self { d_model: d, ..Default::default() } } pub fn ema_config(&self) -> EmaConfig { EmaConfig { start: self.ema_start, end: self.ema_end, ramp_steps: self.ema_ramp_steps } } pub fn mask_config(&self) -> MaskConfig { MaskConfig { ratio: self.mask_ratio, min_span: self.min_span, max_span: self.max_span, num_spans: self.num_spans } } }
+
+#[derive(Debug, Clone)]
+pub struct JepaResult { pub steps_completed: usize, pub final_loss: f64, pub final_variance: f64, pub loss_monotone: bool, pub ema_verified: bool, pub converged: bool }
+impl JepaResult { pub fn new(sc: usize, fl: f64, fv: f64, lm: bool, ev: bool) -> Self { Self { steps_completed: sc, final_loss: fl, final_variance: fv, loss_monotone: lm, ema_verified: ev, converged: fl < 1.0 && fv > 0.01 } } pub fn is_success(&self) -> bool { self.converged && self.ema_verified } }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchKind { Ngram, Jepa, Attention, Hybrid }
+impl ArchKind {
+    pub fn min_rung(&self) -> i32 { match self { Self::Jepa => 3000, _ => 1000 } }
+    pub fn rung_schedule(&self) -> Vec<i32> { match self { Self::Jepa => vec![3000, 9000, 27000], _ => vec![1000, 3000, 9000, 27000] } }
+    pub fn parse_arch(s: &str) -> Option<Self> { match s.to_lowercase().as_str() { "ngram" => Some(Self::Ngram), "jepa" => Some(Self::Jepa), "attn"|"attention" => Some(Self::Attention), "hybrid" => Some(Self::Hybrid), _ => None } }
+    pub fn as_str(&self) -> &'static str { match self { Self::Ngram => "ngram", Self::Jepa => "jepa", Self::Attention => "attn", Self::Hybrid => "hybrid" } }
+}
+impl std::fmt::Display for ArchKind { fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { write!(f, "{}", self.as_str()) } }
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 
 #[cfg(test)]
 mod tests {
     use super::*;
+<<<<<<< HEAD
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
@@ -1246,4 +1383,12 @@ mod tests {
         assert_eq!(a.mask, b.mask);
         assert_eq!(a.spans, b.spans);
     }
+=======
+    #[test] fn jepa_config() { let c = JepaConfig::default(); assert_eq!(c.seed, 42); assert_eq!(c.d_model, 384); }
+    #[test] fn jepa_result() { let r = JepaResult::new(1000, 0.8, 0.05, true, true); assert!(r.converged); assert!(r.is_success()); }
+    #[test] fn arch_kind() { assert_eq!(ArchKind::Jepa.min_rung(), 3000); assert_eq!(ArchKind::parse_arch("jepa"), Some(ArchKind::Jepa)); }
+    #[test] fn l2_norm() { let n = l2_normalize(&[3.0f32, 4.0]); assert!((n.iter().map(|x| x*x).sum::<f32>().sqrt()-1.0).abs() < 1e-6); }
+    #[test] fn predictor_fwd_bw() { let mut p = JepaPredictor::new(PredictorConfig::with_d_model(32)); let ctx = vec![1.0f32; 32*5]; let tgt = vec![0.5f32; 32]; let l = p.forward_backward(&ctx, &tgt, 1); assert!(l >= 0.0 && l.is_finite()); }
+    #[test] fn train_step() { let mut p = Predictor::new(PredictorConfig::with_d_model(32)); let l = p.train_step(&vec![1.0f32; 160], &vec![0.5f32; 32], 1); assert!(l >= 0.0 && l.is_finite()); }
+>>>>>>> 20a55f6 (fix(L-T1): clean build — self-contained train_loop, remove broken stubs)
 }
