@@ -43,12 +43,12 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 
 use crate::invariants::{
-    validate_config, GradientMode, InvError, TrialConfig, INV1_CHAMPION_LR,
+    validate_inv_config, GradientMode, InvError, InvTrialConfig, INV1_CHAMPION_LR,
     INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS, INV3_D_MODEL_MIN,
     INV4_NCA_GRID, INV4_NCA_K_STATES,
 };
-use crate::rungs::{iter_rungs, Rung};
-use crate::sampler::sample_lr;
+use crate::race::rungs::{iter_rungs, Rung};
+use crate::race::sampler::sample_lr;
 
 // ─── Public types ────────────────────────────────────────────────────────
 
@@ -240,8 +240,8 @@ fn deterministic_unit(seed: u64, rung: u32) -> f64 {
 /// freshly sampled LR. All non-LR knobs live inside the φ-safe envelope
 /// so `validate_config` can never reject for non-LR reasons unless the
 /// caller intentionally overrides via `PoolConfig`.
-fn champion_config(lr: f64, d_model: usize, use_gf16: bool) -> TrialConfig {
-    TrialConfig {
+fn champion_config(lr: f64, d_model: usize, use_gf16: bool) -> InvTrialConfig {
+    InvTrialConfig {
         lr,
         d_model,
         bpb_prune_threshold: INV2_BPB_PRUNE_THRESHOLD,
@@ -260,13 +260,13 @@ fn champion_config(lr: f64, d_model: usize, use_gf16: bool) -> TrialConfig {
 pub fn run_trial(
     worker_id: u32,
     trial_id: u64,
-    cfg: &TrialConfig,
+    cfg: &InvTrialConfig,
     seed: u64,
     sink: &TelemetrySink,
 ) -> std::io::Result<TrialRecord> {
     // Gate first (L-R14): a rejected config produces a single GateRejected row
     // and short-circuits — no rung simulation is wasted on a bad config.
-    if let Err(_e) = validate_config(cfg) {
+    if let Err(_e) = validate_inv_config(cfg) {
         let rec = TrialRecord {
             worker_id,
             trial_id,
@@ -290,7 +290,7 @@ pub fn run_trial(
         last_bpb = bpb;
 
         // Victory: take the first rung that crosses the gate (no need to keep training).
-        if bpb < crate::hive_automaton::BPB_VICTORY_TARGET {
+        if bpb < crate::invariants::BPB_VICTORY_TARGET {
             status = TrialStatus::Victory;
             break;
         }
@@ -362,7 +362,7 @@ impl WorkerPool {
         // Use the champion LR purely so the LR slot is in-band; the worker
         // path will sample fresh LRs on each trial.
         let probe = champion_config(INV1_CHAMPION_LR, self.cfg.d_model, self.cfg.use_gf16);
-        validate_config(&probe)
+        validate_inv_config(&probe)
     }
 
     /// Run all workers to completion, joining each. Telemetry is flushed

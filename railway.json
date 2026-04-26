@@ -2,13 +2,10 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "crates/trios-trainer/Dockerfile"
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "trios-train --config /configs/gate2-attempt.toml",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 60
+    "startCommand": "trios-train --seed 43 --steps 81000 --hidden 828 --lr 0.003 --attn-layers 2",
+    "restartPolicyType": "NEVER"
   }
 }

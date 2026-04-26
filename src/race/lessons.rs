@@ -1,7 +1,7 @@
 //! Failure Memory — automatic lesson generation from pruned trials
 
 use serde::{Deserialize, Serialize};
-use crate::neon::NeonDb;
+use crate::race::neon::NeonDb;
 use anyhow::Result;
 use uuid::Uuid;
 

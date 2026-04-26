@@ -671,7 +671,7 @@ mod tests {
     #[test]
     fn test_bpb_target_matches_lib() {
         // L-R14: anchor mirrors `crate::IGLA_TARGET_BPB`.
-        assert_eq!(BPB_VICTORY_TARGET, crate::IGLA_TARGET_BPB);
+        assert_eq!(BPB_VICTORY_TARGET, crate::invariants::IGLA_TARGET_BPB);
     }
 
     #[test]

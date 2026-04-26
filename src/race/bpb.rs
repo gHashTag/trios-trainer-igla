@@ -29,10 +29,10 @@
 //!
 //! Refs: trios#143 lane L1 · INV-1 · INV-7 · L-R14 · R8.
 
-use crate::ema::{EmaError, EmaTracker};
+use crate::race::ema::{EmaError, EmaTracker};
 use crate::invariants::INV2_WARMUP_BLIND_STEPS;
-use crate::victory::{SeedResult, JEPA_PROXY_BPB_FLOOR};
-use crate::IGLA_TARGET_BPB;
+use crate::race::victory::{SeedResult, JEPA_PROXY_BPB_FLOOR};
+use crate::invariants::IGLA_TARGET_BPB;
 
 // ----------------------------------------------------------------------
 // Errors
