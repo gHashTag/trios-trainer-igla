@@ -44,16 +44,33 @@ cargo run --release --bin trios-train -- \
 
 ## Run on Railway
 
+The canonical Railway project is
+[`e4fe33bb-3b09-4842-9782-7d2dea1abc9b`](https://railway.com/project/e4fe33bb-3b09-4842-9782-7d2dea1abc9b),
+linked into [`railway.json`](railway.json) and the
+[`railway-deploy.yml`](.github/workflows/railway-deploy.yml) workflow.
+
+### Auto-deploy from GitHub (preferred)
+
+1. In the repo settings, add a single secret: **`RAILWAY_TOKEN`** (a project-scoped
+   token from Railway → Project → Settings → Tokens).
+2. Push to `main` (or run the **Railway Deploy** workflow from the Actions tab).
+3. The matrix job creates / reuses three services
+   `trainer-seed-43`, `trainer-seed-44`, `trainer-seed-45` with the appropriate
+   `TRIOS_SEED` env var and runs `railway up`.
+
+### Manual CLI deploy
+
 ```bash
 railway login
-railway link gHashTag/trios-trainer-igla
-railway up
+railway link --project e4fe33bb-3b09-4842-9782-7d2dea1abc9b
 
-# Scale to 3 parallel seeds (Gate-2 needs 3 distinct seeds)
 for s in 43 44 45; do
-  railway service create "trainer-seed-$s"
-  railway variables set TRIOS_SEED=$s --service "trainer-seed-$s"
-  railway up --service "trainer-seed-$s"
+  railway add --service "trainer-seed-$s"
+  railway variables --service "trainer-seed-$s" \
+      --set TRIOS_SEED=$s \
+      --set TRIOS_LEDGER_PUSH=1 \
+      --set TRIOS_CONFIG=/configs/gate2-attempt.toml
+  railway up --service "trainer-seed-$s" --detach
 done
 ```
 

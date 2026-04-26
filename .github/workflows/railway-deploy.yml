@@ -1,0 +1,68 @@
+name: Railway Deploy (3-seed Gate-2)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "Comma-separated seeds (default: 43,44,45)"
+        default: "43,44,45"
+        required: false
+
+# Railway project: https://railway.com/project/e4fe33bb-3b09-4842-9782-7d2dea1abc9b
+env:
+  RAILWAY_PROJECT_ID: e4fe33bb-3b09-4842-9782-7d2dea1abc9b
+
+jobs:
+  deploy:
+    name: Deploy seed=${{ matrix.seed }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [43, 44, 45]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.com/install.sh | sh
+          railway --version
+
+      - name: Link Railway project
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::error::RAILWAY_TOKEN secret missing. Add it under Repo Settings → Secrets → Actions."
+            exit 78  # neutral skip
+          fi
+          railway link --project "$RAILWAY_PROJECT_ID"
+
+      - name: Ensure service exists
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          SERVICE="trainer-seed-${{ matrix.seed }}"
+          railway service "$SERVICE" || railway add --service "$SERVICE"
+
+      - name: Set service variables
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          SERVICE="trainer-seed-${{ matrix.seed }}"
+          railway variables \
+            --service "$SERVICE" \
+            --set TRIOS_SEED=${{ matrix.seed }} \
+            --set TRIOS_LEDGER_PUSH=1 \
+            --set TRIOS_CONFIG=/configs/gate2-attempt.toml \
+            --set TRIOS_TARGET_BPB=1.85 \
+            --set RUST_LOG=info
+
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          SERVICE="trainer-seed-${{ matrix.seed }}"
+          railway up --service "$SERVICE" --detach

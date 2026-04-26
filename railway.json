@@ -1,14 +1,21 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
+  "projectId": "e4fe33bb-3b09-4842-9782-7d2dea1abc9b",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "crates/trios-trainer/Dockerfile"
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
     "startCommand": "trios-train --config /configs/gate2-attempt.toml",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
-    "healthcheckPath": "/health",
-    "healthcheckTimeout": 60
+    "healthcheckPath": "/healthz",
+    "healthcheckTimeout": 60,
+    "numReplicas": 1
+  },
+  "environments": {
+    "trainer-seed-43": { "variables": { "TRIOS_SEED": "43", "TRIOS_LEDGER_PUSH": "1", "RUST_LOG": "info" } },
+    "trainer-seed-44": { "variables": { "TRIOS_SEED": "44", "TRIOS_LEDGER_PUSH": "1", "RUST_LOG": "info" } },
+    "trainer-seed-45": { "variables": { "TRIOS_SEED": "45", "TRIOS_LEDGER_PUSH": "1", "RUST_LOG": "info" } }
   }
 }
