@@ -3,6 +3,12 @@
 //! Single-file implementation: HybridModel, AdamW, gradient computation,
 //! evaluation, GF16 floor, cosine LR, data loading.
 //! Migrated from trios-train-cpu/src/bin/hybrid_train.rs (L-f2).
+//!
+//! NOTE: indexed loops below are intentional — they walk shared scratch
+//! buffers in lockstep with the model state and converting them to
+//! `enumerate()` on `iter_mut()` would force interior-mutability gymnastics
+//! that hurt readability of the gradient kernels.
+#![allow(clippy::needless_range_loop, dead_code, clippy::excessive_precision)]
 
 use anyhow::Result;
 
@@ -117,7 +123,9 @@ impl HybridModel {
     pub fn new(hidden: usize, seed: u64, attn_layers: u8, seq_len: usize) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let lim = (6.0f32 / (3 * DIM) as f32).sqrt();
@@ -129,9 +137,7 @@ impl HybridModel {
                 .map(|_| (0..VOCAB * DIM).map(|_| rng() * lim).collect())
                 .collect(),
             proj: (0..hidden * DIM).map(|_| rng() * lim_h).collect(),
-            lm_head: (0..VOCAB * hidden)
-                .map(|_| rng() * lim_o)
-                .collect(),
+            lm_head: (0..VOCAB * hidden).map(|_| rng() * lim_o).collect(),
             hidden,
             attn_layers,
             seq_len,

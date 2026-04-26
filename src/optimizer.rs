@@ -1,8 +1,8 @@
 //! Optimizer facade. Concrete impls migrated from
 //! `trios-train-cpu/src/optimizer.rs` (AdamW, Muon, φ-LR schedule).
 
-use anyhow::{Result, bail};
 use crate::config::OptimizerConfig;
+use anyhow::{bail, Result};
 
 pub struct Optimizer {
     pub kind: String,
@@ -14,5 +14,8 @@ pub fn build(cfg: &OptimizerConfig) -> Result<Optimizer> {
         "adamw" | "muon" | "muon+adamw" => {}
         other => bail!("unknown optimizer kind: {other}"),
     }
-    Ok(Optimizer { kind: cfg.kind.clone(), lr: cfg.lr })
+    Ok(Optimizer {
+        kind: cfg.kind.clone(),
+        lr: cfg.lr,
+    })
 }

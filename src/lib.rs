@@ -19,15 +19,15 @@
 //! Invariants (ASHA, victory gate, embargo list) are imported from
 //! `trios-igla-race` — this crate **never** re-implements them.
 
+pub mod checkpoint;
 pub mod config;
-pub mod model;
-pub mod optimizer;
-pub mod jepa;
-pub mod objective;
 pub mod data;
 pub mod gf16;
-pub mod checkpoint;
+pub mod jepa;
 pub mod ledger;
+pub mod model;
+pub mod objective;
+pub mod optimizer;
 pub mod train_loop;
 
 pub use config::TrainConfig;
