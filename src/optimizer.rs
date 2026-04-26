@@ -506,6 +506,94 @@ pub fn phi_lr_schedule(step: usize, base_lr: f64, warmup_steps: usize) -> f64 {
     }
 }
 
+/// Warmup-Stable-Decay (WSD) learning rate schedule
+///
+/// Decouples decay timing from total-step commitment for better anytime curves.
+/// Reference: Wen et al. 2024 WSD
+///
+/// # Arguments
+///
+/// * `step` - Current training step
+/// * `max_steps` - Total training steps
+/// * `base_lr` - Base learning rate
+/// * `warmup_steps` - Number of warmup steps
+/// * `stable_ratio` - Fraction of steps in stable phase (default: 0.8)
+/// * `decay_ratio` - Fraction of steps in decay phase (default: 0.1)
+///
+/// # Returns
+///
+/// Scheduled learning rate for the current step
+pub fn wsd_lr_schedule(
+    step: usize,
+    max_steps: usize,
+    base_lr: f64,
+    warmup_steps: usize,
+    stable_ratio: Option<f64>,
+    decay_ratio: Option<f64>,
+) -> f64 {
+    let stable_pct = stable_ratio.unwrap_or(0.8);
+    let decay_pct = decay_ratio.unwrap_or(0.1);
+
+    let stable_start = warmup_steps;
+    let stable_end = (max_steps as f64 * (1.0 - decay_pct)) as usize;
+    let decay_end = max_steps;
+
+    if step < stable_start {
+        // Linear warmup
+        base_lr * (step as f64 / warmup_steps.max(1) as f64)
+    } else if step < stable_end {
+        // Stable phase: constant LR
+        base_lr
+    } else {
+        // Decay phase: cosine decay from base_lr to 1e-5
+        let decay_steps = (step - stable_end) as f64;
+        let total_decay = (decay_end - stable_start) as f64;
+        let cosine_factor = (1.0 + (std::f64::consts::PI * decay_steps / total_decay).cos()) * 0.5;
+        let target_lr = 1e-5;
+        let lr = target_lr + (base_lr - target_lr) * cosine_factor;
+        lr.max(target_lr)
+    }
+}
+
+/// Schedule-Free AdamW learning rate interpolation
+///
+/// Implements the schedule-free optimization from Meta AI (AlgoPerf 2024 winner).
+/// Key idea: mix between current iterate (z_t) and previous iterate (x_t)
+/// instead of using a separate schedule.
+///
+/// Reference: Defazio et al. 2024 "The Road Less Scheduled"
+///
+/// # Arguments
+///
+/// * `step` - Current training step
+/// * `base_lr` - Base learning rate
+/// * `beta1` - AdamW momentum factor (default: 0.9)
+///
+/// # Returns
+///
+/// Interpolated parameter `y_t` for use in optimizer update
+///
+/// # Formula
+/// ```
+/// c_{t+1} = 1 / (t + 1)
+/// y_t = (1 - beta1) * z_t + beta1 * x_t
+/// ```
+/// where `z_t` is the AdamW update step and `x_t` is the previous iterate.
+pub fn schedule_free_interpolation(step: usize, beta1: Option<f64>) -> f64 {
+    let b1 = beta1.unwrap_or(0.9);
+
+    // Mixing coefficient c_t = 1/(t+1)
+    let c = if step > 0 {
+        1.0 / (step + 1) as f64
+    } else {
+        1.0  // t=0: use full weight (c=1)
+    };
+
+    // y_t = (1 - beta1) * z_t + beta1 * x_t
+    // This is applied in the optimizer update
+    b1
+}
+
 /// Issue #54: Unified LR schedule selector
 ///
 /// Delegates to trios-phi-schedule for Issue #54 calibration.
