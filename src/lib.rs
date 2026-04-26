@@ -34,6 +34,7 @@ pub mod model_hybrid_attn;
 pub mod objective;
 pub mod optimizer;
 pub mod train_loop;
+pub mod transformer;
 
 pub use backward::{
     clip_gradients, gelu_backward, layer_norm_backward, linear_backward,
