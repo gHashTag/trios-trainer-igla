@@ -30,6 +30,50 @@ pub struct LedgerRow {
     pub ts: String,
 }
 
+/// Same as [`emit_row`], but uses the supplied `sha` instead of `git rev-parse
+/// HEAD`. Lets falsification tests synthesise a row without a real git tree.
+pub fn emit_row_with_sha(cfg: &TrainConfig, bpb: f64, step: usize, sha: &str) -> Result<LedgerRow> {
+    if step < 4000 {
+        bail!(
+            "R8 violation: step {} < 4000. Gate-2 row requires \u{2265} 4000 steps.",
+            step
+        );
+    }
+    if !bpb.is_finite() || bpb <= 0.0 {
+        bail!("non-finite BPB {bpb}");
+    }
+    if is_embargoed(&cfg.ledger.embargo_path, sha)? {
+        bail!("embargo violation: SHA {sha} is in embargo list");
+    }
+    let gate_status = if bpb < cfg.target_bpb {
+        "victory_candidate".into()
+    } else if let Some(c) = cfg.champion_bpb {
+        if bpb < c {
+            "below_champion".into()
+        } else {
+            "below_target_evidence".into()
+        }
+    } else {
+        "below_target_evidence".into()
+    };
+    let jsonl_row = next_row_index(&cfg.ledger.jsonl_path)?;
+    let row = LedgerRow {
+        agent: format!("trios-trainer-{}", cfg.name),
+        bpb,
+        step,
+        seed: cfg.seed,
+        sha: sha.to_string(),
+        jsonl_row,
+        gate_status,
+        ts: Utc::now().to_rfc3339(),
+    };
+    append_row(&cfg.ledger.jsonl_path, &row)?;
+    if cfg.ledger.push {
+        push_row(&cfg.ledger.jsonl_path, &row)?;
+    }
+    Ok(row)
+}
+
 pub fn emit_row(cfg: &TrainConfig, bpb: f64, step: usize) -> Result<LedgerRow> {
     if step < 4000 {
         bail!(
@@ -87,7 +131,9 @@ fn head_sha7() -> Result<String> {
     Ok(String::from_utf8(out.stdout)?.trim().to_string())
 }
 
-fn is_embargoed<P: AsRef<Path>>(path: P, sha: &str) -> Result<bool> {
+/// Public so falsification witnesses can test the rule without going through
+/// `emit_row` (which needs a real git HEAD). Used by `tests/embargo_block.rs`.
+pub fn is_embargoed<P: AsRef<Path>>(path: P, sha: &str) -> Result<bool> {
     let p = path.as_ref();
     if !p.exists() {
         return Ok(false);
