@@ -1,0 +1,39 @@
+# NEEDLE-RUSH L-V1 — muP transfer (10× width sweep).
+
+name         = "needle-v1-mup"
+steps        = 12_000
+seed         = 43
+target_bpb   = 1.50
+champion_bpb = 2.2393
+
+[model]
+d_model     = 768          # 3× champion → muP says LR scales accordingly
+n_layers    = 6
+n_heads     = 12
+vocab_size  = 32_000
+seq_len     = 1024
+hybrid_attn = true
+
+[optimizer]
+kind         = "muon+adamw"
+lr           = 0.004        # muP-anchored, validated by INV-8 φ-band
+beta1        = 0.9
+beta2        = 0.95
+weight_decay = 0.04
+schedule     = "phi"
+warmup_steps = 1_000
+
+[data]
+corpus       = "fineweb"
+batch_size   = 4
+batch_tokens = 524_288
+
+[objective]
+w_ce   = 1.0
+w_jepa = 0.5
+w_nca  = 0.1
+
+[ledger]
+jsonl_path   = "assertions/seed_results.jsonl"
+push         = true
+embargo_path = ".embargo"

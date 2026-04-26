@@ -1,0 +1,13 @@
+target/
+**/target/
+.git/
+docs/phd/build/
+*.pdf
+.tmp/
+.trinity/
+.swarm/
+.claude*/
+.parameter-golf/
+data/
+checkpoints/
+node_modules/

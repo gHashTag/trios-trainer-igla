@@ -1,0 +1,40 @@
+# Gate-2 attempt — push beyond champion with HybridAttn (L-h2).
+# Goal: BPB < 2.22 first, then < 1.50 across 3 seeds (43/44/45).
+
+name         = "gate2-attempt"
+steps        = 30_000
+seed         = 43          # override per worker via TRIOS_SEED
+target_bpb   = 1.50
+champion_bpb = 2.2393
+
+[model]
+d_model     = 384
+n_layers    = 4
+n_heads     = 6
+vocab_size  = 32_000
+seq_len     = 1024
+hybrid_attn = true
+
+[optimizer]
+kind         = "muon+adamw"
+lr           = 0.004
+beta1        = 0.9
+beta2        = 0.95
+weight_decay = 0.04
+schedule     = "phi"
+warmup_steps = 1_000
+
+[data]
+corpus       = "fineweb"
+batch_size   = 8
+batch_tokens = 524_288
+
+[objective]
+w_ce   = 1.0
+w_jepa = 0.5
+w_nca  = 0.1
+
+[ledger]
+jsonl_path   = "assertions/seed_results.jsonl"
+push         = true
+embargo_path = ".embargo"

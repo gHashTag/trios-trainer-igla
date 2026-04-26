@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: cargo fmt -- --check
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy (default features)
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo build (default features)
+        run: cargo build --release --all-targets
+
+      - name: cargo test (default features)
+        run: cargo test --release
+
+      - name: anchor invariant phi^2 + phi^-2 = 3
+        run: cargo test --release anchor_holds -- --exact
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build docker image
+        run: docker build -t trios-trainer:ci .
