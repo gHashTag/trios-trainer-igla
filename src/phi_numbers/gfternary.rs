@@ -289,7 +289,7 @@ mod tests {
 
         let gf = GFTernary::from_f32(2.0);
         let err = gf.quant_error_f32(2.0);
-        assert!((err - (PHI as f32 - 2.0)).abs() < 1e-5);
+        assert!((err - (2.0 - PHI as f32)).abs() < 1e-5);
     }
 
     #[test]

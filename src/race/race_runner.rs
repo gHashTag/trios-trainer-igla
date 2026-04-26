@@ -478,7 +478,7 @@ mod tests {
         let path = tmp_path("gate");
         let sink = TelemetrySink::open(&path).expect("open sink");
         let bad = champion_config(0.0001, 256, false); // far below INV-1 lo
-        assert!(validate_config(&bad).is_err());
+        assert!(validate_inv_config(&bad).is_err());
         let rec = run_trial(0, 0, &bad, 0, &sink).expect("trial");
         assert_eq!(rec.status, TrialStatus::GateRejected);
         sink.flush().unwrap();

@@ -30,6 +30,11 @@ impl GF64 {
         let abs_val = value.abs();
 
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: sign << 63 | Self::EXP_MASK | 1,
+                };
+            }
             return Self {
                 bits: sign << 63 | Self::EXP_MASK,
             };
@@ -54,13 +59,8 @@ impl GF64 {
         let mut mant_rounded = (f64_mant >> shift) as u64;
         let remainder = (f64_mant >> (shift - 1)) & 1;
 
-        // φ-weighted rounding: bias = φ * 0.5 ≈ 0.809
         if remainder == 1 {
-            let lower_bits = f64_mant & ((1u64 << shift) - 1);
-            let phi_threshold = (0.809 * (1u64 << shift) as f64) as u64;
-            if lower_bits >= phi_threshold {
-                mant_rounded += 1;
-            }
+            mant_rounded += 1;
         }
 
         // Handle mantissa overflow

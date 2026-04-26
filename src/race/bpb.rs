@@ -214,7 +214,7 @@ impl BpbTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::victory::{check_victory, JEPA_PROXY_BPB_FLOOR};
+    use crate::race::victory::{check_victory, JEPA_PROXY_BPB_FLOOR};
 
     const POST_WARMUP: u64 = INV2_WARMUP_BLIND_STEPS + 1;
 

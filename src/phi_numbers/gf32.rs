@@ -140,8 +140,8 @@ impl GF32 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f32 = 2.0_f32.powi(-4095);
-    pub const MAX: f32 = (2.0 - 2.0_f32.powi(-18)) * 2.0_f32.powi(4095);
+    pub const MIN_POSITIVE: f32 = 0.0;
+    pub const MAX: f32 = f32::MAX;
 }
 
 impl Clone for GF32 {

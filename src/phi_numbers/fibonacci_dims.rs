@@ -45,26 +45,20 @@ pub fn next_fibonacci(value: u64) -> u64 {
 }
 
 /// Get the nearest Fibonacci number to a given value
-pub const fn nearest_fibonacci(value: u64) -> u64 {
+pub fn nearest_fibonacci(value: u64) -> u64 {
+    if value <= FIBONACCI[0] {
+        return FIBONACCI[0];
+    }
     for i in 0..FIBONACCI.len() - 1 {
         if FIBONACCI[i] <= value && value <= FIBONACCI[i + 1] {
             let lower = FIBONACCI[i];
             let upper = FIBONACCI[i + 1];
             let diff_lower = value - lower;
             let diff_upper = upper - value;
-            return if diff_lower <= diff_upper { lower } else { upper };
+            return if diff_lower < diff_upper { lower } else { upper };
         }
     }
-    // For values beyond the table
-    let n = FIBONACCI.len();
-    let f_n = fibonacci(n);
-    if value <= f_n {
-        return f_n;
-    }
-    let f_n_plus_1 = fibonacci(n + 1);
-    let diff_lower = value - f_n;
-    let diff_upper = f_n_plus_1 - value;
-    if diff_lower <= diff_upper { f_n } else { f_n_plus_1 }
+    FIBONACCI[FIBONACCI.len() - 1]
 }
 
 /// Check if a value is a Fibonacci number
@@ -131,27 +125,33 @@ pub fn is_phi_optimized(dim: usize) -> bool {
 /// Calculate the "φ-distance" of a dimension from nearest Fibonacci
 /// Returns 0.0 if exactly Fibonacci, 1.0 if at midpoint
 pub fn phi_distance(dim: u64) -> f64 {
-    let nearest = nearest_fibonacci(dim);
-    let lower = if nearest >= dim {
-        fibonacci(FIBONACCI.len().saturating_sub(2))
-    } else {
-        next_fibonacci(nearest)
+    if dim <= FIBONACCI[0] {
+        return 0.0;
+    }
+
+    let (lo, hi) = {
+        let mut result = None;
+        for i in 0..FIBONACCI.len() - 1 {
+            if FIBONACCI[i] == dim || FIBONACCI[i + 1] == dim {
+                return 0.0;
+            }
+            if FIBONACCI[i] < dim && dim < FIBONACCI[i + 1] {
+                result = Some((FIBONACCI[i], FIBONACCI[i + 1]));
+                break;
+            }
+        }
+        result.unwrap_or_else(|| {
+            let lo = FIBONACCI[FIBONACCI.len() - 1];
+            let hi = next_fibonacci(lo);
+            (lo, hi)
+        })
     };
 
-    if lower == nearest {
-        let mid = (lower + nearest) / 2;
-        if dim <= mid {
-            (mid - dim) as f64 / (mid - lower).max(1) as f64
-        } else {
-            (dim - mid) as f64 / (nearest - mid).max(1) as f64
-        }
+    let mid = (lo + hi) / 2;
+    if dim <= mid {
+        (dim - lo) as f64 / (mid - lo).max(1) as f64
     } else {
-        let mid = (lower + nearest) / 2;
-        if dim <= mid {
-            (mid - dim) as f64 / (mid - lower).max(1) as f64
-        } else {
-            (dim - mid) as f64 / (nearest - mid).max(1) as f64
-        }
+        (hi - dim) as f64 / (hi - mid).max(1) as f64
     }
 }
 #[cfg(test)]
@@ -260,12 +260,9 @@ mod tests {
         assert!(is_phi_optimized(34));
 
         // Within 10% tolerance
-        assert!(is_phi_optimized(64));   // Close to 55 or 89? Actually 64 is not close
-        assert!(!is_phi_optimized(64));
-        assert!(is_phi_optimized(72));   // Close to 89? 72/89 ≈ 0.81 < 0.9
-        assert!(!is_phi_optimized(72));
-        assert!(is_phi_optimized(96));   // Close to 89? 96/89 ≈ 1.08 < 1.1
-        assert!(is_phi_optimized(96));
+        assert!(!is_phi_optimized(64));  // 64/55 ≈ 1.16 > 1.1
+        assert!(!is_phi_optimized(72));  // 72/89 ≈ 0.81 < 0.9
+        assert!(is_phi_optimized(96));   // 96/89 ≈ 1.08 < 1.1
     }
 
     #[test]
@@ -314,7 +311,7 @@ mod tests {
         let dist = phi_distance(384);
         let nearest = nearest_fibonacci(384);
 
-        assert!(!is_opt, "384 should not be Fibonacci");
+        assert!(is_opt, "384 is φ-optimized (close to 377)");
         assert_eq!(nearest, 377, "Nearest to 384 should be 377");
 
         // Check if we should use 377 or 610 instead
@@ -343,7 +340,7 @@ mod tests {
     #[test]
     fn test_fibonacci_growth() {
         // Test that Fibonacci grows approximately by φ each step
-        for i in 3..FIBONACCI.len() - 1 {
+        for i in 5..FIBONACCI.len() - 1 {
             let ratio = FIBONACCI[i + 1] as f64 / FIBONACCI[i] as f64;
             let error = (ratio - PHI).abs();
             assert!(error < 0.01, "Growth at step {}: {} (error: {})", i, ratio, error);

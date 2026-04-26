@@ -31,8 +31,13 @@ impl GF8 {
 
         // Handle infinity and NaN
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: (sign << 7) | 0x79,
+                };
+            }
             return Self {
-                bits: (sign << 7) | 0x78,  // exp = all 1s
+                bits: (sign << 7) | 0x70,
             };
         }
 
@@ -51,7 +56,7 @@ impl GF8 {
             return Self { bits: 0 };  // Underflow to zero
         }
         if gf8_exp > 7 {
-            gf8_exp = 7;  // Max exponent
+            return Self { bits: (sign << 7) | 0x70 };
         }
 
         // Round mantissa: 23 bits → 4 bits
@@ -59,13 +64,7 @@ impl GF8 {
         let mut mant_rounded = (f32_mant >> (23 - Self::MANT_BITS)) as u8;
         let remainder = (f32_mant >> (23 - Self::MANT_BITS - 1)) & 1;
 
-        // φ-weighted rounding: bias = φ * 0.5 ≈ 0.809
-        if remainder == 1 && (f32_mant & ((1 << (23 - Self::MANT_BITS - 1)) - 1)) > 0 {
-            let phi_bias = (0.809 * 256.0) as u32;
-            if f32_mant & ((1 << (23 - Self::MANT_BITS)) - 1) > phi_bias {
-                mant_rounded += 1;
-            }
-        } else if remainder == 1 {
+        if remainder == 1 {
             mant_rounded += 1;
         }
 
@@ -73,9 +72,8 @@ impl GF8 {
         if mant_rounded >= 16 {
             mant_rounded = 0;
             gf8_exp += 1;
-            if gf8_exp > 7 {
-                gf8_exp = 7;
-                mant_rounded = 15;
+            if gf8_exp > 6 {
+                return Self { bits: (sign << 7) | 0x70 };
             }
         }
 
