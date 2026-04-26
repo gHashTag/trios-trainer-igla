@@ -43,7 +43,7 @@
 use std::collections::HashSet;
 
 use crate::invariants::INV2_WARMUP_BLIND_STEPS;
-use crate::hive_automaton::{VICTORY_SEED_TARGET, BPB_VICTORY_TARGET};
+use super::hive_automaton::{VICTORY_SEED_TARGET, BPB_VICTORY_TARGET};
 
 // Sanity: constants match (L-R14)
 const _: () = assert!((BPB_VICTORY_TARGET - 1.5).abs() < f64::EPSILON);

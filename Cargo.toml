@@ -23,6 +23,106 @@ path = "src/bin/trios-train.rs"
 name = "hybrid_train"
 path = "src/bin/hybrid_train.rs"
 
+[[bin]]
+name = "seed_emit"
+path = "src/bin/seed_emit.rs"
+
+[[bin]]
+name = "ledger_check"
+path = "src/bin/ledger_check.rs"
+
+[[bin]]
+name = "qk_gain_check"
+path = "src/bin/qk_gain_check.rs"
+
+[[bin]]
+name = "honey_audit"
+path = "src/bin/honey_audit.rs"
+
+[[bin]]
+name = "cpu_train"
+path = "src/bin/cpu_train.rs"
+
+[[bin]]
+name = "igla_train"
+path = "src/bin/igla_train.rs"
+
+[[bin]]
+name = "ngram_train"
+path = "src/bin/ngram_train.rs"
+
+[[bin]]
+name = "ngram_train_gf16"
+path = "src/bin/ngram_train_gf16.rs"
+
+[[bin]]
+name = "train_cpu"
+path = "src/bin/train_cpu.rs"
+
+[[bin]]
+name = "train_v2"
+path = "src/bin/train_v2.rs"
+
+[[bin]]
+name = "transformer_train"
+path = "src/bin/transformer_train.rs"
+
+[[bin]]
+name = "trinity_3k_fineweb_train"
+path = "src/bin/trinity_3k_fineweb_train.rs"
+
+[[bin]]
+name = "trinity_3k_simple_train"
+path = "src/bin/trinity_3k_simple_train.rs"
+
+[[bin]]
+name = "trinity_3k_tinyshakespeare"
+path = "src/bin/trinity_3k_tinyshakespeare.rs"
+
+[[bin]]
+name = "trinity_pr1722"
+path = "src/bin/trinity_pr1722.rs"
+
+[[bin]]
+name = "trinity_tournament"
+path = "src/bin/trinity_tournament.rs"
+
+[[bin]]
+name = "arch_explorer"
+path = "src/bin/arch_explorer.rs"
+
+[[bin]]
+name = "attn_train"
+path = "src/bin/attn_train.rs"
+
+[[bin]]
+name = "bench_cpu"
+path = "src/bin/bench_cpu.rs"
+
+[[bin]]
+name = "gf16_test"
+path = "src/bin/gf16_test.rs"
+
+[[bin]]
+name = "igla_trigram"
+path = "src/bin/igla_trigram.rs"
+
+[[bin]]
+name = "lr_calibration"
+path = "src/bin/lr_calibration.rs"
+
+[[bin]]
+name = "lstm_train"
+path = "src/bin/lstm_train.rs"
+
+[[bin]]
+name = "r12_optimizer_race"
+path = "src/bin/r12_optimizer_race.rs"
+
+[[bin]]
+name = "tjepa_train"
+path = "src/bin/tjepa_train.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []

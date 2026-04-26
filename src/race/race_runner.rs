@@ -47,8 +47,8 @@ use crate::invariants::{
     INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS, INV3_D_MODEL_MIN,
     INV4_NCA_GRID, INV4_NCA_K_STATES,
 };
-use crate::rungs::{iter_rungs, Rung};
-use crate::sampler::sample_lr;
+use super::rungs::{iter_rungs, Rung};
+use super::sampler::sample_lr;
 
 // ─── Public types ────────────────────────────────────────────────────────
 

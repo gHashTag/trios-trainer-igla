@@ -4,21 +4,14 @@
 pub mod checkpoint;
 pub mod config;
 pub mod data;
-pub mod forward;
-pub mod backward;
 pub mod gf16;
 pub mod invariants;
 pub mod jepa;
 pub mod ledger;
 pub mod model;
 pub mod model_hybrid_attn;
-pub mod attention;
-pub mod transformer;
-pub mod trinity_3k;
 pub mod objective;
 pub mod optimizer;
-pub mod pipeline;
-pub mod train_model;
 pub mod train_loop;
 
 pub use config::TrainConfig;
