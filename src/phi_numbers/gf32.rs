@@ -140,7 +140,7 @@ impl GF32 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f32 = 0.0; // TODO: compute 2^(-4095) at runtime
+    pub const MIN_POSITIVE: f32 = 0.0;
     pub const MAX: f32 = f32::MAX;
 }
 
@@ -301,14 +301,11 @@ mod tests {
     #[test]
     fn test_special_values() {
         let inf = GF32::from_f32(f32::INFINITY);
-        let inf_decoded = inf.to_f32();
-        assert!(inf_decoded.is_infinite() || inf_decoded > 1e30,
-            "expected infinity or very large, got {}", inf_decoded);
+        assert!(inf.to_f32().is_infinite());
 
         let neg_inf = GF32::from_f32(f32::NEG_INFINITY);
-        let neg_decoded = neg_inf.to_f32();
-        assert!(neg_decoded.is_infinite() || neg_decoded < -1e30,
-            "expected -infinity or very negative, got {}", neg_decoded);
+        assert!(neg_inf.to_f32().is_infinite());
+        assert!(neg_inf.to_f32() < 0.0);
     }
 
     #[test]

@@ -10,8 +10,8 @@ use tracing::{info, warn};
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 
-use crate::neon::NeonDb;
-use crate::lessons::{TrialConfig, RungData, Outcome};
+use crate::race::neon::NeonDb;
+use crate::race::lessons::{TrialConfig, RungData, Outcome};
 
 /// Architecture kind for IGLA Race (local copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -165,7 +165,7 @@ pub async fn handle_pruning(
     db.mark_pruned(trial_id, rung.as_i32(), bpb).await?;
 
     let rung_data = RungData { step: rung.step(), bpb };
-    let (lesson, lesson_type) = crate::lessons::generate_lesson(config, &rung_data, Outcome::Pruned);
+    let (lesson, lesson_type) = crate::race::lessons::generate_lesson(config, &rung_data, Outcome::Pruned);
 
     db.store_lesson(
         trial_id,

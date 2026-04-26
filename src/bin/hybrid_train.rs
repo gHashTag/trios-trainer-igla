@@ -10,6 +10,7 @@
 
 #![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
+#![allow(unused_mut)]
 
 use std::env;
 use std::fs;
@@ -188,7 +189,7 @@ impl HybridModel {
         &self,
         tokens: &[usize],
         pos: usize,
-    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
         let h = self.hidden;
         let d = self.attn.config().d_model;
         let combined = self.embed_tokens(tokens, pos);
@@ -216,7 +217,9 @@ impl HybridModel {
             }
         }
 
+        let mut attn_out_saved = vec![0.0f32; d];
         if let Ok(attn_out) = self.attn.forward(&attn_in, 1) {
+            attn_out_saved = attn_out.clone();
             let mut attn_up_out = vec![0.0f32; h];
             for hi in 0..h {
                 for di in 0..d {
@@ -234,7 +237,7 @@ impl HybridModel {
                 logits[vi] += self.lm_head[vi * h + hi] * hidden[hi];
             }
         }
-        (combined, ln, hidden, logits)
+        (combined, ln, hidden, logits, attn_out_saved)
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
@@ -245,7 +248,7 @@ impl HybridModel {
         let mut total = 0.0f32;
         for i in 0..count {
             let target = tokens[i + NGRAM].min(VOCAB - 1);
-            let (_, _, _, mut logits) = self.forward_position(tokens, i);
+            let (_, _, _, mut logits, _) = self.forward_position(tokens, i);
             softmax(&mut logits);
             total -= logits[target].max(1e-10).ln();
         }
@@ -267,7 +270,7 @@ fn compute_grads_for_positions(
     let h = model.hidden;
     let d = model.attn.config().d_model;
     for &pos in positions {
-        let (combined, ln, hidden, mut logits) = model.forward_position(tokens, pos);
+        let (combined, ln, hidden, mut logits, attn_out_saved) = model.forward_position(tokens, pos);
         softmax(&mut logits);
         let target = tokens[pos + NGRAM].min(VOCAB - 1);
 
@@ -288,12 +291,12 @@ fn compute_grads_for_positions(
         let mut d_attn_out = vec![0.0f32; d];
         for hi in 0..h {
             for di in 0..d {
-                g_attn_up[hi * d + di] += d_attn_up_out[hi] * 0.0;
+                g_attn_up[hi * d + di] += d_attn_up_out[hi] * attn_out_saved[di];
                 d_attn_out[di] += d_attn_up_out[hi] * model.attn_up[hi * d + di];
             }
         }
 
-        let mut d_attn_in = d_attn_out;
+        let d_attn_in = d_attn_out;
         for di in 0..d {
             for hi in 0..h {
                 g_attn_down[di * h + hi] += d_attn_in[di] * hidden[hi];
@@ -303,7 +306,8 @@ fn compute_grads_for_positions(
         let mut d_raw = vec![0.0f32; h];
         for hi in 0..h {
             if hidden[hi] > 0.0 {
-                d_raw[hi] = d_hidden[hi] * 2.0 * hidden[hi].sqrt();
+                let raw_val = hidden[hi].sqrt();
+                d_raw[hi] = d_hidden[hi] * 2.0 * raw_val;
             }
         }
 

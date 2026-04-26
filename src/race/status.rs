@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use crate::neon::NeonDb;
+use crate::race::neon::NeonDb;
 
 pub async fn show_status(db: &NeonDb) -> Result<()> {
     let rows = db.client()
