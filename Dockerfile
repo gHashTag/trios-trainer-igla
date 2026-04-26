@@ -3,7 +3,8 @@
 # Run:     docker run --rm -e TRIOS_SEED=43 -v $PWD/assertions:/work/assertions ghcr.io/ghashtag/trios-trainer-igla
 
 # ---------- builder ----------
-FROM rust:1.86-slim AS builder
+# Bump to 1.90 (slim) — `is_multiple_of` for unsigned integers stabilized in 1.87.
+FROM rust:1.90-slim AS builder
 
 # git is required at runtime for ledger row push; we install in builder for cargo + final stage gets binary only
 RUN apt-get update && apt-get install -y --no-install-recommends \
