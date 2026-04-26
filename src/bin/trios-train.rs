@@ -60,6 +60,10 @@ struct Cli {
     /// Run 3-seed sweep {42, 43, 44} instead of single seed.
     #[arg(long)]
     sweep: bool,
+
+    /// Optimizer: adamw, muon, or muon-cwd (P1 lab).
+    #[arg(long, default_value = "adamw")]
+    optimizer: String,
 }
 
 fn main() -> Result<()> {

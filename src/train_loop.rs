@@ -581,6 +581,228 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     })
 }
 
+pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
+    let label = if use_cwd { "MuonCwd" } else { "Muon" };
+    eprintln!(
+        "=== P1 {} seed={} steps={} hidden={} ===",
+        label, args.seed, args.steps, args.hidden
+    );
+    let train = load_data(&args.train_path);
+    let val = load_data(&args.val_path);
+
+    let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
+    let d = model.attn.config().d_model;
+    let muon_lr = 0.0235f64;
+    let muon_mom = 0.95f64;
+    let muon_wd = 0.01f64;
+    let adamw_wd = 0.04f32;
+    let cwd_lambda = 0.01f64;
+
+    let mut opt_embed = AdamW::new(VOCAB * DIM, adamw_wd);
+    let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX)
+        .map(|_| AdamW::new(VOCAB * DIM, adamw_wd))
+        .collect();
+    let mut opt_proj_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
+        args.hidden * DIM,
+        args.hidden,
+        DIM,
+        muon_lr,
+        muon_mom,
+        muon_wd,
+    );
+    opt_proj_muon.ns_steps = 3;
+    let mut opt_attn_down_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
+        d * args.hidden,
+        d,
+        args.hidden,
+        muon_lr,
+        muon_mom,
+        muon_wd,
+    );
+    opt_attn_down_muon.ns_steps = 3;
+    let mut opt_attn_up_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
+        args.hidden * d,
+        args.hidden,
+        d,
+        muon_lr,
+        muon_mom,
+        muon_wd,
+    );
+    opt_attn_up_muon.ns_steps = 3;
+    let mut opt_head = AdamW::new(VOCAB * args.hidden, adamw_wd);
+
+    let mut cwd_opt: Option<crate::optimizer::MuonCwd> = if use_cwd {
+        Some(crate::optimizer::MuonCwd::new(
+            args.hidden * DIM,
+            muon_lr,
+            muon_mom,
+            muon_wd,
+            cwd_lambda,
+        ))
+    } else {
+        None
+    };
+
+    let init_bpb = evaluate(&model, &val);
+    eprintln!("Initial val_bpb={:.4}", init_bpb);
+    let mut ema_bpb = init_bpb;
+    let mut best_bpb = init_bpb;
+    let warmup = args.steps / 10;
+    let accum = 4;
+    let mut rng_s = args.seed.wrapping_add(7919);
+    let t0 = Instant::now();
+    let gf16_floor_step = (0.7 * args.steps as f32).floor() as usize;
+    let nca = NcaObjective::default();
+    let mut last_nca_entropy = 0.0f64;
+
+    for step in 1..=args.steps {
+        let lr = cosine_lr(step, args.steps, args.lr, warmup);
+        let muon_step_lr = muon_lr as f32 * lr / args.lr;
+        let mut ge = vec![0.0f32; VOCAB * DIM];
+        let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
+        let mut gp = vec![0.0f32; args.hidden * DIM];
+        let mut gh = vec![0.0f32; VOCAB * args.hidden];
+        let mut g_ad = vec![0.0f32; d * args.hidden];
+        let mut g_au = vec![0.0f32; args.hidden * d];
+
+        for _ in 0..accum {
+            rng_s = rng_s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let dl = train.len();
+            let ms = dl.saturating_sub(SEQ + 1);
+            if ms == 0 {
+                continue;
+            }
+            let cs = (rng_s as usize) % ms;
+            let chunk = &train[cs..cs + SEQ + 1];
+            let cnt = chunk.len().saturating_sub(NGRAM);
+            if cnt == 0 {
+                continue;
+            }
+            let ns = 8.min(cnt);
+            let mut pos = Vec::with_capacity(ns);
+            for _ in 0..ns {
+                rng_s = rng_s
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                pos.push((rng_s as usize) % cnt);
+            }
+            compute_grads(
+                &model, chunk, &pos, &mut ge, &mut gc, &mut gp, &mut gh, &mut g_ad, &mut g_au,
+            );
+        }
+
+        let tp = (accum * 8) as f32;
+        for x in ge.iter_mut() {
+            *x /= tp;
+        }
+        for g in gc.iter_mut() {
+            for x in g.iter_mut() {
+                *x /= tp;
+            }
+        }
+        for x in gp.iter_mut() {
+            *x /= tp;
+        }
+        for x in gh.iter_mut() {
+            *x /= tp;
+        }
+        for x in g_ad.iter_mut() {
+            *x /= tp;
+        }
+        for x in g_au.iter_mut() {
+            *x /= tp;
+        }
+
+        {
+            rng_s = rng_s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let dl = train.len();
+            let ms = dl.saturating_sub(SEQ + 1);
+            if ms > 0 {
+                let cs = (rng_s as usize) % ms;
+                let chunk = &train[cs..cs + SEQ + 1];
+                if chunk.len() > NGRAM {
+                    let fc = model.forward_cached(chunk, 0);
+                    let k = nca.k_states;
+                    let h_min = fc.hidden.iter().cloned().fold(f32::MAX, f32::min);
+                    let h_max = fc.hidden.iter().cloned().fold(f32::MIN, f32::max);
+                    let range = (h_max - h_min).max(1e-6);
+                    let nca_state: Vec<f32> = fc
+                        .hidden
+                        .iter()
+                        .map(|&h| (((h - h_min) / range) * (k as f32 - 1.0)).round().max(0.0))
+                        .collect();
+                    let (nca_loss_val, nca_ent) = nca_entropy_loss(
+                        &nca_state,
+                        k,
+                        nca.entropy_min,
+                        nca.entropy_max,
+                        nca.weight,
+                    );
+                    last_nca_entropy = nca_ent;
+                    if nca_loss_val > 0.0 {
+                        let scale = 1.0 + (nca_loss_val as f32).min(5.0);
+                        for x in gp.iter_mut() {
+                            *x *= scale;
+                        }
+                    }
+                }
+            }
+        }
+
+        opt_embed.update(&mut model.embed, &ge, lr);
+        for (ci, oc) in opt_ctx.iter_mut().enumerate() {
+            oc.update(&mut model.ctx[ci], &gc[ci], lr);
+        }
+        opt_proj_muon.step(&mut model.proj, &gp);
+        opt_attn_down_muon.step(&mut model.attn_down, &g_ad);
+        opt_attn_up_muon.step(&mut model.attn_up, &g_au);
+        opt_head.update(&mut model.lm_head, &gh, lr);
+
+        if let Some(ref mut cwd) = cwd_opt {
+            let mut cwd_gp = gp.clone();
+            cwd.step(&mut model.proj, &cwd_gp);
+        }
+
+        if step >= gf16_floor_step && step % args.eval_every == 0 {
+            gf16_floor(&mut model.embed);
+            gf16_floor(&mut model.proj);
+            gf16_floor(&mut model.lm_head);
+            for c in &mut model.ctx {
+                gf16_floor(c);
+            }
+        }
+
+        if step % args.eval_every == 0 || step == args.steps {
+            let vbpb = evaluate(&model, &val);
+            ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
+            if ema_bpb < best_bpb && ema_bpb.is_finite() {
+                best_bpb = ema_bpb;
+            }
+            println!(
+                "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
+                label,
+                args.seed,
+                step,
+                vbpb,
+                ema_bpb,
+                best_bpb,
+                last_nca_entropy,
+                t0.elapsed().as_secs_f64()
+            );
+        }
+    }
+
+    Ok(RunOutcome {
+        final_bpb: best_bpb as f64,
+        steps_done: args.steps,
+        seed: args.seed,
+    })
+}
+
 pub fn run_sweep(
     steps: usize,
     hidden: usize,
