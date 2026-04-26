@@ -3,16 +3,18 @@
 //! Implements masked prediction with EMA target encoder.
 //! Based on LeJEPA/LeWorldModel principles.
 
-pub mod masking;
 pub mod ema;
-pub mod predictor;
 pub mod loss;
+pub mod masking;
+pub mod predictor;
 
 // Re-export common types
-pub use masking::{MaskConfig, mask_spans, MaskResult, get_unmasked, get_masked};
-pub use ema::{EmaTarget, EmaConfig, ema_update, compute_decay};
-pub use predictor::{Predictor, PredictorConfig, PredictionOutput};
-pub use loss::{JepaLoss, JepaLossConfig, compute_jepa_loss, l2_normalize, mse_loss, cosine_similarity};
+pub use ema::{compute_decay, ema_update, EmaConfig, EmaTarget};
+pub use loss::{
+    compute_jepa_loss, cosine_similarity, l2_normalize, mse_loss, JepaLoss, JepaLossConfig,
+};
+pub use masking::{get_masked, get_unmasked, mask_spans, MaskConfig, MaskResult};
+pub use predictor::{PredictionOutput, Predictor, PredictorConfig};
 
 /// JEPA training configuration
 #[derive(Debug, Clone)]

@@ -3,7 +3,7 @@
 //! Basic training loop for Trinity 3k byte-level model
 
 use std::time::Instant;
-use trios_trainer::trinity_3k::{Trinity3kModel, Trinity3kConfig};
+use trios_trainer::trinity_3k::{Trinity3kConfig, Trinity3kModel};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Trinity 3k Simple Training for Parameter Golf #110");
@@ -12,11 +12,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Trinity 3k configuration
     let config = Trinity3kConfig::default();
-    
+
     println!("📋 Configuration:");
     println!("  • Vocab size: {} (3^6)", config.vocab_size);
     println!("  • Hidden dim: {} (3^5)", config.hidden_dim);
-    println!("  • Heads: {} (3^3) x dim: {} (3^2)", config.n_heads, config.head_dim);
+    println!(
+        "  • Heads: {} (3^3) x dim: {} (3^2)",
+        config.n_heads, config.head_dim
+    );
     println!("  • Layers: {}", config.n_layers);
     println!("  • Total params: {}", config.total_params());
 
@@ -72,10 +75,10 @@ fn train_trinity_3k(
         // Process data in batches
         for batch_start in (0..data.len() - seq_len).step_by(batch_size * seq_len) {
             let batch_end = (batch_start + batch_size * seq_len).min(data.len() - seq_len);
-            
+
             for i in (batch_start..batch_end).step_by(seq_len) {
                 let tokens = &data[i..i + seq_len + 1]; // +1 for targets
-                
+
                 let (loss, bpb) = model.loss_bpb(tokens);
                 epoch_loss += loss;
                 epoch_bpb += bpb;
@@ -87,7 +90,10 @@ fn train_trinity_3k(
                 total_steps += 1;
 
                 if total_steps % 10 == 0 {
-                    println!("  Step {}: Loss = {:.4}, BPB = {:.4}", total_steps, loss, bpb);
+                    println!(
+                        "  Step {}: Loss = {:.4}, BPB = {:.4}",
+                        total_steps, loss, bpb
+                    );
                 }
             }
         }
@@ -95,19 +101,30 @@ fn train_trinity_3k(
         if epoch_steps > 0 {
             let avg_loss = epoch_loss / epoch_steps as f32;
             let avg_bpb = epoch_bpb / epoch_steps as f32;
-            println!("  Epoch {}/{}: Avg Loss = {:.4}, Avg BPB = {:.4}", 
-                    epoch + 1, n_epochs, avg_loss, avg_bpb);
+            println!(
+                "  Epoch {}/{}: Avg Loss = {:.4}, Avg BPB = {:.4}",
+                epoch + 1,
+                n_epochs,
+                avg_loss,
+                avg_bpb
+            );
         }
     }
 
     let duration = start_time.elapsed();
-    println!("✅ Training completed in {:.2} seconds", duration.as_secs_f32());
+    println!(
+        "✅ Training completed in {:.2} seconds",
+        duration.as_secs_f32()
+    );
     println!("📊 Total steps: {}", total_steps);
 
     // Final evaluation
     let eval_data = &data[data.len() - 1000..]; // Last 1000 tokens for evaluation
     let (final_loss, final_bpb) = model.loss_bpb(eval_data);
-    println!("🎯 Final evaluation: Loss = {:.4}, BPB = {:.4}", final_loss, final_bpb);
+    println!(
+        "🎯 Final evaluation: Loss = {:.4}, BPB = {:.4}",
+        final_loss, final_bpb
+    );
 
     if final_bpb < 1.15 {
         println!("🎉 SUCCESS: BPB {:.4} < 1.15 target!", final_bpb);

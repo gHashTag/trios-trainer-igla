@@ -32,9 +32,18 @@ fn phi_constants_computed_match_stored() {
     let phi: f64 = (1.0 + 5.0_f64.sqrt()) / 2.0;
     assert!((inv::PHI - phi).abs() < 1e-12, "PHI mismatch");
     assert!((inv::PHI_SQ - (phi * phi)).abs() < 1e-12, "PHI_SQ mismatch");
-    assert!((inv::PHI_CUBE - (phi * phi * phi)).abs() < 1e-12, "PHI_CUBE mismatch");
-    assert!((inv::PHI_INV6 - phi.powi(-6)).abs() < 1e-8, "PHI_INV6 mismatch");
-    assert!((inv::ALPHA_PHI - phi.powi(-3) / 2.0).abs() < 1e-10, "ALPHA_PHI mismatch");
+    assert!(
+        (inv::PHI_CUBE - (phi * phi * phi)).abs() < 1e-12,
+        "PHI_CUBE mismatch"
+    );
+    assert!(
+        (inv::PHI_INV6 - phi.powi(-6)).abs() < 1e-8,
+        "PHI_INV6 mismatch"
+    );
+    assert!(
+        (inv::ALPHA_PHI - phi.powi(-3) / 2.0).abs() < 1e-10,
+        "ALPHA_PHI mismatch"
+    );
 }
 
 #[test]
@@ -46,7 +55,9 @@ fn lr_champion_is_alpha_phi_over_phi_cube() {
     assert!(
         inv::LR_CHAMPION >= inv::LR_SAFE_MIN && inv::LR_CHAMPION <= inv::LR_SAFE_MAX,
         "LR_CHAMPION {} not in safe range [{}, {}]",
-        inv::LR_CHAMPION, inv::LR_SAFE_MIN, inv::LR_SAFE_MAX
+        inv::LR_CHAMPION,
+        inv::LR_SAFE_MIN,
+        inv::LR_SAFE_MAX
     );
     // alpha_phi ≈ 0.118 matches strong coupling constant to 4 decimal places
     assert!(
@@ -90,7 +101,8 @@ fn asha_champion_survives_pruning() {
     assert!(
         inv::BPB_CHAMPION < inv::ASHA_PRUNE_THRESHOLD,
         "BPB_CHAMPION {} must be below ASHA_PRUNE_THRESHOLD {}",
-        inv::BPB_CHAMPION, inv::ASHA_PRUNE_THRESHOLD
+        inv::BPB_CHAMPION,
+        inv::ASHA_PRUNE_THRESHOLD
     );
 }
 

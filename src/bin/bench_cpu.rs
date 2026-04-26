@@ -25,9 +25,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         batch_size: 4,
         seq_len: 128,
         learning_rate: 0.001,
-        warmup_steps: 21,   // Fib #7
-        grad_clip: 0.618,   // phi^-1
-        log_every: 34,      // Fib #8
+        warmup_steps: 21, // Fib #7
+        grad_clip: 0.618, // phi^-1
+        log_every: 34,    // Fib #8
         checkpoint_path: "checkpoints/igla-gf16-cpu.bin".to_string(),
         ..Default::default()
     };
@@ -84,8 +84,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  Final Loss: {:.4}", run.metrics.final_loss);
     println!("  Total Time: {:.2}s", run.metrics.total_time_seconds);
     println!("  Avg ms/step: {:.2}", run.metrics.avg_ms_per_step);
-    println!("  Checkpoint Size: {:.2} MB",
-        run.metrics.checkpoint_size_bytes as f64 / (1024.0 * 1024.0));
+    println!(
+        "  Checkpoint Size: {:.2} MB",
+        run.metrics.checkpoint_size_bytes as f64 / (1024.0 * 1024.0)
+    );
     println!();
 
     // Save results to JSON
@@ -101,24 +103,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let checkpoint_mb = run.metrics.checkpoint_size_bytes as f64 / (1024.0 * 1024.0);
 
     if run.metrics.final_bpb < bpb_target {
-        println!("  ✅ BPB {:.4} < target {:.2}", run.metrics.final_bpb, bpb_target);
+        println!(
+            "  ✅ BPB {:.4} < target {:.2}",
+            run.metrics.final_bpb, bpb_target
+        );
     } else {
-        println!("  ❌ BPB {:.4} > target {:.2}", run.metrics.final_bpb, bpb_target);
+        println!(
+            "  ❌ BPB {:.4} > target {:.2}",
+            run.metrics.final_bpb, bpb_target
+        );
     }
 
     if run.metrics.total_time_seconds / 60.0 < time_target_minutes {
-        println!("  ✅ Time {:.1}min < target {:.0}min",
-            run.metrics.total_time_seconds / 60.0, time_target_minutes);
+        println!(
+            "  ✅ Time {:.1}min < target {:.0}min",
+            run.metrics.total_time_seconds / 60.0,
+            time_target_minutes
+        );
     } else {
-        println!("  ⚠️  Time {:.1}min > target {:.0}min (slower but acceptable)",
-            run.metrics.total_time_seconds / 60.0, time_target_minutes);
+        println!(
+            "  ⚠️  Time {:.1}min > target {:.0}min (slower but acceptable)",
+            run.metrics.total_time_seconds / 60.0,
+            time_target_minutes
+        );
     }
 
     if checkpoint_mb < size_target_mb {
-        println!("  ✅ Size {:.2}MB < target {:.0}MB", checkpoint_mb, size_target_mb);
+        println!(
+            "  ✅ Size {:.2}MB < target {:.0}MB",
+            checkpoint_mb, size_target_mb
+        );
     } else {
-        println!("  ❌ Size {:.2}MB > target {:.0}MB (needs optimization)",
-            checkpoint_mb, size_target_mb);
+        println!(
+            "  ❌ Size {:.2}MB > target {:.0}MB (needs optimization)",
+            checkpoint_mb, size_target_mb
+        );
     }
 
     Ok(())

@@ -21,11 +21,18 @@ fn load_data(path: &str) -> Vec<usize> {
 }
 
 fn softmax_cap(v: &mut [f32], softcap: f32) {
-    for x in v.iter_mut() { *x = (*x / softcap).tanh() * softcap; }
+    for x in v.iter_mut() {
+        *x = (*x / softcap).tanh() * softcap;
+    }
     let max = v.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mut sum = 0.0f32;
-    for x in v.iter_mut() { *x = (*x - max).exp(); sum += *x; }
-    for x in v.iter_mut() { *x /= sum; }
+    for x in v.iter_mut() {
+        *x = (*x - max).exp();
+        sum += *x;
+    }
+    for x in v.iter_mut() {
+        *x /= sum;
+    }
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -50,8 +57,13 @@ impl AdamW {
     fn new(size: usize, _lr: f32, wd: f32) -> Self {
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
         Self {
-            m: vec![0.0; size], v: vec![0.0; size], step: 0,
-            beta1: 1.0 / phi as f32, beta2: 0.999, eps: 1e-8, wd,
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+            beta1: 1.0 / phi as f32,
+            beta2: 0.999,
+            eps: 1e-8,
+            wd,
         }
     }
     fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
@@ -91,10 +103,20 @@ struct TrinityCpuModel {
 }
 
 impl TrinityCpuModel {
-    fn new(vocab: usize, dim: usize, ctx_dim: usize, bv: usize, bd: usize, ve_dim: usize, seed: u64) -> Self {
+    fn new(
+        vocab: usize,
+        dim: usize,
+        ctx_dim: usize,
+        bv: usize,
+        bd: usize,
+        ve_dim: usize,
+        seed: u64,
+    ) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let t = ((s >> 33) as f32) / (u32::MAX as f32);
             (t * 2.0 - 1.0) * (6.0f32 / (vocab + dim) as f32).sqrt()
         };
@@ -107,7 +129,12 @@ impl TrinityCpuModel {
             lm_head: (0..vocab * total_dim).map(|_| rng()).collect(),
             ve_proj: (0..ve_dim * total_dim).map(|_| rng()).collect(),
             ve_scale: vec![1.0f32; 2],
-            vocab, dim, ctx_dim, bigram_vocab: bv, bigram_dim: bd, ve_dim,
+            vocab,
+            dim,
+            ctx_dim,
+            bigram_vocab: bv,
+            bigram_dim: bd,
+            ve_dim,
         }
     }
 
@@ -128,8 +155,12 @@ impl TrinityCpuModel {
         let c_prev = &self.ctx_embed[prev_idx * cd..(prev_idx + 1) * cd];
         let b_hash = &self.bigram_embed[bh * bd..(bh + 1) * bd];
 
-        for j in 0..cd { repr[j] = e_cur[j] + c_prev[j]; }
-        for j in 0..bd { repr[cd + j] = e_cur[cd + j] + b_hash[j] * 0.1; }
+        for j in 0..cd {
+            repr[j] = e_cur[j] + c_prev[j];
+        }
+        for j in 0..bd {
+            repr[cd + j] = e_cur[cd + j] + b_hash[j] * 0.1;
+        }
         for j in 0..vd {
             let mut ve_val = 0.0f32;
             for (k, r) in repr.iter().enumerate().take(total) {
@@ -138,7 +169,11 @@ impl TrinityCpuModel {
             repr[cd + bd + j] = e_cur[cd + bd + j] + ve_val * self.ve_scale[0];
         }
 
-        let _sg: Vec<f32> = self.smear_gate.iter().map(|&g| 1.0 / (1.0 + (-g).exp())).collect();
+        let _sg: Vec<f32> = self
+            .smear_gate
+            .iter()
+            .map(|&g| 1.0 / (1.0 + (-g).exp()))
+            .collect();
         for r in repr.iter_mut() {
             *r *= 1.0;
         }
@@ -147,7 +182,9 @@ impl TrinityCpuModel {
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
-        if tokens.len() < 3 { return 0.0; }
+        if tokens.len() < 3 {
+            return 0.0;
+        }
         let v = self.vocab;
         let total = self.ctx_dim + self.bigram_dim + self.ve_dim;
         let mut total_loss = 0.0f32;
@@ -156,10 +193,12 @@ impl TrinityCpuModel {
             let repr = self.get_repr(tokens[i - 1], tokens[i]);
             let target = tokens[i + 1].min(v - 1);
 
-            let mut logits: Vec<f32> = (0..v).map(|vi| {
-                let w = &self.lm_head[vi * total..(vi + 1) * total];
-                repr.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
-            }).collect();
+            let mut logits: Vec<f32> = (0..v)
+                .map(|vi| {
+                    let w = &self.lm_head[vi * total..(vi + 1) * total];
+                    repr.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
+                })
+                .collect();
             softmax_cap(&mut logits, LOGIT_SOFTCAP);
 
             let p = logits[target].max(1e-10);
@@ -168,9 +207,18 @@ impl TrinityCpuModel {
         total_loss / (tokens.len() - 2) as f32
     }
 
-    fn train_step(&mut self, tokens: &[usize], lr: f32,
-        opt_e: &mut AdamW, opt_c: &mut AdamW, opt_b: &mut AdamW, opt_h: &mut AdamW) {
-        if tokens.len() < 3 { return; }
+    fn train_step(
+        &mut self,
+        tokens: &[usize],
+        lr: f32,
+        opt_e: &mut AdamW,
+        opt_c: &mut AdamW,
+        opt_b: &mut AdamW,
+        opt_h: &mut AdamW,
+    ) {
+        if tokens.len() < 3 {
+            return;
+        }
         let v = self.vocab;
         let total = self.ctx_dim + self.bigram_dim + self.ve_dim;
         let cd = self.ctx_dim;
@@ -189,10 +237,12 @@ impl TrinityCpuModel {
 
             let repr = self.get_repr(prev, cur);
 
-            let mut logits: Vec<f32> = (0..v).map(|vi| {
-                let w = &self.lm_head[vi * total..(vi + 1) * total];
-                repr.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
-            }).collect();
+            let mut logits: Vec<f32> = (0..v)
+                .map(|vi| {
+                    let w = &self.lm_head[vi * total..(vi + 1) * total];
+                    repr.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
+                })
+                .collect();
             softmax_cap(&mut logits, LOGIT_SOFTCAP);
 
             for (vi, prob) in logits.iter().enumerate() {
@@ -212,10 +262,18 @@ impl TrinityCpuModel {
         }
 
         let n = (tokens.len() - 2) as f32;
-        for g in grad_embed.iter_mut() { *g /= n; }
-        for g in grad_ctx.iter_mut() { *g /= n; }
-        for g in grad_bigram.iter_mut() { *g /= n; }
-        for g in grad_head.iter_mut() { *g /= n; }
+        for g in grad_embed.iter_mut() {
+            *g /= n;
+        }
+        for g in grad_ctx.iter_mut() {
+            *g /= n;
+        }
+        for g in grad_bigram.iter_mut() {
+            *g /= n;
+        }
+        for g in grad_head.iter_mut() {
+            *g /= n;
+        }
 
         opt_e.update(&mut self.embed, &grad_embed, lr);
         opt_c.update(&mut self.ctx_embed, &grad_ctx, lr);
@@ -236,17 +294,26 @@ fn evaluate(model: &TrinityCpuModel, tokens: &[usize], seq_len: usize) -> (f32, 
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
-        if end - c < 4 { continue; }
+        if end - c < 4 {
+            continue;
+        }
         let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() { total += loss / LN_2; n += 1; }
+        if loss.is_finite() {
+            total += loss / LN_2;
+            n += 1;
+        }
     }
-    if n == 0 { return (f32::MAX, f32::MAX); }
+    if n == 0 {
+        return (f32::MAX, f32::MAX);
+    }
     let bpb = total / n as f32;
     (bpb * LN_2, bpb)
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
-    if step < warmup { return base_lr * step as f32 / warmup as f32; }
+    if step < warmup {
+        return base_lr * step as f32 / warmup as f32;
+    }
     let progress = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
     let cosine = 0.5 * (1.0 + (std::f32::consts::PI * progress).cos());
     1e-5 + (base_lr - 1e-5) * cosine
@@ -267,9 +334,14 @@ fn main() {
         .unwrap_or(0.003);
 
     println!("=== Trinity CPU Model (PR#1722 params adapted) ===");
-    println!("arch: vocab={} ctx_dim={} bigram={}x{} ve_dim={} seq={} softcap={}", 
-        VOCAB, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, SEQ, LOGIT_SOFTCAP);
-    println!("opt: AdamW(phi beta1) wd=0.04 lr={} steps={} seed={}", base_lr, steps, seed);
+    println!(
+        "arch: vocab={} ctx_dim={} bigram={}x{} ve_dim={} seq={} softcap={}",
+        VOCAB, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, SEQ, LOGIT_SOFTCAP
+    );
+    println!(
+        "opt: AdamW(phi beta1) wd=0.04 lr={} steps={} seed={}",
+        base_lr, steps, seed
+    );
     println!();
 
     let tokens = load_data("data/tinyshakespeare.txt");
@@ -277,7 +349,8 @@ fn main() {
 
     let total_dim = CTX_DIM + BIGRAM_DIM + 16;
     let mut model = TrinityCpuModel::new(VOCAB, DIM, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, seed);
-    let mut ema_model = TrinityCpuModel::new(VOCAB, DIM, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, seed);
+    let mut ema_model =
+        TrinityCpuModel::new(VOCAB, DIM, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, seed);
 
     let mut opt_e = AdamW::new(VOCAB * total_dim, base_lr, 0.04);
     let mut opt_c = AdamW::new(VOCAB * CTX_DIM, base_lr, 0.04);
@@ -287,7 +360,10 @@ fn main() {
     let (init_loss, init_bpb) = evaluate(&model, &tokens, SEQ);
     println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>8}", "step", "loss", "bpb", "best_bpb", "ms");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
+        "step", "loss", "bpb", "best_bpb", "ms"
+    );
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
@@ -302,18 +378,24 @@ fn main() {
         model.train_step(seq, lr, &mut opt_e, &mut opt_c, &mut opt_b, &mut opt_h);
 
         for i in 0..model.embed.len() {
-            ema_model.embed[i] = ema_model.embed[i] * EMA_DECAY + model.embed[i] * (1.0 - EMA_DECAY);
+            ema_model.embed[i] =
+                ema_model.embed[i] * EMA_DECAY + model.embed[i] * (1.0 - EMA_DECAY);
         }
         for i in 0..model.lm_head.len() {
-            ema_model.lm_head[i] = ema_model.lm_head[i] * EMA_DECAY + model.lm_head[i] * (1.0 - EMA_DECAY);
+            ema_model.lm_head[i] =
+                ema_model.lm_head[i] * EMA_DECAY + model.lm_head[i] * (1.0 - EMA_DECAY);
         }
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
             let (eval_loss, eval_bpb) = evaluate(&ema_model, &tokens, SEQ);
-            if eval_bpb < best_bpb && eval_bpb.is_finite() { best_bpb = eval_bpb; }
-            println!("{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                step, eval_loss, eval_bpb, best_bpb, ms);
+            if eval_bpb < best_bpb && eval_bpb.is_finite() {
+                best_bpb = eval_bpb;
+            }
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                step, eval_loss, eval_bpb, best_bpb, ms
+            );
             results.push((step, eval_loss, eval_bpb));
         }
     }
@@ -321,8 +403,13 @@ fn main() {
     let total = t0.elapsed();
     println!();
     println!("=== Training Complete ===");
-    println!("Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} (EMA) | Delta: {:.4}",
-        total.as_secs_f64(), init_bpb, best_bpb, best_bpb - init_bpb);
+    println!(
+        "Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} (EMA) | Delta: {:.4}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        best_bpb - init_bpb
+    );
 
     let _ = fs::create_dir_all(".trinity/results");
     let result_json = serde_json::json!({
@@ -345,19 +432,33 @@ fn main() {
     });
 
     let rpath = format!(".trinity/results/trinity_pr1722_seed{}.json", seed);
-    fs::File::create(&rpath).unwrap()
-        .write_all(serde_json::to_string_pretty(&result_json).unwrap().as_bytes()).unwrap();
+    fs::File::create(&rpath)
+        .unwrap()
+        .write_all(
+            serde_json::to_string_pretty(&result_json)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     println!("Results: {}", rpath);
 
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let edir = ".trinity/experience";
     let _ = fs::create_dir_all(edir);
-    let epath = format!("{}/trios_{}.trinity", edir, chrono::Utc::now().format("%Y%m%d"));
+    let epath = format!(
+        "{}/trios_{}.trinity",
+        edir,
+        chrono::Utc::now().format("%Y%m%d")
+    );
     let entry = format!(
         "[{}] TASK: Trinity PR#1722 adapted training | seed={} | steps={} | bpb={:.4}->{:.4} | delta={:.4} | {:.1}s\n",
         ts, seed, steps, init_bpb, best_bpb, best_bpb - init_bpb, total.as_secs_f64()
     );
-    let _ = fs::OpenOptions::new().create(true).append(true)
-        .open(&epath).unwrap().write_all(entry.as_bytes());
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&epath)
+        .unwrap()
+        .write_all(entry.as_bytes());
     println!("Experience: {}", epath);
 }

@@ -113,7 +113,9 @@ impl Model {
         let ngram = num_ctx + 2;
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let lim = (6.0f32 / (3 * DIM) as f32).sqrt();
@@ -246,7 +248,11 @@ fn compute_grads(model: &Model, tokens: &[usize]) -> (Grads, f32) {
 
         let mut d_hr = vec![0.0f32; h];
         for i in 0..h {
-            d_hr[i] = if st.hidden_raw[i] > 0.0 { d_hid[i] } else { 0.0 };
+            d_hr[i] = if st.hidden_raw[i] > 0.0 {
+                d_hid[i]
+            } else {
+                0.0
+            };
         }
 
         let mut d_normed_proj = vec![0.0f32; DIM];
@@ -392,16 +398,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let h = hidden_dim;
     let wd = 0.04f32;
     let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
-    let mut opt_ctx: Vec<AdamW> = (0..num_ctx)
-        .map(|_| AdamW::new(VOCAB * DIM, wd))
-        .collect();
+    let mut opt_ctx: Vec<AdamW> = (0..num_ctx).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
     let mut opt_proj_up = AdamW::new(h * DIM, wd);
     let mut opt_proj_down = AdamW::new(DIM * h, wd);
 
     let mut acc_embed = vec![0.0f32; VOCAB * DIM];
-    let mut acc_ctx: Vec<Vec<f32>> = (0..num_ctx)
-        .map(|_| vec![0.0f32; VOCAB * DIM])
-        .collect();
+    let mut acc_ctx: Vec<Vec<f32>> = (0..num_ctx).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
     let mut acc_proj_up = vec![0.0f32; h * DIM];
     let mut acc_proj_down = vec![0.0f32; DIM * h];
 
@@ -437,7 +439,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         if step % ACCUM == 0 || step == steps {
-            let num_acc = if step % ACCUM == 0 { ACCUM } else { step % ACCUM };
+            let num_acc = if step % ACCUM == 0 {
+                ACCUM
+            } else {
+                step % ACCUM
+            };
             let inv = 1.0 / num_acc as f32;
             for x in acc_embed.iter_mut() {
                 *x *= inv;
@@ -486,10 +492,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             eprintln!(
                 "step={:5} val_bpb={:.4} best={:.4} t={}s",
-                step,
-                val_bpb,
-                best_bpb,
-                elapsed as u64
+                step, val_bpb, best_bpb, elapsed as u64
             );
         }
     }
