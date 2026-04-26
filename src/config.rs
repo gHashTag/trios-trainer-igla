@@ -56,7 +56,7 @@ pub struct OptimizerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataConfig {
-    pub corpus: String,            // "fineweb" | "tinyshakespeare" | "wikitext-103"
+    pub corpus: String, // "fineweb" | "tinyshakespeare" | "wikitext-103"
     pub batch_size: usize,
     pub batch_tokens: usize,
 }
@@ -96,16 +96,24 @@ impl TrainConfig {
     /// without rebuilding the image.
     pub fn apply_env_overrides(&mut self) {
         if let Ok(s) = std::env::var("TRIOS_SEED") {
-            if let Ok(v) = s.parse() { self.seed = v; }
+            if let Ok(v) = s.parse() {
+                self.seed = v;
+            }
         }
         if let Ok(s) = std::env::var("TRIOS_STEPS") {
-            if let Ok(v) = s.parse() { self.steps = v; }
+            if let Ok(v) = s.parse() {
+                self.steps = v;
+            }
         }
         if let Ok(s) = std::env::var("TRIOS_TARGET_BPB") {
-            if let Ok(v) = s.parse() { self.target_bpb = v; }
+            if let Ok(v) = s.parse() {
+                self.target_bpb = v;
+            }
         }
         if let Ok(s) = std::env::var("TRIOS_LR") {
-            if let Ok(v) = s.parse() { self.optimizer.lr = v; }
+            if let Ok(v) = s.parse() {
+                self.optimizer.lr = v;
+            }
         }
         if let Ok(s) = std::env::var("TRIOS_LEDGER_PUSH") {
             self.ledger.push = matches!(s.as_str(), "1" | "true" | "yes");

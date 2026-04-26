@@ -1,3 +1,10 @@
+#![allow(
+    clippy::needless_range_loop,
+    clippy::manual_is_multiple_of,
+    clippy::field_reassign_with_default,
+    clippy::doc_overindented_list_items,
+    dead_code
+)]
 //! # Hybrid Attention Block — Gate-2 + Gate-final Architecture (L-h2 → L-f1)
 //!
 //! Causal self-attention layers used by the hybrid ngram+attn trainer
@@ -44,7 +51,6 @@
 //! (lane discipline), the only out-of-file touch is a one-line
 //! `pub mod hybrid_attn;` re-export in [`crate::lib`].
 
-#![allow(clippy::needless_range_loop)]
 #![allow(clippy::too_many_arguments)]
 
 // use crate::invariants::{LR_SAFE_MAX, LR_SAFE_MIN, PHI_CUBE, PHI_SQ};
@@ -110,10 +116,7 @@ impl std::fmt::Display for HybridAttnError {
                 "INV-13 violation: qk_gain={qk_gain} not in pre-registered \
                  set {{φ²={PHI_SQ}, φ³={PHI_CUBE}}}",
             ),
-            Self::Shape {
-                d_model,
-                num_heads,
-            } => write!(
+            Self::Shape { d_model, num_heads } => write!(
                 f,
                 "shape invariant failed: d_model={d_model}, num_heads={num_heads} \
                  (both must be > 0 and d_model % num_heads == 0)",
@@ -179,10 +182,7 @@ impl HybridAttnConfig {
                 qk_gain: self.qk_gain,
             });
         }
-        if self.d_model == 0
-            || self.num_heads == 0
-            || self.d_model % self.num_heads != 0
-        {
+        if self.d_model == 0 || self.num_heads == 0 || self.d_model % self.num_heads != 0 {
             return Err(HybridAttnError::Shape {
                 d_model: self.d_model,
                 num_heads: self.num_heads,
@@ -302,11 +302,7 @@ impl HybridAttn {
     /// pre-registered block, because the measured quantity is the
     /// learning dynamic (`val_bpb_at_step_54000`) not wall-clock.
     /// Optimisation lives downstream in `hybrid_train.rs` (L-h1).
-    pub fn forward(
-        &self,
-        tokens: &[f32],
-        seq_len: usize,
-    ) -> Result<Vec<f32>, HybridAttnError> {
+    pub fn forward(&self, tokens: &[f32], seq_len: usize) -> Result<Vec<f32>, HybridAttnError> {
         if tokens.iter().any(|x| !x.is_finite()) {
             return Err(HybridAttnError::NonFinite);
         }
@@ -319,7 +315,8 @@ impl HybridAttn {
             seq_len * d,
         );
 
-        let layer1_out = self.forward_single_layer(tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo)?;
+        let layer1_out =
+            self.forward_single_layer(tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo)?;
         let residual1 = add_residual(tokens, &layer1_out);
         let normed1 = layer_norm_rows(&residual1, seq_len, d);
 
@@ -330,7 +327,9 @@ impl HybridAttn {
             return Ok(normed1);
         }
 
-        let layer2_out = self.forward_single_layer(&normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2)?;
+        let layer2_out = self.forward_single_layer(
+            &normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2,
+        )?;
         let residual2 = add_residual(&normed1, &layer2_out);
         let out = layer_norm_rows(&residual2, seq_len, d);
 
@@ -376,8 +375,7 @@ impl HybridAttn {
                 for j in 0..=i {
                     let w = scores[j];
                     for k_idx in 0..d_head {
-                        attn_out[i * d + head_offset + k_idx] +=
-                            w * v[j * d + head_offset + k_idx];
+                        attn_out[i * d + head_offset + k_idx] += w * v[j * d + head_offset + k_idx];
                     }
                 }
             }
@@ -568,7 +566,10 @@ mod falsifiers {
         let tokens = vec![0.0_f32; seq_len * d];
         let out = block.forward(&tokens, seq_len).unwrap();
         assert_eq!(out.len(), seq_len * d);
-        assert!(out.iter().all(|x| x.is_finite()), "2-layer output must be finite");
+        assert!(
+            out.iter().all(|x| x.is_finite()),
+            "2-layer output must be finite"
+        );
     }
 
     /// L-f1 Gate-final: 1-layer mode must still work (backward compat).

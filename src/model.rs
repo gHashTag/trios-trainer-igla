@@ -1,3 +1,9 @@
+#![allow(
+    clippy::needless_range_loop,
+    dead_code,
+    unused_imports,
+    clippy::excessive_precision
+)]
 //! Model module with NgramModel stub (L-T1)
 //!
 //! This file contains the champion model implementation.

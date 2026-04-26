@@ -11,10 +11,13 @@
 
 use anyhow::Result;
 use clap::Parser;
-use trios_trainer::{TrainConfig, run};
+use trios_trainer::{run, TrainConfig};
 
 #[derive(Parser, Debug)]
-#[command(name = "trios-train", about = "IGLA RACE training pipeline (gHashTag/trios#143)")]
+#[command(
+    name = "trios-train",
+    about = "IGLA RACE training pipeline (gHashTag/trios#143)"
+)]
 struct Cli {
     /// Path to TOML config (champion / gate2-attempt / needle-rush variant).
     #[arg(long, env = "TRIOS_CONFIG")]

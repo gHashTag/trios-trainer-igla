@@ -1,9 +1,10 @@
+#![allow(dead_code, clippy::excessive_precision)]
 //! AdamW + Muon optimizer with phi-based defaults.
 //!
 //! Migrated from `trios-train-cpu/src/optimizer.rs` (L-T1, L-T2).
 
 use crate::config::OptimizerConfig;
-use anyhow::{Result, bail};
+use anyhow::{bail, Result};
 
 const PHI: f64 = 1.618033988749895;
 const PHI_SQ: f64 = PHI * PHI;
@@ -24,12 +25,24 @@ pub struct AdamW {
 
 impl AdamW {
     pub fn new(size: usize, beta1: f32, beta2: f32, wd: f32) -> Self {
-        Self { m: vec![0.0; size], v: vec![0.0; size], step: 0, beta1, beta2, wd }
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+            beta1,
+            beta2,
+            wd,
+        }
     }
 
     pub fn with_phi_defaults(size: usize) -> Self {
         let lr = (1.0 / PHI_CUBE) as f32;
-        Self::new(size, 0.9, 0.999, lr.max(LR_SAFE_MIN as f32).min(LR_SAFE_MAX as f32))
+        Self::new(
+            size,
+            0.9,
+            0.999,
+            lr.max(LR_SAFE_MIN as f32).min(LR_SAFE_MAX as f32),
+        )
     }
 
     pub fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
@@ -49,7 +62,14 @@ impl AdamW {
     }
 
     pub fn new_with_lr(size: usize, _lr: f64) -> Self {
-        Self { m: vec![0.0; size], v: vec![0.0; size], step: 0, beta1: 0.9, beta2: 0.999, wd: 0.01 }
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+            beta1: 0.9,
+            beta2: 0.999,
+            wd: 0.01,
+        }
     }
 
     pub fn reset(&mut self) {
@@ -73,7 +93,13 @@ pub struct MuonOptimizer {
 
 impl MuonOptimizer {
     pub fn new(size: usize, lr: f64, momentum_beta: f64, wd: f64) -> Self {
-        Self { momentum: vec![0.0; size], lr, momentum_beta, wd, step: 0 }
+        Self {
+            momentum: vec![0.0; size],
+            lr,
+            momentum_beta,
+            wd,
+            step: 0,
+        }
     }
 
     pub fn update(&mut self, params: &mut [f32], grads: &[f32]) {
@@ -113,7 +139,12 @@ pub fn build_muon(param_count: usize) -> MuonOptimizer {
 pub fn build(cfg: &OptimizerConfig) -> Result<AdamWCpu> {
     let size = 1;
     match cfg.kind.as_str() {
-        "adamw" => Ok(AdamW::new(size, cfg.beta1 as f32, cfg.beta2 as f32, cfg.weight_decay as f32)),
+        "adamw" => Ok(AdamW::new(
+            size,
+            cfg.beta1 as f32,
+            cfg.beta2 as f32,
+            cfg.weight_decay as f32,
+        )),
         "muon" => Ok(AdamW::with_phi_defaults(size)),
         other => bail!("unknown optimizer kind: {other}"),
     }
