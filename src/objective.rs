@@ -226,15 +226,25 @@ pub fn cross_entropy_loss(logits: &[f32], targets: &[usize]) -> f64 {
         let log_prob = logits[offset + target] - max_logit - sum_exp.ln();
         total_loss -= log_prob;
     }
-    total_loss / targets.len() as f64
+    (total_loss / targets.len() as f32) as f64
 }
 
 pub fn combined_loss(logits: &[f32], targets: &[usize]) -> f64 {
     cross_entropy_loss(logits, targets)
 }
 
-pub fn build(_cfg: &str) -> Box<dyn Fn(&[f32], &[usize]) -> f64> {
+pub fn build(cfg: &crate::config::ObjectiveConfig) -> anyhow::Result<Objective> {
+    Ok(Objective { w_ce: cfg.w_ce, w_jepa: cfg.w_jepa, w_nca: cfg.w_nca })
+}
+
+pub fn build_fn(_cfg: &str) -> Box<dyn Fn(&[f32], &[usize]) -> f64> {
     Box::new(|logits, targets| cross_entropy_loss(logits, targets))
+}
+
+impl Objective {
+    pub fn from_config(cfg: &crate::config::ObjectiveConfig) -> Self {
+        Self { w_ce: cfg.w_ce, w_jepa: cfg.w_jepa, w_nca: cfg.w_nca }
+    }
 }
 
 pub struct Objective {

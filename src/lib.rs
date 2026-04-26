@@ -33,6 +33,7 @@ pub mod checkpoint;
 pub mod ledger;
 pub mod train_loop;
 pub mod invariants;
+pub mod champion;
 
 pub use config::TrainConfig;
 pub use train_loop::{run, RunOutcome};

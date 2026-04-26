@@ -49,7 +49,7 @@
 
 // use crate::invariants::{LR_SAFE_MAX, LR_SAFE_MIN, PHI_CUBE, PHI_SQ};
 // Placeholder phi constants for L-T1 (TODO: replace with invariants import)
-const PHI: f64 = (1.0 + 5.0_f64.sqrt()) / 2.0;
+const PHI: f64 = 1.618033988749895;
 const PHI_SQ: f64 = PHI * PHI;
 const PHI_CUBE: f64 = PHI * PHI * PHI;
 const LR_SAFE_MIN: f64 = 0.002;

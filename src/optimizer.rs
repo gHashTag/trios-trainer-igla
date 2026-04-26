@@ -2,13 +2,16 @@
 //!
 //! Migrated from `trios-train-cpu/src/optimizer.rs` (L-T1, L-T2).
 
+use crate::config::OptimizerConfig;
 use anyhow::{Result, bail};
 
-const PHI: f64 = (1.0 + 5.0_f64.sqrt()) / 2.0;
+const PHI: f64 = 1.618033988749895;
 const PHI_SQ: f64 = PHI * PHI;
 const PHI_CUBE: f64 = PHI * PHI * PHI;
-const LR_SAFE_MIN: f64 = 0.002;
-const LR_SAFE_MAX: f64 = 0.007;
+pub const LR_SAFE_MIN: f64 = 0.002;
+pub const LR_SAFE_MAX: f64 = 0.007;
+
+pub type AdamWCpu = AdamW;
 
 pub struct AdamW {
     m: Vec<f32>,
@@ -83,10 +86,35 @@ impl MuonOptimizer {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum OptimizerKind {
+    AdamW,
+    Muon,
+}
+
+pub fn phi_lr_schedule(step: usize, max_steps: usize, base_lr: f64) -> f64 {
+    let warmup = (max_steps as f64 * 0.05) as usize;
+    if step < warmup {
+        base_lr * step as f64 / warmup.max(1) as f64
+    } else {
+        let p = (step - warmup) as f64 / (max_steps - warmup).max(1) as f64;
+        1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f64::consts::PI * p).cos())
+    }
+}
+
 pub fn build_adamw_phi_defaults(param_count: usize) -> AdamW {
     AdamW::with_phi_defaults(param_count)
 }
 
 pub fn build_muon(param_count: usize) -> MuonOptimizer {
     MuonOptimizer::new(param_count, 0.004, 0.95, 0.01)
+}
+
+pub fn build(cfg: &OptimizerConfig) -> Result<AdamWCpu> {
+    let size = 1;
+    match cfg.kind.as_str() {
+        "adamw" => Ok(AdamW::new(size, cfg.beta1 as f32, cfg.beta2 as f32, cfg.weight_decay as f32)),
+        "muon" => Ok(AdamW::with_phi_defaults(size)),
+        other => bail!("unknown optimizer kind: {other}"),
+    }
 }
