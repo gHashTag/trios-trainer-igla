@@ -11,14 +11,14 @@ pub struct GF8 {
 }
 
 impl GF8 {
-    const SIGN_BIT: u8 = 0x80;  // 1000_0000
-    const EXP_MASK: u8 = 0x70;   // 0111_0000
-    const MANT_MASK: u8 = 0x0F;  // 0000_1111
+    const SIGN_BIT: u8 = 0x80; // 1000_0000
+    const EXP_MASK: u8 = 0x70; // 0111_0000
+    const MANT_MASK: u8 = 0x0F; // 0000_1111
 
     const EXP_BITS: u8 = 3;
     const MANT_BITS: u8 = 4;
 
-    const EXP_BIAS: i8 = 3;  // 2^(3-1) - 1
+    const EXP_BIAS: i8 = 3; // 2^(3-1) - 1
 
     /// Create GF8 from f32 (quantization)
     pub fn from_f32(value: f32) -> Self {
@@ -31,8 +31,13 @@ impl GF8 {
 
         // Handle infinity and NaN
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: (sign << 7) | 0x79,
+                };
+            }
             return Self {
-                bits: (sign << 7) | 0x78,  // exp = all 1s
+                bits: (sign << 7) | 0x70,
             };
         }
 
@@ -48,35 +53,33 @@ impl GF8 {
 
         // Clamp exponent
         if gf8_exp < 0 {
-            return Self { bits: 0 };  // Underflow to zero
+            return Self { bits: 0 };
         }
-        if gf8_exp > 7 {
-            gf8_exp = 7;  // Max exponent
+        if gf8_exp >= 7 {
+            return Self {
+                bits: (sign << 7) | (6 << 4) | 15,
+            };
         }
 
-        // Round mantissa: 23 bits → 4 bits
-        // Use φ-weighted rounding: favor rounding toward nearest with φ-weighted bias
         let mut mant_rounded = (f32_mant >> (23 - Self::MANT_BITS)) as u8;
         let remainder = (f32_mant >> (23 - Self::MANT_BITS - 1)) & 1;
 
-        // φ-weighted rounding: bias = φ * 0.5 ≈ 0.809
-        if remainder == 1 && (f32_mant & ((1 << (23 - Self::MANT_BITS - 1)) - 1)) > 0 {
-            let phi_bias = (0.809 * 256.0) as u32;
-            if f32_mant & ((1 << (23 - Self::MANT_BITS)) - 1) > phi_bias {
-                mant_rounded += 1;
-            }
-        } else if remainder == 1 {
+        if remainder == 1 {
             mant_rounded += 1;
         }
 
-        // Handle mantissa overflow
         if mant_rounded >= 16 {
             mant_rounded = 0;
             gf8_exp += 1;
-            if gf8_exp > 7 {
-                gf8_exp = 7;
-                mant_rounded = 15;
+            if gf8_exp >= 7 {
+                return Self {
+                    bits: (sign << 7) | (6 << 4) | 15,
+                };
             }
+        }
+
+        if gf8_exp == 0 && mant_rounded == 0 && sign == 0 {
+            mant_rounded = 1;
         }
 
         Self {
@@ -90,7 +93,11 @@ impl GF8 {
             return 0.0;
         }
 
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0 } else { 1.0 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0
+        } else {
+            1.0
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> 4) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 
@@ -104,11 +111,7 @@ impl GF8 {
         }
 
         // Reconstruct value
-        let exp_val = if exp > 0 {
-            2.0_f32.powi(exp - Self::EXP_BIAS as i32)
-        } else {
-            0.0
-        };
+        let exp_val = 2.0_f32.powi(exp - Self::EXP_BIAS as i32);
 
         let mant_val = 1.0 + (mant as f32) / 16.0;
 
@@ -140,8 +143,8 @@ impl GF8 {
     }
 
     /// Range of representable values
-    pub const MIN_POSITIVE: f32 = 2.0_f32.powi(-3);  // 2^(-3) ≈ 0.125
-    pub const MAX: f32 = 15.75;  // (2 - 1/16) * 2^4
+    pub const MIN_POSITIVE: f32 = 0.125;
+    pub const MAX: f32 = 15.5;
 }
 
 impl Clone for GF8 {
