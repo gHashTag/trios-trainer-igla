@@ -9,21 +9,29 @@
 
 use std::fmt;
 
+/// GoldenFloat16 - 16-bit φ-optimized floating point format
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct GF16(pub u16);
 
 impl GF16 {
+    // Bit layout: [15: sign] [14:9: exponent (6 bits)] [8:0: mantissa (9 bits)]
     const SIGN_MASK: u16 = 0x8000;
-    const EXP_MASK: u16 = 0x7E00;
-    const MANTISSA_MASK: u16 = 0x01FF;
+    const EXP_MASK: u16 = 0x7E00;   // bits 14-9 for 6-bit exponent
+    const MANTISSA_MASK: u16 = 0x01FF; // bits 8-0 for 9-bit mantissa
     const EXP_BIAS: i32 = 15;
 
+    /// Zero (positive)
     pub const ZERO: GF16 = GF16(0x0000);
+    /// Negative zero
     pub const NEG_ZERO: GF16 = GF16(0x8000);
+    /// Infinity (sign=0, exp=63, mantissa=0)
     pub const INF: GF16 = GF16(0x7E00);
+    /// Negative infinity (sign=1, exp=63, mantissa=0)
     pub const NEG_INF: GF16 = GF16(0xFE00);
+    /// NaN (quiet - sign=0, exp=63, mantissa=0x1FF)
     pub const NAN: GF16 = GF16(0x7FFF);
 
+    /// Create GF16 from f32
     #[must_use]
     pub fn from_f32(val: f32) -> Self {
         if val == 0.0 {
@@ -58,6 +66,7 @@ impl GF16 {
         GF16(sign | ((exp as u16) << 9) | mantissa)
     }
 
+    /// Convert GF16 to f32
     #[must_use]
     pub fn to_f32(self) -> f32 {
         let bits = self.0;
@@ -86,6 +95,7 @@ impl GF16 {
         f32::from_bits((sign as u32) << 31 | (f32_exp as u32) << 23 | f32_mant)
     }
 
+    /// φ-distance of this format (constant for GF16)
     #[must_use]
     pub fn phi_distance() -> f64 {
         let ratio = 6.0_f64 / 9.0_f64;
@@ -93,43 +103,51 @@ impl GF16 {
         (ratio - inv_phi).abs()
     }
 
+    /// Get exponent bits (biased)
     #[must_use]
     pub fn exponent(self) -> i32 {
         ((self.0 & Self::EXP_MASK) >> 9) as i32
     }
 
+    /// Get mantissa bits
     #[must_use]
     pub fn mantissa(self) -> u16 {
         self.0 & Self::MANTISSA_MASK
     }
 
+    /// Is this a NaN?
     #[must_use]
     pub fn is_nan(self) -> bool {
         let exp = (self.0 & Self::EXP_MASK) >> 9;
         exp == 63 && (self.0 & Self::MANTISSA_MASK) != 0
     }
 
+    /// Is this infinite?
     #[must_use]
     pub fn is_infinite(self) -> bool {
         let exp = (self.0 & Self::EXP_MASK) >> 9;
         exp == 63 && (self.0 & Self::MANTISSA_MASK) == 0
     }
 
+    /// Is this finite?
     #[must_use]
     pub fn is_finite(self) -> bool {
         (self.0 & Self::EXP_MASK) >> 9 != 63
     }
 
+    /// Sign bit
     #[must_use]
     pub fn is_sign_negative(self) -> bool {
         (self.0 & Self::SIGN_MASK) != 0
     }
 
+    /// Raw bits
     #[must_use]
     pub fn to_bits(self) -> u16 {
         self.0
     }
 
+    /// From raw bits
     #[must_use]
     pub fn from_bits(bits: u16) -> Self {
         GF16(bits)
@@ -195,6 +213,7 @@ impl From<f64> for GF16 {
     }
 }
 
+/// GF16 array for vector operations
 #[derive(Clone, Default)]
 pub struct GF16Vec {
     data: Vec<GF16>,
@@ -260,6 +279,7 @@ mod tests {
         let z = GF16::from_f32(-0.0);
         assert_eq!(z, GF16::NEG_ZERO);
         assert!(z.is_sign_negative());
+        // -0.0 == 0.0 in IEEE 754; check the bit pattern instead
         assert_eq!(z.to_f32().to_bits(), (-0.0_f32).to_bits());
     }
 
@@ -310,6 +330,7 @@ mod tests {
         let tiny = GF16::from_f32(1e-10);
         assert_eq!(tiny, GF16::ZERO);
         let huge = GF16::from_f32(1e10);
+        // clamped to max normal (exp=62), not infinity
         assert!(huge.is_finite());
     }
 
@@ -330,6 +351,7 @@ mod tests {
     }
 }
 
+/// Quantization error metrics for GF16
 #[derive(Debug, Clone)]
 pub struct QuantizationMetrics {
     pub max_error_pct: f64,
@@ -371,6 +393,7 @@ impl QuantizationMetrics {
     }
 }
 
+/// Benchmark GF16 quantization on random weights
 #[must_use]
 pub fn benchmark_quantization(n: usize) -> QuantizationMetrics {
     use rand::Rng;

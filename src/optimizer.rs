@@ -1,30 +1,61 @@
 //! Optimizer for IGLA-GF16
 //!
-//! AdamW + Muon + φ-LR schedule. Migrated from `trios-train-cpu/src/optimizer.rs`.
+//! AdamW optimizer with phi-based hyperparameters.
 
-use anyhow::{Result, bail};
-use crate::config::OptimizerConfig;
-
+/// AdamW optimizer with phi-based hyperparameters
+///
+/// Uses golden ratio-derived constants:
+/// - beta1 = φ^(-1) ≈ 0.618
+/// - weight_decay = α_φ ≈ 0.11803
 #[derive(Debug, Clone)]
 pub struct AdamWCpu {
+    /// Learning rate
     pub lr: f64,
+
+    /// First moment decay rate (φ^(-1) ≈ 0.618)
     pub beta1: f64,
+
+    /// Second moment decay rate (typically 0.999)
     pub beta2: f64,
+
+    /// Weight decay coefficient (α_φ ≈ 0.11803)
     pub weight_decay: f64,
+
+    /// Numerical stability constant
     pub eps: f64,
+
+    /// Current step
     step: usize,
+
+    /// First moment estimate (same size as parameters, stored as f64 for precision)
     m: Vec<f64>,
+
+    /// Second moment estimate (same size as parameters, stored as f64 for precision)
     v: Vec<f64>,
 }
 
 impl AdamWCpu {
+    /// Create a new AdamW optimizer with phi-based defaults
+    ///
+    /// # Arguments
+    ///
+    /// * `param_count` - Number of parameters to optimize
+    /// * `lr` - Learning rate (default: α_φ ≈ 0.11803)
+    ///
+    /// # Returns
+    ///
+    /// A new AdamW optimizer instance
     pub fn new(param_count: usize, lr: f64) -> Self {
-        let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
+        // Phi-based constants
+        let phi = (1.0 + 5.0_f64.sqrt()) / 2.0; // φ ≈ 1.618
+        let beta1 = 1.0 / phi; // φ^(-1) ≈ 0.618
+        let weight_decay = 1.0 / (phi * phi * phi); // α_φ ≈ 0.11803
+
         Self {
             lr,
-            beta1: 1.0 / phi,
+            beta1,
             beta2: 0.999,
-            weight_decay: 1.0 / (phi * phi * phi),
+            weight_decay,
             eps: 1e-8,
             step: 0,
             m: vec![0.0; param_count],
@@ -32,61 +63,111 @@ impl AdamWCpu {
         }
     }
 
+    /// Create a new AdamW optimizer with default learning rate (α_φ)
     pub fn with_phi_defaults(param_count: usize) -> Self {
         let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
-        Self::new(param_count, 1.0 / (phi * phi * phi))
+        let lr = 1.0 / (phi * phi * phi); // α_φ ≈ 0.11803
+        Self::new(param_count, lr)
     }
 
-    pub fn with_params(param_count: usize, lr: f64, beta1: f64, beta2: f64, weight_decay: f64) -> Self {
-        Self { lr, beta1, beta2, weight_decay, eps: 1e-8, step: 0, m: vec![0.0; param_count], v: vec![0.0; param_count] }
+    /// Create a new AdamW optimizer with custom hyperparameters
+    pub fn with_params(
+        param_count: usize,
+        lr: f64,
+        beta1: f64,
+        beta2: f64,
+        weight_decay: f64,
+    ) -> Self {
+        Self {
+            lr,
+            beta1,
+            beta2,
+            weight_decay,
+            eps: 1e-8,
+            step: 0,
+            m: vec![0.0; param_count],
+            v: vec![0.0; param_count],
+        }
     }
 
+    /// Perform a single optimization step
+    ///
+    /// # Arguments
+    ///
+    /// * `params` - Parameters to update (modified in-place)
+    /// * `gradients` - Gradients for the parameters
     pub fn step(&mut self, params: &mut [f32], gradients: &[f32]) {
-        assert_eq!(params.len(), gradients.len(), "params and gradients must have same length");
-        assert_eq!(params.len(), self.m.len(), "parameter count mismatch with optimizer state");
+        assert_eq!(
+            params.len(),
+            gradients.len(),
+            "params and gradients must have same length"
+        );
+        assert_eq!(
+            params.len(),
+            self.m.len(),
+            "parameter count mismatch with optimizer state"
+        );
 
         self.step += 1;
 
+        // Bias-corrected learning rate
         let bias_correction1 = 1.0 - self.beta1.powi(self.step as i32);
         let bias_correction2 = 1.0 - self.beta2.powi(self.step as i32);
         let step_size = self.lr * bias_correction2.sqrt() / bias_correction1;
 
+        // Update each parameter
         for i in 0..params.len() {
+            // Apply weight decay (decoupled from gradients in AdamW)
             params[i] -= self.weight_decay as f32 * params[i];
 
+            // Update biased first moment estimate
             self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * gradients[i] as f64;
 
+            // Update biased second raw moment estimate
             self.v[i] =
                 self.beta2 * self.v[i] + (1.0 - self.beta2) * (gradients[i] * gradients[i]) as f64;
 
+            // Compute bias-corrected estimates
             let m_hat = self.m[i] / bias_correction1;
             let v_hat = self.v[i] / bias_correction2;
 
+            // Update parameter
             params[i] -=
                 step_size as f32 * (m_hat as f32 / ((v_hat.sqrt() as f32) + self.eps as f32));
         }
     }
 
+    /// Reset optimizer state
     pub fn reset(&mut self) {
         self.step = 0;
         self.m.fill(0.0f64);
         self.v.fill(0.0f64);
     }
 
+    /// Get current step number
     pub fn step_count(&self) -> usize {
         self.step
     }
 }
 
+/// Simple SGD optimizer with momentum
 #[derive(Debug, Clone)]
 pub struct SGDMomentum {
+    /// Learning rate
     pub lr: f64,
+
+    /// Momentum coefficient
     pub momentum: f64,
+
+    /// Current step
     step: usize,
+
+    /// Velocity buffer
     velocity: Vec<f32>,
 }
 
 impl SGDMomentum {
+    /// Create a new SGD with momentum optimizer
     pub fn new(param_count: usize, lr: f64, momentum: f64) -> Self {
         Self {
             lr,
@@ -96,24 +177,41 @@ impl SGDMomentum {
         }
     }
 
+    /// Perform a single optimization step
     pub fn step(&mut self, params: &mut [f32], gradients: &[f32]) {
         assert_eq!(params.len(), gradients.len());
 
         self.step += 1;
 
         for i in 0..params.len() {
+            // Update velocity
             self.velocity[i] =
                 self.momentum as f32 * self.velocity[i] - self.lr as f32 * gradients[i];
 
+            // Update parameter
             params[i] += self.velocity[i];
         }
     }
 
+    /// Get current step number
     pub fn step_count(&self) -> usize {
         self.step
     }
 }
 
+/// Muon optimizer — Momentum + Newton-Schulz Orthogonalization
+///
+/// Reference: arXiv:2604.01472, Keller Jordan's Muon post
+///
+/// Key idea: orthogonalize the momentum matrix using Newton-Schulz iteration
+/// before applying the update. This preserves the spectral structure of gradients
+/// and leads to ~35% faster convergence vs AdamW.
+///
+/// NS5 quintic polynomial (5 steps):
+///   G_{k+1} = a*G + b*(G@G^T)@G + c*(G@G^T)^2@G
+///   where a=3.4445, b=-4.7750, c=2.0315
+///
+/// Applied only to hidden layers (not embedding/output), per original Muon spec.
 #[derive(Debug, Clone)]
 pub struct MuonOptimizer {
     pub lr: f64,
@@ -264,6 +362,15 @@ fn frobenius_norm(m: &[f32]) -> f32 {
     m.iter().map(|&x| x * x).sum::<f32>().sqrt().max(1e-8)
 }
 
+/// NS5 quintic Newton-Schulz iteration
+///
+/// G_{k+1} = a*G + b*(G^T*G)*G + c*(G^T*G)^2*G
+///
+/// Uses M^T*M form (cols x cols) for efficiency vs M*M^T (rows x rows).
+/// Mathematically equivalent: M*(M^T*M)^k = (M*M^T)^k*M by associativity.
+///
+/// Default coefficients from Keller Jordan's Muon:
+///   a = 3.4445, b = -4.7750, c = 2.0315
 fn newton_schulz_5(m: &[f32], rows: usize, cols: usize, a: f32, b: f32, c: f32) -> Vec<f32> {
     let mut mt_m = vec![0.0f32; cols * cols];
     for i in 0..cols {
@@ -316,6 +423,7 @@ fn newton_schulz_5(m: &[f32], rows: usize, cols: usize, a: f32, b: f32, c: f32) 
     result
 }
 
+/// Legacy cubic Newton-Schulz step (1.5*X - 0.5*X*X^T*X)
 #[allow(dead_code)]
 fn newton_schulz_cubic(m: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     let mut mt_m = vec![0.0f32; cols * cols];
@@ -347,6 +455,10 @@ fn newton_schulz_cubic(m: &[f32], rows: usize, cols: usize) -> Vec<f32> {
     result
 }
 
+/// Unified optimizer handle for R12 experiment runner and future sweeps
+///
+/// Allows switching between AdamW and Muon without code duplication.
+/// Both variants expose the same step()/reset() interface.
 pub enum OptimizerKind {
     AdamW(AdamWCpu),
     Muon(MuonOptimizer),
@@ -368,28 +480,49 @@ impl OptimizerKind {
     }
 }
 
+/// Phi-based learning rate schedule
+///
+/// Returns the learning rate for a given step using the φ-schedule.
+///
+/// # Arguments
+///
+/// * `step` - Current training step
+/// * `base_lr` - Base learning rate
+/// * `warmup_steps` - Number of warmup steps
+///
+/// # Returns
+///
+/// Scheduled learning rate for the current step
 pub fn phi_lr_schedule(step: usize, base_lr: f64, warmup_steps: usize) -> f64 {
     let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
 
     if step < warmup_steps {
+        // Linear warmup
         base_lr * (step as f64 / warmup_steps as f64)
     } else {
+        // φ-based decay: LR = base_lr * φ^(-(step - warmup) / warmup)
         let decay_steps = (step - warmup_steps) as f64 / warmup_steps as f64;
         base_lr * phi.powf(-decay_steps)
     }
 }
 
-pub struct Optimizer {
-    pub kind: String,
-    pub lr: f64,
-}
-
-pub fn build(cfg: &OptimizerConfig) -> Result<Optimizer> {
-    match cfg.kind.as_str() {
-        "adamw" | "muon" | "muon+adamw" => {}
-        other => bail!("unknown optimizer kind: {other}"),
-    }
-    Ok(Optimizer { kind: cfg.kind.clone(), lr: cfg.lr })
+/// Issue #54: Unified LR schedule selector
+///
+/// Delegates to trios-phi-schedule for Issue #54 calibration.
+/// Returns LR as f64 for compatibility with optimizer.
+///
+/// # Arguments
+///
+/// * `step` - Current training step
+/// * `max_steps` - Maximum training steps
+///
+/// # Returns
+///
+/// Learning rate as f64
+#[cfg(feature = "trios-integration")]
+#[inline]
+pub fn lr_schedule_54_f64(schedule_type: trios_phi_schedule::LrScheduleType, step: usize, max_steps: usize) -> f64 {
+    trios_phi_schedule::lr_schedule_54(schedule_type, step, max_steps) as f64
 }
 
 #[cfg(test)]

@@ -4,6 +4,11 @@
 //! L_total = 0.5*NTP + 0.25*JEPA + 0.25*NCA
 //! NCA entropy band: [1.5, 2.8] (trinity NCA Wave 8.5)
 //! JEPA ASHA Law L-R10: minimum 3000-step first rung
+//!
+//! NCA reference: arXiv:2603.10055 (Mar 2026)
+//! - 164M NCA tokens > 1.6B natural language tokens for pre-pre-training
+//! - 1.6x convergence speedup, 6% LM improvement
+//! - Each NCA sequence has unique latent rule → in-context learning
 
 #[derive(Debug, Clone, Copy)]
 pub struct ObjectiveConfig {
@@ -38,6 +43,7 @@ pub fn compute_combined_loss(components: ComponentLosses, config: ObjectiveConfi
     CombinedLoss { total, components }
 }
 
+/// NCA entropy constraint penalty (hard band [1.5, 2.8])
 pub fn nca_entropy_constraint(entropy: f64) -> f64 {
     const MIN: f64 = 1.5;
     const MAX: f64 = 2.8;
@@ -47,6 +53,8 @@ pub fn nca_entropy_constraint(entropy: f64) -> f64 {
     else { 0.0 }
 }
 
+/// ASHA rung schedule per architecture
+/// Law L-R10: JEPA first rung = 3000 (1.4x slower convergence)
 pub fn get_rung_schedule(arch: &str) -> Vec<u32> {
     match arch {
         "jepa"   => vec![3000, 9000, 27000],
@@ -56,10 +64,20 @@ pub fn get_rung_schedule(arch: &str) -> Vec<u32> {
     }
 }
 
+/// True if ASHA should skip this rung for arch
 pub fn should_skip_rung(arch: &str, rung: u32) -> bool {
     arch == "jepa" && rung < 3000
 }
 
+/// Neural Cellular Automata objective for structured regularization.
+///
+/// Reference: arXiv:2603.10055 — NCA data improves LM by 6%, 1.6x convergence.
+/// Mechanism: each NCA sequence has unique latent rule → model infers rule from context
+/// = in-context learning signal. Attention layers most transferable component.
+///
+/// Grid: 9x9 = 81 = 3^4 (Trinity structural alignment)
+/// k_states: 9 = 3^2
+/// Entropy band: [1.5, 2.8] from Wave 8.5 G1–G8 sweep
 #[derive(Debug, Clone)]
 pub struct NcaObjective {
     pub grid_size: usize,
@@ -92,6 +110,7 @@ impl NcaObjective {
         (self.grid_size as f64).sqrt() as usize
     }
 
+    /// Initialize NCA grid with uniform random state
     pub fn init_grid(&self, seed: u64) -> Vec<f32> {
         let n = self.grid_size;
         let mut state = Vec::with_capacity(n);
@@ -104,6 +123,7 @@ impl NcaObjective {
         state
     }
 
+    /// One NCA step: majority rule with von Neumann neighborhood
     pub fn step(&self, state: &mut [f32], rule: &NcaTransitionRule) {
         let dim = self.grid_dim();
         let mut next = state.to_vec();
@@ -130,6 +150,7 @@ impl NcaObjective {
         state.copy_from_slice(&next);
     }
 
+    /// Run full NCA rollout and return entropy at each step
     pub fn rollout(&self, seed: u64, rule: &NcaTransitionRule) -> NcaRolloutResult {
         let mut state = self.init_grid(seed);
         let mut entropies = Vec::with_capacity(self.rollout_steps as usize);
@@ -146,6 +167,8 @@ impl NcaObjective {
         }
     }
 
+    /// Compute NCA auxiliary loss for one rollout
+    /// Loss = MSE(predicted_embed, target_embed) + entropy_penalty
     pub fn compute_loss(
         &self,
         predicted: &[f32],
@@ -159,6 +182,7 @@ impl NcaObjective {
     }
 }
 
+/// NCA transition rule — defines the cellular automata behavior
 #[derive(Debug, Clone)]
 pub struct NcaTransitionRule {
     pub center_weight: usize,
@@ -186,6 +210,7 @@ impl NcaTransitionRule {
     }
 }
 
+/// Result of an NCA rollout
 #[derive(Debug, Clone)]
 pub struct NcaRolloutResult {
     pub final_state: Vec<f32>,
@@ -193,6 +218,7 @@ pub struct NcaRolloutResult {
     pub final_entropy: f64,
 }
 
+/// Shannon entropy: H = -Σ p_i * log(p_i)
 pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
     let n = state.len() as f64;
     if n == 0.0 { return 0.0; }
@@ -211,6 +237,7 @@ pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
     entropy
 }
 
+/// MSE loss between two vectors
 pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len());
     if a.is_empty() { return 0.0; }
@@ -220,6 +247,15 @@ pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
         .sum::<f64>() / n
 }
 
+/// Differentiable NCA entropy loss for use as auxiliary training signal.
+///
+/// Given a state vector (e.g., hidden activations or embeddings), compute
+/// Shannon entropy of discretized state distribution, then apply smooth
+/// quadratic penalty for entropy outside [min, max] band.
+///
+/// Returns (loss, entropy) tuple so caller can log entropy for monitoring.
+///
+/// Law L-R11: NCA entropy [1.5, 2.8] = hard penalty
 pub fn nca_entropy_loss(state: &[f32], k_states: usize, entropy_min: f64, entropy_max: f64, weight: f64) -> (f64, f64) {
     if state.is_empty() { return (0.0, 0.0); }
     let entropy = shannon_entropy(state, k_states);

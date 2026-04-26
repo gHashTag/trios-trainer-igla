@@ -276,10 +276,10 @@ pub fn training_step_gf16(
 
     let loss = cross_entropy_loss_f32(&logits, target, vocab_size);
 
-    let grads = backward_f32_embeddings_gf16(&w_f32, &logits, input, target, vocab_size, d_model);
+    let mut grads = backward_f32_embeddings_gf16(&w_f32, &logits, input, target, vocab_size, d_model);
 
     let mut w_f32_mut = w_f32;
-    clip_gradients(&mut grads.clone(), 1.0);
+    clip_gradients(&mut grads, 1.0);
     optimizer.step(&mut w_f32_mut, &grads);
 
     for (i, w) in w_f32_mut.iter().enumerate() {
@@ -332,6 +332,53 @@ fn cross_entropy_loss_f32(logits: &[f32], target: &[u8], vocab_size: usize) -> f
         total_loss += log_sum_exp - tgt_logit;
     }
     total_loss / seq_len.max(1) as f32
+}
+
+fn backward_f32_embeddings(
+    embeddings: &[f32],
+    logits: &[f32],
+    input: &[f32],
+    targets: &[usize],
+    vocab_size: usize,
+    d_model: usize,
+) -> Vec<f32> {
+    let seq_len = targets.len();
+    let n_emb = embeddings.len();
+    let mut grads = vec![0.0f32; n_emb];
+    for i in 0..seq_len {
+        let offset = i * vocab_size;
+        let mut max_logit = f32::NEG_INFINITY;
+        for v in 0..vocab_size {
+            if offset + v < logits.len() {
+                max_logit = max_logit.max(logits[offset + v]);
+            }
+        }
+        let mut sum_exp = 0.0f32;
+        let mut probs = vec![0.0f32; vocab_size];
+        for v in 0..vocab_size {
+            if offset + v < logits.len() {
+                probs[v] = (logits[offset + v] - max_logit).exp();
+                sum_exp += probs[v];
+            }
+        }
+        if sum_exp > 0.0 {
+            for p in probs.iter_mut() { *p /= sum_exp; }
+        }
+        probs[targets[i]] -= 1.0;
+        let tok_idx = (input[i].abs() as usize) % (n_emb / d_model.max(1));
+        let emb_offset = tok_idx * d_model;
+        for v in 0..vocab_size.min(n_emb / d_model.max(1)) {
+            let v_offset = v * d_model;
+            for d in 0..d_model {
+                if emb_offset + d < grads.len() && v_offset + d < embeddings.len() {
+                    grads[emb_offset + d] += probs[v] * embeddings[v_offset + d];
+                }
+            }
+        }
+    }
+    let scale = seq_len.max(1) as f32;
+    for g in grads.iter_mut() { *g /= scale; }
+    grads
 }
 
 fn backward_f32_embeddings_gf16(
