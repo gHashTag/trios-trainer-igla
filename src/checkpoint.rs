@@ -45,13 +45,13 @@ impl EmaAverager {
     /// # Returns
     ///
     /// The EMA-averaged value
-    pub fn update(&mut self, value: f32) -> f32 {
+    pub fn update(&mut self, value: f64) -> f32 {
         if self.buffer.len() < self.n {
-            self.buffer.push(value);
+            self.buffer.push(value as f32);
             self.idx = self.buffer.len();
         } else {
             // Rotate buffer when full
-            self.buffer[self.idx] = value;
+            self.buffer[self.idx] = value as f32;
             self.idx = (self.idx + 1) % self.n;
         }
 
@@ -70,7 +70,7 @@ impl EmaAverager {
         } else {
             let n = self.buffer.len() as f64;
             // Simple average (can use exponential weights if needed)
-            self.buffer.iter().sum::<f32>() / n
+            self.buffer.iter().sum::<f32>() / (n as f32)
         }
     }
 
@@ -84,12 +84,12 @@ impl EmaAverager {
     /// # Returns
     ///
     /// The EMA-averaged value
-    pub fn ema_average_over(checkpoints: &[f32], n: usize) -> f32 {
+    pub fn ema_average_over(checkpoints: &[f32], n: usize) -> f64 {
         if checkpoints.is_empty() || n == 0 {
             return 0.0;
         }
         let take_n = n.min(checkpoints.len());
-        let avg = checkpoints[..take_n].iter().sum::<f32>() / take_n as f32;
+        let avg = checkpoints[..take_n].iter().sum::<f32>() / take_n as f64;
         avg
     }
 
