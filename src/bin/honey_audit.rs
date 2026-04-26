@@ -151,10 +151,7 @@ const KEY_ALIASES: [(&str, &str); 1] = [("ts", "timestamp_utc")];
 const SHA_KEYS: [&str; 4] = ["sha", "commit_sha", "main_sha", "parent_sha"];
 
 /// Resolve a logical key against a JSON object honoring aliases.
-fn lookup_logical<'a>(
-    obj: &'a serde_json::Map<String, Value>,
-    logical: &str,
-) -> Option<&'a Value> {
+fn lookup_logical<'a>(obj: &'a serde_json::Map<String, Value>, logical: &str) -> Option<&'a Value> {
     if let Some(v) = obj.get(logical) {
         return Some(v);
     }

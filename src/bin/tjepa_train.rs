@@ -10,19 +10,22 @@
 //! Gate target: ≤ 2.03 BPB
 //! IGLA target: < 1.50 BPB
 
-#![allow(clippy::needless_range_loop, clippy::type_complexity, clippy::too_many_arguments)]
+#![allow(
+    clippy::needless_range_loop,
+    clippy::type_complexity,
+    clippy::too_many_arguments
+)]
 
 use std::fs;
 use std::time::Instant;
 
 use trios_trainer::{
     jepa::{
-        EmaConfig, EmaTarget,
         predictor::{JepaPredictor, PredictorConfig},
+        EmaConfig, EmaTarget,
     },
     objective::{
-        ComponentLosses, NcaObjective, ObjectiveConfig, compute_combined_loss,
-        nca_entropy_loss,
+        compute_combined_loss, nca_entropy_loss, ComponentLosses, NcaObjective, ObjectiveConfig,
     },
     optimizer::MuonOptimizer,
 };
@@ -165,7 +168,9 @@ impl NgramModel {
     fn new(seed: u64) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let lim = (6.0f32 / (3 * DIM) as f32).sqrt();
@@ -245,10 +250,7 @@ struct TrainGrads {
     g_head: Vec<f32>,
 }
 
-fn compute_grads(
-    model: &NgramModel,
-    tokens: &[usize],
-) -> (TrainGrads, Vec<Vec<f32>>, f32) {
+fn compute_grads(model: &NgramModel, tokens: &[usize]) -> (TrainGrads, Vec<Vec<f32>>, f32) {
     let count = tokens.len().saturating_sub(NGRAM);
     assert!(count > 0, "sequence too short for gradient computation");
 
@@ -259,17 +261,40 @@ fn compute_grads(
 
     let (all_hidden, all_ln, all_contexts) = forward_pass(model, tokens, count);
     let total_loss = backward_pass(
-        model, &all_hidden, &all_ln, &all_contexts, tokens, count,
-        &mut g_embed, &mut g_ctx, &mut g_proj, &mut g_head,
+        model,
+        &all_hidden,
+        &all_ln,
+        &all_contexts,
+        tokens,
+        count,
+        &mut g_embed,
+        &mut g_ctx,
+        &mut g_proj,
+        &mut g_head,
     );
 
     let n = count as f32;
-    for x in g_embed.iter_mut() { *x /= n; }
-    for gc in g_ctx.iter_mut() { for x in gc.iter_mut() { *x /= n; } }
-    for x in g_proj.iter_mut() { *x /= n; }
-    for x in g_head.iter_mut() { *x /= n; }
+    for x in g_embed.iter_mut() {
+        *x /= n;
+    }
+    for gc in g_ctx.iter_mut() {
+        for x in gc.iter_mut() {
+            *x /= n;
+        }
+    }
+    for x in g_proj.iter_mut() {
+        *x /= n;
+    }
+    for x in g_head.iter_mut() {
+        *x /= n;
+    }
 
-    let grads = TrainGrads { g_embed, g_ctx, g_proj, g_head };
+    let grads = TrainGrads {
+        g_embed,
+        g_ctx,
+        g_proj,
+        g_head,
+    };
     (grads, all_hidden, total_loss)
 }
 
@@ -325,7 +350,11 @@ fn backward_pass(
 ) -> f32 {
     assert!(count > 0, "backward_pass: count=0");
     if all_hidden.len() != count {
-        eprintln!("WARN: hidden count mismatch: {} != {}, skipping step", all_hidden.len(), count);
+        eprintln!(
+            "WARN: hidden count mismatch: {} != {}, skipping step",
+            all_hidden.len(),
+            count
+        );
         return 0.0;
     }
     assert_eq!(all_ln.len(), count, "ln count mismatch");
@@ -357,8 +386,12 @@ fn backward_pass(
         }
 
         accumulate_input_grads(
-            model, &all_contexts[i], &all_hidden[i], &d_hidden,
-            g_embed, g_ctx,
+            model,
+            &all_contexts[i],
+            &all_hidden[i],
+            &d_hidden,
+            g_embed,
+            g_ctx,
         );
     }
 
@@ -417,7 +450,9 @@ fn evaluate(model: &NgramModel, tokens: &[usize]) -> f32 {
 fn load_data(path: &str) -> Vec<usize> {
     let raw = fs::read(path).unwrap_or_else(|e| {
         eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. ".repeat(100).to_vec()
+        b"The quick brown fox jumps over the lazy dog. "
+            .repeat(100)
+            .to_vec()
     });
     assert!(!raw.is_empty(), "loaded data is empty");
     raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
@@ -484,9 +519,20 @@ fn parse_config(args: &[String]) -> Config {
     assert!(weight_decay >= 0.0, "weight_decay must be >= 0");
 
     Config {
-        seed, steps, encoder_lr, ntp_lr, use_jepa, use_nca,
-        ntp_weight, jepa_weight, nca_weight, opt_kind, jepa_warmup,
-        weight_decay, trial_id, agent_id,
+        seed,
+        steps,
+        encoder_lr,
+        ntp_lr,
+        use_jepa,
+        use_nca,
+        ntp_weight,
+        jepa_weight,
+        nca_weight,
+        opt_kind,
+        jepa_warmup,
+        weight_decay,
+        trial_id,
+        agent_id,
     }
 }
 
@@ -513,11 +559,13 @@ fn jepa_training_step(
     }
 
     let zero_h = vec![0.0f32; HIDDEN];
-    let ctx_flat: Vec<f32> = ctx_pos.iter()
+    let ctx_flat: Vec<f32> = ctx_pos
+        .iter()
         .flat_map(|&p| hidden_vecs.get(p).unwrap_or(&zero_h).iter().copied())
         .collect();
 
-    let tgt_hidden: Vec<Vec<f32>> = tgt_pos.iter()
+    let tgt_hidden: Vec<Vec<f32>> = tgt_pos
+        .iter()
         .filter_map(|&p| {
             if p + NGRAM <= seq.len() {
                 Some(target_model.compute_hidden(&seq[p..p + NGRAM]))
@@ -542,19 +590,31 @@ fn jepa_training_step(
 
 fn build_span_mask(len: usize, seed: u64, step: usize) -> (Vec<usize>, Vec<usize>) {
     assert!(len > 0, "build_span_mask: len=0");
-    let mut s = seed.wrapping_add(step as u64).wrapping_mul(6364136223846793005);
+    let mut s = seed
+        .wrapping_add(step as u64)
+        .wrapping_mul(6364136223846793005);
     let mut bitset = vec![false; len];
     let span_len = 3usize;
     let num_spans = 2usize;
     for _ in 0..num_spans {
-        s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let start = (s as usize) % len.saturating_sub(span_len);
         for b in start..(start + span_len).min(len) {
             bitset[b] = true;
         }
     }
-    let tgt: Vec<usize> = bitset.iter().enumerate().filter_map(|(i, &m)| if m { Some(i) } else { None }).collect();
-    let ctx: Vec<usize> = bitset.iter().enumerate().filter_map(|(i, &m)| if !m { Some(i) } else { None }).collect();
+    let tgt: Vec<usize> = bitset
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &m)| if m { Some(i) } else { None })
+        .collect();
+    let ctx: Vec<usize> = bitset
+        .iter()
+        .enumerate()
+        .filter_map(|(i, &m)| if !m { Some(i) } else { None })
+        .collect();
     (tgt, ctx)
 }
 
@@ -564,7 +624,11 @@ fn nca_training_step(nca: &NcaObjective, seed: u64, step: usize) -> f64 {
     let nca_seed = seed.wrapping_add(step as u64).wrapping_mul(7919);
     let nca_state = nca.init_grid(nca_seed);
     let (loss, _) = nca_entropy_loss(
-        &nca_state, nca.k_states, nca.entropy_min, nca.entropy_max, nca.weight,
+        &nca_state,
+        nca.k_states,
+        nca.entropy_min,
+        nca.entropy_max,
+        nca.weight,
     );
     assert!(loss.is_finite(), "NCA loss is not finite");
     loss
@@ -641,8 +705,16 @@ fn init_training(cfg: &Config) -> TrainingState {
         } else {
             None
         },
-        ema_target: EmaTarget::new(EmaConfig { start: 0.996, end: 1.0, ramp_steps: cfg.steps }),
-        nca: if cfg.use_nca { Some(NcaObjective::default()) } else { None },
+        ema_target: EmaTarget::new(EmaConfig {
+            start: 0.996,
+            end: 1.0,
+            ramp_steps: cfg.steps,
+        }),
+        nca: if cfg.use_nca {
+            Some(NcaObjective::default())
+        } else {
+            None
+        },
         obj_config: ObjectiveConfig {
             ntp_weight: cfg.ntp_weight,
             jepa_weight: cfg.jepa_weight,
@@ -662,9 +734,18 @@ fn print_banner(cfg: &Config) {
         OptKind::Muon => "Muon",
     };
     eprintln!("=== T-JEPA Hybrid Training ===");
-    eprintln!("dim={} hidden={} enc_lr={} ntp_lr={} seed={} steps={}", DIM, HIDDEN, cfg.encoder_lr, cfg.ntp_lr, cfg.seed, cfg.steps);
-    eprintln!("optimizer={} jepa={} nca={} jepa_warmup={}", opt_name, cfg.use_jepa, cfg.use_nca, cfg.jepa_warmup);
-    eprintln!("L = {}*NTP + {}*JEPA + {}*NCA", cfg.ntp_weight, cfg.jepa_weight, cfg.nca_weight);
+    eprintln!(
+        "dim={} hidden={} enc_lr={} ntp_lr={} seed={} steps={}",
+        DIM, HIDDEN, cfg.encoder_lr, cfg.ntp_lr, cfg.seed, cfg.steps
+    );
+    eprintln!(
+        "optimizer={} jepa={} nca={} jepa_warmup={}",
+        opt_name, cfg.use_jepa, cfg.use_nca, cfg.jepa_warmup
+    );
+    eprintln!(
+        "L = {}*NTP + {}*JEPA + {}*NCA",
+        cfg.ntp_weight, cfg.jepa_weight, cfg.nca_weight
+    );
     eprintln!("trial_id={} agent_id={}", cfg.trial_id, cfg.agent_id);
     eprintln!("Champion: BPB 2.5193 | Gate-1: ≤2.22 | Gate-2: ≤2.03");
 }
@@ -673,14 +754,25 @@ fn print_banner(cfg: &Config) {
 
 fn print_results(cfg: &Config, best_bpb: f32, elapsed: f64) {
     eprintln!("\n=== Training Complete ===");
-    eprintln!("Steps={} Time={:.1}s best_val_bpb={:.4} vs_champion={:+.4}",
-        cfg.steps, elapsed, best_bpb, best_bpb - 2.5193);
+    eprintln!(
+        "Steps={} Time={:.1}s best_val_bpb={:.4} vs_champion={:+.4}",
+        cfg.steps,
+        elapsed,
+        best_bpb,
+        best_bpb - 2.5193
+    );
     println!("BPB={:.4}", best_bpb);
 
-    if best_bpb <= 2.22 { eprintln!("Gate-1 PASSED (≤2.22)"); }
-    else { eprintln!("Gate-1 FAILED: {:.4} > 2.22", best_bpb); }
-    if best_bpb <= 2.03 { eprintln!("Gate-2 PASSED (≤2.03)"); }
-    else { eprintln!("Gate-2 FAILED: {:.4} > 2.03", best_bpb); }
+    if best_bpb <= 2.22 {
+        eprintln!("Gate-1 PASSED (≤2.22)");
+    } else {
+        eprintln!("Gate-1 FAILED: {:.4} > 2.22", best_bpb);
+    }
+    if best_bpb <= 2.03 {
+        eprintln!("Gate-2 PASSED (≤2.03)");
+    } else {
+        eprintln!("Gate-2 FAILED: {:.4} > 2.03", best_bpb);
+    }
 }
 
 // ── main ──
@@ -696,7 +788,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let val_data = load_data("data/tiny_shakespeare_val.txt");
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let val = if val_data.len() > 100 { &val_data } else { &train_data[train_end..] };
+    let val = if val_data.len() > 100 {
+        &val_data
+    } else {
+        &train_data[train_end..]
+    };
 
     let mut st = init_training(&cfg);
     let warmup = cfg.steps / 10;
@@ -712,18 +808,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let nca_loss_val = run_nca_step(&cfg, &st, step);
 
         let combined = compute_combined_loss(
-            ComponentLosses { ntp: ntp_loss as f64 / LN_2 as f64, jepa: jepa_loss_val, nca: nca_loss_val },
+            ComponentLosses {
+                ntp: ntp_loss as f64 / LN_2 as f64,
+                jepa: jepa_loss_val,
+                nca: nca_loss_val,
+            },
             st.obj_config,
         );
 
         let enc_lr = cosine_lr(step, cfg.steps, cfg.encoder_lr, warmup);
         let head_lr = cosine_lr(step, cfg.steps, cfg.ntp_lr, warmup);
-        st.opt_embed.step(&mut st.model.embed, &grads.g_embed, enc_lr);
+        st.opt_embed
+            .step(&mut st.model.embed, &grads.g_embed, enc_lr);
         for (ci, oc) in st.opt_ctx.iter_mut().enumerate() {
             oc.step(&mut st.model.ctx[ci], &grads.g_ctx[ci], enc_lr);
         }
         st.opt_proj.step(&mut st.model.proj, &grads.g_proj, enc_lr);
-        st.opt_head.step(&mut st.model.lm_head, &grads.g_head, head_lr);
+        st.opt_head
+            .step(&mut st.model.lm_head, &grads.g_head, head_lr);
 
         if step % 500 == 0 || step == cfg.steps {
             let elapsed = st.start_time.elapsed().as_secs_f64();
@@ -731,9 +833,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if val_bpb < st.best_val_bpb && val_bpb.is_finite() {
                 st.best_val_bpb = val_bpb;
             }
-            eprintln!("step={:5} ntp={:.4} jepa={:.4} nca={:.4} val_bpb={:.4} best={:.4} t={:.1}s",
-                step, combined.components.ntp, combined.components.jepa,
-                combined.components.nca, val_bpb, st.best_val_bpb, elapsed);
+            eprintln!(
+                "step={:5} ntp={:.4} jepa={:.4} nca={:.4} val_bpb={:.4} best={:.4} t={:.1}s",
+                step,
+                combined.components.ntp,
+                combined.components.jepa,
+                combined.components.nca,
+                val_bpb,
+                st.best_val_bpb,
+                elapsed
+            );
         }
 
         neon_heartbeat(&cfg, step, st.best_val_bpb, &mut st.last_heartbeat);
@@ -758,8 +867,14 @@ fn run_jepa_step(
     match (&mut st.predictor, &mut st.target_model) {
         (Some(pred), _) => {
             let result = jepa_training_step(
-                pred, &st.model, &mut st.target_model, hidden_vecs, seq,
-                cfg.seed, step, &mut st.ema_target,
+                pred,
+                &st.model,
+                &mut st.target_model,
+                hidden_vecs,
+                seq,
+                cfg.seed,
+                step,
+                &mut st.ema_target,
             );
             result.loss
         }

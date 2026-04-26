@@ -11,14 +11,24 @@ const EVAL_INTERVAL: usize = 500;
 const EVAL_SEQS: usize = 20;
 
 fn sigmoid(x: f32) -> f32 {
-    if x >= 0.0 { 1.0 / (1.0 + (-x).exp()) } else { let e = x.exp(); e / (1.0 + e) }
+    if x >= 0.0 {
+        1.0 / (1.0 + (-x).exp())
+    } else {
+        let e = x.exp();
+        e / (1.0 + e)
+    }
 }
 
 fn softmax(v: &mut [f32]) {
     let max = v.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mut sum = 0.0f32;
-    for x in v.iter_mut() { *x = (*x - max).exp(); sum += *x; }
-    for x in v.iter_mut() { *x /= sum; }
+    for x in v.iter_mut() {
+        *x = (*x - max).exp();
+        sum += *x;
+    }
+    for x in v.iter_mut() {
+        *x /= sum;
+    }
 }
 
 struct LstmTrain {
@@ -54,7 +64,13 @@ struct AdamW {
 }
 
 impl AdamW {
-    fn new(size: usize) -> Self { Self { m: vec![0.0; size], v: vec![0.0; size], step: 0 } }
+    fn new(size: usize) -> Self {
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+        }
+    }
     fn update(&mut self, p: &mut [f32], g: &[f32], lr: f32, wd: f32) {
         self.step += 1;
         let bc1 = 1.0 - 0.9f32.powi(self.step as i32);
@@ -72,7 +88,9 @@ impl LstmTrain {
     fn new(hidden: usize, seed: u64) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let d = DIM + hidden;
@@ -81,10 +99,14 @@ impl LstmTrain {
         let lim_w = (6.0 / (d + g4) as f32).sqrt();
         let lim_o = (6.0 / (hidden + VOCAB) as f32).sqrt();
         let mut b = vec![0.0f32; g4];
-        for i in 0..hidden { b[hidden + i] = 2.0; }
+        for i in 0..hidden {
+            b[hidden + i] = 2.0;
+        }
         let cap = SEQ + 1;
         Self {
-            h: hidden, d, g4,
+            h: hidden,
+            d,
+            g4,
             embed: (0..VOCAB * DIM).map(|_| rng() * lim_e).collect(),
             w: (0..g4 * d).map(|_| rng() * lim_w).collect(),
             b,
@@ -105,25 +127,39 @@ impl LstmTrain {
         let h = self.h;
         let d = self.d;
         let g4 = self.g4;
-        for v in 0..h { self.h_state[v] = 0.0; self.c_state[v] = 0.0; }
+        for v in 0..h {
+            self.h_state[v] = 0.0;
+            self.c_state[v] = 0.0;
+        }
 
         let mut total_loss = 0.0f32;
         for t in 0..tokens.len() {
             let tok = tokens[t].min(VOCAB - 1);
             let ex = &self.embed[tok * DIM..(tok + 1) * DIM];
             let mut xh = vec![0.0f32; d];
-            for j in 0..DIM { xh[j] = ex[j]; }
-            for j in 0..h { xh[DIM + j] = self.h_state[j]; }
+            for j in 0..DIM {
+                xh[j] = ex[j];
+            }
+            for j in 0..h {
+                xh[DIM + j] = self.h_state[j];
+            }
 
             let mut gates = vec![0.0f32; g4];
             for i in 0..g4 {
                 let mut val = self.b[i];
-                for j in 0..d { val += self.w[i * d + j] * xh[j]; }
+                for j in 0..d {
+                    val += self.w[i * d + j] * xh[j];
+                }
                 let pre = val;
-                if i < h { gates[i] = sigmoid(pre); }
-                else if i < 2 * h { gates[i] = sigmoid(pre); }
-                else if i < 3 * h { gates[i] = sigmoid(pre); }
-                else { gates[i] = pre.tanh(); }
+                if i < h {
+                    gates[i] = sigmoid(pre);
+                } else if i < 2 * h {
+                    gates[i] = sigmoid(pre);
+                } else if i < 3 * h {
+                    gates[i] = sigmoid(pre);
+                } else {
+                    gates[i] = pre.tanh();
+                }
             }
 
             let c_prev = self.c_state.clone();
@@ -136,7 +172,9 @@ impl LstmTrain {
 
             let mut logits = vec![0.0f32; VOCAB];
             for v in 0..VOCAB {
-                for j in 0..h { logits[v] += self.head[v * h + j] * self.h_state[j]; }
+                for j in 0..h {
+                    logits[v] += self.head[v * h + j] * self.h_state[j];
+                }
             }
 
             self.s_h[t] = self.h_state.clone();
@@ -209,7 +247,9 @@ impl LstmTrain {
             let mut dxh = vec![0.0f32; d];
             for i in 0..g4 {
                 let dgi = dg[i];
-                if dgi.abs() < 1e-12 { continue; }
+                if dgi.abs() < 1e-12 {
+                    continue;
+                }
                 for j in 0..d {
                     g_w[i * d + j] += dgi * self.s_xh[t][j];
                     dxh[j] += dgi * self.w[i * d + j];
@@ -217,41 +257,76 @@ impl LstmTrain {
                 g_b[i] += dgi;
             }
 
-            for j in 0..h { dh[j] = dxh[DIM + j]; }
+            for j in 0..h {
+                dh[j] = dxh[DIM + j];
+            }
             let tok = self.s_tok[t];
-            for j in 0..DIM { g_embed[tok * DIM + j] += dxh[j]; }
+            for j in 0..DIM {
+                g_embed[tok * DIM + j] += dxh[j];
+            }
         }
 
         let inv = 1.0 / n;
-        for x in g_embed.iter_mut() { *x *= inv; }
-        for x in g_w.iter_mut() { *x *= inv; }
-        for x in g_b.iter_mut() { *x *= inv; }
-        for x in g_head.iter_mut() { *x *= inv; }
+        for x in g_embed.iter_mut() {
+            *x *= inv;
+        }
+        for x in g_w.iter_mut() {
+            *x *= inv;
+        }
+        for x in g_b.iter_mut() {
+            *x *= inv;
+        }
+        for x in g_head.iter_mut() {
+            *x *= inv;
+        }
 
         let max_norm = 1.0f32;
         let mut gn2 = 0.0f32;
-        for x in g_w.iter() { gn2 += x * x; }
-        for x in g_embed.iter() { gn2 += x * x; }
+        for x in g_w.iter() {
+            gn2 += x * x;
+        }
+        for x in g_embed.iter() {
+            gn2 += x * x;
+        }
         let gn = gn2.sqrt();
         if gn > max_norm {
             let scale = max_norm / gn;
-            for x in g_w.iter_mut() { *x *= scale; }
-            for x in g_embed.iter_mut() { *x *= scale; }
-            for x in g_b.iter_mut() { *x *= scale; }
-            for x in g_head.iter_mut() { *x *= scale; }
+            for x in g_w.iter_mut() {
+                *x *= scale;
+            }
+            for x in g_embed.iter_mut() {
+                *x *= scale;
+            }
+            for x in g_b.iter_mut() {
+                *x *= scale;
+            }
+            for x in g_head.iter_mut() {
+                *x *= scale;
+            }
         }
 
-        Grads { g_embed, g_w, g_b, g_head }
+        Grads {
+            g_embed,
+            g_w,
+            g_b,
+            g_head,
+        }
     }
 
     fn eval_bpb(&mut self, tokens: &[usize]) -> f32 {
         let dl = tokens.len();
-        if dl < 2 { return f32::MAX; }
+        if dl < 2 {
+            return f32::MAX;
+        }
         let num_possible = dl.saturating_sub(SEQ + 1);
-        if num_possible == 0 { return f32::MAX; }
+        if num_possible == 0 {
+            return f32::MAX;
+        }
         let nc = EVAL_SEQS.min(num_possible);
         let stride = num_possible / nc;
-        if stride == 0 { return f32::MAX; }
+        if stride == 0 {
+            return f32::MAX;
+        }
         let h = self.h;
         let d = self.d;
         let g4 = self.g4;
@@ -261,7 +336,9 @@ impl LstmTrain {
         for c in 0..nc {
             let start = c * stride;
             let end = (start + SEQ + 1).min(dl);
-            if end <= start + 2 { continue; }
+            if end <= start + 2 {
+                continue;
+            }
             let chunk = &tokens[start..end];
             let mut h_st = vec![0.0f32; h];
             let mut c_st = vec![0.0f32; h];
@@ -270,13 +347,23 @@ impl LstmTrain {
                 let tok = chunk[t].min(VOCAB - 1);
                 let ex = &self.embed[tok * DIM..(tok + 1) * DIM];
                 let mut xh = vec![0.0f32; d];
-                for j in 0..DIM { xh[j] = ex[j]; }
-                for j in 0..h { xh[DIM + j] = h_st[j]; }
+                for j in 0..DIM {
+                    xh[j] = ex[j];
+                }
+                for j in 0..h {
+                    xh[DIM + j] = h_st[j];
+                }
                 let mut gates = vec![0.0f32; g4];
                 for i in 0..g4 {
                     let mut val = self.b[i];
-                    for j in 0..d { val += self.w[i * d + j] * xh[j]; }
-                    if i < 3 * h { gates[i] = sigmoid(val); } else { gates[i] = val.tanh(); }
+                    for j in 0..d {
+                        val += self.w[i * d + j] * xh[j];
+                    }
+                    if i < 3 * h {
+                        gates[i] = sigmoid(val);
+                    } else {
+                        gates[i] = val.tanh();
+                    }
                 }
                 let c_old = c_st.clone();
                 for i in 0..h {
@@ -285,7 +372,9 @@ impl LstmTrain {
                 }
                 let mut logits = vec![0.0f32; VOCAB];
                 for v in 0..VOCAB {
-                    for j in 0..h { logits[v] += self.head[v * h + j] * h_st[j]; }
+                    for j in 0..h {
+                        logits[v] += self.head[v * h + j] * h_st[j];
+                    }
                 }
                 softmax(&mut logits);
                 let target = chunk[t + 1].min(VOCAB - 1);
@@ -294,12 +383,18 @@ impl LstmTrain {
             total += loss / (chunk.len() - 1) as f32 / LN_2;
             n += 1;
         }
-        if n == 0 { f32::MAX } else { total / n as f32 }
+        if n == 0 {
+            f32::MAX
+        } else {
+            total / n as f32
+        }
     }
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
-    if step < warmup { return base_lr * step as f32 / warmup.max(1) as f32; }
+    if step < warmup {
+        return base_lr * step as f32 / warmup.max(1) as f32;
+    }
     let p = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
 }
@@ -307,7 +402,9 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
 fn load_data(path: &str) -> Vec<usize> {
     let raw = fs::read(path).unwrap_or_else(|e| {
         eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. ".repeat(100).to_vec()
+        b"The quick brown fox jumps over the lazy dog. "
+            .repeat(100)
+            .to_vec()
     });
     assert!(!raw.is_empty(), "loaded data is empty");
     raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
@@ -315,20 +412,36 @@ fn load_data(path: &str) -> Vec<usize> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
-    let seed: u64 = args.iter().find(|a| a.starts_with("--seed="))
-        .and_then(|a| a[7..].parse().ok()).unwrap_or(43);
-    let steps: usize = args.iter().find(|a| a.starts_with("--steps="))
-        .and_then(|a| a[8..].parse().ok()).unwrap_or(10000);
-    let lr: f32 = args.iter().find(|a| a.starts_with("--lr="))
-        .and_then(|a| a[5..].parse().ok()).unwrap_or(0.003);
-    let hidden: usize = args.iter().find(|a| a.starts_with("--hidden="))
-        .and_then(|a| a[9..].parse().ok()).unwrap_or(256);
+    let seed: u64 = args
+        .iter()
+        .find(|a| a.starts_with("--seed="))
+        .and_then(|a| a[7..].parse().ok())
+        .unwrap_or(43);
+    let steps: usize = args
+        .iter()
+        .find(|a| a.starts_with("--steps="))
+        .and_then(|a| a[8..].parse().ok())
+        .unwrap_or(10000);
+    let lr: f32 = args
+        .iter()
+        .find(|a| a.starts_with("--lr="))
+        .and_then(|a| a[5..].parse().ok())
+        .unwrap_or(0.003);
+    let hidden: usize = args
+        .iter()
+        .find(|a| a.starts_with("--hidden="))
+        .and_then(|a| a[9..].parse().ok())
+        .unwrap_or(256);
 
     let train_data = load_data("data/tiny_shakespeare.txt");
     let val_data = load_data("data/tiny_shakespeare_val.txt");
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let val = if val_data.len() > 100 { &val_data } else { &train_data[train_end..] };
+    let val = if val_data.len() > 100 {
+        &val_data
+    } else {
+        &train_data[train_end..]
+    };
 
     let mut m = LstmTrain::new(hidden, seed);
     let d = DIM + hidden;
@@ -348,7 +461,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     eprintln!(
         "lstm_v2: hidden={} seq={} lr={} seed={} steps={} params≈{}",
-        hidden, seq, lr, seed, steps,
+        hidden,
+        seq,
+        lr,
+        seed,
+        steps,
         VOCAB * DIM + g4 * d + g4 + VOCAB * hidden
     );
 
@@ -366,8 +483,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if step % EVAL_INTERVAL == 0 || step == steps {
             let elapsed = start.elapsed().as_secs_f64();
             let val_bpb = m.eval_bpb(val);
-            if val_bpb < best_bpb && val_bpb.is_finite() { best_bpb = val_bpb; }
-            eprintln!("step={:5} val_bpb={:.4} best={:.4} t={}s", step, val_bpb, best_bpb, elapsed as u64);
+            if val_bpb < best_bpb && val_bpb.is_finite() {
+                best_bpb = val_bpb;
+            }
+            eprintln!(
+                "step={:5} val_bpb={:.4} best={:.4} t={}s",
+                step, val_bpb, best_bpb, elapsed as u64
+            );
         }
     }
 

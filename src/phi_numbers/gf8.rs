@@ -11,14 +11,14 @@ pub struct GF8 {
 }
 
 impl GF8 {
-    const SIGN_BIT: u8 = 0x80;  // 1000_0000
-    const EXP_MASK: u8 = 0x70;   // 0111_0000
-    const MANT_MASK: u8 = 0x0F;  // 0000_1111
+    const SIGN_BIT: u8 = 0x80; // 1000_0000
+    const EXP_MASK: u8 = 0x70; // 0111_0000
+    const MANT_MASK: u8 = 0x0F; // 0000_1111
 
     const EXP_BITS: u8 = 3;
     const MANT_BITS: u8 = 4;
 
-    const EXP_BIAS: i8 = 3;  // 2^(3-1) - 1
+    const EXP_BIAS: i8 = 3; // 2^(3-1) - 1
 
     /// Create GF8 from f32 (quantization)
     pub fn from_f32(value: f32) -> Self {
@@ -53,10 +53,12 @@ impl GF8 {
 
         // Clamp exponent
         if gf8_exp < 0 {
-            return Self { bits: 0 };  // Underflow to zero
+            return Self { bits: 0 }; // Underflow to zero
         }
         if gf8_exp > 7 {
-            return Self { bits: (sign << 7) | 0x70 };
+            return Self {
+                bits: (sign << 7) | 0x70,
+            };
         }
 
         // Round mantissa: 23 bits → 4 bits
@@ -73,7 +75,9 @@ impl GF8 {
             mant_rounded = 0;
             gf8_exp += 1;
             if gf8_exp > 6 {
-                return Self { bits: (sign << 7) | 0x70 };
+                return Self {
+                    bits: (sign << 7) | 0x70,
+                };
             }
         }
 
@@ -88,7 +92,11 @@ impl GF8 {
             return 0.0;
         }
 
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0 } else { 1.0 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0
+        } else {
+            1.0
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> 4) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 
@@ -138,8 +146,8 @@ impl GF8 {
     }
 
     /// Range of representable values
-    pub const MIN_POSITIVE: f32 = 0.125_f32;  // 2^(-3) = 0.125 (powi not const in Rust 1.90)
-    pub const MAX: f32 = 15.75;  // (2 - 1/16) * 2^4
+    pub const MIN_POSITIVE: f32 = 0.125_f32; // 2^(-3) = 0.125 (powi not const in Rust 1.90)
+    pub const MAX: f32 = 15.75; // (2 - 1/16) * 2^4
 }
 
 impl Clone for GF8 {
