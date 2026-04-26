@@ -20,23 +20,11 @@ name = "trios-train"
 path = "src/bin/trios-train.rs"
 
 [features]
-# Default builds standalone with internal stub modules. No network deps required.
 default = []
-# Enable when running alongside the trios workspace — pulls invariants, ASHA and
-# victory gate from the canonical implementations via git.
-trios-integration = ["dep:trios-igla-race", "dep:trios-precision-router", "dep:trios-golden-float", "dep:trios-phi-schedule", "dep:trios-data"]
-# Enable in CI to enforce embargo + triplet validation strictly.
+trios-integration = []
 ci-strict = []
 
 [dependencies]
-# Internal canonical crates (opt-in via `trios-integration` feature).
-trios-igla-race        = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
-trios-precision-router = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
-trios-golden-float     = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
-trios-phi-schedule     = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
-trios-data             = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
-
-# Standard
 anyhow             = "1.0"
 serde              = { version = "1.0", features = ["derive"] }
 serde_json         = "1.0"
