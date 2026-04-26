@@ -12,8 +12,9 @@ pub struct GF64 {
 
 impl GF64 {
     const SIGN_BIT: u64 = 0x8000000000000000;
-    const EXP_MASK: u64 = 0x7FFFFFFFFFFFE0000;  // 21 bits
-    const MANT_MASK: u64 = 0x0000000000003FFF; // 42 bits
+    // 21 exp bits (bits 42-62): ((1<<21)-1) << 42 = 0x1FFFFF << 42
+    const EXP_MASK: u64 = ((1u64 << 21) - 1) << 42;
+    const MANT_MASK: u64 = 0x000003FFFFFFFFFFF; // 42 bits
 
     const EXP_BITS: u8 = 21;
     const MANT_BITS: u8 = 42;
