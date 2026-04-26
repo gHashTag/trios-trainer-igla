@@ -1,3 +1,4 @@
+#![allow(clippy::assertions_on_constants)]
 //! # IGLA RACE — Coq-Proven Invariants (L-R14)
 //!
 //! Migrated from `trios-train-cpu/src/invariants.rs`.
@@ -49,7 +50,9 @@ pub fn validate_config(cfg: &TrialConfig) {
     assert!(
         cfg.lr >= LR_SAFE_MIN && cfg.lr <= LR_SAFE_MAX,
         "INV-1 VIOLATION: lr={} not in [{}, {}]",
-        cfg.lr, LR_SAFE_MIN, LR_SAFE_MAX
+        cfg.lr,
+        LR_SAFE_MIN,
+        LR_SAFE_MAX
     );
     assert!(cfg.lr > 0.0, "INV-1: lr must be positive, got {}", cfg.lr);
 
@@ -57,7 +60,8 @@ pub fn validate_config(cfg: &TrialConfig) {
         assert!(
             cfg.d_model >= GF16_SAFE_D_MODEL,
             "INV-3 VIOLATION: GF16 requires d_model≥{}, got {}",
-            GF16_SAFE_D_MODEL, cfg.d_model
+            GF16_SAFE_D_MODEL,
+            cfg.d_model
         );
     }
     assert!(cfg.d_model > 0, "INV-3: d_model must be positive");
@@ -72,7 +76,8 @@ pub fn validate_config(cfg: &TrialConfig) {
     assert!(
         cfg.steps > 0 && cfg.steps <= ASHA_RUNGS[3] * 2,
         "INV-2 VIOLATION: steps={} out of ASHA bounds [1, {}]",
-        cfg.steps, ASHA_RUNGS[3] * 2
+        cfg.steps,
+        ASHA_RUNGS[3] * 2
     );
 }
 
@@ -80,12 +85,14 @@ pub fn validate_bpb(bpb: f64, trial_id: &str) {
     assert!(
         bpb > 0.0 && bpb < 20.0,
         "L-METRIC VIOLATION: BPB={:.4} out of range (0, 20) for trial {}",
-        bpb, trial_id
+        bpb,
+        trial_id
     );
     assert!(
         bpb > 0.1,
         "L-METRIC VIOLATION: BPB={:.4} suspiciously low for trial {}",
-        bpb, trial_id
+        bpb,
+        trial_id
     );
 }
 
@@ -93,12 +100,14 @@ pub fn validate_nca_entropy(entropy: f64) {
     assert!(
         entropy >= NCA_ENTROPY_LO,
         "INV-4 VIOLATION: entropy={:.4} < φ={:.4}",
-        entropy, NCA_ENTROPY_LO
+        entropy,
+        NCA_ENTROPY_LO
     );
     assert!(
         entropy <= NCA_ENTROPY_HI,
         "INV-4 VIOLATION: entropy={:.4} > φ²={:.4}",
-        entropy, NCA_ENTROPY_HI
+        entropy,
+        NCA_ENTROPY_HI
     );
     assert!(
         (NCA_ENTROPY_HI - NCA_ENTROPY_LO - NCA_ENTROPY_WIDTH).abs() < 1e-10,
@@ -152,8 +161,14 @@ mod tests {
     #[test]
     fn test_validate_config_champion() {
         let cfg = TrialConfig {
-            lr: LR_CHAMPION, d_model: 384, seed: 43, steps: 27_000,
-            nca_weight: 0.25, jepa_weight: 1.0, ntp_weight: 1.0, use_gf16: false,
+            lr: LR_CHAMPION,
+            d_model: 384,
+            seed: 43,
+            steps: 27_000,
+            nca_weight: 0.25,
+            jepa_weight: 1.0,
+            ntp_weight: 1.0,
+            use_gf16: false,
         };
         validate_config(&cfg);
     }
@@ -161,8 +176,14 @@ mod tests {
     #[test]
     fn test_validate_config_gf16_guard() {
         let cfg = TrialConfig {
-            lr: 0.004, d_model: 128, seed: 42, steps: 3_000,
-            nca_weight: 0.25, jepa_weight: 1.0, ntp_weight: 1.0, use_gf16: true,
+            lr: 0.004,
+            d_model: 128,
+            seed: 42,
+            steps: 3_000,
+            nca_weight: 0.25,
+            jepa_weight: 1.0,
+            ntp_weight: 1.0,
+            use_gf16: true,
         };
         let result = std::panic::catch_unwind(|| validate_config(&cfg));
         assert!(result.is_err());

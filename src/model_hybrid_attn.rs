@@ -267,10 +267,18 @@ impl HybridAttn {
         &self.cfg
     }
 
-    pub fn wq_mut(&mut self) -> &mut [f32] { &mut self.wq }
-    pub fn wk_mut(&mut self) -> &mut [f32] { &mut self.wk }
-    pub fn wv_mut(&mut self) -> &mut [f32] { &mut self.wv }
-    pub fn wo_mut(&mut self) -> &mut [f32] { &mut self.wo }
+    pub fn wq_mut(&mut self) -> &mut [f32] {
+        &mut self.wq
+    }
+    pub fn wk_mut(&mut self) -> &mut [f32] {
+        &mut self.wk
+    }
+    pub fn wv_mut(&mut self) -> &mut [f32] {
+        &mut self.wv
+    }
+    pub fn wo_mut(&mut self) -> &mut [f32] {
+        &mut self.wo
+    }
 
     /// Re-assert INV-1 + INV-13 + shape at any later point.  This is
     /// cheap and idempotent, and the trainer calls it once per step as
