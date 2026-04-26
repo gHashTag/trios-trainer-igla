@@ -26,6 +26,8 @@ warmup_steps = 1_000
 
 [data]
 corpus       = "fineweb"
+train_path   = "/data/fineweb_train.bin"
+val_path     = "/data/fineweb_val.bin"
 batch_size   = 8
 batch_tokens = 524_288
 

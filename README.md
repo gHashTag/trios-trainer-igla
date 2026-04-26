@@ -93,7 +93,81 @@ Gate-2 anchors used by `trios-igla gate`:
 - quorum: `3` distinct seeds (`igla::GATE2_SEED_QUORUM`)
 - champion: `2.2393 @ 27K seed=43 sha=2446855` ([`gHashTag/trios@2446855`](https://github.com/gHashTag/trios/commit/2446855))
 
-## Run on Railway
+## Run on Railway via `tri` (ONE SHOT)
+
+The canonical way to launch the 3-seed Gate-2 chase on Railway is the `tri railway` ONE SHOT shipped with [gHashTag/t27](https://github.com/gHashTag/t27) (PR #544 / issue #543). It is **R5-honest**: `tri` has no HTTP client yet, so `up --confirm` prints the exact GraphQL bodies that *would* be POSTed and exits 2 (planned-but-not-executed). The operator runs the actual mutation. Without `--confirm`, `up` is a pure dry-run (exit 0).
+
+### Quickstart (copy-paste)
+
+```bash
+export RAILWAY_TOKEN=<your-railway-account-token>
+export GITHUB_SHA=$(git rev-parse HEAD)            # used by R7 triplets
+
+# 1. Verify the token (POSTs `me { id email }` against backboard)
+tri railway login
+
+# 2. Bind the Railway project (default: e4fe33bb-3b09-4842-9782-7d2dea1abc9b)
+tri railway link
+
+# 3. Plan the 3-seed Gate-2 chase. Dry-run by default (exit 0).
+tri railway up
+
+# 4. Print the GraphQL bodies that would be POSTed (exit 2 = planned).
+tri railway up --confirm
+
+# 5. Status / logs (read-only) and Gate-2 verdict
+tri railway status
+tri railway logs --seed 43
+tri railway gate2
+```
+
+### Environment variables
+
+| Var | Default | Effect |
+|---|---|---|
+| `RAILWAY_TOKEN` | (required) | Railway account token; consumed by `tri railway login` |
+| `GITHUB_SHA` | (auto) | Embedded in R7 triplets and binding metadata |
+| `TRIOS_SEED` | per-service | Forced seed (43, 44, or 45) for each Gate-2 service |
+| `TRIOS_LEDGER_PUSH` | `1` | Push embargo-checked rows to the ledger |
+| `TRIOS_TARGET_BPB` | `1.85` | Gate-2 acceptance threshold |
+| `TRIOS_STEPS` | `30000` | Cap per seed (rows must satisfy step >= 4000) |
+| `RUST_LOG` | `info` | Log filter |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Dry-run plan printed, no Railway calls |
+| 2 | `--confirm` plan printed -- bodies are ready, operator must POST them |
+| non-zero (other) | Embargo blocked, invalid seed set, missing token, IO error |
+
+### Stop rule (Gate-2)
+
+The ONE SHOT terminates as soon as either condition holds:
+
+- **Quorum**: 3 distinct seeds in `{43, 44, 45}` each emit a row with `BPB < 1.85` AND `step >= 4000`, **OR**
+- **Deadline**: `2026-04-30 23:59 UTC`.
+
+### R5 / R7 / R9 reminders
+
+- **R5 (Honesty)**: NO DONE without merged PR + green CI + ledger row written.
+- **R7 (Triplet)**: every emit carries `BPB=<v> @ step=<N> seed=<S> sha=<7c> jsonl_row=<L> gate_status=<g>`.
+- **R8 (Step floor)**: a ledger row is only valid for `step >= 4000`.
+- **R9 (Embargo)**: `tri railway up` reads `assertions/embargo.txt` and refuses to plan if the head SHA matches any embargoed prefix.
+
+### Troubleshooting
+
+- **`tri railway login` -> 401**: regenerate `RAILWAY_TOKEN` at https://railway.com/account/tokens and re-export.
+- **`Embargo blocked HEAD <sha>`**: rebase past the embargoed commit before re-running -- this is by design.
+- **`Gate-2 seed set must contain 43, 44, 45`**: pass `--seeds 43,44,45` or omit the flag to use the canonical set.
+- **`tri` not on PATH**: build from t27 -- `cargo build -p tri --release` -> `t27/target/release/tri`.
+- **Status / logs print "(tri has no HTTP client yet)"**: by design. Inspect the Railway dashboard at https://railway.com/project/e4fe33bb-3b09-4842-9782-7d2dea1abc9b directly.
+
+### Anchor
+
+Mathematical foundation: `phi^2 + phi^-2 = 3` -- see [Zenodo DOI 10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877).
+
+### Manual fallback (no `tri`)
 
 ```bash
 railway login
@@ -217,14 +291,46 @@ trios-trainer/
 
 ## Roadmap
 
-| Phase | Status | Scope |
-|---|---|---|
-| **PR-0** | ✅ done | Skeleton compiles, anchor test passes |
-| **PR-1** | 🟡 next | Migrate model + optimizer + tokenizer (`git mv` from `trios-train-cpu`) |
-| **PR-2** | ⬜ | Migrate JEPA + objective; merge `trios-igla-trainer::jepa_runner` |
-| **PR-3** | ⬜ | Champion-config full run reproduces ≈ 2.2393 ± 0.01 |
-| **PR-4** | ⬜ | DELETE phase in `gHashTag/trios` (consolidation PR) |
-| **PR-5** | ⬜ | Push image to ghcr.io + wire 3-seed Railway deployment |
+The full decomposed Gate-2 plan lives in [`docs/TRAINING_FLOW_V2.md`](docs/TRAINING_FLOW_V2.md). Status as of `2026-04-26`:
+
+### Migration track (the SOT consolidation)
+
+| PR | Status | Scope | Reference |
+|---|---|---|---|
+| **M-0** | done | Skeleton compiles, `anchor_holds` passes, MIT license, CI green | initial commit |
+| **M-1** | done | Champion + gate2-attempt + needle-v1-mup configs land | [`configs/`](configs/) |
+| **M-2** | done | Embargo guard (`assertions/embargo.txt`), R8 step-floor in [`src/ledger.rs`](src/ledger.rs) | [`tests/embargo_block.rs`](tests/embargo_block.rs) |
+| **M-3** | done | Pre-registration seed-lock {42,43,44} test | [`tests/preregistration_seed_lock_final.rs`](tests/preregistration_seed_lock_final.rs) |
+| **M-4** | in review | clippy auto-fix, fmt housekeeping | [PR #21](https://github.com/gHashTag/trios-trainer-igla/pull/21) |
+| **M-5** | in review | README -> `tri railway` ONE SHOT | [PR #23](https://github.com/gHashTag/trios-trainer-igla/pull/23) -- companion [t27#544](https://github.com/gHashTag/t27/pull/544) |
+| **M-6** | next | DELETE-phase in `gHashTag/trios` -- monorepo consumes this repo as a git dep | _pending RFC_ |
+| **M-7** | next | Push image to `ghcr.io/ghashtag/trios-trainer-igla:latest` from CI on `main` push | [`.github/workflows/docker-publish.yml`](.github/workflows/docker-publish.yml) |
+
+### Training-Flow v2 track (the Gate-2 push)
+
+Six-phase pre-registered plan, owner per phase, falsification rule per phase. Each row links to its hypothesis and exit criterion in [`docs/TRAINING_FLOW_V2.md`](docs/TRAINING_FLOW_V2.md).
+
+| Phase | Status | Hypothesis | Exit criterion | Owner |
+|---|---|---|---|---|
+| **P0** Audit | next | `champion.toml` reproduces `BPB=2.2393 +/- 0.01` | ledger row at champion sha | `repro-auditor` |
+| **P1** Optimizer Lab | pending | Muon (eta_2D=0.0235, eta_1D=0.007) beats AdamW by `>=0.05 BPB` | `assertions/lab/p1_leaderboard.jsonl` | `optim-lab` |
+| **P2** muP Transfer | pending | `lr_star` from 8M proxy transfers to 70M with `<5%` degradation | `assertions/lab/p2_transfer.jsonl` | `mup-prover` |
+| **P3** Schedule-Free + WSD | pending | SF or WSD beats cosine `phi-schedule` by `>=0.04 BPB` AND dominates anytime curve | `assertions/lab/p3_curves.jsonl` | `schedule-bench` |
+| **P4** Multi-Objective + EMA | pending | `(w_ce, w_jepa, w_nca)` sweep + post-hoc EMA(N=10) drops `>=0.03 BPB` at zero extra cost | `assertions/lab/p4_objective.jsonl` | `objective-jeweller` |
+| **P5** Gate-2 Push | pending | 3 seeds in `{43,44,45}` reach `BPB<1.85 AND step>=4000` before `2026-04-30 23:59 UTC` | merged `feat: Gate-2 victory` PR + 3 R7 triplets | `gate2-pilot` |
+
+### Pre-registered decision matrix (R7-honest)
+
+Filled only by future PRs as each phase closes -- no row may be claimed `done` without a merged PR + green CI + ledger / lab JSONL artifact.
+
+| Phase | Hypothesis margin | Outcome (BPB delta) | Decision | PR |
+|---|---|---|---|---|
+| P0 | reproduce 2.2393 +/- 0.01 | _pending_ | _pending_ | _pending_ |
+| P1 | Muon - AdamW <= -0.05 | _pending_ | _pending_ | _pending_ |
+| P2 | muP transfer < 5% deg | _pending_ | _pending_ | _pending_ |
+| P3 | SF/WSD - cosine <= -0.04 | _pending_ | _pending_ | _pending_ |
+| P4 | objective+EMA <= -0.03 | _pending_ | _pending_ | _pending_ |
+| P5 | 3 seeds < 1.85 | _pending_ | _pending_ | _pending_ |
 
 ## License
 

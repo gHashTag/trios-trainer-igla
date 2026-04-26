@@ -12,13 +12,13 @@ pub struct GF32 {
 
 impl GF32 {
     const SIGN_BIT: u32 = 0x80000000;
-    const EXP_MASK: u32 = 0x7FFE0000;  // 13 bits
-    const MANT_MASK: u32 = 0x0003FFFF; // 18 bits
+    const EXP_MASK: u32 = ((1u32 << 13) - 1) << 18;
+    const MANT_MASK: u32 = (1u32 << 18) - 1;
 
     const EXP_BITS: u8 = 13;
     const MANT_BITS: u8 = 18;
 
-    const EXP_BIAS: i16 = 4095;  // 2^(13-1) - 1
+    const EXP_BIAS: i16 = 4095; // 2^(13-1) - 1
 
     /// Create GF32 from f32
     pub fn from_f32(value: f32) -> Self {
@@ -30,6 +30,11 @@ impl GF32 {
         let abs_val = value.abs();
 
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: sign << 31 | Self::EXP_MASK | 1,
+                };
+            }
             return Self {
                 bits: sign << 31 | Self::EXP_MASK,
             };
@@ -84,7 +89,11 @@ impl GF32 {
             return 0.0;
         }
 
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0f32 } else { 1.0f32 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0f32
+        } else {
+            1.0f32
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> Self::MANT_BITS) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 
@@ -140,8 +149,8 @@ impl GF32 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f32 = 2.0_f32.powi(-4095);
-    pub const MAX: f32 = (2.0 - 2.0_f32.powi(-18)) * 2.0_f32.powi(4095);
+    pub const MIN_POSITIVE: f32 = 0.0;
+    pub const MAX: f32 = f32::MAX;
 }
 
 impl Clone for GF32 {
@@ -286,8 +295,18 @@ mod tests {
         let test_values = [0.001, 0.1, 1.0, 10.0, PHI as f32, PHI_SQUARED as f32];
         for v in test_values {
             let (decoded, abs_err, rel_err) = GF32::compare_with_f32(v);
-            assert!(abs_err < v.abs() * 1e-4, "Absolute error too high for {}: {}", v, abs_err);
-            assert!(rel_err < 1e-4, "Relative error too high for {}: {}", v, rel_err);
+            assert!(
+                abs_err < v.abs() * 1e-4,
+                "Absolute error too high for {}: {}",
+                v,
+                abs_err
+            );
+            assert!(
+                rel_err < 1e-4,
+                "Relative error too high for {}: {}",
+                v,
+                rel_err
+            );
         }
     }
 
@@ -333,10 +352,10 @@ mod tests {
     fn test_phi_power_series() {
         // Verify φ^n = F_n * φ + F_{n-1} in GF32
         let cases = [
-            (1, 1.0, 0.0),   // φ^1 = 1*φ + 0
-            (2, 1.0, 1.0),   // φ^2 = 1*φ + 1
-            (3, 2.0, 1.0),   // φ^3 = 2*φ + 1
-            (4, 3.0, 2.0),   // φ^4 = 3*φ + 2
+            (1, 1.0, 0.0), // φ^1 = 1*φ + 0
+            (2, 1.0, 1.0), // φ^2 = 1*φ + 1
+            (3, 2.0, 1.0), // φ^3 = 2*φ + 1
+            (4, 3.0, 2.0), // φ^4 = 3*φ + 2
         ];
 
         for (n, f_n, f_n_minus_1) in cases {

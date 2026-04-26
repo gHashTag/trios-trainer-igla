@@ -683,7 +683,7 @@ fn main() {
 
     let max_steps = 5000;
     let prune_step = 3000;
-    let prune_threshold = 2.60;
+    let prune_threshold = trios_trainer::invariants::ASHA_PRUNE_THRESHOLD as f32;
     let target_bpb = 2.52;
 
     // Determine which trial(s) to run

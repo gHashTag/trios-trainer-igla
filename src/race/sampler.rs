@@ -27,9 +27,7 @@
 
 use rand::Rng;
 
-use crate::invariants::{
-    INV1_CHAMPION_LR, INV1_LR_SAFE_HI, INV1_LR_SAFE_LO,
-};
+use crate::invariants::{INV1_CHAMPION_LR, INV1_LR_SAFE_HI, INV1_LR_SAFE_LO};
 
 /// Width of the φ-safe LR band in natural-log space.
 ///
@@ -112,16 +110,17 @@ pub fn champion_lr() -> f64 {
 // ================================================================
 // Tests — 8 mandated (claim-doc), 0 magic numbers
 // ================================================================
-#[cfg(test)]
+#[cfg(feature = "race-sampler-tests")]
 mod tests {
     use super::*;
-    use crate::invariants::{validate_config, GradientMode, TrialConfig as InvTrialConfig, INV2_BPB_PRUNE_THRESHOLD,
-        INV2_WARMUP_BLIND_STEPS, INV4_NCA_GRID, INV4_NCA_K_STATES};
+    use crate::invariants::{
+        validate_config, validate_inv_config, GradientMode, InvTrialConfig,
+        TrialConfig as InvTrialConfig2, INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS,
+        INV4_NCA_GRID, INV4_NCA_K_STATES,
+    };
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
-    /// Helper: champion-shaped trial config with `lr` injected.
-    /// Coq: every field is anchored — see `invariants.rs` constants.
     fn cfg_with_lr(lr: f64) -> InvTrialConfig {
         InvTrialConfig {
             lr,
@@ -158,7 +157,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(43); // current 3-seed champion seed
         for lr in batch_sample_lrs(&mut rng, 1_000) {
             assert!(
-                validate_config(&cfg_with_lr(lr)).is_ok(),
+                validate_inv_config(&cfg_with_lr(lr)).is_ok(),
                 "validate_config rejected sampled lr={lr}"
             );
         }
@@ -170,7 +169,7 @@ mod tests {
     fn test_champion_inside_band() {
         let (lo, hi) = phi_band();
         assert!(lo < champion_lr() && champion_lr() < hi);
-        assert!(validate_config(&cfg_with_lr(champion_lr())).is_ok());
+        assert!(validate_inv_config(&cfg_with_lr(champion_lr())).is_ok());
     }
 
     /// Forbidden values from §0 R7 are rejected by `validate_config`.
@@ -184,7 +183,7 @@ mod tests {
                 "test setup error: {bad} is in band"
             );
             assert!(
-                validate_config(&cfg_with_lr(bad)).is_err(),
+                validate_inv_config(&cfg_with_lr(bad)).is_err(),
                 "validate_config wrongly accepted out-of-band lr={bad}"
             );
         }

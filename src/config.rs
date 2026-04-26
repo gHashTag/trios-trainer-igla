@@ -56,7 +56,9 @@ pub struct OptimizerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataConfig {
-    pub corpus: String, // "fineweb" | "tinyshakespeare" | "wikitext-103"
+    pub corpus: String,     // "fineweb" | "tinyshakespeare" | "wikitext-103"
+    pub train_path: String, // Path to training data (supports absolute or relative to workdir)
+    pub val_path: String,   // Path to validation data
     pub batch_size: usize,
     pub batch_tokens: usize,
 }
@@ -117,6 +119,12 @@ impl TrainConfig {
         }
         if let Ok(s) = std::env::var("TRIOS_LEDGER_PUSH") {
             self.ledger.push = matches!(s.as_str(), "1" | "true" | "yes");
+        }
+        if let Ok(s) = std::env::var("TRIOS_TRAIN_PATH") {
+            self.data.train_path = s;
+        }
+        if let Ok(s) = std::env::var("TRIOS_VAL_PATH") {
+            self.data.val_path = s;
         }
     }
 

@@ -34,6 +34,8 @@ fn make_test_config(embargo_path: &str) -> TrainConfig {
         },
         data: DataConfig {
             corpus: "test".into(),
+            train_path: "data/train.txt".into(),
+            val_path: "data/val.txt".into(),
             batch_size: 1,
             batch_tokens: 1024,
         },

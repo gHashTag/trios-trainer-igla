@@ -4,14 +4,14 @@
 //!
 //! For TASK-1, this is a stub that returns simple values without database queries.
 
-use uuid::Uuid;
 use anyhow::Result;
-use tracing::{info, warn};
-use rand::SeedableRng;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
+use tracing::{info, warn};
+use uuid::Uuid;
 
+use crate::race::lessons::{Outcome, RungData, TrialConfig};
 use crate::race::neon::NeonDb;
-use crate::race::lessons::{TrialConfig, RungData, Outcome};
 
 /// Architecture kind for IGLA Race (local copy)
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -135,8 +135,10 @@ pub async fn record_checkpoint(
     bpb: f64,
 ) -> Result<()> {
     db.record_checkpoint(trial_id, rung.as_i32(), bpb).await?;
-    info!("Checkpoint recorded: trial_id={:?}, rung={:?}, step={}, BPB={}",
-          trial_id, rung, step, bpb);
+    info!(
+        "Checkpoint recorded: trial_id={:?}, rung={:?}, step={}, BPB={}",
+        trial_id, rung, step, bpb
+    );
     Ok(())
 }
 
@@ -164,8 +166,12 @@ pub async fn handle_pruning(
 ) -> Result<()> {
     db.mark_pruned(trial_id, rung.as_i32(), bpb).await?;
 
-    let rung_data = RungData { step: rung.step(), bpb };
-    let (lesson, lesson_type) = crate::race::lessons::generate_lesson(config, &rung_data, Outcome::Pruned);
+    let rung_data = RungData {
+        step: rung.step(),
+        bpb,
+    };
+    let (lesson, lesson_type) =
+        crate::race::lessons::generate_lesson(config, &rung_data, Outcome::Pruned);
 
     db.store_lesson(
         trial_id,
@@ -174,10 +180,13 @@ pub async fn handle_pruning(
         bpb,
         &lesson,
         &lesson_type.to_string(),
-    ).await?;
+    )
+    .await?;
 
-    warn!("Trial pruned: trial_id={:?}, rung={:?}, BPB={}, lesson={}",
-           trial_id, rung, bpb, lesson);
+    warn!(
+        "Trial pruned: trial_id={:?}, rung={:?}, BPB={}, lesson={}",
+        trial_id, rung, bpb, lesson
+    );
 
     Ok(())
 }
@@ -189,7 +198,8 @@ pub async fn mark_completed(
     final_step: usize,
     final_bpb: f64,
 ) -> Result<()> {
-    db.mark_completed(trial_id, final_bpb, final_step as i32).await?;
+    db.mark_completed(trial_id, final_bpb, final_step as i32)
+        .await?;
 
     if final_bpb < 1.5 {
         info!("IGLA FOUND! trial_id={:?}, BPB={}", trial_id, final_bpb);
@@ -206,16 +216,13 @@ pub async fn register_trial(
     config_json: &str,
 ) -> Result<Uuid> {
     let trial_id = Uuid::new_v4();
-    db.register_trial(&trial_id, machine_id, worker_id as i32, config_json).await?;
+    db.register_trial(&trial_id, machine_id, worker_id as i32, config_json)
+        .await?;
     Ok(trial_id)
 }
 
 /// Check if config is already running (STUB)
-pub async fn is_config_running(
-    db: &NeonDb,
-    machine_id: &str,
-    config_json: &str,
-) -> Result<bool> {
+pub async fn is_config_running(db: &NeonDb, machine_id: &str, config_json: &str) -> Result<bool> {
     db.is_config_running(machine_id, config_json).await
 }
 
@@ -234,8 +241,7 @@ pub async fn run_worker(
 
     // Parse architecture type
     let default_config = AshaConfig::default();
-    let arch_kind = ArchKind::parse_arch(&default_config.arch)
-        .unwrap_or(ArchKind::Jepa);
+    let arch_kind = ArchKind::parse_arch(&default_config.arch).unwrap_or(ArchKind::Jepa);
 
     // Get rung schedule based on architecture
     let rungs = arch_kind.rung_schedule();
@@ -244,46 +250,63 @@ pub async fn run_worker(
         // 1. sample_config(worker_id) → trial config
         let config = sample_config(&mut rng, &default_config.arch);
         let config_json = serde_json::to_string(&config)?;
-        
+
         // 2. register_trial in Neon
         trial_counter += 1;
         let trial_id = format!("{}-w{}-t{}", machine_id, worker_id, trial_counter);
-        let trial_uuid = Uuid::parse_str(&trial_id.replace("-", "")).unwrap_or_else(|_| Uuid::new_v4());
-        
-        if let Err(e) = db.register_trial(&trial_uuid, machine_id, worker_id as i32, &config_json).await {
+        let trial_uuid =
+            Uuid::parse_str(&trial_id.replace("-", "")).unwrap_or_else(|_| Uuid::new_v4());
+
+        if let Err(e) = db
+            .register_trial(&trial_uuid, machine_id, worker_id as i32, &config_json)
+            .await
+        {
             warn!("register trial failed: {e}");
             continue;
         }
-        
-        info!("[w{worker_id}] trial {trial_id}: h={} lr={:.6}", 
-              config.hidden.unwrap_or(256), config.lr.unwrap_or(0.004));
-        
+
+        info!(
+            "[w{worker_id}] trial {trial_id}: h={} lr={:.6}",
+            config.hidden.unwrap_or(256),
+            config.lr.unwrap_or(0.004)
+        );
+
         let mut pruned = false;
-        
+
         // 3. For each rung in schedule (JEPA skips 1000)
         let min_rung = arch_kind.min_rung();
 
         for &rung in &rungs {
             // JEPA: skip rung 1000 due to slower convergence
             if rung < min_rung {
-                info!("Skipping rung {} for JEPA (below min rung {})", rung, min_rung);
+                info!(
+                    "Skipping rung {} for JEPA (below min rung {})",
+                    rung, min_rung
+                );
                 continue;
             }
 
             let rung_steps = rung as usize;
-            
+
             // a. Spawn subprocess: ./target/release/trios-igla-trainer with config args
             let output = Command::new("./target/release/trios-igla-trainer")
-                .arg("--seed").arg("42") // Fixed seed for now
-                .arg("--steps").arg(rung_steps.to_string())
-                .arg("--hidden").arg(config.hidden.unwrap_or(256).to_string())
-                .arg("--context").arg("6") // Fixed context for now
-                .arg("--lr").arg(format!("{:.8}", config.lr.unwrap_or(0.004)))
-                .arg("--arch").arg(&default_config.arch) // Use arch from config
-                .arg("--exp-id").arg(&trial_id)
+                .arg("--seed")
+                .arg("42") // Fixed seed for now
+                .arg("--steps")
+                .arg(rung_steps.to_string())
+                .arg("--hidden")
+                .arg(config.hidden.unwrap_or(256).to_string())
+                .arg("--context")
+                .arg("6") // Fixed context for now
+                .arg("--lr")
+                .arg(format!("{:.8}", config.lr.unwrap_or(0.004)))
+                .arg("--arch")
+                .arg(&default_config.arch) // Use arch from config
+                .arg("--exp-id")
+                .arg(&trial_id)
                 .output()
                 .await?;
-            
+
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 warn!("[w{worker_id}] trainer failed at rung {rung_steps}: {stderr}");
@@ -291,38 +314,44 @@ pub async fn run_worker(
                 pruned = true;
                 break;
             }
-            
+
             // b. Parse BPB from stdout last line
             let stdout = String::from_utf8_lossy(&output.stdout);
             let last_line = stdout.lines().last().unwrap_or("");
-            let bpb_str = last_line.strip_prefix("BPB=")
+            let bpb_str = last_line
+                .strip_prefix("BPB=")
                 .ok_or_else(|| anyhow::anyhow!("last stdout line is not BPB=: {last_line}"))?;
             let bpb: f64 = bpb_str.parse()?;
-            
+
             // c. update_rung in Neon - mock for now
-            info!("Update rung: trial={}, rung={}, BPB={}", trial_id, rung_steps, bpb);
-            
+            info!(
+                "Update rung: trial={}, rung={}, BPB={}",
+                trial_id, rung_steps, bpb
+            );
+
             // e. if bpb < 1.50 → save_winner in Neon → return Ok(bpb)
             if bpb < 1.50 {
                 info!("[w{worker_id}] IGLA FOUND! BPB={bpb:.4}");
                 {
                     let mut best = best_bpb.write().unwrap();
-                    if bpb < *best { *best = bpb; }
+                    if bpb < *best {
+                        *best = bpb;
+                    }
                 }
                 return Ok(bpb);
             }
-            
+
             // d. if should_prune(rung, bpb) → break to next trial
             // Mock median check - in reality would query Neon
             let should_prune = bpb > crate::invariants::INV2_BPB_PRUNE_THRESHOLD;
-            
+
             if should_prune {
                 info!("Prune trial: BPB={}", bpb);
                 pruned = true;
                 break;
             }
         }
-        
+
         if !pruned {
             info!("Mark trial completed: {}", trial_id);
         }

@@ -60,49 +60,57 @@ path = "src/bin/ngram_train.rs"
 name = "ngram_train_gf16"
 path = "src/bin/ngram_train_gf16.rs"
 
-[[bin]]
-name = "train_cpu"
-path = "src/bin/train_cpu.rs"
+# TODO: fix imports - requires missing modules (bench, backward, etc.)
+# [[bin]]
+# name = "train_cpu"
+# path = "src/bin/train_cpu.rs"
 
 [[bin]]
 name = "train_v2"
 path = "src/bin/train_v2.rs"
 
-[[bin]]
-name = "transformer_train"
-path = "src/bin/transformer_train.rs"
+# TODO: fix imports - requires transformer_trainer module
+# [[bin]]
+# name = "transformer_train"
+# path = "src/bin/transformer_train.rs"
 
-[[bin]]
-name = "trinity_3k_fineweb_train"
-path = "src/bin/trinity_3k_fineweb_train.rs"
+# TODO: fix imports - requires trinity_3k module
+# [[bin]]
+# name = "trinity_3k_fineweb_train"
+# path = "src/bin/trinity_3k_fineweb_train.rs"
 
-[[bin]]
-name = "trinity_3k_simple_train"
-path = "src/bin/trinity_3k_simple_train.rs"
+# TODO: fix imports - requires trinity_3k module
+# [[bin]]
+# name = "trinity_3k_simple_train"
+# path = "src/bin/trinity_3k_simple_train.rs"
 
-[[bin]]
-name = "trinity_3k_tinyshakespeare"
-path = "src/bin/trinity_3k_tinyshakespeare.rs"
+# TODO: fix imports - requires trinity_3k module
+# [[bin]]
+# name = "trinity_3k_tinyshakespeare"
+# path = "src/bin/trinity_3k_tinyshakespeare.rs"
 
 [[bin]]
 name = "trinity_pr1722"
 path = "src/bin/trinity_pr1722.rs"
 
-[[bin]]
-name = "trinity_tournament"
-path = "src/bin/trinity_tournament.rs"
+# TODO: fix imports - requires backward, bench, swa_phi, etc.
+# [[bin]]
+# name = "trinity_tournament"
+# path = "src/bin/trinity_tournament.rs"
 
 [[bin]]
 name = "arch_explorer"
 path = "src/bin/arch_explorer.rs"
 
-[[bin]]
-name = "attn_train"
-path = "src/bin/attn_train.rs"
+# TODO: fix imports - requires attention module
+# [[bin]]
+# name = "attn_train"
+# path = "src/bin/attn_train.rs"
 
-[[bin]]
-name = "bench_cpu"
-path = "src/bin/bench_cpu.rs"
+# TODO: fix imports - requires bench module
+# [[bin]]
+# name = "bench_cpu"
+# path = "src/bin/bench_cpu.rs"
 
 [[bin]]
 name = "gf16_test"
@@ -128,6 +136,10 @@ path = "src/bin/r12_optimizer_race.rs"
 [[bin]]
 name = "tjepa_train"
 path = "src/bin/tjepa_train.rs"
+
+[[bin]]
+name = "tri"
+path = "src/bin/tri.rs"
 
 [features]
 # Default builds standalone with internal stub modules. No network deps required.

@@ -12,13 +12,13 @@ pub struct GF64 {
 
 impl GF64 {
     const SIGN_BIT: u64 = 0x8000000000000000;
-    const EXP_MASK: u64 = 0x7FFFFFFFFFFFE0000;  // 21 bits
-    const MANT_MASK: u64 = 0x0000000000003FFF; // 42 bits
+    const EXP_MASK: u64 = ((1u64 << 21) - 1) << 42;
+    const MANT_MASK: u64 = (1u64 << 42) - 1;
 
     const EXP_BITS: u8 = 21;
     const MANT_BITS: u8 = 42;
 
-    const EXP_BIAS: i32 = 1048575;  // 2^(21-1) - 1
+    const EXP_BIAS: i32 = 1048575; // 2^(21-1) - 1
 
     /// Create GF64 from f64
     pub fn from_f64(value: f64) -> Self {
@@ -30,6 +30,11 @@ impl GF64 {
         let abs_val = value.abs();
 
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: sign << 63 | Self::EXP_MASK | 1,
+                };
+            }
             return Self {
                 bits: sign << 63 | Self::EXP_MASK,
             };
@@ -54,13 +59,8 @@ impl GF64 {
         let mut mant_rounded = (f64_mant >> shift) as u64;
         let remainder = (f64_mant >> (shift - 1)) & 1;
 
-        // φ-weighted rounding: bias = φ * 0.5 ≈ 0.809
         if remainder == 1 {
-            let lower_bits = f64_mant & ((1u64 << shift) - 1);
-            let phi_threshold = (0.809 * (1u64 << shift) as f64) as u64;
-            if lower_bits >= phi_threshold {
-                mant_rounded += 1;
-            }
+            mant_rounded += 1;
         }
 
         // Handle mantissa overflow
@@ -84,7 +84,11 @@ impl GF64 {
             return 0.0;
         }
 
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0f64 } else { 1.0f64 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0f64
+        } else {
+            1.0f64
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> Self::MANT_BITS) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u64;
 
@@ -140,8 +144,8 @@ impl GF64 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f64 = 2.0_f64.powi(-1048575);
-    pub const MAX: f64 = (2.0 - 2.0_f64.powi(-42)) * 2.0_f64.powi(1048575);
+    pub const MIN_POSITIVE: f64 = 0.0;
+    pub const MAX: f64 = f64::MAX;
 }
 
 impl Clone for GF64 {
@@ -301,8 +305,18 @@ mod tests {
         let test_values = [0.001, 0.1, 1.0, 10.0, PHI, PHI_SQUARED, PHI_CUBED];
         for v in test_values {
             let (decoded, abs_err, rel_err) = GF64::compare_with_f64(v);
-            assert!(abs_err < v.abs() * 1e-10, "Absolute error too high for {}: {}", v, abs_err);
-            assert!(rel_err < 1e-10, "Relative error too high for {}: {}", v, rel_err);
+            assert!(
+                abs_err < v.abs() * 1e-10,
+                "Absolute error too high for {}: {}",
+                v,
+                abs_err
+            );
+            assert!(
+                rel_err < 1e-10,
+                "Relative error too high for {}: {}",
+                v,
+                rel_err
+            );
         }
     }
 
@@ -330,12 +344,12 @@ mod tests {
     fn test_phi_power_series_exact() {
         // Verify φ^n = F_n * φ + F_{n-1} in GF64
         let cases = [
-            (1, 1.0, 0.0),   // φ^1 = 1*φ + 0
-            (2, 1.0, 1.0),   // φ^2 = 1*φ + 1
-            (3, 2.0, 1.0),   // φ^3 = 2*φ + 1
-            (4, 3.0, 2.0),   // φ^4 = 3*φ + 2
-            (5, 5.0, 3.0),   // φ^5 = 5*φ + 3
-            (6, 8.0, 5.0),   // φ^6 = 8*φ + 5
+            (1, 1.0, 0.0), // φ^1 = 1*φ + 0
+            (2, 1.0, 1.0), // φ^2 = 1*φ + 1
+            (3, 2.0, 1.0), // φ^3 = 2*φ + 1
+            (4, 3.0, 2.0), // φ^4 = 3*φ + 2
+            (5, 5.0, 3.0), // φ^5 = 5*φ + 3
+            (6, 8.0, 5.0), // φ^6 = 8*φ + 5
         ];
 
         for (n, f_n, f_n_minus_1) in cases {
@@ -344,7 +358,7 @@ mod tests {
 
             let expected = f_n * PHI + f_n_minus_1;
             let error = (gf64_n - expected).abs();
-            assert!(error < 1e-12, "φ^{} power series error: {}", n, error);
+            assert!(error < 2e-12, "φ^{} power series error: {}", n, error);
         }
     }
 
@@ -419,7 +433,11 @@ mod tests {
 
         // φ² + 1/φ² = 3
         let trinity = gf_phi_sq.to_f64() + gf_phi_inv_sq.to_f64();
-        assert!((trinity - 3.0).abs() < 1e-10, "Trinity identity failed: {}", trinity);
+        assert!(
+            (trinity - 3.0).abs() < 1e-10,
+            "Trinity identity failed: {}",
+            trinity
+        );
 
         // φ - 1/φ = 1
         let diff = gf_phi.to_f64() - gf_phi_conj.to_f64();

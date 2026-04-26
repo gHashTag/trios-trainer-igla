@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::time::Instant;
 
 use crate::model_hybrid_attn::HybridAttn;
+use crate::objective::{nca_entropy_loss, NcaObjective};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
 pub const GATE_FINAL_SEEDS: &[u64] = &[42, 43, 44];
@@ -435,6 +436,8 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let mut rng_s = args.seed.wrapping_add(7919);
     let t0 = Instant::now();
     let gf16_floor_step = (0.7 * args.steps as f32).floor() as usize;
+    let nca = NcaObjective::default();
+    let mut last_nca_entropy = 0.0f64;
 
     for step in 1..=args.steps {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
@@ -495,6 +498,45 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             *x /= tp;
         }
 
+        // NCA auxiliary entropy loss on hidden activations
+        {
+            rng_s = rng_s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            let dl = train.len();
+            let ms = dl.saturating_sub(SEQ + 1);
+            if ms > 0 {
+                let cs = (rng_s as usize) % ms;
+                let chunk = &train[cs..cs + SEQ + 1];
+                if chunk.len() > NGRAM {
+                    let fc = model.forward_cached(chunk, 0);
+                    let k = nca.k_states;
+                    let h_min = fc.hidden.iter().cloned().fold(f32::MAX, f32::min);
+                    let h_max = fc.hidden.iter().cloned().fold(f32::MIN, f32::max);
+                    let range = (h_max - h_min).max(1e-6);
+                    let nca_state: Vec<f32> = fc
+                        .hidden
+                        .iter()
+                        .map(|&h| (((h - h_min) / range) * (k as f32 - 1.0)).round().max(0.0))
+                        .collect();
+                    let (nca_loss_val, nca_ent) = nca_entropy_loss(
+                        &nca_state,
+                        k,
+                        nca.entropy_min,
+                        nca.entropy_max,
+                        nca.weight,
+                    );
+                    last_nca_entropy = nca_ent;
+                    if nca_loss_val > 0.0 {
+                        let scale = 1.0 + (nca_loss_val as f32).min(5.0);
+                        for x in gp.iter_mut() {
+                            *x *= scale;
+                        }
+                    }
+                }
+            }
+        }
+
         opt_embed.update(&mut model.embed, &ge, lr);
         for (ci, oc) in opt_ctx.iter_mut().enumerate() {
             oc.update(&mut model.ctx[ci], &gc[ci], lr);
@@ -520,12 +562,13 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 best_bpb = ema_bpb;
             }
             println!(
-                "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} t={:.1}s",
+                "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
                 args.seed,
                 step,
                 vbpb,
                 ema_bpb,
                 best_bpb,
+                last_nca_entropy,
                 t0.elapsed().as_secs_f64()
             );
         }
@@ -571,8 +614,8 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
         lr: cfg.optimizer.lr as f32,
         attn_layers: if cfg.model.hybrid_attn { 2 } else { 1 },
         eval_every: 1000,
-        train_path: "data/tiny_shakespeare.txt".to_string(),
-        val_path: "data/tiny_shakespeare_val.txt".to_string(),
+        train_path: cfg.data.train_path.clone(),
+        val_path: cfg.data.val_path.clone(),
     };
     let outcome = run_single(&args)?;
     if !cfg.ledger.jsonl_path.is_empty() {

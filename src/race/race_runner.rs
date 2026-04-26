@@ -44,8 +44,8 @@ use rand::SeedableRng;
 
 use crate::invariants::{
     validate_inv_config, GradientMode, InvError, InvTrialConfig, INV1_CHAMPION_LR,
-    INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS, INV3_D_MODEL_MIN,
-    INV4_NCA_GRID, INV4_NCA_K_STATES,
+    INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS, INV3_D_MODEL_MIN, INV4_NCA_GRID,
+    INV4_NCA_K_STATES,
 };
 use crate::race::rungs::{iter_rungs, Rung};
 use crate::race::sampler::sample_lr;
@@ -170,10 +170,7 @@ impl TelemetrySink {
     /// Append one row. Lock is held only for the duration of the write —
     /// workers contend at most for a single `writeln!` call.
     pub fn record(&self, r: &TrialRecord) -> std::io::Result<()> {
-        let mut guard = self
-            .inner
-            .lock()
-            .expect("telemetry sink mutex poisoned");
+        let mut guard = self.inner.lock().expect("telemetry sink mutex poisoned");
         writeln!(
             guard,
             "{},{},{:.9},{},{},{:.9},{}",
@@ -478,7 +475,7 @@ mod tests {
         let path = tmp_path("gate");
         let sink = TelemetrySink::open(&path).expect("open sink");
         let bad = champion_config(0.0001, 256, false); // far below INV-1 lo
-        assert!(validate_config(&bad).is_err());
+        assert!(validate_inv_config(&bad).is_err());
         let rec = run_trial(0, 0, &bad, 0, &sink).expect("trial");
         assert_eq!(rec.status, TrialStatus::GateRejected);
         sink.flush().unwrap();

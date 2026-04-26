@@ -1,18 +1,18 @@
 //! Failure Memory — automatic lesson generation from pruned trials
 
-use serde::{Deserialize, Serialize};
 use crate::race::neon::NeonDb;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Lesson type for categorizing patterns
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LessonType {
-    Avoid,    // "AVOID: ..." — definite anti-pattern
-    Pattern,  // "PATTERN: ..." — observed pattern
-    Winner,   // "WINNER: ..." — successful config
-    Warn,     // "WARN: ..." — potential issue
-    Info,     // "INFO: ..." — neutral observation
+    Avoid,   // "AVOID: ..." — definite anti-pattern
+    Pattern, // "PATTERN: ..." — observed pattern
+    Winner,  // "WINNER: ..." — successful config
+    Warn,    // "WARN: ..." — potential issue
+    Info,    // "INFO: ..." — neutral observation
 }
 
 impl std::fmt::Display for LessonType {
@@ -83,14 +83,16 @@ pub fn generate_lesson(
     if let Some(lr) = config.lr {
         if lr > 0.05 {
             lessons.push((
-                format!("AVOID: lr={} too high — BPB={} at rung-{}, always pruned",
-                         lr, rung.bpb, rung.step),
-                LessonType::Avoid
+                format!(
+                    "AVOID: lr={} too high — BPB={} at rung-{}, always pruned",
+                    lr, rung.bpb, rung.step
+                ),
+                LessonType::Avoid,
             ));
         } else if lr < 0.001 {
             lessons.push((
                 format!("WARN: lr={} too low — may not converge", lr),
-                LessonType::Warn
+                LessonType::Warn,
             ));
         }
     }
@@ -99,9 +101,11 @@ pub fn generate_lesson(
     if let Some(d_model) = config.d_model {
         if d_model <= 64 && rung.bpb > 2.8 {
             lessons.push((
-                format!("PATTERN: d_model={} insufficient capacity, never below {} BPB",
-                         d_model, rung.bpb),
-                LessonType::Pattern
+                format!(
+                    "PATTERN: d_model={} insufficient capacity, never below {} BPB",
+                    d_model, rung.bpb
+                ),
+                LessonType::Pattern,
             ));
         }
     }
@@ -111,7 +115,7 @@ pub fn generate_lesson(
         if hidden < 32 {
             lessons.push((
                 format!("WARN: hidden={} too small — limited expressiveness", hidden),
-                LessonType::Warn
+                LessonType::Warn,
             ));
         }
     }
@@ -120,8 +124,11 @@ pub fn generate_lesson(
     if let Some(wd) = config.weight_decay {
         if wd > 0.1 && rung.bpb > 3.0 {
             lessons.push((
-                format!("AVOID: weight_decay={} too aggressive — causes underfitting", wd),
-                LessonType::Avoid
+                format!(
+                    "AVOID: weight_decay={} too aggressive — causes underfitting",
+                    wd
+                ),
+                LessonType::Avoid,
             ));
         }
     }
@@ -131,7 +138,7 @@ pub fn generate_lesson(
         if opt.contains("sgd") && rung.bpb > 2.7 {
             lessons.push((
                 "PATTERN: SGD optimizer underperforms — use AdamW or Muon".to_string(),
-                LessonType::Pattern
+                LessonType::Pattern,
             ));
         }
     }
@@ -139,9 +146,11 @@ pub fn generate_lesson(
     // Early pruning pattern
     if rung.step <= 1000 && rung.bpb > 3.0 {
         lessons.push((
-            format!("AVOID: BPB={} at rung-{} — early death, check config",
-                     rung.bpb, rung.step),
-            LessonType::Avoid
+            format!(
+                "AVOID: BPB={} at rung-{} — early death, check config",
+                rung.bpb, rung.step
+            ),
+            LessonType::Avoid,
         ));
     }
 
@@ -149,12 +158,13 @@ pub fn generate_lesson(
     if lessons.is_empty() {
         lessons.push((
             format!("INFO: trial {} at BPB={}", outcome, rung.bpb),
-            LessonType::Info
+            LessonType::Info,
         ));
     }
 
     // Return most severe lesson
-    let (lesson, lesson_type) = lessons.into_iter()
+    let (lesson, lesson_type) = lessons
+        .into_iter()
         .min_by(|a, b| {
             // Priority: Avoid > Pattern > Warn > Info > Winner
             let priority = |t: LessonType| match t {
@@ -188,18 +198,19 @@ pub async fn store_lesson(
         bpb_at_pruned,
         lesson,
         lesson_type,
-    ).await?;
+    )
+    .await?;
 
     Ok(())
 }
 
 /// Get top lessons from experience
-pub async fn get_top_lessons(
-    db: &NeonDb,
-    limit: i32,
-) -> Result<Vec<(String, String, i32)>> {
+pub async fn get_top_lessons(db: &NeonDb, limit: i32) -> Result<Vec<(String, String, i32)>> {
     let lessons = db.get_top_lessons(limit).await?;
-    Ok(lessons.into_iter().map(|l| (l.lesson, l.lesson_type, l.pattern_count)).collect())
+    Ok(lessons
+        .into_iter()
+        .map(|l| (l.lesson, l.lesson_type, l.pattern_count))
+        .collect())
 }
 
 #[cfg(test)]
@@ -221,7 +232,10 @@ mod tests {
             max_steps: None,
         };
 
-        let rung = RungData { step: 1000, bpb: 3.4 };
+        let rung = RungData {
+            step: 1000,
+            bpb: 3.4,
+        };
         let (lesson, _lesson_type) = generate_lesson(&config, &rung, Outcome::Pruned);
 
         assert_eq!(_lesson_type, LessonType::Avoid);
@@ -244,7 +258,10 @@ mod tests {
             max_steps: None,
         };
 
-        let rung = RungData { step: 1000, bpb: 2.9 };
+        let rung = RungData {
+            step: 1000,
+            bpb: 2.9,
+        };
         let (lesson, _lesson_type) = generate_lesson(&config, &rung, Outcome::Pruned);
 
         assert!(lesson.contains("d_model=64"));
@@ -265,7 +282,10 @@ mod tests {
             max_steps: None,
         };
 
-        let rung = RungData { step: 1000, bpb: 3.2 };
+        let rung = RungData {
+            step: 1000,
+            bpb: 3.2,
+        };
         let (lesson, _lesson_type) = generate_lesson(&config, &rung, Outcome::Pruned);
 
         assert!(lesson.contains("BPB=3.2"));
@@ -287,7 +307,10 @@ mod tests {
             max_steps: None,
         };
 
-        let rung = RungData { step: 1000, bpb: 3.5 };
+        let rung = RungData {
+            step: 1000,
+            bpb: 3.5,
+        };
         let (_lesson, lesson_type) = generate_lesson(&config, &rung, Outcome::Pruned);
 
         // Should prioritize AVOID lessons

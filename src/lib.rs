@@ -13,6 +13,8 @@ pub mod model;
 pub mod model_hybrid_attn;
 pub mod objective;
 pub mod optimizer;
+pub mod phi_numbers;
+pub mod race;
 pub mod train_loop;
 
 pub use config::TrainConfig;

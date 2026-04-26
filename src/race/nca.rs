@@ -185,10 +185,7 @@ pub fn validate_nca_entropy(
 /// without forcing the caller to repeat `INV4_NCA_GRID` / `_K_STATES`
 /// at every call site.  Equivalent to
 /// `validate_nca_entropy(h, mode, INV4_NCA_GRID, INV4_NCA_K_STATES)`.
-pub fn validate_nca_entropy_canonical(
-    h: f64,
-    mode: NcaBandMode,
-) -> Result<NcaReport, NcaError> {
+pub fn validate_nca_entropy_canonical(h: f64, mode: NcaBandMode) -> Result<NcaReport, NcaError> {
     validate_nca_entropy(h, mode, INV4_NCA_GRID, INV4_NCA_K_STATES)
 }
 
