@@ -20,6 +20,7 @@ WORKDIR /work
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
 COPY configs /configs
 COPY data /data
+# TODO: Replace stub data with real FineWeb dataset
 
 ENV RUST_LOG=info
 ENV TRIOS_SEED=43
@@ -27,5 +28,7 @@ ENV TRIOS_STEPS=81000
 ENV TRIOS_LR=0.003
 ENV TRIOS_TARGET_BPB=1.50
 
+ENV TRIOS_CONFIG=/configs/gate2-attempt.toml
+
 ENTRYPOINT ["/usr/local/bin/trios-train"]
-CMD ["--seed", "43", "--steps", "81000", "--hidden", "828", "--lr", "0.003", "--attn-layers", "2"]
+CMD ["--config", "/configs/gate2-attempt.toml"]

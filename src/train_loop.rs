@@ -386,8 +386,9 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
     let args = TrainArgs {
         seed: cfg.seed, steps: cfg.steps, hidden: 828,
         lr: cfg.optimizer.lr as f32, attn_layers: if cfg.model.hybrid_attn { 2 } else { 1 },
-        eval_every: 1000, train_path: "data/tiny_shakespeare.txt".to_string(),
-        val_path: "data/tiny_shakespeare_val.txt".to_string(),
+        eval_every: 1000,
+        train_path: cfg.data.train_path.clone(),
+        val_path: cfg.data.val_path.clone(),
     };
     let outcome = run_single(&args)?;
     if !cfg.ledger.jsonl_path.is_empty() {
