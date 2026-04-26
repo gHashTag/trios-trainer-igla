@@ -5,7 +5,7 @@
 #              ghcr.io/ghashtag/trios-trainer-igla:latest
 
 # ---------- builder ----------
-FROM rust:1.75-slim AS builder
+FROM rust:1.86-slim AS builder
 
 # git required at runtime for ledger row push; install in builder for cargo,
 # final stage receives only the static binary.

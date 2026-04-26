@@ -8,8 +8,7 @@ use trios_trainer::TrainConfig;
 
 #[test]
 fn champion_config_loads_and_validates() {
-    let cfg = TrainConfig::from_toml("configs/champion.toml")
-        .expect("champion.toml must load");
+    let cfg = TrainConfig::from_toml("configs/champion.toml").expect("champion.toml must load");
     assert_eq!(cfg.name, "champion");
     assert_eq!(cfg.seed, 43);
     assert!((cfg.optimizer.lr - 0.004).abs() < 1e-9);

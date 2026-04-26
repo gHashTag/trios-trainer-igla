@@ -1,8 +1,8 @@
 //! Data + tokenizer façade. Migrated from
 //! `trios-train-cpu/src/{tokenizer.rs, data.rs}` and `trios-data` crate.
 
-use anyhow::Result;
 use crate::config::DataConfig;
+use anyhow::Result;
 
 pub struct DataPipeline {
     pub corpus: String,
