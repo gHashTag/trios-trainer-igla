@@ -2,8 +2,8 @@
 //!
 //! Demonstrates the CPU training loop with BPB measurement.
 
-use trios_trainer::{
-    bpb_from_loss, estimate_model_size, print_metrics, train_cpu_loop, TrainConfig,
+use trios_trainer::bench::{
+    bpb_from_loss, estimate_model_size, print_metrics, train_cpu_loop, TrainConfig as BenchTrainConfig,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -12,7 +12,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!();
 
     // Create training configuration (smoke test: 34 steps)
-    let config = TrainConfig {
+    let config = BenchTrainConfig {
         max_steps: 34,
         batch_size: 4,
         seq_len: 128,

@@ -45,26 +45,20 @@ pub fn next_fibonacci(value: u64) -> u64 {
 }
 
 /// Get the nearest Fibonacci number to a given value
-pub const fn nearest_fibonacci(value: u64) -> u64 {
+pub fn nearest_fibonacci(value: u64) -> u64 {
+    if value <= FIBONACCI[0] {
+        return FIBONACCI[0];
+    }
     for i in 0..FIBONACCI.len() - 1 {
         if FIBONACCI[i] <= value && value <= FIBONACCI[i + 1] {
             let lower = FIBONACCI[i];
             let upper = FIBONACCI[i + 1];
             let diff_lower = value - lower;
             let diff_upper = upper - value;
-            return if diff_lower <= diff_upper { lower } else { upper };
+            return if diff_lower < diff_upper { lower } else { upper };
         }
     }
-    // For values beyond the table
-    let n = FIBONACCI.len();
-    let f_n = fibonacci(n);
-    if value <= f_n {
-        return f_n;
-    }
-    let f_n_plus_1 = fibonacci(n + 1);
-    let diff_lower = value - f_n;
-    let diff_upper = f_n_plus_1 - value;
-    if diff_lower <= diff_upper { f_n } else { f_n_plus_1 }
+    FIBONACCI[FIBONACCI.len() - 1]
 }
 
 /// Check if a value is a Fibonacci number

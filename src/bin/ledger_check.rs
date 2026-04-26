@@ -68,9 +68,10 @@ use serde_json::Value;
 
 use trios_trainer::race::victory::{
     check_victory, stat_strength, SeedResult, TtestReport, VictoryError,
-    VictoryReport, IGLA_TARGET_BPB, JEPA_PROXY_BPB_FLOOR, VICTORY_SEED_TARGET,
+    VictoryReport, JEPA_PROXY_BPB_FLOOR,
 };
 use trios_trainer::race::victory::{TTEST_ALPHA, TTEST_BASELINE_MU0, TTEST_EFFECT_SIZE_MIN};
+use trios_trainer::invariants::{IGLA_TARGET_BPB, VICTORY_SEED_TARGET};
 
 /// CLI for adjudicating the IGLA RACE victory predicate against a
 /// JSONL seed-results ledger.

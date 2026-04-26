@@ -110,6 +110,16 @@ struct HybridModel {
     hidden: usize,
 }
 
+struct ForwardCache {
+    combined: Vec<f32>,
+    ln: Vec<f32>,
+    hidden_pre_attn: Vec<f32>,
+    attn_in: Vec<f32>,
+    attn_out: Vec<f32>,
+    hidden: Vec<f32>,
+    logits: Vec<f32>,
+}
+
 impl HybridModel {
     fn new(hidden: usize, seed: u64, attn_layers: u8) -> Self {
         let mut s = seed;
@@ -156,7 +166,7 @@ impl HybridModel {
         m
     }
 
-    fn forward_position(&self, tokens: &[usize], pos: usize) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+    fn forward_cached(&self, tokens: &[usize], pos: usize) -> ForwardCache {
         let h = self.hidden;
         let d = self.attn.config().d_model;
         let t_last = tokens[pos + NGRAM - 1].min(VOCAB - 1);
@@ -173,17 +183,18 @@ impl HybridModel {
         let mut hidden = vec![0.0f32; h];
         for hi in 0..h { hidden[hi] = if hidden_raw[hi] > 0.0 { hidden_raw[hi] * hidden_raw[hi] } else { 0.0 }; }
 
+        let hidden_pre_attn = hidden.clone();
         let mut attn_in = vec![0.0f32; d];
         for di in 0..d { for hi in 0..h { attn_in[di] += self.attn_down[di * h + hi] * hidden[hi]; } }
-        if let Ok(attn_out) = self.attn.forward(&attn_in, 1) {
-            let mut attn_up_out = vec![0.0f32; h];
-            for hi in 0..h { for di in 0..d { attn_up_out[hi] += self.attn_up[hi * d + di] * attn_out[di]; } }
-            for hi in 0..h { hidden[hi] += attn_up_out[hi] * 0.1; }
-        }
+        let attn_out = self.attn.forward(&attn_in, 1).unwrap_or_else(|_| vec![0.0f32; d]);
+        let mut attn_up_out = vec![0.0f32; h];
+        for hi in 0..h { for di in 0..d { attn_up_out[hi] += self.attn_up[hi * d + di] * attn_out[di]; } }
+        for hi in 0..h { hidden[hi] += attn_up_out[hi] * 0.1; }
 
         let mut logits = vec![0.0f32; VOCAB];
         for vi in 0..VOCAB { for hi in 0..h { logits[vi] += self.lm_head[vi * h + hi] * hidden[hi]; } }
-        (combined, ln, hidden, logits)
+
+        ForwardCache { combined, ln, hidden_pre_attn, attn_in, attn_out, hidden, logits }
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
@@ -192,7 +203,8 @@ impl HybridModel {
         let mut total = 0.0f32;
         for i in 0..count {
             let target = tokens[i + NGRAM].min(VOCAB - 1);
-            let (_, _, _, mut logits) = self.forward_position(tokens, i);
+            let fc = self.forward_cached(tokens, i);
+            let mut logits = fc.logits;
             softmax(&mut logits);
             total -= logits[target].max(1e-10).ln();
         }
@@ -206,7 +218,8 @@ fn compute_grads(model: &HybridModel, tokens: &[usize], positions: &[usize],
     let h = model.hidden;
     let d = model.attn.config().d_model;
     for &pos in positions {
-        let (combined, ln, hidden, mut logits) = model.forward_position(tokens, pos);
+        let fc = model.forward_cached(tokens, pos);
+        let ForwardCache { combined, ln, hidden_pre_attn, attn_in: _, attn_out, hidden, mut logits } = fc;
         softmax(&mut logits);
         let target = tokens[pos + NGRAM].min(VOCAB - 1);
         let mut d_hidden = vec![0.0f32; h];
@@ -218,23 +231,30 @@ fn compute_grads(model: &HybridModel, tokens: &[usize], positions: &[usize],
             }
         }
 
-        let mut d_attn_up_out = vec![0.0f32; h];
-        for hi in 0..h { d_attn_up_out[hi] = d_hidden[hi] * 0.1; }
-
+        let d_attn_up_out: Vec<f32> = d_hidden.iter().map(|&dh| dh * 0.1).collect();
         let mut d_attn_out = vec![0.0f32; d];
         for hi in 0..h {
             for di in 0..d {
-                g_attn_up[hi * d + di] += d_attn_up_out[hi] * hidden[hi].max(0.0).min(0.0);
+                g_attn_up[hi * d + di] += d_attn_up_out[hi] * attn_out[di];
                 d_attn_out[di] += d_attn_up_out[hi] * model.attn_up[hi * d + di];
             }
         }
 
-        for di in 0..d { for hi in 0..h { g_attn_down[di * h + hi] += d_attn_out[di] * hidden[hi]; } }
+        for di in 0..d { for hi in 0..h { g_attn_down[di * h + hi] += d_attn_out[di] * hidden_pre_attn[hi]; } }
 
         let mut d_raw = vec![0.0f32; h];
-        for hi in 0..h { if hidden[hi] > 0.0 { d_raw[hi] = d_hidden[hi] * 2.0 * hidden[hi].sqrt(); } }
+        for hi in 0..h {
+            if hidden_pre_attn[hi] > 0.0 {
+                d_raw[hi] = d_hidden[hi] * 2.0 * hidden_pre_attn[hi].sqrt();
+            }
+        }
         let mut d_ln = vec![0.0f32; DIM];
-        for hi in 0..h { for j in 0..DIM { g_proj[hi * DIM + j] += d_raw[hi] * ln[j]; d_ln[j] += model.proj[hi * DIM + j] * d_raw[hi]; } }
+        for hi in 0..h {
+            for j in 0..DIM {
+                g_proj[hi * DIM + j] += d_raw[hi] * ln[j];
+                d_ln[j] += model.proj[hi * DIM + j] * d_raw[hi];
+            }
+        }
         let d_combined = layer_norm_backward(&combined, &ln, &d_ln, 1e-5);
         let t_last = tokens[pos + NGRAM - 1].min(VOCAB - 1);
         for j in 0..DIM { g_embed[t_last * DIM + j] += d_combined[j]; }

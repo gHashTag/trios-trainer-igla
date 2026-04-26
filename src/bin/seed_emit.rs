@@ -65,7 +65,8 @@ use clap::Parser;
 use serde_json::{json, Value};
 
 use trios_trainer::invariants::INV2_WARMUP_BLIND_STEPS;
-use trios_trainer::race::victory::{IGLA_TARGET_BPB, JEPA_PROXY_BPB_FLOOR};
+use trios_trainer::invariants::IGLA_TARGET_BPB;
+use trios_trainer::race::victory::JEPA_PROXY_BPB_FLOOR;
 
 /// CLI for atomically emitting a single seed measurement to the
 /// IGLA RACE seed-results ledger.

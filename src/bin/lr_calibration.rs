@@ -9,19 +9,24 @@
 //!
 //! Output: experiments/lr_calibration/{flat,cosine,phi_decay}.csv + results.json
 
+// TODO: fix imports - requires trios_phi_schedule external crate
+#![allow(unused_imports)]
+
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use trios_phi_schedule::{LrScheduleType, lr_schedule_54};
 use trios_trainer::{
     backward::{cross_entropy_loss, clip_gradients},
     forward::LayerDims,
     optimizer::AdamWCpu,
-    tokenizer::BPETokenizer,
+    data::tokenizer::BPETokenizer,
     bench::{bpb_from_loss, TrainConfig},
 };
+
+#[cfg(feature = "trios-integration")]
+use trios_phi_schedule::{LrScheduleType, lr_schedule_54};
 
 /// Single calibration run results
 #[derive(Debug, serde::Serialize)]

@@ -7,7 +7,7 @@ use std::io::Read;
 use std::path::Path;
 use std::time::Instant;
 
-use trios_trainer::trinity_3k_model::{Trinity3kModel, Trinity3kConfig, AdamWConfig};
+use trios_trainer::trinity_3k::{Trinity3kModel, Trinity3kConfig, AdamWConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Trinity 3k FineWeb Training for Parameter Golf #110");

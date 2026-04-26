@@ -1,7 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::time::Instant;
-use trios_trainer::trinity_3k_model::{Trinity3kConfig, Trinity3kModel, AdamWConfig};
+use trios_trainer::trinity_3k::{Trinity3kConfig, Trinity3kModel, AdamWConfig};
 
 const LN_2: f32 = std::f32::consts::LN_2;
 

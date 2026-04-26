@@ -24,7 +24,7 @@ use trios_trainer::{
         ComponentLosses, NcaObjective, ObjectiveConfig, compute_combined_loss,
         nca_entropy_loss,
     },
-    MuonOptimizer,
+    optimizer::MuonOptimizer,
 };
 
 const VOCAB: usize = 128;

@@ -12,8 +12,8 @@ pub struct GF64 {
 
 impl GF64 {
     const SIGN_BIT: u64 = 0x8000000000000000;
-    const EXP_MASK: u64 = 0x7FFFFFFFFFFFE0000;  // 21 bits
-    const MANT_MASK: u64 = 0x0000000000003FFF; // 42 bits
+    const EXP_MASK: u64 = ((1u64 << 21) - 1) << 42;
+    const MANT_MASK: u64 = (1u64 << 42) - 1;
 
     const EXP_BITS: u8 = 21;
     const MANT_BITS: u8 = 42;
@@ -140,8 +140,8 @@ impl GF64 {
     }
 
     /// Range constants
-    pub const MIN_POSITIVE: f64 = 2.0_f64.powi(-1048575);
-    pub const MAX: f64 = (2.0 - 2.0_f64.powi(-42)) * 2.0_f64.powi(1048575);
+    pub const MIN_POSITIVE: f64 = 0.0; // TODO: compute 2^(-1048575) at runtime
+    pub const MAX: f64 = f64::MAX;
 }
 
 impl Clone for GF64 {

@@ -65,7 +65,7 @@ fn main() {
         Config {
             name: "B: Muon   lr=0.004",
             optimizer: OptimizerKind::Muon(
-                MuonOptimizer::new(N_PARAMS, 0.004)
+                MuonOptimizer::new(N_PARAMS, 0.004, 0.95, 0.01)
             ),
         },
         Config {

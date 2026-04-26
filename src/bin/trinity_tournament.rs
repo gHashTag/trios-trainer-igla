@@ -16,12 +16,12 @@
 use std::time::Instant;
 use trios_trainer::{
     backward::{clip_gradients, cross_entropy_loss},
-    bpb_from_loss,
+    bench::bpb_from_loss,
     optimizer::AdamWCpu,
     ortho_init_baseline::ortho_init_baseline,
     phi_ortho_init::phi_ortho_init,
     swa_phi::{swa_init, SwaState},
-    SlidingEvalConfig,
+    sliding_eval::SlidingEvalConfig,
 };
 
 const STEPS: usize = 200;

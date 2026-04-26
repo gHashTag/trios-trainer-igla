@@ -4,9 +4,7 @@
 
 use std::env;
 use std::io::Write;
-use trios_trainer::{
-    estimate_model_size, train_cpu_trace, TrainConfig,
-};
+use trios_trainer::bench::{estimate_model_size, train_cpu_trace, TrainConfig as BenchTrainConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("IGLA-GF16 CPU Training Benchmark");
@@ -22,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create training configuration
-    let config = TrainConfig {
+    let config = BenchTrainConfig {
         max_steps,
         batch_size: 4,
         seq_len: 128,

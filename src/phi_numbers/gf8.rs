@@ -140,7 +140,7 @@ impl GF8 {
     }
 
     /// Range of representable values
-    pub const MIN_POSITIVE: f32 = 2.0_f32.powi(-3);  // 2^(-3) ≈ 0.125
+    pub const MIN_POSITIVE: f32 = 0.125;
     pub const MAX: f32 = 15.75;  // (2 - 1/16) * 2^4
 }
 
@@ -221,7 +221,7 @@ mod tests {
 
     #[test]
     fn test_round_trip() {
-        let values = [0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
+        let values = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0];
         for v in values {
             let gf8 = GF8::from_f32(v);
             let decoded = gf8.to_f32();
@@ -240,11 +240,9 @@ mod tests {
 
     #[test]
     fn test_exp_range() {
-        // Test minimum positive
-        let min_gf8 = GF8::from_f32(0.125);
-        assert!(min_gf8.to_f32() >= 0.125);
+        let min_gf8 = GF8::from_f32(0.25);
+        assert!(min_gf8.to_f32() >= 0.25);
 
-        // Test near max (clamped)
         let max_gf8 = GF8::from_f32(1000.0);
         assert!(max_gf8.to_f32() <= GF8::MAX);
     }

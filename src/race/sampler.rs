@@ -2,7 +2,7 @@
 //!
 //! Implements INV-8 (lr ∈ φ-safe band [0.002, 0.007]) at the search-space layer.
 //! Every learning rate proposed by this sampler is guaranteed to satisfy the
-//! Coq-proven `lr_phi_band` invariant before reaching `validate_config()`.
+//! Coq-proven `lr_phi_band` invariant before reaching `validate_inv_config()`.
 //!
 //! Anti-OpenAI-Golf strategy:
 //! A blind sweep typically explores `lr ∈ [1e-4, 1e-1]` (3 decades, ~1000-bin
@@ -16,7 +16,7 @@
 //!   • `INV1_CHAMPION_LR` = 0.004   (≈ α_φ · φ⁻³, current 3-seed champion anchor)
 //!
 //! L-R14: zero magic numbers. Every literal carries a Coq citation.
-//! L-R9 partner: `validate_config()` rejects any sample that escapes the band
+//! L-R9 partner: `validate_inv_config()` rejects any sample that escapes the band
 //! (defense-in-depth — sampler should never produce an out-of-band value, but
 //! the runtime guard catches manual overrides too).
 //!
@@ -53,7 +53,7 @@ pub const BLIND_SWEEP_LOG_WIDTH: f64 = 6.907_755_278_982_137; // ln(1000) = ln(0
 ///
 /// Guarantees:
 /// - `INV1_LR_SAFE_LO <= lr <= INV1_LR_SAFE_HI` (open at HI by convention,
-///   but `validate_config` accepts the closed interval).
+///   but `validate_inv_config` accepts the closed interval).
 /// - Distribution is uniform in log-space → equal probability mass per decade.
 ///
 /// Coq: `lr_phi_band` (INV-1 partial-Proven, see `_metadata.admitted_budget`).
@@ -91,7 +91,7 @@ pub fn lr_around_champion<R: Rng + ?Sized>(rng: &mut R, jitter_log_sigma: f64) -
 /// Sample `n` learning rates with log-uniform `sample_lr` and return them.
 ///
 /// Every returned value satisfies `INV1_LR_SAFE_LO <= x <= INV1_LR_SAFE_HI`.
-/// Caller can hand each one to `validate_config()` without ever hitting
+/// Caller can hand each one to `validate_inv_config()` without ever hitting
 /// `Inv1LrOutOfBand`.
 pub fn batch_sample_lrs<R: Rng + ?Sized>(rng: &mut R, n: usize) -> Vec<f64> {
     (0..n).map(|_| sample_lr(rng)).collect()
@@ -115,7 +115,8 @@ pub fn champion_lr() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::invariants::{validate_config, GradientMode, TrialConfig as InvTrialConfig, INV2_BPB_PRUNE_THRESHOLD,
+    use crate::invariants::{validate_inv_config, GradientMode, InvTrialConfig,
+        INV2_BPB_PRUNE_THRESHOLD,
         INV2_WARMUP_BLIND_STEPS, INV4_NCA_GRID, INV4_NCA_K_STATES};
     use rand::rngs::StdRng;
     use rand::SeedableRng;
@@ -151,15 +152,15 @@ mod tests {
         }
     }
 
-    /// Every batch-sampled LR passes `validate_config()` end-to-end.
-    /// Coq: composes `lr_phi_band` with `validate_config` master gate.
+    /// Every batch-sampled LR passes `validate_inv_config()` end-to-end.
+    /// Coq: composes `lr_phi_band` with `validate_inv_config` master gate.
     #[test]
     fn test_batch_samples_pass_validate_config() {
         let mut rng = StdRng::seed_from_u64(43); // current 3-seed champion seed
         for lr in batch_sample_lrs(&mut rng, 1_000) {
             assert!(
-                validate_config(&cfg_with_lr(lr)).is_ok(),
-                "validate_config rejected sampled lr={lr}"
+                validate_inv_config(&cfg_with_lr(lr)).is_ok(),
+                "validate_inv_config rejected sampled lr={lr}"
             );
         }
     }
@@ -170,10 +171,10 @@ mod tests {
     fn test_champion_inside_band() {
         let (lo, hi) = phi_band();
         assert!(lo < champion_lr() && champion_lr() < hi);
-        assert!(validate_config(&cfg_with_lr(champion_lr())).is_ok());
+        assert!(validate_inv_config(&cfg_with_lr(champion_lr())).is_ok());
     }
 
-    /// Forbidden values from §0 R7 are rejected by `validate_config`.
+    /// Forbidden values from §0 R7 are rejected by `validate_inv_config`.
     /// Coq: `lr_phi_band` REJECT branch.
     #[test]
     fn test_forbidden_lrs_rejected() {
@@ -184,8 +185,8 @@ mod tests {
                 "test setup error: {bad} is in band"
             );
             assert!(
-                validate_config(&cfg_with_lr(bad)).is_err(),
-                "validate_config wrongly accepted out-of-band lr={bad}"
+                validate_inv_config(&cfg_with_lr(bad)).is_err(),
+                "validate_inv_config wrongly accepted out-of-band lr={bad}"
             );
         }
     }

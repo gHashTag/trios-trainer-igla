@@ -2,6 +2,7 @@
 name        = "trios-trainer"
 version     = "0.1.0"
 edition     = "2021"
+autobins    = false
 authors     = ["Dmitrii Vasilev <gierenmumindvy1t@hotmail.com>"]
 license     = "MIT"
 description = "Single source of truth for IGLA RACE training (gHashTag/trios#143). Portable Rust-only pipeline that runs on any CPU machine, Railway, Fly, or Docker. Anchor: phi^2 + phi^-2 = 3."
@@ -107,9 +108,10 @@ path = "src/bin/gf16_test.rs"
 name = "igla_trigram"
 path = "src/bin/igla_trigram.rs"
 
-[[bin]]
-name = "lr_calibration"
-path = "src/bin/lr_calibration.rs"
+# TODO: fix imports - requires trios_phi_schedule external crate
+# [[bin]]
+# name = "lr_calibration"
+# path = "src/bin/lr_calibration.rs"
 
 [[bin]]
 name = "lstm_train"

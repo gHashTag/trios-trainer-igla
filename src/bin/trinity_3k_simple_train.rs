@@ -3,7 +3,7 @@
 //! Basic training loop for Trinity 3k byte-level model
 
 use std::time::Instant;
-use trios_trainer::trinity_3k_model::{Trinity3kModel, Trinity3kConfig};
+use trios_trainer::trinity_3k::{Trinity3kModel, Trinity3kConfig};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🚀 Trinity 3k Simple Training for Parameter Golf #110");
