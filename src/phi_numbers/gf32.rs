@@ -12,8 +12,8 @@ pub struct GF32 {
 
 impl GF32 {
     const SIGN_BIT: u32 = 0x80000000;
-    const EXP_MASK: u32 = 0x7FFE0000;  // 13 bits
-    const MANT_MASK: u32 = 0x0003FFFF; // 18 bits
+    const EXP_MASK: u32 = ((1u32 << 13) - 1) << 18;
+    const MANT_MASK: u32 = (1u32 << 18) - 1;
 
     const EXP_BITS: u8 = 13;
     const MANT_BITS: u8 = 18;
@@ -30,6 +30,11 @@ impl GF32 {
         let abs_val = value.abs();
 
         if !abs_val.is_finite() {
+            if abs_val.is_nan() {
+                return Self {
+                    bits: sign << 31 | Self::EXP_MASK | 1,
+                };
+            }
             return Self {
                 bits: sign << 31 | Self::EXP_MASK,
             };

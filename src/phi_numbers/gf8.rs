@@ -53,14 +53,12 @@ impl GF8 {
 
         // Clamp exponent
         if gf8_exp < 0 {
-            return Self { bits: 0 };  // Underflow to zero
+            return Self { bits: 0 };
         }
-        if gf8_exp > 7 {
-            return Self { bits: (sign << 7) | 0x70 };
+        if gf8_exp >= 7 {
+            return Self { bits: (sign << 7) | (6 << 4) | 15 };
         }
 
-        // Round mantissa: 23 bits → 4 bits
-        // Use φ-weighted rounding: favor rounding toward nearest with φ-weighted bias
         let mut mant_rounded = (f32_mant >> (23 - Self::MANT_BITS)) as u8;
         let remainder = (f32_mant >> (23 - Self::MANT_BITS - 1)) & 1;
 
@@ -68,13 +66,16 @@ impl GF8 {
             mant_rounded += 1;
         }
 
-        // Handle mantissa overflow
         if mant_rounded >= 16 {
             mant_rounded = 0;
             gf8_exp += 1;
-            if gf8_exp > 6 {
-                return Self { bits: (sign << 7) | 0x70 };
+            if gf8_exp >= 7 {
+                return Self { bits: (sign << 7) | (6 << 4) | 15 };
             }
+        }
+
+        if gf8_exp == 0 && mant_rounded == 0 && sign == 0 {
+            mant_rounded = 1;
         }
 
         Self {
@@ -102,11 +103,7 @@ impl GF8 {
         }
 
         // Reconstruct value
-        let exp_val = if exp > 0 {
-            2.0_f32.powi(exp - Self::EXP_BIAS as i32)
-        } else {
-            0.0
-        };
+        let exp_val = 2.0_f32.powi(exp - Self::EXP_BIAS as i32);
 
         let mant_val = 1.0 + (mant as f32) / 16.0;
 
@@ -138,8 +135,8 @@ impl GF8 {
     }
 
     /// Range of representable values
-    pub const MIN_POSITIVE: f32 = 0.125_f32;  // 2^(-3) = 0.125 (powi not const in Rust 1.90)
-    pub const MAX: f32 = 15.75;  // (2 - 1/16) * 2^4
+    pub const MIN_POSITIVE: f32 = 0.125;
+    pub const MAX: f32 = 15.5;
 }
 
 impl Clone for GF8 {

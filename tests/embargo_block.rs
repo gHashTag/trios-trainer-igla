@@ -25,7 +25,7 @@ fn make_test_config(embargo_path: &str) -> TrainConfig {
             schedule: "phi".into(), warmup_steps: 500,
         },
         data: DataConfig {
-            corpus: "test".into(), batch_size: 1, batch_tokens: 1024,
+            corpus: "test".into(), train_path: "data/train.txt".into(), val_path: "data/val.txt".into(), batch_size: 1, batch_tokens: 1024,
         },
         objective: ObjectiveConfig {
             w_ce: 1.0, w_jepa: 0.0, w_nca: 0.0,
