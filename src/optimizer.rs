@@ -687,7 +687,7 @@ pub fn wsd_lr_schedule(
 /// Interpolated parameter `y_t` for use in optimizer update
 ///
 /// # Formula
-/// ```
+/// ```text
 /// c_{t+1} = 1 / (t + 1)
 /// y_t = (1 - beta1) * z_t + beta1 * x_t
 /// ```
