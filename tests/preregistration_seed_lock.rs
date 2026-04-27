@@ -72,16 +72,10 @@ fn falsify_no_extra_seeds_during_gate_2() {
             None => continue,
         };
         // skip whitespace + ':' + whitespace
-        let after = after
-            .trim_start_matches(|c: char| c.is_whitespace() || c == ':');
-        let digits: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_digit())
-            .collect();
+        let after = after.trim_start_matches(|c: char| c.is_whitespace() || c == ':');
+        let digits: String = after.chars().take_while(|c| c.is_ascii_digit()).collect();
         if digits.is_empty() {
-            panic!(
-                "ledger row {line_no} has malformed `seed` field: {trimmed}",
-            );
+            panic!("ledger row {line_no} has malformed `seed` field: {trimmed}",);
         }
         let seed: u64 = digits.parse().unwrap();
         assert_eq!(

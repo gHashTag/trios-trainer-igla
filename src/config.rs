@@ -56,7 +56,7 @@ pub struct OptimizerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataConfig {
-    pub corpus: String, // "fineweb" | "tinyshakespeare" | "wikitext-103"
+    pub corpus: String,     // "fineweb" | "tinyshakespeare" | "wikitext-103"
     pub train_path: String, // Path to training data (supports absolute or relative to workdir)
     pub val_path: String,   // Path to validation data
     pub batch_size: usize,

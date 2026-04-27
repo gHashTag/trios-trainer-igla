@@ -1,0 +1,49 @@
+# P3 Schedule-Free + WSD — Warmup-Stable-Decay (WSD)
+# Decouples decay timing from total-step commitment for better anytime curves.
+# Reference: Wen et al. 2024 WSD
+
+name        = "p3-wsd"
+steps       = 12_000
+seed        = 43
+target_bpb  = 2.00
+champion_bpb = 2.2393
+
+[model]
+d_model     = 256
+n_layers    = 2
+n_heads     = 4
+vocab_size  = 32_000
+seq_len     = 1024
+hybrid_attn = false
+
+[optimizer]
+kind          = "adamw"
+lr            = 0.004     # α_φ / φ³  — INV-8 φ-band
+beta1         = 0.9
+beta2         = 0.95
+weight_decay  = 0.04
+schedule      = "wsd"     # P3 WSD schedule
+warmup_steps  = 500
+
+# WSD parameters (total 12K steps)
+wsd_max_steps = 12_000
+wsd_stable_ratio = 0.8     # 80% stable (9.6K steps)
+wsd_decay_ratio = 0.1      # 10% decay (1.2K steps)
+# warmup_steps = 1K (default)
+
+[data]
+corpus       = "fineweb"
+train_path   = "/data/fineweb_train.bin"
+val_path     = "/data/fineweb_val.bin"
+batch_size   = 4
+batch_tokens = 524_288
+
+[objective]
+w_ce   = 1.0
+w_jepa = 0.0
+w_nca  = 0.0
+
+[ledger]
+jsonl_path    = "assertions/lab/p3_curves.jsonl"
+push          = false
+embargo_path  = ".embargo"
