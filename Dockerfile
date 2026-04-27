@@ -11,15 +11,11 @@ RUN cargo build --release --bin trios-train
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
-
-RUN mkdir -p /work/data && \
-    curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
-    head -c 100000 /work/data/tiny_shakespeare.txt > /work/data/tiny_shakespeare_val.txt
 
 ENV RUST_LOG=info
 ENV TRIOS_SEED=43

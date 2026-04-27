@@ -52,19 +52,26 @@ fn load_data(path: &str) -> Vec<usize> {
         .to_string();
 
     if filename.contains("tiny_shakespeare") {
-        eprintln!("Downloading tiny_shakespeare...");
         let url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
-                let resp = ureq::get(url).call();
+        eprintln!("Downloading tiny_shakespeare from {}...", url);
+        let resp = ureq::get(url).call();
         match resp {
             Ok(r) => {
-                let raw = r.into_body().read_to_vec().unwrap_or_default();
+                let mut raw = Vec::new();
+                r.into_reader().read_to_end(&mut raw).unwrap_or_default();
                 if raw.is_empty() {
                     panic!("Downloaded 0 bytes from {}", url);
                 }
                 let _ = std::fs::create_dir_all(parent);
-                let _ = std::fs::write(path, &raw);
-                eprintln!("Downloaded {} bytes to {}", raw.len(), path);
-                return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
+
+                let data_to_save = if filename.contains("val") {
+                    &raw[..raw.len().min(100_000)]
+                } else {
+                    &raw
+                };
+                let _ = std::fs::write(path, data_to_save);
+                eprintln!("Downloaded {} bytes to {}", data_to_save.len(), path);
+                return data_to_save.iter().map(|&b| (b as usize) % VOCAB).collect();
             }
             Err(e) => {
                 panic!("Failed to download data from {}: {}. Place tiny_shakespeare.txt manually.", url, e);
