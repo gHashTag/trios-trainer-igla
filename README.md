@@ -38,9 +38,79 @@ See [`SOURCE_OF_TRUTH.md`](SOURCE_OF_TRUTH.md) for the full mandate.
 ```bash
 git clone https://github.com/gHashTag/trios-trainer-igla.git
 cd trios-trainer-igla
-cargo run --release --bin trios-train -- \
-    --config configs/champion.toml --seed 43
+
+# Build
+cargo build --release
+
+# Local training (single seed)
+./target/release/trios-train --seed 43 --steps 27000 --hidden 384 --lr 0.004 --attn-layers 2
+
+# Or use tri CLI
+./target/release/tri train --seed 43 --steps 27000 --hidden 384
 ```
+
+## `tri` CLI — Railway deploy + local train
+
+`tri` is the IGLA Race CLI bundled in this repo. It deploys training containers
+to [Railway](https://railway.com) with one command per seed.
+
+```bash
+cargo build --release --bin tri
+```
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `tri deploy init` | Create Railway project `trios-trainer` |
+| `tri deploy seed --seed 43` | Deploy a single seed container |
+| `tri deploy all` | Deploy all Gate-2 seeds (42, 43, 44) |
+| `tri deploy status` | List deployed Railway services |
+| `tri deploy logs --seed 43` | Stream logs for a seed's container |
+| `tri deploy remove --seed 43` | Remove a seed's container |
+| `tri train --seed 43 --steps 27000` | Local training (no Railway) |
+| `tri race start` | Start ASHA worker loop |
+| `tri race status` | Show leaderboard (needs DATABASE_URL) |
+| `tri race best` | Show best trial (needs DATABASE_URL) |
+
+### Deploy to Railway (ONE SHOT)
+
+```bash
+# 1. Init Railway project (first time only)
+./target/release/tri deploy init
+
+# 2. Deploy all 3 seeds
+./target/release/tri deploy all
+
+# Or deploy individually with custom params
+./target/release/tri deploy seed --seed 43 --steps 27000 --hidden 384 --lr 0.004 --attn-layers 2
+./target/release/tri deploy seed --seed 44 --steps 27000 --hidden 384 --lr 0.004 --attn-layers 2
+./target/release/tri deploy seed --seed 45 --steps 27000 --hidden 384 --lr 0.004 --attn-layers 2
+
+# 3. Check status
+./target/release/tri deploy status
+
+# 4. Watch logs
+./target/release/tri deploy logs --seed 43
+```
+
+Each seed runs in its own Railway container with these env vars:
+
+| Var | Default | Effect |
+|-----|---------|--------|
+| `TRIOS_SEED` | `43` | Training seed |
+| `TRIOS_STEPS` | `27000` | Number of training steps |
+| `TRIOS_HIDDEN` | `384` | Hidden dimension |
+| `TRIOS_LR` | `0.004` | Learning rate (INV-8: must be in [0.001, 0.01]) |
+| `TRIOS_ATTN_LAYERS` | `2` | Number of attention layers |
+| `TRIOS_OPTIMIZER` | `adamw` | Optimizer: `adamw`, `muon`, or `muon-cwd` |
+| `TRIOS_EVAL_EVERY` | `1000` | Eval interval |
+
+### Stop rule (Gate-2)
+
+Training terminates when either:
+- **Victory**: 3 distinct seeds each reach `BPB < 1.85` at `step >= 4000`
+- **Deadline**: `2026-04-30 23:59 UTC`
 
 ## Search the needle (`trios-igla`)
 
@@ -260,35 +330,55 @@ Anchor: `φ² + φ⁻² = 3` ([Zenodo 10.5281/zenodo.19227877](https://doi.org/1
 ## Repo layout
 
 ```
-trios-trainer/
-├── Cargo.toml             ← single bin "trios-train"
+trios-trainer-igla/
+├── Cargo.toml             ← lib + bins (trios-train, tri, hybrid_train, etc.)
+├── Dockerfile             ← multi-stage Rust build for Railway
+├── nixpacks.toml          ← Railway nixpacks build config
 ├── README.md              ← this file
-├── LICENSE                ← MIT
-├── SOURCE_OF_TRUTH.md     ← canonical-status mandate
-├── Dockerfile             ← multi-stage rust:1.75-slim → debian:bookworm-slim
-├── railway.json           ← Railway service config
-├── .dockerignore
-├── .github/workflows/
-│   └── ci.yml             ← cargo fmt + clippy + test on push/PR
 ├── configs/
-│   ├── champion.toml
-│   ├── gate2-attempt.toml
-│   └── needle-v1-mup.toml
-├── src/
-│   ├── lib.rs             ← façade exports + TRINITY_ANCHOR const
-│   ├── config.rs          ← TOML schema + env override + validate(INV-8)
-│   ├── train_loop.rs      ← step loop, eval, ledger emit
-│   ├── ledger.rs          ← triplet-validated emit + embargo block
-│   ├── checkpoint.rs
-│   ├── model.rs           ← façade for transformer + HybridAttn (PR-2 migration)
-│   ├── optimizer.rs       ← AdamW + Muon + φ-schedule  (PR-2 migration)
-│   ├── jepa.rs            ← T-JEPA loss + EMA target   (PR-3 migration)
-│   ├── objective.rs
-│   ├── data.rs
-│   ├── gf16.rs            ← re-export from trios-golden-float
-│   └── bin/trios-train.rs ← clap → load config → run()
-└── tests/
-    └── reproduce_champion.rs (smoke + ignored full)
+│   ├── champion.toml      ← reproduce baseline BPB=2.2393
+│   ├── gate2-attempt.toml ← Gate-2 push config
+│   ├── gate2-final.toml   ← P5 frozen config (384d, 4L, muon)
+│   ├── needle-v1-mup.toml ← muP transfer experiment
+│   └── lab/               ← P1-P4 experiment configs
+│       ├── p1-adamw.toml
+│       ├── p1-muon.toml
+│       ├── p1-muon-cwd.toml
+│       ├── p2-proxy-8m.toml
+│       ├── p2-proxy-24m.toml
+│       ├── p2-target-70m.toml
+│       ├── p3-cosine.toml
+│       ├── p3-sf.toml
+│       ├── p3-wsd.toml
+│       ├── p4-objective.toml
+│       └── p4-ema.toml
+├── assertions/
+│   ├── seed_results.jsonl ← R7 ledger (P0/P5 only)
+│   ├── igla_assertions.json ← Coq invariant bridge
+│   ├── champion_lock.txt
+│   ├── baseline_profile.json
+│   └── lab/               ← P1-P4 lab results (not R7-validated)
+├── docs/
+│   ├── TRAINING_FLOW_V2.md ← P0-P5 decomposed plan
+│   └── audit/              ← P0 audit documents
+└── src/
+    ├── lib.rs              ← module declarations + TRINITY_ANCHOR
+    ├── config.rs           ← TOML schema + env override + INV-8 validate
+    ├── train_loop.rs       ← AdamW + Muon + NCA training loop
+    ├── optimizer.rs        ← AdamW + Muon (NS-5) + MuonCwd + Schedule-Free + WSD
+    ├── objective.rs        ← CE + JEPA + NCA combined loss
+    ├── checkpoint.rs       ← save/load + post-hoc EMA (ema_average/ema_sweep)
+    ├── mup.rs              ← muP transfer: per-group LR scaling
+    ├── invariants.rs       ← Coq-proven constants (INV-1..10)
+    ├── ledger.rs           ← R7 triplet emit + embargo
+    ├── model.rs            ← HybridAttn + transformer
+    ├── race/               ← ASHA + Neon + lessons + victory
+    ├── jepa/               ← T-JEPA predictor + EMA + masking + loss
+    └── bin/
+        ├── tri.rs          ← tri CLI (deploy/train/race)
+        ├── trios-train.rs  ← standalone training binary
+        ├── tjepa_train.rs  ← T-JEPA training (TASK-5D)
+        └── railway_start.sh ← Railway container entrypoint
 ```
 
 ## Roadmap

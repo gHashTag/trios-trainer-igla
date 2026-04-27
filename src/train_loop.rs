@@ -1,11 +1,12 @@
 use anyhow::Result;
+use std::io::Read;
 use std::time::Instant;
 
 use crate::model_hybrid_attn::HybridAttn;
 use crate::objective::{nca_entropy_loss, NcaObjective};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
-pub const GATE_FINAL_SEEDS: &[u64] = &[42, 43, 44];
+pub const GATE_FINAL_SEEDS: &[u64] = &[43, 44, 45];
 
 const VOCAB: usize = 128;
 const DIM: usize = 64;
@@ -36,13 +37,49 @@ pub struct RunOutcome {
 }
 
 fn load_data(path: &str) -> Vec<usize> {
-    let raw = std::fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. "
-            .repeat(100)
-            .to_vec()
-    });
-    raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
+    if std::path::Path::new(path).exists() {
+        let raw = std::fs::read(path).unwrap_or_else(|e| {
+            panic!("Failed to read {}: {}", path, e);
+        });
+        return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
+    }
+
+    let parent = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
+    let filename = std::path::Path::new(path)
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+
+    if filename.contains("tiny_shakespeare") {
+        let url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
+        eprintln!("Downloading tiny_shakespeare from {}...", url);
+        let resp = ureq::get(url).call();
+        match resp {
+            Ok(r) => {
+                let mut raw = Vec::new();
+                r.into_reader().read_to_end(&mut raw).unwrap_or_default();
+                if raw.is_empty() {
+                    panic!("Downloaded 0 bytes from {}", url);
+                }
+                let _ = std::fs::create_dir_all(parent);
+
+                let data_to_save = if filename.contains("val") {
+                    &raw[..raw.len().min(100_000)]
+                } else {
+                    &raw
+                };
+                let _ = std::fs::write(path, data_to_save);
+                eprintln!("Downloaded {} bytes to {}", data_to_save.len(), path);
+                return data_to_save.iter().map(|&b| (b as usize) % VOCAB).collect();
+            }
+            Err(e) => {
+                panic!("Failed to download data from {}: {}. Place tiny_shakespeare.txt manually.", url, e);
+            }
+        }
+    }
+
+    panic!("Data file not found: {}. Place it before training.", path);
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
