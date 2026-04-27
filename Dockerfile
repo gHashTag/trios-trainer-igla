@@ -6,8 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 COPY . .
-
-RUN cargo build --release --bin hybrid_train -p trios-trainer
+RUN cargo build --release --bin trios-train --bin hybrid_train -p trios-trainer
 
 FROM debian:bookworm-slim AS runtime
 
@@ -16,13 +15,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
+COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
 COPY --from=builder /build/target/release/hybrid_train /usr/local/bin/hybrid_train
+COPY --from=builder /build/src/bin/railway_start.sh /usr/local/bin/railway_start.sh
+RUN chmod +x /usr/local/bin/railway_start.sh
 
 RUN mkdir -p /work/data && \
     curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
     head -c 100000 /work/data/tiny_shakespeare.txt > /work/data/tiny_shakespeare_val.txt
 
 ENV RUST_LOG=info
+ENV TRIOS_SEED=43
+ENV TRIOS_STEPS=27000
+ENV TRIOS_HIDDEN=384
+ENV TRIOS_LR=0.004
+ENV TRIOS_ATTN_LAYERS=2
+ENV TRIOS_OPTIMIZER=adamw
+ENV TRIOS_EVAL_EVERY=1000
 
-ENTRYPOINT ["/usr/local/bin/hybrid_train"]
-CMD ["--seed=43", "--steps=54000", "--lr=0.003"]
+CMD ["/usr/local/bin/railway_start.sh"]
