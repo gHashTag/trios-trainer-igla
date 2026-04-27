@@ -100,8 +100,12 @@ fn main() -> Result<()> {
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
         };
-        let outcome = train_loop::run_single(&args)?;
-        println!("DONE: seed={} bpb={:.4} steps={}", outcome.seed, outcome.final_bpb, outcome.steps_done);
+        let outcome = match cli.optimizer.as_str() {
+            "muon" => train_loop::run_single_muon(&args, false)?,
+            "muon-cwd" => train_loop::run_single_muon(&args, true)?,
+            _ => train_loop::run_single(&args)?,
+        };
+        println!("DONE: seed={} bpb={:.4} steps={} opt={}", outcome.seed, outcome.final_bpb, outcome.steps_done, cli.optimizer);
     }
 
     Ok(())
