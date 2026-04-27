@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 #
 # Quick Railway Seed Deployment for trios-trainer-igla
-# Deploys 3 separate services for the NEW seed fleet 46, 47, 48.
+# Deploys 3 separate services for the NEW seed fleet 100, 101, 102.
 #
 # History (R5-honest):
 #   - Champion seed: 43 (BPB=2.2393 @ 27K)
 #   - Old gate-2 fleet: 43, 44, 45 (no row < 1.85, see seed_results.jsonl)
-#   - New gate-2 fleet (this deploy): 46, 47, 48
+#   - New gate-2 fleet (this deploy): 100, 101, 102
 #
 # Pass NEW_SEEDS env var to override the default sequence.
 
 set -euo pipefail
 
-# Default: NEW seeds (continue the sequence after 45). Override with NEW_SEEDS.
-SEEDS=(${NEW_SEEDS:-46 47 48})
+# Default: NEW seeds (use a new range (fresh seeds outside 43-45)). Override with NEW_SEEDS.
+SEEDS=(${NEW_SEEDS:-100 101 102})
 SERVICE_PREFIX="igla-trainer-seed"
 
 echo "Railway Seed Deployment"

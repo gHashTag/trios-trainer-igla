@@ -8,7 +8,7 @@
 # R5-honest triplet emit: BPB=<v> @ step=<N> seed=$TRIOS_SEED sha=<7c> ...
 set -euo pipefail
 
-SEED="${TRIOS_SEED:-46}"
+SEED="${TRIOS_SEED:-100}"
 CONFIG="${TRIOS_CONFIG:-/configs/gate2-attempt.toml}"
 STEPS="${TRIOS_STEPS:-81000}"
 LR="${TRIOS_LR:-0.003}"
