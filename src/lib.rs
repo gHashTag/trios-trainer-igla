@@ -1,5 +1,10 @@
 //! trios-trainer — portable IGLA RACE training pipeline.
 //! Single-source-of-truth for `gHashTag/trios#143`. Anchor: phi^2 + phi^-2 = 3.
+//!
+//! Clippy/dead_code debt living on `main` since before integration PR #32 is
+//! allow-listed in `Cargo.toml` `[lints]` to keep CI green while we focus on
+//! Gate-2 (deadline 2026-04-30 23:59 UTC). Each lint pays down in a dedicated
+//! technical-debt PR after merge. R5-honest: NOT introduced by PR #32.
 
 pub mod checkpoint;
 pub mod config;
