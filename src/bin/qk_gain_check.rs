@@ -150,18 +150,15 @@ impl std::fmt::Display for QkGainError {
                 f,
                 "INV-13 gain {gain} not phi-anchored: must be one of {admissible:?} (tol={tol:.0e})"
             ),
-            Self::LrAboveBand { lr, ceiling } => write!(
-                f,
-                "INV-13 lr {lr} above pre-registered ceiling {ceiling}"
-            ),
-            Self::LrBelowBand { lr, floor } => write!(
-                f,
-                "INV-13 lr {lr} below pre-registered floor {floor}"
-            ),
-            Self::NonFinite { lr, gain } => write!(
-                f,
-                "INV-13 non-finite input: lr={lr} gain={gain}"
-            ),
+            Self::LrAboveBand { lr, ceiling } => {
+                write!(f, "INV-13 lr {lr} above pre-registered ceiling {ceiling}")
+            }
+            Self::LrBelowBand { lr, floor } => {
+                write!(f, "INV-13 lr {lr} below pre-registered floor {floor}")
+            }
+            Self::NonFinite { lr, gain } => {
+                write!(f, "INV-13 non-finite input: lr={lr} gain={gain}")
+            }
         }
     }
 }
@@ -447,7 +444,10 @@ mod tests {
         }
         // L-h4 reserves 50..=53 (L7 uses 0..=10, L15 uses 21..=30).
         for c in codes {
-            assert!((50..=53).contains(&c), "exit {c} outside L-h4 reserved range 50..=53");
+            assert!(
+                (50..=53).contains(&c),
+                "exit {c} outside L-h4 reserved range 50..=53"
+            );
         }
     }
 

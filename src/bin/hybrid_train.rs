@@ -168,10 +168,18 @@ impl HybridModel {
         let attn_cfg = m.attn.config();
         let d = attn_cfg.d_model;
         let attn_lim = (2.0f32 / d as f32).sqrt();
-        for w in m.attn.wq_mut() { *w = rng() * attn_lim; }
-        for w in m.attn.wk_mut() { *w = rng() * attn_lim; }
-        for w in m.attn.wv_mut() { *w = rng() * attn_lim; }
-        for w in m.attn.wo_mut() { *w = rng() * attn_lim; }
+        for w in m.attn.wq_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in m.attn.wk_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in m.attn.wv_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in m.attn.wo_mut() {
+            *w = rng() * attn_lim;
+        }
 
         m
     }
@@ -275,7 +283,8 @@ fn compute_grads_for_positions(
     let h = model.hidden;
     let d = model.attn.config().d_model;
     for &pos in positions {
-        let (combined, ln, hidden, mut logits, attn_out_saved) = model.forward_position(tokens, pos);
+        let (combined, ln, hidden, mut logits, attn_out_saved) =
+            model.forward_position(tokens, pos);
         softmax(&mut logits);
         let target = tokens[pos + NGRAM].min(VOCAB - 1);
 
@@ -293,8 +302,13 @@ fn compute_grads_for_positions(
             let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
             let mut probs: Vec<f32> = logits.iter().map(|&x| (x - max_val).exp()).collect();
             let sum: f32 = probs.iter().sum();
-            for p in probs.iter_mut() { *p /= sum; }
-            let entropy: f32 = -probs.iter().map(|&p: &f32| p.max(1e-10).ln() * p).sum::<f32>();
+            for p in probs.iter_mut() {
+                *p /= sum;
+            }
+            let entropy: f32 = -probs
+                .iter()
+                .map(|&p: &f32| p.max(1e-10).ln() * p)
+                .sum::<f32>();
             let nca_grad = if entropy < NCA_ENTROPY_MIN {
                 -2.0 * NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy)
             } else {
@@ -395,12 +409,18 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
 fn nca_entropy_loss(logits: &[f32]) -> f32 {
     let n = logits.len() as f32;
     let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-    let mut probs = logits.iter().map(|&x| (x - max_val).exp()).collect::<Vec<_>>();
+    let mut probs = logits
+        .iter()
+        .map(|&x| (x - max_val).exp())
+        .collect::<Vec<_>>();
     let sum: f32 = probs.iter().sum();
     for p in probs.iter_mut() {
         *p /= sum;
     }
-    let entropy: f32 = -probs.iter().map(|&p: &f32| p.max(1e-10).ln() * p).sum::<f32>();
+    let entropy: f32 = -probs
+        .iter()
+        .map(|&p: &f32| p.max(1e-10).ln() * p)
+        .sum::<f32>();
     if entropy < NCA_ENTROPY_MIN {
         NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy).powi(2)
     } else if entropy > NCA_ENTROPY_MAX {
@@ -442,30 +462,33 @@ fn main() {
     };
 
     for &seed in &seeds {
-    eprintln!(
-        "=== Hybrid Train (ngram+attn) seed={} ===",
-        seed
-    );
-    eprintln!(
-        "steps={} lr={} hidden={} eval_every={} accum={}",
-        steps, base_lr, hidden, eval_every, accum
-    );
-    eprintln!(
-        "DIM={} NUM_CTX={} NGRAM={} SEQ={} VOCAB={}",
-        DIM, NUM_CTX, NGRAM, SEQ, VOCAB
-    );
-    eprintln!("ctx_weights={:?}", CTX_WEIGHTS);
+        eprintln!("=== Hybrid Train (ngram+attn) seed={} ===", seed);
+        eprintln!(
+            "steps={} lr={} hidden={} eval_every={} accum={}",
+            steps, base_lr, hidden, eval_every, accum
+        );
+        eprintln!(
+            "DIM={} NUM_CTX={} NGRAM={} SEQ={} VOCAB={}",
+            DIM, NUM_CTX, NGRAM, SEQ, VOCAB
+        );
+        eprintln!("ctx_weights={:?}", CTX_WEIGHTS);
 
-    let train_data = load_data("data/tiny_shakespeare.txt");
-    let val_data = load_data("data/tiny_shakespeare_val.txt");
-    eprintln!("train={} val={}", train_data.len(), val_data.len());
+        let train_data = load_data("data/tiny_shakespeare.txt");
+        let val_data = load_data("data/tiny_shakespeare_val.txt");
+        eprintln!("train={} val={}", train_data.len(), val_data.len());
 
-    let mut model = HybridModel::new(hidden, seed);
+        let mut model = HybridModel::new(hidden, seed);
 
-    let d = model.attn.config().d_model;
-    let attn_params = d * model.hidden * 2;
-    let total_params = VOCAB * DIM + NUM_CTX * VOCAB * DIM + hidden * DIM + VOCAB * hidden + attn_params;
-    eprintln!("params={} ({:.1}K) attn_d={}", total_params, total_params as f64 / 1000.0, d);
+        let d = model.attn.config().d_model;
+        let attn_params = d * model.hidden * 2;
+        let total_params =
+            VOCAB * DIM + NUM_CTX * VOCAB * DIM + hidden * DIM + VOCAB * hidden + attn_params;
+        eprintln!(
+            "params={} ({:.1}K) attn_d={}",
+            total_params,
+            total_params as f64 / 1000.0,
+            d
+        );
 
         let train_data = load_data("data/tiny_shakespeare.txt");
         let val_data = load_data("data/tiny_shakespeare_val.txt");
@@ -475,12 +498,14 @@ fn main() {
 
         let wd = 0.04f32;
         let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
-        let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX)
-            .map(|_| AdamW::new(VOCAB * DIM, wd))
-            .collect();
+        let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
         let mut opt_proj = MuonOptimizer::with_matrix_shape(
-            hidden * DIM, hidden, DIM,
-            base_lr as f64, 0.95, wd as f64,
+            hidden * DIM,
+            hidden,
+            DIM,
+            base_lr as f64,
+            0.95,
+            wd as f64,
         );
         let mut opt_attn_down = AdamW::new(d * hidden, wd);
         let mut opt_attn_up = AdamW::new(hidden * d, wd);
@@ -500,13 +525,12 @@ fn main() {
             let lr = cosine_lr(step, steps, base_lr, warmup);
 
             let mut g_embed = vec![0.0f32; VOCAB * DIM];
-            let mut g_ctx: Vec<Vec<f32>> = (0..NUM_CTX)
-                .map(|_| vec![0.0f32; VOCAB * DIM])
-                .collect();
-        let mut g_proj = vec![0.0f32; hidden * DIM];
-        let mut g_head = vec![0.0f32; VOCAB * hidden];
-        let mut g_attn_down = vec![0.0f32; d * hidden];
-        let mut g_attn_up = vec![0.0f32; hidden * d];
+            let mut g_ctx: Vec<Vec<f32>> =
+                (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
+            let mut g_proj = vec![0.0f32; hidden * DIM];
+            let mut g_head = vec![0.0f32; VOCAB * hidden];
+            let mut g_attn_down = vec![0.0f32; d * hidden];
+            let mut g_attn_up = vec![0.0f32; hidden * d];
 
             for _micro in 0..accum {
                 rng_s = rng_s
@@ -534,17 +558,17 @@ fn main() {
                     positions.push(p);
                 }
 
-            compute_grads_for_positions(
-                &model,
-                chunk,
-                &positions,
-                &mut g_embed,
-                &mut g_ctx,
-                &mut g_proj,
-                &mut g_head,
-                &mut g_attn_down,
-                &mut g_attn_up,
-            );
+                compute_grads_for_positions(
+                    &model,
+                    chunk,
+                    &positions,
+                    &mut g_embed,
+                    &mut g_ctx,
+                    &mut g_proj,
+                    &mut g_head,
+                    &mut g_attn_down,
+                    &mut g_attn_up,
+                );
             }
 
             let total_positions = (accum * 8) as f32;
@@ -559,24 +583,24 @@ fn main() {
             for x in g_proj.iter_mut() {
                 *x /= total_positions;
             }
-        for x in g_head.iter_mut() {
-            *x /= total_positions;
-        }
-        for x in g_attn_down.iter_mut() {
-            *x /= total_positions;
-        }
-        for x in g_attn_up.iter_mut() {
-            *x /= total_positions;
-        }
+            for x in g_head.iter_mut() {
+                *x /= total_positions;
+            }
+            for x in g_attn_down.iter_mut() {
+                *x /= total_positions;
+            }
+            for x in g_attn_up.iter_mut() {
+                *x /= total_positions;
+            }
 
             opt_embed.update(&mut model.embed, &g_embed, lr);
             for (ci, oc) in opt_ctx.iter_mut().enumerate() {
                 oc.update(&mut model.ctx[ci], &g_ctx[ci], lr);
             }
-        opt_proj.step(&mut model.proj, &g_proj);
-        opt_attn_down.update(&mut model.attn_down, &g_attn_down, lr);
-        opt_attn_up.update(&mut model.attn_up, &g_attn_up, lr);
-        opt_head.update(&mut model.lm_head, &g_head, lr);
+            opt_proj.step(&mut model.proj, &g_proj);
+            opt_attn_down.update(&mut model.attn_down, &g_attn_down, lr);
+            opt_attn_up.update(&mut model.attn_up, &g_attn_up, lr);
+            opt_head.update(&mut model.lm_head, &g_head, lr);
 
             if step >= gf16_floor_step && step % eval_every == 0 {
                 gf16_floor(&mut model.embed);
@@ -623,7 +647,10 @@ mod tests {
     fn gf16_floor_step_at_70pct() {
         let steps = 81000;
         let floor_step = (GF16_FLOOR_FRAC * steps as f32).floor() as usize;
-        assert_eq!(floor_step, 56700, "GF16 floor activates at 56700 for 81K steps");
+        assert_eq!(
+            floor_step, 56700,
+            "GF16 floor activates at 56700 for 81K steps"
+        );
     }
 
     #[test]

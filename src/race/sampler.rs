@@ -27,9 +27,7 @@
 
 use rand::Rng;
 
-use crate::invariants::{
-    INV1_CHAMPION_LR, INV1_LR_SAFE_HI, INV1_LR_SAFE_LO,
-};
+use crate::invariants::{INV1_CHAMPION_LR, INV1_LR_SAFE_HI, INV1_LR_SAFE_LO};
 
 /// Width of the φ-safe LR band in natural-log space.
 ///
@@ -115,8 +113,11 @@ pub fn champion_lr() -> f64 {
 #[cfg(feature = "race-sampler-tests")]
 mod tests {
     use super::*;
-    use crate::invariants::{validate_inv_config, validate_config, GradientMode, InvTrialConfig, TrialConfig as InvTrialConfig2, INV2_BPB_PRUNE_THRESHOLD,
-        INV2_WARMUP_BLIND_STEPS, INV4_NCA_GRID, INV4_NCA_K_STATES};
+    use crate::invariants::{
+        validate_config, validate_inv_config, GradientMode, InvTrialConfig,
+        TrialConfig as InvTrialConfig2, INV2_BPB_PRUNE_THRESHOLD, INV2_WARMUP_BLIND_STEPS,
+        INV4_NCA_GRID, INV4_NCA_K_STATES,
+    };
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 

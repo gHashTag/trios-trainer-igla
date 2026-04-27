@@ -3,7 +3,8 @@
 //! Demonstrates the CPU training loop with BPB measurement.
 
 use trios_trainer::bench::{
-    bpb_from_loss, estimate_model_size, print_metrics, train_cpu_loop, TrainConfig as BenchTrainConfig,
+    bpb_from_loss, estimate_model_size, print_metrics, train_cpu_loop,
+    TrainConfig as BenchTrainConfig,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

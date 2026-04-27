@@ -55,7 +55,11 @@ pub fn nearest_fibonacci(value: u64) -> u64 {
             let upper = FIBONACCI[i + 1];
             let diff_lower = value - lower;
             let diff_upper = upper - value;
-            return if diff_lower < diff_upper { lower } else { upper };
+            return if diff_lower < diff_upper {
+                lower
+            } else {
+                upper
+            };
         }
     }
     FIBONACCI[FIBONACCI.len() - 1]
@@ -79,26 +83,24 @@ pub fn is_fibonacci(value: u64) -> bool {
 }
 
 /// Recommended model dimensions (Fibonacci-based)
-pub const RECOMMENDED_DIMS: [usize; 10] = [
-    8, 13, 21, 34, 55, 89, 144, 233, 377, 610,
-];
+pub const RECOMMENDED_DIMS: [usize; 10] = [8, 13, 21, 34, 55, 89, 144, 233, 377, 610];
 
 /// Get a recommended dimension for a given size category
 /// category: 0=tiny, 1=small, 2=medium, 3=large, 4=xlarge
 pub fn recommended_dim(category: usize) -> usize {
-    let idx = if category >= RECOMMENDED_DIMS.len() { RECOMMENDED_DIMS.len() - 1 } else { category };
+    let idx = if category >= RECOMMENDED_DIMS.len() {
+        RECOMMENDED_DIMS.len() - 1
+    } else {
+        category
+    };
     RECOMMENDED_DIMS[idx]
 }
 
 /// Fibonacci-based hidden sizes for N-gram models
-pub const NGRAM_HIDDEN_SIZES: [usize; 6] = [
-    8, 13, 21, 34, 55, 89,
-];
+pub const NGRAM_HIDDEN_SIZES: [usize; 6] = [8, 13, 21, 34, 55, 89];
 
 /// Fibonacci-based embedding dimensions
-pub const EMBEDDING_DIMS: [usize; 6] = [
-    8, 13, 21, 34, 55, 89,
-];
+pub const EMBEDDING_DIMS: [usize; 6] = [8, 13, 21, 34, 55, 89];
 
 /// φ-based layer count progression (powers of φ)
 /// φ^1 ≈ 1.6 → 2 layers
@@ -190,9 +192,9 @@ mod tests {
         assert_eq!(nearest_fibonacci(0), 1);
         assert_eq!(nearest_fibonacci(1), 1);
         assert_eq!(nearest_fibonacci(2), 2);
-        assert_eq!(nearest_fibonacci(4), 5);  // 4 is closer to 5 than to 3
-        assert_eq!(nearest_fibonacci(6), 5);  // 6 is closer to 5 than to 8
-        assert_eq!(nearest_fibonacci(7), 8);  // 7 is closer to 8 than to 5
+        assert_eq!(nearest_fibonacci(4), 5); // 4 is closer to 5 than to 3
+        assert_eq!(nearest_fibonacci(6), 5); // 6 is closer to 5 than to 8
+        assert_eq!(nearest_fibonacci(7), 8); // 7 is closer to 8 than to 5
     }
 
     #[test]
@@ -260,9 +262,9 @@ mod tests {
         assert!(is_phi_optimized(34));
 
         // Within 10% tolerance
-        assert!(!is_phi_optimized(64));  // 64/55 ≈ 1.16 > 1.1
-        assert!(!is_phi_optimized(72));  // 72/89 ≈ 0.81 < 0.9
-        assert!(is_phi_optimized(96));   // 96/89 ≈ 1.08 < 1.1
+        assert!(!is_phi_optimized(64)); // 64/55 ≈ 1.16 > 1.1
+        assert!(!is_phi_optimized(72)); // 72/89 ≈ 0.81 < 0.9
+        assert!(is_phi_optimized(96)); // 96/89 ≈ 1.08 < 1.1
     }
 
     #[test]
@@ -273,7 +275,7 @@ mod tests {
         assert_eq!(phi_distance(21), 0.0);
 
         // Midpoint should have distance 1.0
-        assert!((phi_distance(6) - 1.0).abs() < 0.01);  // Between 5 and 8
+        assert!((phi_distance(6) - 1.0).abs() < 0.01); // Between 5 and 8
         assert!((phi_distance(10) - 1.0).abs() < 0.01); // Between 8 and 13
     }
 
@@ -292,7 +294,7 @@ mod tests {
     fn test_trinity_identity_with_fibonacci() {
         // Test φ² + 1/φ² = 3 using Fibonacci relationship
         // φ ≈ F(n+1)/F(n) for large n
-        let n = 10;  // Use F(10) = 55, F(11) = 89
+        let n = 10; // Use F(10) = 55, F(11) = 89
         let phi_approx = FIBONACCI[n + 1] as f64 / FIBONACCI[n] as f64;
         let phi_sq_approx = phi_approx * phi_approx;
         let phi_inv_sq_approx = 1.0 / phi_sq_approx;
@@ -300,7 +302,11 @@ mod tests {
 
         // Should be close to 3
         let error = (sum - 3.0).abs();
-        assert!(error < 0.1, "Trinity identity with Fibonacci approximation: error = {}", error);
+        assert!(
+            error < 0.1,
+            "Trinity identity with Fibonacci approximation: error = {}",
+            error
+        );
     }
 
     #[test]
@@ -333,7 +339,11 @@ mod tests {
 
         for (input, expected) in suggestions {
             let suggested = nearest_fibonacci(input as u64);
-            assert_eq!(suggested as usize, expected, "For input {}, expected {}", input, expected);
+            assert_eq!(
+                suggested as usize, expected,
+                "For input {}, expected {}",
+                input, expected
+            );
         }
     }
 
@@ -343,7 +353,13 @@ mod tests {
         for i in 5..FIBONACCI.len() - 1 {
             let ratio = FIBONACCI[i + 1] as f64 / FIBONACCI[i] as f64;
             let error = (ratio - PHI).abs();
-            assert!(error < 0.01, "Growth at step {}: {} (error: {})", i, ratio, error);
+            assert!(
+                error < 0.01,
+                "Growth at step {}: {} (error: {})",
+                i,
+                ratio,
+                error
+            );
         }
     }
 
@@ -372,7 +388,11 @@ mod tests {
     fn test_recommended_dims_are_fibonacci() {
         // All recommended dimensions should be Fibonacci numbers
         for &dim in &RECOMMENDED_DIMS {
-            assert!(is_fibonacci(dim as u64), "Recommended dim {} is not Fibonacci", dim);
+            assert!(
+                is_fibonacci(dim as u64),
+                "Recommended dim {} is not Fibonacci",
+                dim
+            );
         }
     }
 
@@ -384,7 +404,11 @@ mod tests {
             let nearest = nearest_fibonacci(size as u64);
             let dist = phi_distance(size as u64);
             // All should have some φ-optimized alternative
-            assert!(dist <= 1.0, "Size {} has no close Fibonacci alternative", size);
+            assert!(
+                dist <= 1.0,
+                "Size {} has no close Fibonacci alternative",
+                size
+            );
         }
     }
 }

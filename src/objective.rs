@@ -19,7 +19,11 @@ pub struct ObjectiveConfig {
 
 impl Default for ObjectiveConfig {
     fn default() -> Self {
-        Self { ntp_weight: 0.5, jepa_weight: 0.25, nca_weight: 0.25 }
+        Self {
+            ntp_weight: 0.5,
+            jepa_weight: 0.25,
+            nca_weight: 0.25,
+        }
     }
 }
 
@@ -48,19 +52,23 @@ pub fn nca_entropy_constraint(entropy: f64) -> f64 {
     const MIN: f64 = 1.5;
     const MAX: f64 = 2.8;
     const SCALE: f64 = 100.0;
-    if entropy < MIN { (MIN - entropy).powi(2) * SCALE }
-    else if entropy > MAX { (entropy - MAX).powi(2) * SCALE }
-    else { 0.0 }
+    if entropy < MIN {
+        (MIN - entropy).powi(2) * SCALE
+    } else if entropy > MAX {
+        (entropy - MAX).powi(2) * SCALE
+    } else {
+        0.0
+    }
 }
 
 /// ASHA rung schedule per architecture
 /// Law L-R10: JEPA first rung = 3000 (1.4x slower convergence)
 pub fn get_rung_schedule(arch: &str) -> Vec<u32> {
     match arch {
-        "jepa"   => vec![3000, 9000, 27000],
-        "attn"   => vec![1000, 3000, 9000, 27000],
+        "jepa" => vec![3000, 9000, 27000],
+        "attn" => vec![1000, 3000, 9000, 27000],
         "hybrid" => vec![2000, 6000, 18000],
-        _        => vec![1000, 3000, 9000, 27000],
+        _ => vec![1000, 3000, 9000, 27000],
     }
 }
 
@@ -103,7 +111,10 @@ impl Default for NcaObjective {
 
 impl NcaObjective {
     pub fn new(weight: f64) -> Self {
-        Self { weight, ..Self::default() }
+        Self {
+            weight,
+            ..Self::default()
+        }
     }
 
     pub fn grid_dim(&self) -> usize {
@@ -116,7 +127,9 @@ impl NcaObjective {
         let mut state = Vec::with_capacity(n);
         let mut s = seed;
         for _ in 0..n {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let idx = (s >> 33) as usize % self.k_states;
             state.push(idx as f32);
         }
@@ -140,7 +153,9 @@ impl NcaObjective {
                     let s = state[nidx] as usize;
                     counts[s.min(self.k_states - 1)] += rule.neighbor_weight;
                 }
-                let best = counts.iter().enumerate()
+                let best = counts
+                    .iter()
+                    .enumerate()
                     .max_by_key(|(_, &c)| c)
                     .map(|(i, _)| i)
                     .unwrap_or(0);
@@ -169,12 +184,7 @@ impl NcaObjective {
 
     /// Compute NCA auxiliary loss for one rollout
     /// Loss = MSE(predicted_embed, target_embed) + entropy_penalty
-    pub fn compute_loss(
-        &self,
-        predicted: &[f32],
-        target: &[f32],
-        nca_state: &[f32],
-    ) -> f64 {
+    pub fn compute_loss(&self, predicted: &[f32], target: &[f32], nca_state: &[f32]) -> f64 {
         let mse = mse_loss(predicted, target);
         let entropy = shannon_entropy(nca_state, self.k_states);
         let penalty = nca_entropy_constraint(entropy);
@@ -221,7 +231,9 @@ pub struct NcaRolloutResult {
 /// Shannon entropy: H = -Σ p_i * log(p_i)
 pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
     let n = state.len() as f64;
-    if n == 0.0 { return 0.0; }
+    if n == 0.0 {
+        return 0.0;
+    }
     let mut counts = vec![0usize; k_states];
     for &s in state {
         let idx = (s.round() as usize).min(k_states - 1);
@@ -240,11 +252,15 @@ pub fn shannon_entropy(state: &[f32], k_states: usize) -> f64 {
 /// MSE loss between two vectors
 pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
     assert_eq!(a.len(), b.len());
-    if a.is_empty() { return 0.0; }
+    if a.is_empty() {
+        return 0.0;
+    }
     let n = a.len() as f64;
-    a.iter().zip(b.iter())
+    a.iter()
+        .zip(b.iter())
         .map(|(&x, &y)| (x - y) as f64 * (x - y) as f64)
-        .sum::<f64>() / n
+        .sum::<f64>()
+        / n
 }
 
 /// Differentiable NCA entropy loss for use as auxiliary training signal.
@@ -256,8 +272,16 @@ pub fn mse_loss(a: &[f32], b: &[f32]) -> f64 {
 /// Returns (loss, entropy) tuple so caller can log entropy for monitoring.
 ///
 /// Law L-R11: NCA entropy [1.5, 2.8] = hard penalty
-pub fn nca_entropy_loss(state: &[f32], k_states: usize, entropy_min: f64, entropy_max: f64, weight: f64) -> (f64, f64) {
-    if state.is_empty() { return (0.0, 0.0); }
+pub fn nca_entropy_loss(
+    state: &[f32],
+    k_states: usize,
+    entropy_min: f64,
+    entropy_max: f64,
+    weight: f64,
+) -> (f64, f64) {
+    if state.is_empty() {
+        return (0.0, 0.0);
+    }
     let entropy = shannon_entropy(state, k_states);
     let penalty = if entropy < entropy_min {
         (entropy_min - entropy).powi(2) * 100.0
@@ -275,7 +299,11 @@ mod tests {
 
     #[test]
     fn test_combined_loss_weights() {
-        let c = ComponentLosses { ntp: 2.0, jepa: 1.0, nca: 0.5 };
+        let c = ComponentLosses {
+            ntp: 2.0,
+            jepa: 1.0,
+            nca: 0.5,
+        };
         let r = compute_combined_loss(c, ObjectiveConfig::default());
         assert!((r.total - 1.375).abs() < 1e-9, "total={}", r.total);
     }
@@ -337,14 +365,22 @@ mod tests {
     fn test_shannon_entropy_uniform() {
         let state: Vec<f32> = (0..81).map(|i| (i % 9) as f32).collect();
         let h = shannon_entropy(&state, 9);
-        assert!((h - (9.0f64).ln()).abs() < 0.01, "uniform entropy should be ln(9)={}", (9.0f64).ln());
+        assert!(
+            (h - (9.0f64).ln()).abs() < 0.01,
+            "uniform entropy should be ln(9)={}",
+            (9.0f64).ln()
+        );
     }
 
     #[test]
     fn test_shannon_entropy_single_state() {
         let state = vec![0.0f32; 81];
         let h = shannon_entropy(&state, 9);
-        assert!(h.abs() < 1e-9, "single state entropy should be 0, got {}", h);
+        assert!(
+            h.abs() < 1e-9,
+            "single state entropy should be 0, got {}",
+            h
+        );
     }
 
     #[test]
@@ -375,10 +411,15 @@ mod tests {
     fn test_nca_entropy_in_band_during_rollout() {
         let nca = NcaObjective::default();
         let result = nca.rollout(42, &NcaTransitionRule::default());
-        let in_band = result.entropies.iter()
+        let in_band = result
+            .entropies
+            .iter()
             .filter(|&&h| h >= 1.5 && h <= 2.8)
             .count();
-        assert!(in_band > 0, "some steps should have entropy in band [1.5, 2.8]");
+        assert!(
+            in_band > 0,
+            "some steps should have entropy in band [1.5, 2.8]"
+        );
     }
 
     #[test]
