@@ -42,7 +42,132 @@ cargo run --release --bin trios-train -- \
     --config configs/champion.toml --seed 43
 ```
 
-## Run on Railway
+## Search the needle (`trios-igla`)
+
+A second binary, `trios-igla`, is the **read-only query tool** for the IGLA
+RACE ledger. It never mutates `assertions/seed_results.jsonl` — it only
+filters, lists, and emits the canonical triplet so operators and CI can
+answer “did we find the needle yet?” without ad-hoc shell pipelines.
+
+Triplet (R7):
+
+```text
+BPB=<v> @ step=<N> seed=<S> sha=<7c> jsonl_row=<L> gate_status=<g>
+```
+
+| Command | Effect | Exit code |
+|---|---|---|
+| `trios-igla search --seed 43 --bpb-max 1.85 --step-min 4000` | Filter ledger; one triplet per match. Flags: `--seed`, `--bpb-max`, `--step-min`, `--sha`, `--gate-status`. | 0 hit, 2 no-match |
+| `trios-igla list --last 5` | Last N rows in triplet form (default 10). | 0 |
+| `trios-igla gate --target 1.85` | Gate-2 quorum: PASS iff ≥3 distinct seeds satisfy `bpb < target` AND `step >= 4000`. | 0 PASS, 2 NOT YET |
+| `trios-igla check 2446855` | R9 embargo refusal against `assertions/embargo.txt`. | 0 clean, 1 embargoed |
+| `trios-igla triplet 0` | Canonical R7 triplet for a row index (0-based). | 0 |
+
+Common flags:
+- `--ledger <path>` (default `assertions/seed_results.jsonl`)
+- `--embargo <path>` (default `assertions/embargo.txt`)
+
+### Quickstart
+
+```bash
+cargo build --release --bin trios-igla
+BIN=./target/release/trios-igla
+
+# Did anyone hit the target yet?
+$BIN search --bpb-max 1.85 --step-min 4000
+
+# Print last 5 rows for a glance
+$BIN list --last 5
+
+# Gate-2 verdict in CI
+$BIN gate --target 1.85 || echo "NOT YET—keep training"
+
+# Refuse to act on an embargoed SHA
+$BIN check 477e3377   # exit 1
+$BIN check 2446855    # exit 0 (champion)
+```
+
+Gate-2 anchors used by `trios-igla gate`:
+- target: `1.85` (`igla::DEFAULT_TARGET_BPB`, overridable via `--target`)
+- step floor: `4000` (`igla::STEP_MIN_FOR_LEDGER`, R8)
+- quorum: `3` distinct seeds (`igla::GATE2_SEED_QUORUM`)
+- champion: `2.2393 @ 27K seed=43 sha=2446855` ([`gHashTag/trios@2446855`](https://github.com/gHashTag/trios/commit/2446855))
+
+## Run on Railway via `tri` (ONE SHOT)
+
+The canonical way to launch the 3-seed Gate-2 chase on Railway is the `tri railway` ONE SHOT shipped with [gHashTag/t27](https://github.com/gHashTag/t27) (PR #544 / issue #543). It is **R5-honest**: `tri` has no HTTP client yet, so `up --confirm` prints the exact GraphQL bodies that *would* be POSTed and exits 2 (planned-but-not-executed). The operator runs the actual mutation. Without `--confirm`, `up` is a pure dry-run (exit 0).
+
+### Quickstart (copy-paste)
+
+```bash
+export RAILWAY_TOKEN=<your-railway-account-token>
+export GITHUB_SHA=$(git rev-parse HEAD)            # used by R7 triplets
+
+# 1. Verify the token (POSTs `me { id email }` against backboard)
+tri railway login
+
+# 2. Bind the Railway project (default: e4fe33bb-3b09-4842-9782-7d2dea1abc9b)
+tri railway link
+
+# 3. Plan the 3-seed Gate-2 chase. Dry-run by default (exit 0).
+tri railway up
+
+# 4. Print the GraphQL bodies that would be POSTed (exit 2 = planned).
+tri railway up --confirm
+
+# 5. Status / logs (read-only) and Gate-2 verdict
+tri railway status
+tri railway logs --seed 43
+tri railway gate2
+```
+
+### Environment variables
+
+| Var | Default | Effect |
+|---|---|---|
+| `RAILWAY_TOKEN` | (required) | Railway account token; consumed by `tri railway login` |
+| `GITHUB_SHA` | (auto) | Embedded in R7 triplets and binding metadata |
+| `TRIOS_SEED` | per-service | Forced seed (43, 44, or 45) for each Gate-2 service |
+| `TRIOS_LEDGER_PUSH` | `1` | Push embargo-checked rows to the ledger |
+| `TRIOS_TARGET_BPB` | `1.85` | Gate-2 acceptance threshold |
+| `TRIOS_STEPS` | `30000` | Cap per seed (rows must satisfy step >= 4000) |
+| `RUST_LOG` | `info` | Log filter |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Dry-run plan printed, no Railway calls |
+| 2 | `--confirm` plan printed -- bodies are ready, operator must POST them |
+| non-zero (other) | Embargo blocked, invalid seed set, missing token, IO error |
+
+### Stop rule (Gate-2)
+
+The ONE SHOT terminates as soon as either condition holds:
+
+- **Quorum**: 3 distinct seeds in `{43, 44, 45}` each emit a row with `BPB < 1.85` AND `step >= 4000`, **OR**
+- **Deadline**: `2026-04-30 23:59 UTC`.
+
+### R5 / R7 / R9 reminders
+
+- **R5 (Honesty)**: NO DONE without merged PR + green CI + ledger row written.
+- **R7 (Triplet)**: every emit carries `BPB=<v> @ step=<N> seed=<S> sha=<7c> jsonl_row=<L> gate_status=<g>`.
+- **R8 (Step floor)**: a ledger row is only valid for `step >= 4000`.
+- **R9 (Embargo)**: `tri railway up` reads `assertions/embargo.txt` and refuses to plan if the head SHA matches any embargoed prefix.
+
+### Troubleshooting
+
+- **`tri railway login` -> 401**: regenerate `RAILWAY_TOKEN` at https://railway.com/account/tokens and re-export.
+- **`Embargo blocked HEAD <sha>`**: rebase past the embargoed commit before re-running -- this is by design.
+- **`Gate-2 seed set must contain 43, 44, 45`**: pass `--seeds 43,44,45` or omit the flag to use the canonical set.
+- **`tri` not on PATH**: build from t27 -- `cargo build -p tri --release` -> `t27/target/release/tri`.
+- **Status / logs print "(tri has no HTTP client yet)"**: by design. Inspect the Railway dashboard at https://railway.com/project/e4fe33bb-3b09-4842-9782-7d2dea1abc9b directly.
+
+### Anchor
+
+Mathematical foundation: `phi^2 + phi^-2 = 3` -- see [Zenodo DOI 10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877).
+
+### Manual fallback (no `tri`)
 
 ```bash
 railway login
@@ -80,6 +205,21 @@ docker run --rm \
 | `TRIOS_LR` | from config | Overrides `optimizer.lr` (must stay in INV-8 band) |
 | `TRIOS_LEDGER_PUSH` | `0` | If `1`, commits + pushes each row to `assertions/seed_results.jsonl` |
 | `RUST_LOG` | `info` | Log level |
+
+### Library API
+
+Everything `trios-igla` does is also exposed from the library so the
+training loop, CI gates, and the `trios-train` binary can reuse it:
+
+```rust
+use trios_trainer::igla::{
+    self, SearchFilter, gate2_seed_count, is_embargoed, render_triplet,
+};
+
+let rows = igla::read_ledger("assertions/seed_results.jsonl".as_ref())?;
+let count = gate2_seed_count(&rows, igla::DEFAULT_TARGET_BPB);
+assert!(count >= igla::GATE2_SEED_QUORUM, "Gate-2 not yet reached");
+```
 
 ## Configs
 
@@ -197,3 +337,6 @@ Filled only by future PRs as each phase closes -- no row may be claimed `done` w
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+
+<!-- ci-trigger-19 -->

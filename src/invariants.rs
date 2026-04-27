@@ -37,7 +37,10 @@ pub const INV4_ENTROPY_EMPIRICAL_LO: f64 = 1.5;
 pub const INV4_ENTROPY_EMPIRICAL_HI: f64 = 2.8;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum GradientMode { RealMSE, ConstantProxy(f64) }
+pub enum GradientMode {
+    RealMSE,
+    ConstantProxy(f64),
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InvError {
@@ -53,11 +56,20 @@ impl std::fmt::Display for InvError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             InvError::Inv1BadGradient => write!(f, "INV-1 VIOLATED: gradient=ConstantProxy"),
-            InvError::Inv1LrOutOfBand(lr) => write!(f, "INV-1 VIOLATED: lr={lr} outside φ-safe [{INV1_LR_SAFE_LO}, {INV1_LR_SAFE_HI}]"),
+            InvError::Inv1LrOutOfBand(lr) => write!(
+                f,
+                "INV-1 VIOLATED: lr={lr} outside φ-safe [{INV1_LR_SAFE_LO}, {INV1_LR_SAFE_HI}]"
+            ),
             InvError::Inv2ThresholdTooLow(t) => write!(f, "INV-2 VIOLATED: threshold={t} < 3.5"),
-            InvError::Inv3UnsafeDomain(d) => write!(f, "INV-3 VIOLATED: GF16 with d_model={d} < 256"),
-            InvError::Inv4GridMismatch { grid, k } => write!(f, "INV-4 VIOLATED: NCA grid={grid} K={k}, expected 81/9"),
-            InvError::Inv5LucasClosureBroken => write!(f, "INV-5 VIOLATED: GF16 Lucas closure broken"),
+            InvError::Inv3UnsafeDomain(d) => {
+                write!(f, "INV-3 VIOLATED: GF16 with d_model={d} < 256")
+            }
+            InvError::Inv4GridMismatch { grid, k } => {
+                write!(f, "INV-4 VIOLATED: NCA grid={grid} K={k}, expected 81/9")
+            }
+            InvError::Inv5LucasClosureBroken => {
+                write!(f, "INV-5 VIOLATED: GF16 Lucas closure broken")
+            }
         }
     }
 }
@@ -92,7 +104,10 @@ pub fn validate_inv_config(cfg: &InvTrialConfig) -> Result<(), InvError> {
     }
     if cfg.nca_grid > 0 {
         if cfg.nca_grid != INV4_NCA_GRID || cfg.nca_k_states != INV4_NCA_K_STATES {
-            return Err(InvError::Inv4GridMismatch { grid: cfg.nca_grid, k: cfg.nca_k_states });
+            return Err(InvError::Inv4GridMismatch {
+                grid: cfg.nca_grid,
+                k: cfg.nca_k_states,
+            });
         }
     }
     Ok(())
@@ -111,31 +126,69 @@ pub struct TrialConfig {
 }
 
 pub fn validate_config(cfg: &TrialConfig) {
-    assert!(cfg.lr >= LR_SAFE_MIN && cfg.lr <= LR_SAFE_MAX,
-        "INV-1 VIOLATION: lr={} not in [{}, {}]", cfg.lr, LR_SAFE_MIN, LR_SAFE_MAX);
+    assert!(
+        cfg.lr >= LR_SAFE_MIN && cfg.lr <= LR_SAFE_MAX,
+        "INV-1 VIOLATION: lr={} not in [{}, {}]",
+        cfg.lr,
+        LR_SAFE_MIN,
+        LR_SAFE_MAX
+    );
     assert!(cfg.lr > 0.0, "INV-1: lr must be positive, got {}", cfg.lr);
     if cfg.use_gf16 {
-        assert!(cfg.d_model >= GF16_SAFE_D_MODEL,
-            "INV-3 VIOLATION: GF16 requires d_model≥{}, got {}", GF16_SAFE_D_MODEL, cfg.d_model);
+        assert!(
+            cfg.d_model >= GF16_SAFE_D_MODEL,
+            "INV-3 VIOLATION: GF16 requires d_model≥{}, got {}",
+            GF16_SAFE_D_MODEL,
+            cfg.d_model
+        );
     }
     assert!(cfg.d_model > 0, "INV-3: d_model must be positive");
-    assert!(cfg.nca_weight >= 0.0 && cfg.nca_weight <= 1.0,
-        "INV-4 VIOLATION: nca_weight={} not in [0,1]", cfg.nca_weight);
+    assert!(
+        cfg.nca_weight >= 0.0 && cfg.nca_weight <= 1.0,
+        "INV-4 VIOLATION: nca_weight={} not in [0,1]",
+        cfg.nca_weight
+    );
     assert!(cfg.ntp_weight > 0.0, "INV-1: ntp_weight must be positive");
-    assert!(cfg.steps > 0 && cfg.steps <= ASHA_RUNGS[3] * 2,
-        "INV-2 VIOLATION: steps={} out of ASHA bounds [1, {}]", cfg.steps, ASHA_RUNGS[3] * 2);
+    assert!(
+        cfg.steps > 0 && cfg.steps <= ASHA_RUNGS[3] * 2,
+        "INV-2 VIOLATION: steps={} out of ASHA bounds [1, {}]",
+        cfg.steps,
+        ASHA_RUNGS[3] * 2
+    );
 }
 
 pub fn validate_bpb(bpb: f64, trial_id: &str) {
-    assert!(bpb > 0.0 && bpb < 20.0, "L-METRIC VIOLATION: BPB={:.4} out of range (0, 20) for trial {}", bpb, trial_id);
-    assert!(bpb > 0.1, "L-METRIC VIOLATION: BPB={:.4} suspiciously low for trial {}", bpb, trial_id);
+    assert!(
+        bpb > 0.0 && bpb < 20.0,
+        "L-METRIC VIOLATION: BPB={:.4} out of range (0, 20) for trial {}",
+        bpb,
+        trial_id
+    );
+    assert!(
+        bpb > 0.1,
+        "L-METRIC VIOLATION: BPB={:.4} suspiciously low for trial {}",
+        bpb,
+        trial_id
+    );
 }
 
 pub fn validate_nca_entropy(entropy: f64) {
-    assert!(entropy >= NCA_ENTROPY_LO, "INV-4 VIOLATION: entropy={:.4} < φ={:.4}", entropy, NCA_ENTROPY_LO);
-    assert!(entropy <= NCA_ENTROPY_HI, "INV-4 VIOLATION: entropy={:.4} > φ²={:.4}", entropy, NCA_ENTROPY_HI);
-    assert!((NCA_ENTROPY_HI - NCA_ENTROPY_LO - NCA_ENTROPY_WIDTH).abs() < 1e-10,
-        "INV-4 INTERNAL: band width != 1 — Trinity constants corrupted!");
+    assert!(
+        entropy >= NCA_ENTROPY_LO,
+        "INV-4 VIOLATION: entropy={:.4} < φ={:.4}",
+        entropy,
+        NCA_ENTROPY_LO
+    );
+    assert!(
+        entropy <= NCA_ENTROPY_HI,
+        "INV-4 VIOLATION: entropy={:.4} > φ²={:.4}",
+        entropy,
+        NCA_ENTROPY_HI
+    );
+    assert!(
+        (NCA_ENTROPY_HI - NCA_ENTROPY_LO - NCA_ENTROPY_WIDTH).abs() < 1e-10,
+        "INV-4 INTERNAL: band width != 1 — Trinity constants corrupted!"
+    );
 }
 
 #[cfg(test)]
@@ -145,32 +198,64 @@ mod tests {
     fn test_trinity_identity() {
         let phi_inv = 1.0 / PHI;
         let result = PHI * PHI + phi_inv * phi_inv;
-        assert!((result - TRINITY_IDENTITY).abs() < 1e-10, "φ²+φ⁻²={result:.10} ≠ 3");
+        assert!(
+            (result - TRINITY_IDENTITY).abs() < 1e-10,
+            "φ²+φ⁻²={result:.10} ≠ 3"
+        );
     }
     #[test]
-    fn test_phi_sq_eq_phi_plus_one() { assert!((PHI_SQ - (PHI + 1.0)).abs() < 1e-10); }
+    fn test_phi_sq_eq_phi_plus_one() {
+        assert!((PHI_SQ - (PHI + 1.0)).abs() < 1e-10);
+    }
     #[test]
-    fn test_entropy_band_width_exact() { assert!((NCA_ENTROPY_HI - NCA_ENTROPY_LO - 1.0).abs() < 1e-10); }
+    fn test_entropy_band_width_exact() {
+        assert!((NCA_ENTROPY_HI - NCA_ENTROPY_LO - 1.0).abs() < 1e-10);
+    }
     #[test]
-    fn test_champion_bpb_survives_asha() { assert!(BPB_CHAMPION < ASHA_PRUNE_THRESHOLD); }
+    fn test_champion_bpb_survives_asha() {
+        assert!(BPB_CHAMPION < ASHA_PRUNE_THRESHOLD);
+    }
     #[test]
-    fn test_lr_champion_in_safe_range() { assert!(LR_CHAMPION >= LR_SAFE_MIN); assert!(LR_CHAMPION <= LR_SAFE_MAX); }
+    fn test_lr_champion_in_safe_range() {
+        assert!(LR_CHAMPION >= LR_SAFE_MIN);
+        assert!(LR_CHAMPION <= LR_SAFE_MAX);
+    }
     #[test]
     fn test_gf16_precision_floor() {
         let phi_inv6 = (1.0_f64 / PHI).powi(6);
         assert!((phi_inv6 - PHI_INV6).abs() < 1e-8);
     }
     #[test]
-    fn test_alpha_phi_matches_strong_coupling() { assert!((ALPHA_PHI - 0.1180_f64).abs() < 0.001); }
+    fn test_alpha_phi_matches_strong_coupling() {
+        assert!((ALPHA_PHI - 0.1180_f64).abs() < 0.001);
+    }
     #[test]
     fn test_validate_config_champion() {
-        validate_config(&TrialConfig { lr: LR_CHAMPION, d_model: 384, seed: 43, steps: 27_000,
-            nca_weight: 0.25, jepa_weight: 1.0, ntp_weight: 1.0, use_gf16: false });
+        validate_config(&TrialConfig {
+            lr: LR_CHAMPION,
+            d_model: 384,
+            seed: 43,
+            steps: 27_000,
+            nca_weight: 0.25,
+            jepa_weight: 1.0,
+            ntp_weight: 1.0,
+            use_gf16: false,
+        });
     }
     #[test]
     fn test_validate_config_gf16_guard() {
-        let r = std::panic::catch_unwind(|| validate_config(&TrialConfig { lr: 0.004, d_model: 128, seed: 42,
-            steps: 3_000, nca_weight: 0.25, jepa_weight: 1.0, ntp_weight: 1.0, use_gf16: true }));
+        let r = std::panic::catch_unwind(|| {
+            validate_config(&TrialConfig {
+                lr: 0.004,
+                d_model: 128,
+                seed: 42,
+                steps: 3_000,
+                nca_weight: 0.25,
+                jepa_weight: 1.0,
+                ntp_weight: 1.0,
+                use_gf16: true,
+            })
+        });
         assert!(r.is_err());
     }
     #[test]
@@ -180,7 +265,11 @@ mod tests {
     }
     #[test]
     fn test_lucas_sequence() {
-        assert_eq!(LUCAS[2], 3); assert_eq!(LUCAS[4], 7); assert_eq!(LUCAS[6], 18);
-        for i in 2..LUCAS.len() { assert_eq!(LUCAS[i], LUCAS[i-1] + LUCAS[i-2]); }
+        assert_eq!(LUCAS[2], 3);
+        assert_eq!(LUCAS[4], 7);
+        assert_eq!(LUCAS[6], 18);
+        for i in 2..LUCAS.len() {
+            assert_eq!(LUCAS[i], LUCAS[i - 1] + LUCAS[i - 2]);
+        }
     }
 }

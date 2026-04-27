@@ -5,8 +5,8 @@
 //!
 //! Reference: gHashTag/trios@2446855 — BPB=2.2393 @ 27K steps, seed=43.
 
-use trios_trainer::TrainConfig;
 use trios_trainer::train_loop::{self, DEFAULT_IGLA_TARGET_BPB};
+use trios_trainer::TrainConfig;
 
 #[test]
 fn champion_config_loads_and_validates() {
@@ -15,7 +15,10 @@ fn champion_config_loads_and_validates() {
     assert_eq!(cfg.name, "champion");
     assert_eq!(cfg.seed, 43);
     assert_eq!(cfg.steps, 27_000);
-    assert!((cfg.optimizer.lr - 0.004).abs() < 1e-9, "INV-8: lr must be 0.004");
+    assert!(
+        (cfg.optimizer.lr - 0.004).abs() < 1e-9,
+        "INV-8: lr must be 0.004"
+    );
     assert!((cfg.target_bpb - 1.50).abs() < 1e-9);
     assert!(cfg.champion_bpb.is_some());
     let champ = cfg.champion_bpb.unwrap();
@@ -30,7 +33,10 @@ fn champion_model_config_matches_spec() {
     assert_eq!(cfg.model.n_heads, 4);
     assert_eq!(cfg.model.vocab_size, 32_000);
     assert_eq!(cfg.model.seq_len, 1024);
-    assert!(!cfg.model.hybrid_attn, "champion uses plain causal attention");
+    assert!(
+        !cfg.model.hybrid_attn,
+        "champion uses plain causal attention"
+    );
 }
 
 #[test]
@@ -59,7 +65,8 @@ fn target_bpb_below_igla_gate() {
     assert!(
         cfg.target_bpb < DEFAULT_IGLA_TARGET_BPB,
         "target_bpb ({}) must be below IGLA gate ({})",
-        cfg.target_bpb, DEFAULT_IGLA_TARGET_BPB
+        cfg.target_bpb,
+        DEFAULT_IGLA_TARGET_BPB
     );
 }
 
@@ -77,11 +84,9 @@ fn champion_inv8_lr_in_phi_band() {
 #[test]
 #[ignore]
 fn champion_bpb_reproduction_full_run() {
-    let cfg = TrainConfig::from_toml("configs/champion.toml")
-        .expect("champion.toml must load");
+    let cfg = TrainConfig::from_toml("configs/champion.toml").expect("champion.toml must load");
 
-    let outcome = train_loop::run(&cfg)
-        .expect("champion training must complete without error");
+    let outcome = train_loop::run(&cfg).expect("champion training must complete without error");
 
     assert!(
         outcome.final_bpb >= 2.229 && outcome.final_bpb <= 2.249,
@@ -91,8 +96,5 @@ fn champion_bpb_reproduction_full_run() {
     );
 
     assert_eq!(outcome.steps_done, cfg.steps, "must run full step count");
-    assert!(
-        outcome.final_bpb.is_finite(),
-        "BPB must be finite"
-    );
+    assert!(outcome.final_bpb.is_finite(), "BPB must be finite");
 }

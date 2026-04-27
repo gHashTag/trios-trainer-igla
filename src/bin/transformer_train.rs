@@ -5,7 +5,7 @@
 //! Target: Beat N-gram baseline (2.5329 BPB) with minimal transformer
 
 use std::env;
-use trios_trainer::transformer_trainer::{TransformerTrainConfig, TrainResult};
+use trios_trainer::transformer_trainer::{TrainResult, TransformerTrainConfig};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -64,15 +64,16 @@ fn run_lr_sweep(base_config: &TransformerTrainConfig) {
     sweep_config.max_steps = 1000; // Reduced for sweep
 
     let lrs = vec![
-        0.001, 0.002, 0.003, 0.004, 0.005,
-        0.006, 0.007, 0.008, 0.009, 0.010,
+        0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.007, 0.008, 0.009, 0.010,
     ];
 
     let results = sweep_config.run_lr_sweep(lrs);
 
     // Find best result
     if let Some(best) = results.iter().min_by(|a, b| {
-        a.best_bpb.partial_cmp(&b.best_bpb).unwrap_or(std::cmp::Ordering::Equal)
+        a.best_bpb
+            .partial_cmp(&b.best_bpb)
+            .unwrap_or(std::cmp::Ordering::Equal)
     }) {
         println!("\n=== Best Configuration ===");
         println!("Best BPB: {:.4}", best.best_bpb);
@@ -87,8 +88,8 @@ fn save_metrics(result: &TrainResult) {
 
     let filename = ".trinity/experiments/transformer_phase2_results.json";
     if let Ok(mut file) = File::create(filename) {
-        use std::collections::HashMap;
         use serde_json::json;
+        use std::collections::HashMap;
 
         let metrics_data: Vec<HashMap<String, serde_json::Value>> = result
             .metrics

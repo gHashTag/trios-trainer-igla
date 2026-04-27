@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["...", "gcc"]
+
+[phases.build]
+cmd = "cargo build --release --bin trios-train"
+
+[start]
+cmd = "./target/release/trios-train --seed ${TRIOS_SEED:-43} --steps ${TRIOS_STEPS:-27000} --hidden ${TRIOS_HIDDEN:-384} --lr ${TRIOS_LR:-0.004} --attn-layers ${TRIOS_ATTN_LAYERS:-2} --eval-every ${TRIOS_EVAL_EVERY:-1000} --optimizer ${TRIOS_OPTIMIZER:-adamw}"

@@ -16,7 +16,7 @@ pub struct GF16(pub u16);
 impl GF16 {
     // Bit layout: [15: sign] [14:9: exponent (6 bits)] [8:0: mantissa (9 bits)]
     const SIGN_MASK: u16 = 0x8000;
-    const EXP_MASK: u16 = 0x7E00;   // bits 14-9 for 6-bit exponent
+    const EXP_MASK: u16 = 0x7E00; // bits 14-9 for 6-bit exponent
     const MANTISSA_MASK: u16 = 0x01FF; // bits 8-0 for 9-bit mantissa
     const EXP_BIAS: i32 = 15;
 
@@ -35,13 +35,21 @@ impl GF16 {
     #[must_use]
     pub fn from_f32(val: f32) -> Self {
         if val == 0.0 {
-            return if val.is_sign_negative() { Self::NEG_ZERO } else { Self::ZERO };
+            return if val.is_sign_negative() {
+                Self::NEG_ZERO
+            } else {
+                Self::ZERO
+            };
         }
         if val.is_nan() {
             return Self::NAN;
         }
         if !val.is_finite() {
-            return if val.is_sign_negative() { Self::NEG_INF } else { Self::INF };
+            return if val.is_sign_negative() {
+                Self::NEG_INF
+            } else {
+                Self::INF
+            };
         }
 
         let bits = val.to_bits();
@@ -71,7 +79,7 @@ impl GF16 {
     pub fn to_f32(self) -> f32 {
         let bits = self.0;
         let sign = (bits & Self::SIGN_MASK) >> 15;
-        let exp  = (bits & Self::EXP_MASK) >> 9;
+        let exp = (bits & Self::EXP_MASK) >> 9;
         let mantissa = bits & Self::MANTISSA_MASK;
 
         if exp == 0 {
@@ -80,7 +88,11 @@ impl GF16 {
 
         if exp == 63 {
             return if mantissa == 0 {
-                if sign != 0 { f32::NEG_INFINITY } else { f32::INFINITY }
+                if sign != 0 {
+                    f32::NEG_INFINITY
+                } else {
+                    f32::INFINITY
+                }
             } else {
                 f32::NAN
             };
@@ -88,7 +100,11 @@ impl GF16 {
 
         let f32_exp = exp as i32 - Self::EXP_BIAS + 127;
         if !(0..=255).contains(&f32_exp) {
-            return if sign != 0 { f32::NEG_INFINITY } else { f32::INFINITY };
+            return if sign != 0 {
+                f32::NEG_INFINITY
+            } else {
+                f32::INFINITY
+            };
         }
 
         let f32_mant = (mantissa as u32) << (23 - 9);
@@ -222,7 +238,9 @@ pub struct GF16Vec {
 impl GF16Vec {
     #[must_use]
     pub fn new(capacity: usize) -> Self {
-        GF16Vec { data: Vec::with_capacity(capacity) }
+        GF16Vec {
+            data: Vec::with_capacity(capacity),
+        }
     }
 
     pub fn push(&mut self, val: f32) {
@@ -312,7 +330,10 @@ mod tests {
     #[test]
     fn test_phi_distance() {
         let pd = GF16::phi_distance();
-        assert!((pd - 0.0486).abs() < 0.001, "φ-distance = {pd}, expected ~0.049");
+        assert!(
+            (pd - 0.0486).abs() < 0.001,
+            "φ-distance = {pd}, expected ~0.049"
+        );
     }
 
     #[test]
@@ -376,10 +397,12 @@ impl QuantizationMetrics {
             let abs_error = ((quant - orig).abs()) as f64;
             let error_pct = abs_error / abs_orig * 100.0;
 
-            if error_pct > max_error { max_error = error_pct; }
+            if error_pct > max_error {
+                max_error = error_pct;
+            }
             sum_error_pct += error_pct;
             sum_abs_error += abs_error;
-            sum_sq_error  += abs_error * abs_error;
+            sum_sq_error += abs_error * abs_error;
         }
 
         let n_f = n as f64;
@@ -396,13 +419,11 @@ impl QuantizationMetrics {
 /// Benchmark GF16 quantization on random weights
 #[must_use]
 pub fn benchmark_quantization(n: usize) -> QuantizationMetrics {
-    use rand::Rng;
     use rand::thread_rng;
+    use rand::Rng;
     let mut rng = thread_rng();
 
-    let original: Vec<f32> = (0..n)
-        .map(|_| rng.gen::<f32>() * 0.2 - 0.1)
-        .collect();
+    let original: Vec<f32> = (0..n).map(|_| rng.gen::<f32>() * 0.2 - 0.1).collect();
 
     let quantized: Vec<f32> = original
         .iter()

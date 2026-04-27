@@ -82,7 +82,10 @@ impl fmt::Display for Gf16Error {
                 f,
                 "INV-3: d_model={d_model} < {floor} (Lucas-closure floor); GF16 quantization unsafe"
             ),
-            Gf16Error::ErrorAboveBound { observed, certified_bound } => write!(
+            Gf16Error::ErrorAboveBound {
+                observed,
+                certified_bound,
+            } => write!(
                 f,
                 "INV-3: GF16 error={observed:.6} > φ⁻⁶ ≈ {certified_bound:.6} (certified bound)"
             ),
@@ -105,7 +108,10 @@ impl std::error::Error for Gf16Error {}
 /// Falsification: `gf16_falsification_witness: gf16_safe 255 true = false`.
 pub fn check_d_model(d_model: usize) -> Result<(), Gf16Error> {
     if d_model < D_MODEL_MIN {
-        Err(Gf16Error::DModelBelowFloor { d_model, floor: D_MODEL_MIN })
+        Err(Gf16Error::DModelBelowFloor {
+            d_model,
+            floor: D_MODEL_MIN,
+        })
     } else {
         Ok(())
     }
@@ -182,7 +188,13 @@ mod tests {
     fn falsification_d_model_255_rejected() {
         // Mirrors Coq: gf16_falsification_witness: gf16_safe 255 true = false.
         let r = check_d_model(255);
-        assert_eq!(r, Err(Gf16Error::DModelBelowFloor { d_model: 255, floor: 256 }));
+        assert_eq!(
+            r,
+            Err(Gf16Error::DModelBelowFloor {
+                d_model: 255,
+                floor: 256
+            })
+        );
     }
 
     #[test]
@@ -191,7 +203,10 @@ mod tests {
         let above = 1.0 / crate::invariants::PHI.powi(5);
         let r = check_error(above);
         match r {
-            Err(Gf16Error::ErrorAboveBound { observed, certified_bound }) => {
+            Err(Gf16Error::ErrorAboveBound {
+                observed,
+                certified_bound,
+            }) => {
                 assert!((observed - above).abs() < 1e-12);
                 assert!((certified_bound - ERROR_BOUND_CERTIFIED).abs() < 1e-12);
             }
@@ -211,7 +226,10 @@ mod tests {
 
     #[test]
     fn falsification_neg_inf_error_rejected() {
-        assert_eq!(check_error(f64::NEG_INFINITY), Err(Gf16Error::NonFiniteError));
+        assert_eq!(
+            check_error(f64::NEG_INFINITY),
+            Err(Gf16Error::NonFiniteError)
+        );
     }
 
     #[test]
@@ -271,7 +289,10 @@ mod tests {
     fn composite_rejects_d_model_first() {
         // When BOTH predicates fail, the d_model error wins (returned first).
         let r = gf16_safe(128, 1.0);
-        assert!(matches!(r, Err(Gf16Error::DModelBelowFloor { d_model: 128, .. })));
+        assert!(matches!(
+            r,
+            Err(Gf16Error::DModelBelowFloor { d_model: 128, .. })
+        ));
     }
 
     #[test]
@@ -284,7 +305,13 @@ mod tests {
 
     #[test]
     fn error_display_d_model_floor() {
-        let s = format!("{}", Gf16Error::DModelBelowFloor { d_model: 64, floor: 256 });
+        let s = format!(
+            "{}",
+            Gf16Error::DModelBelowFloor {
+                d_model: 64,
+                floor: 256
+            }
+        );
         assert!(s.contains("d_model=64"));
         assert!(s.contains("256"));
         assert!(s.contains("INV-3"));
@@ -294,7 +321,10 @@ mod tests {
     fn error_display_above_bound() {
         let s = format!(
             "{}",
-            Gf16Error::ErrorAboveBound { observed: 0.1, certified_bound: ERROR_BOUND_CERTIFIED }
+            Gf16Error::ErrorAboveBound {
+                observed: 0.1,
+                certified_bound: ERROR_BOUND_CERTIFIED
+            }
         );
         assert!(s.contains("INV-3"));
         assert!(s.contains("φ⁻⁶"));
