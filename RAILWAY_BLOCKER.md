@@ -1,7 +1,7 @@
 # Railway Deployment Blocker — Rust 1.82.0 Issue
 
-**Date:** 2026-04-27
-**Status:** Blocked — Railway NOT using Dockerfile
+**Date:** 2026-04-27 (updated 2026-04-27T20:10Z)
+**Status:** Partial fix — clap pinned to 4.5.4, build in progress
 
 ## Problem
 
@@ -33,13 +33,14 @@ Evidence: Build logs show `RUN cargo build --release -p igla-trainer` which diff
 3. **Update Dockerfile to build trios-train** — Failed, Railway uses wrong command
 4. **Update entrypoint.sh** — Irrelevant, Dockerfile not used
 5. **Explicit Rust 1.91 via rustup** — Failed, Railway still uses 1.82.0
+6. **Pin clap to 4.5.4** — IN PROGRESS (clap_lex 0.7.7 compatible with Rust 1.82)
 
 ## Workarounds to Try
 
-1. **Manual Railway dashboard configuration** — Service may need to be manually reconfigured
-2. **Create service from Railway dashboard** — Bypass CLI entirely
-3. **Pin problematic dependencies** — Not ideal but may work (hashbrown, block-buffer, time-macros)
-4. **Alternative deployment platform** — Consider Fly.io, Render, or other platforms
+1. ~~**Manual Railway dashboard configuration** — Service may need to be manually reconfigured~~
+2. ~~**Create service from Railway dashboard** — Bypass CLI entirely~~
+3. **Pin problematic dependencies** — IN PROGRESS (clap pinned to 4.5.4, may need to pin others)
+4. **Alternative deployment platform** — Consider Fly.io, Render, or other platforms (last resort)
 
 ## Current Status
 
