@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # Railway Multi-Seed Deployment Script for trios-trainer-igla
-# Creates 3 separate Railway services for seeds 43, 44, 45
+# Creates 3 separate Railway services for the NEW seed fleet 46, 47, 48.
+# Old fleet (43, 44, 45) was tried in attempt-1 with 0 rows < BPB 1.85.
 #
 
 set -e
@@ -10,7 +11,8 @@ set -e
 RAILWAY_PROJECT_ID="${RAILWAY_PROJECT_ID:-}"
 
 # Seeds to deploy
-SEEDS=(43 44 45)
+# Default: NEW seed fleet 46/47/48 (continues sequence after 45). Override with NEW_SEEDS.
+SEEDS=(${NEW_SEEDS:-46 47 48})
 SERVICE_PREFIX="igla-trainer-seed"
 
 echo "🚀 Railway Multi-Seed Deployment"

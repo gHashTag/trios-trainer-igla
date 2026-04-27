@@ -49,19 +49,21 @@ railway login
 railway link gHashTag/trios-trainer-igla
 railway up
 
-# Scale to 3 parallel seeds (Gate-2 needs 3 distinct seeds)
-for s in 43 44 45; do
-  railway service create "trainer-seed-$s"
-  railway variables set TRIOS_SEED=$s --service "trainer-seed-$s"
-  railway up --service "trainer-seed-$s"
+# Scale to 3 parallel seeds (Gate-2 needs 3 distinct seeds).
+# NEW fleet (attempt-2): 46/47/48. Old fleet (43/44/45) yielded 0 rows < 1.85.
+for s in 46 47 48; do
+  railway add --service "igla-trainer-seed-$s" --variables "TRIOS_SEED=$s"
+  railway up --service "igla-trainer-seed-$s"
 done
+
+# See docs/RAILWAY_DEPLOYMENT.md for the full guide (cleanup, monitoring, future waves).
 ```
 
 ## Run via Docker on any VPS
 
 ```bash
 docker run --rm \
-    -e TRIOS_SEED=44 \
+    -e TRIOS_SEED=46 \
     -e TRIOS_LEDGER_PUSH=1 \
     -v $PWD/assertions:/work/assertions \
     ghcr.io/ghashtag/trios-trainer-igla:latest
@@ -177,7 +179,7 @@ Six-phase pre-registered plan, owner per phase, falsification rule per phase. Ea
 | **P2** muP Transfer | pending | `lr_star` from 8M proxy transfers to 70M with `<5%` degradation | `assertions/lab/p2_transfer.jsonl` | `mup-prover` |
 | **P3** Schedule-Free + WSD | pending | SF or WSD beats cosine `phi-schedule` by `>=0.04 BPB` AND dominates anytime curve | `assertions/lab/p3_curves.jsonl` | `schedule-bench` |
 | **P4** Multi-Objective + EMA | pending | `(w_ce, w_jepa, w_nca)` sweep + post-hoc EMA(N=10) drops `>=0.03 BPB` at zero extra cost | `assertions/lab/p4_objective.jsonl` | `objective-jeweller` |
-| **P5** Gate-2 Push | pending | 3 seeds in `{43,44,45}` reach `BPB<1.85 AND step>=4000` before `2026-04-30 23:59 UTC` | merged `feat: Gate-2 victory` PR + 3 R7 triplets | `gate2-pilot` |
+| **P5** Gate-2 Push | pending | 3 seeds in `{46,47,48}` (attempt-2; attempt-1 on `{43,44,45}` had 0 rows < 1.85) reach `BPB<1.85 AND step>=4000` before `2026-04-30 23:59 UTC` | merged `feat: Gate-2 victory` PR + 3 R7 triplets | `gate2-pilot` |
 
 ### Pre-registered decision matrix (R7-honest)
 

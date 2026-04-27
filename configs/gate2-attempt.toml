@@ -1,9 +1,10 @@
 # Gate-2 attempt — push beyond champion with HybridAttn (L-h2).
-# Goal: BPB < 2.22 first, then < 1.50 across 3 seeds (43/44/45).
+# Goal: BPB < 2.22 first, then < 1.50 across 3 seeds.
+# Attempt-2 fleet (after attempt-1 on 43/44/45 yielded 0 rows < 1.85): 46/47/48.
 
 name         = "gate2-attempt"
 steps        = 30_000
-seed         = 43          # override per worker via TRIOS_SEED
+seed         = 46          # override per worker via TRIOS_SEED (46/47/48 fleet)
 target_bpb   = 1.50
 champion_bpb = 2.2393
 
