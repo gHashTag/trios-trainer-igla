@@ -1,19 +1,20 @@
 //! trios-trainer — portable IGLA RACE training pipeline.
 //! Single-source-of-truth for `gHashTag/trios#143`. Anchor: phi^2 + phi^-2 = 3.
 
-pub mod phi_numbers;
 pub mod checkpoint;
 pub mod config;
 pub mod data;
 pub mod gf16;
+pub mod igla;
 pub mod invariants;
 pub mod jepa;
 pub mod ledger;
 pub mod model;
 pub mod model_hybrid_attn;
+pub mod mup;
 pub mod objective;
 pub mod optimizer;
-pub mod mup;
+pub mod phi_numbers;
 pub mod race;
 pub mod train_loop;
 
