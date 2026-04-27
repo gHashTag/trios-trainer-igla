@@ -11,14 +11,14 @@ pub struct GF8 {
 }
 
 impl GF8 {
-    const SIGN_BIT: u8 = 0x80;  // 1000_0000
-    const EXP_MASK: u8 = 0x70;   // 0111_0000
-    const MANT_MASK: u8 = 0x0F;  // 0000_1111
+    const SIGN_BIT: u8 = 0x80; // 1000_0000
+    const EXP_MASK: u8 = 0x70; // 0111_0000
+    const MANT_MASK: u8 = 0x0F; // 0000_1111
 
     const EXP_BITS: u8 = 3;
     const MANT_BITS: u8 = 4;
 
-    const EXP_BIAS: i8 = 3;  // 2^(3-1) - 1
+    const EXP_BIAS: i8 = 3; // 2^(3-1) - 1
 
     /// Create GF8 from f32 (quantization)
     pub fn from_f32(value: f32) -> Self {
@@ -56,7 +56,9 @@ impl GF8 {
             return Self { bits: 0 };
         }
         if gf8_exp >= 7 {
-            return Self { bits: (sign << 7) | (6 << 4) | 15 };
+            return Self {
+                bits: (sign << 7) | (6 << 4) | 15,
+            };
         }
 
         let mut mant_rounded = (f32_mant >> (23 - Self::MANT_BITS)) as u8;
@@ -70,7 +72,9 @@ impl GF8 {
             mant_rounded = 0;
             gf8_exp += 1;
             if gf8_exp >= 7 {
-                return Self { bits: (sign << 7) | (6 << 4) | 15 };
+                return Self {
+                    bits: (sign << 7) | (6 << 4) | 15,
+                };
             }
         }
 
@@ -89,7 +93,11 @@ impl GF8 {
             return 0.0;
         }
 
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0 } else { 1.0 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0
+        } else {
+            1.0
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> 4) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 

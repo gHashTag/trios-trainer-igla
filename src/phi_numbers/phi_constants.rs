@@ -12,7 +12,8 @@ pub const PHI_CONJUGATE: f64 = 0.61803398874989484820458683436563811772030917980
 pub const PHI_SQUARED: f64 = 2.6180339887498948482045868343656381177203091798057628621354486227;
 
 /// 1/φ² = 2 - φ ≈ 0.3819660112501051518
-pub const PHI_INVERSE_SQUARED: f64 = 0.3819660112501051517954131656343618822826908201942371378645513773;
+pub const PHI_INVERSE_SQUARED: f64 =
+    0.3819660112501051517954131656343618822826908201942371378645513773;
 
 /// φ - 1/φ = 1.0 (exact identity)
 pub const PHI_DIFFERENCE: f64 = 1.0;
@@ -80,8 +81,11 @@ mod tests {
     fn test_trinity_identity() {
         // Verify φ² + 1/φ² = 3
         let computed = PHI_SQUARED + PHI_INVERSE_SQUARED;
-        assert!((computed - TRINITY_IDENTITY).abs() < 1e-10,
-                "Trinity identity failed: {} != 3", computed);
+        assert!(
+            (computed - TRINITY_IDENTITY).abs() < 1e-10,
+            "Trinity identity failed: {} != 3",
+            computed
+        );
     }
 
     #[test]

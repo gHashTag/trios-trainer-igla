@@ -34,7 +34,9 @@ async fn main() -> anyhow::Result<()> {
             RaceCommands::Start => {
                 let neon_url = std::env::var("DATABASE_URL").unwrap_or_default();
                 if neon_url.is_empty() {
-                    eprintln!("WARNING: DATABASE_URL not set — running in local-only mode (no Neon)");
+                    eprintln!(
+                        "WARNING: DATABASE_URL not set — running in local-only mode (no Neon)"
+                    );
                 }
 
                 let machine_id = hostname_or_default();

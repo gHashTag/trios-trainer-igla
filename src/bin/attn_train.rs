@@ -25,7 +25,9 @@ const SEQ: usize = 64;
 fn load_data(path: &str) -> Vec<usize> {
     let raw = fs::read(path).unwrap_or_else(|e| {
         eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. ".repeat(100).to_vec()
+        b"The quick brown fox jumps over the lazy dog. "
+            .repeat(100)
+            .to_vec()
     });
     assert!(!raw.is_empty(), "loaded data is empty");
     raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
@@ -88,15 +90,32 @@ fn main() {
     let no_rope: bool = args.iter().any(|a| a == "--no-rope");
 
     println!("=== Attention Training (T1-02) ===");
-    println!("d_model={} n_heads={} n_layers={} lr={} seed={}", d_model, n_heads, n_layers, lr, seed);
-    println!("qk_gain={:.3} rope={} seq={} steps={}", qk_gain, !no_rope, seq_len, steps);
-    println!("params≈{}", d_model * (VOCAB + n_layers * (3 * d_model * d_model + d_model * 4 * d_model + d_model * 4 * d_model) + VOCAB));
+    println!(
+        "d_model={} n_heads={} n_layers={} lr={} seed={}",
+        d_model, n_heads, n_layers, lr, seed
+    );
+    println!(
+        "qk_gain={:.3} rope={} seq={} steps={}",
+        qk_gain, !no_rope, seq_len, steps
+    );
+    println!(
+        "params≈{}",
+        d_model
+            * (VOCAB
+                + n_layers
+                    * (3 * d_model * d_model + d_model * 4 * d_model + d_model * 4 * d_model)
+                + VOCAB)
+    );
 
     let train_data = load_data("data/tiny_shakespeare.txt");
     let val_data = load_data("data/tiny_shakespeare_val.txt");
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let val = if val_data.len() > 100 { &val_data[..] } else { &train_data[train_end..] };
+    let val = if val_data.len() > 100 {
+        &val_data[..]
+    } else {
+        &train_data[train_end..]
+    };
 
     let config = AttentionConfig {
         vocab_size: VOCAB,
@@ -129,14 +148,19 @@ fn main() {
             if val_bpb < best_val_bpb && val_bpb.is_finite() {
                 best_val_bpb = val_bpb;
             }
-            eprintln!("step={:5} val_bpb={:.4} best={:.4} t={:.1}s",
-                step, val_bpb, best_val_bpb, elapsed);
+            eprintln!(
+                "step={:5} val_bpb={:.4} best={:.4} t={:.1}s",
+                step, val_bpb, best_val_bpb, elapsed
+            );
         }
     }
 
     let elapsed = start.elapsed().as_secs_f64();
     println!("\n=== Training Complete ===");
-    println!("Steps={} Time={:.1}s best_val_bpb={:.4}", steps, elapsed, best_val_bpb);
+    println!(
+        "Steps={} Time={:.1}s best_val_bpb={:.4}",
+        steps, elapsed, best_val_bpb
+    );
     println!("vs champion 2.5193: {:+.4}", best_val_bpb - 2.5193);
     println!("BPB={:.4}", best_val_bpb);
 }

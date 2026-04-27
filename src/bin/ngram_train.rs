@@ -21,7 +21,10 @@ fn gelu(x: f32) -> f32 {
 fn activate(x: f32, name: &str) -> f32 {
     match name {
         "gelu" => gelu(x),
-        "relu2" => { let r = x.max(0.0); r * r },
+        "relu2" => {
+            let r = x.max(0.0);
+            r * r
+        }
         _ => x.max(0.0),
     }
 }
@@ -29,8 +32,17 @@ fn activate(x: f32, name: &str) -> f32 {
 fn activate_grad(x: f32, name: &str) -> f32 {
     match name {
         "gelu" => gelu(x),
-        "relu2" => { let r = x.max(0.0); 2.0 * r },
-        _ => if x > 0.0 { 1.0 } else { 0.0 },
+        "relu2" => {
+            let r = x.max(0.0);
+            2.0 * r
+        }
+        _ => {
+            if x > 0.0 {
+                1.0
+            } else {
+                0.0
+            }
+        }
     }
 }
 
@@ -45,8 +57,13 @@ fn load_data(path: &str) -> Vec<usize> {
 fn softmax(v: &mut [f32]) {
     let max = v.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mut sum = 0.0f32;
-    for x in v.iter_mut() { *x = (*x - max).exp(); sum += *x; }
-    for x in v.iter_mut() { *x /= sum; }
+    for x in v.iter_mut() {
+        *x = (*x - max).exp();
+        sum += *x;
+    }
+    for x in v.iter_mut() {
+        *x /= sum;
+    }
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -58,15 +75,27 @@ fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
 }
 
 struct LocalAdamW {
-    m: Vec<f32>, v: Vec<f32>, step: usize,
-    beta1: f32, beta2: f32, eps: f32, wd: f32,
+    m: Vec<f32>,
+    v: Vec<f32>,
+    step: usize,
+    beta1: f32,
+    beta2: f32,
+    eps: f32,
+    wd: f32,
 }
 
 impl LocalAdamW {
     fn new(size: usize, wd: f32) -> Self {
         let phi = (1.0 + 5.0f64.sqrt()) / 2.0;
-        Self { m: vec![0.0; size], v: vec![0.0; size], step: 0,
-            beta1: 1.0 / phi as f32, beta2: 0.999, eps: 1e-8, wd }
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+            beta1: 1.0 / phi as f32,
+            beta2: 0.999,
+            eps: 1e-8,
+            wd,
+        }
     }
     fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
         self.step += 1;
@@ -82,15 +111,17 @@ impl LocalAdamW {
 }
 
 trait Optimizer {
-	fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32);
+    fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32);
 }
 impl Optimizer for LocalAdamW {
-	fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) { LocalAdamW::update(self, params, grads, lr) }
+    fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
+        LocalAdamW::update(self, params, grads, lr)
+    }
 }
 impl Optimizer for MuonOptimizer {
-	fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
-		self.step(params, &grads.iter().map(|&g| g * lr).collect::<Vec<_>>());
-	}
+    fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
+        self.step(params, &grads.iter().map(|&g| g * lr).collect::<Vec<_>>());
+    }
 }
 
 struct NgramModel {
@@ -111,19 +142,29 @@ struct NgramModel {
 }
 
 impl NgramModel {
-    fn new(vocab: usize, dim: usize, hidden: usize, activation: String, seed: u64, num_ctx: usize, use_attention: bool) -> Self {
+    fn new(
+        vocab: usize,
+        dim: usize,
+        hidden: usize,
+        activation: String,
+        seed: u64,
+        num_ctx: usize,
+        use_attention: bool,
+    ) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let lim = (6.0f32 / (3 * dim) as f32).sqrt();
         let lim_h = (6.0f32 / (dim + hidden) as f32).sqrt();
         let lim_o = (6.0f32 / (hidden + dim) as f32).sqrt();
 
-        let ctx = (0..num_ctx).map(|_| {
-            (0..vocab * dim).map(|_| rng() * lim).collect()
-        }).collect();
+        let ctx = (0..num_ctx)
+            .map(|_| (0..vocab * dim).map(|_| rng() * lim).collect())
+            .collect();
 
         let base_weights: Vec<f32> = vec![0.7, 0.3, 0.2, 0.15, 0.12, 0.1, 0.08, 0.06];
         let ctx_weights: Vec<f32> = base_weights.iter().take(num_ctx).cloned().collect();
@@ -136,10 +177,27 @@ impl NgramModel {
             ctx_weights,
             proj: (0..hidden * dim).map(|_| rng() * lim_h).collect(),
             lm_head: (0..vocab * hidden).map(|_| rng() * lim_o).collect(),
-            attn_query: if use_attention { (0..attn_dim).map(|_| rng() * 0.1).collect() } else { vec![] },
-            attn_key: if use_attention { (0..hidden * attn_dim).map(|_| rng() * 0.1).collect() } else { vec![] },
-            attn_value: if use_attention { (0..hidden * attn_dim).map(|_| rng() * 0.1).collect() } else { vec![] },
-            vocab, dim, hidden, activation, use_attention, attn_dim,
+            attn_query: if use_attention {
+                (0..attn_dim).map(|_| rng() * 0.1).collect()
+            } else {
+                vec![]
+            },
+            attn_key: if use_attention {
+                (0..hidden * attn_dim).map(|_| rng() * 0.1).collect()
+            } else {
+                vec![]
+            },
+            attn_value: if use_attention {
+                (0..hidden * attn_dim).map(|_| rng() * 0.1).collect()
+            } else {
+                vec![]
+            },
+            vocab,
+            dim,
+            hidden,
+            activation,
+            use_attention,
+            attn_dim,
         }
     }
 
@@ -154,10 +212,14 @@ impl NgramModel {
 
         for (ci, cw) in self.ctx_weights.iter().enumerate() {
             let ctx_idx = tokens_context.len() - 2 - ci;
-            if ctx_idx == 0 && ci > 0 { break; }
+            if ctx_idx == 0 && ci > 0 {
+                break;
+            }
             let t = tokens_context[ctx_idx].min(v - 1);
             let cv = &self.ctx[ci][t * d..(t + 1) * d];
-            for j in 0..d { combined[j] += cv[j] * cw; }
+            for j in 0..d {
+                combined[j] += cv[j] * cw;
+            }
         }
 
         let ln = layer_norm(&combined, 1e-5);
@@ -165,7 +227,9 @@ impl NgramModel {
         let mut hidden = vec![0.0f32; h];
         for hi in 0..h {
             let w = &self.proj[hi * d..(hi + 1) * d];
-            for (j, l) in ln.iter().enumerate() { hidden[hi] += w[j] * l; }
+            for (j, l) in ln.iter().enumerate() {
+                hidden[hi] += w[j] * l;
+            }
             hidden[hi] = activate(hidden[hi], &self.activation);
         }
         hidden
@@ -224,14 +288,18 @@ impl NgramModel {
         let mut logits = vec![0.0f32; v];
         for (vi, logit) in logits.iter_mut().enumerate() {
             let w = &self.lm_head[vi * h..(vi + 1) * h];
-            for (hi, hn) in final_hidden.iter().enumerate() { *logit += w[hi] * hn; }
+            for (hi, hn) in final_hidden.iter().enumerate() {
+                *logit += w[hi] * hn;
+            }
         }
         logits
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
         let ngram = self.ctx.len() + 2;
-        if tokens.len() < ngram + 1 { return 0.0; }
+        if tokens.len() < ngram + 1 {
+            return 0.0;
+        }
         let v = self.vocab;
         let h = self.hidden;
         let count = tokens.len() - ngram;
@@ -261,7 +329,9 @@ impl NgramModel {
                 let mut logits = vec![0.0f32; v];
                 for (vi, logit) in logits.iter_mut().enumerate() {
                     let w = &self.lm_head[vi * h..(vi + 1) * h];
-                    for (hi, hn) in hidden.iter().enumerate() { *logit += w[hi] * hn; }
+                    for (hi, hn) in hidden.iter().enumerate() {
+                        *logit += w[hi] * hn;
+                    }
                 }
                 softmax(&mut logits);
                 total -= logits[target].max(1e-10).ln();
@@ -271,11 +341,22 @@ impl NgramModel {
     }
 
     #[allow(clippy::needless_range_loop)]
-    fn train_step(&mut self, tokens: &[usize], lr: f32,
-        opt_embed: &mut dyn Optimizer, opt_ctx: &mut [Box<dyn Optimizer>], opt_proj: &mut dyn Optimizer, opt_head: &mut dyn Optimizer,
-        opt_aq: &mut dyn Optimizer, opt_ak: &mut dyn Optimizer, opt_av: &mut dyn Optimizer) {
+    fn train_step(
+        &mut self,
+        tokens: &[usize],
+        lr: f32,
+        opt_embed: &mut dyn Optimizer,
+        opt_ctx: &mut [Box<dyn Optimizer>],
+        opt_proj: &mut dyn Optimizer,
+        opt_head: &mut dyn Optimizer,
+        opt_aq: &mut dyn Optimizer,
+        opt_ak: &mut dyn Optimizer,
+        opt_av: &mut dyn Optimizer,
+    ) {
         let ngram = self.ctx.len() + 2;
-        if tokens.len() < ngram + 1 { return; }
+        if tokens.len() < ngram + 1 {
+            return;
+        }
         let v = self.vocab;
         let d = self.dim;
         let h = self.hidden;
@@ -287,9 +368,21 @@ impl NgramModel {
         let mut g_ctx: Vec<Vec<f32>> = (0..num_ctx).map(|_| vec![0.0f32; v * d]).collect();
         let mut g_proj = vec![0.0f32; h * d];
         let mut g_head = vec![0.0f32; v * h];
-        let mut g_aq = if self.use_attention { vec![0.0f32; ad] } else { vec![] };
-        let mut g_ak = if self.use_attention { vec![0.0f32; ad * h] } else { vec![] };
-        let mut g_av = if self.use_attention { vec![0.0f32; ad * h] } else { vec![] };
+        let mut g_aq = if self.use_attention {
+            vec![0.0f32; ad]
+        } else {
+            vec![]
+        };
+        let mut g_ak = if self.use_attention {
+            vec![0.0f32; ad * h]
+        } else {
+            vec![]
+        };
+        let mut g_av = if self.use_attention {
+            vec![0.0f32; ad * h]
+        } else {
+            vec![]
+        };
 
         let mut all_hidden: Vec<Vec<f32>> = Vec::with_capacity(count);
         let mut all_ln: Vec<Vec<f32>> = Vec::with_capacity(count);
@@ -305,14 +398,18 @@ impl NgramModel {
                 let ctx_idx = ngram - 2 - ci;
                 let t = context[ctx_idx].min(v - 1);
                 let cv = &self.ctx[ci][t * d..(t + 1) * d];
-                for j in 0..d { combined[j] += cv[j] * cw; }
+                for j in 0..d {
+                    combined[j] += cv[j] * cw;
+                }
             }
             let ln = layer_norm(&combined, 1e-5);
             let mut pre_act = vec![0.0f32; h];
             let mut hidden = vec![0.0f32; h];
             for hi in 0..h {
                 let w = &self.proj[hi * d..(hi + 1) * d];
-                for (j, l) in ln.iter().enumerate() { pre_act[hi] += w[j] * l; }
+                for (j, l) in ln.iter().enumerate() {
+                    pre_act[hi] += w[j] * l;
+                }
                 hidden[hi] = activate(pre_act[hi], &self.activation);
             }
             all_hidden.push(hidden);
@@ -365,7 +462,9 @@ impl NgramModel {
                 let mut logits = vec![0.0f32; v];
                 for (vi, logit) in logits.iter_mut().enumerate() {
                     let w = &self.lm_head[vi * h..(vi + 1) * h];
-                    for (hi, hn) in combined.iter().enumerate() { *logit += w[hi] * hn; }
+                    for (hi, hn) in combined.iter().enumerate() {
+                        *logit += w[hi] * hn;
+                    }
                 }
                 softmax(&mut logits);
 
@@ -383,7 +482,8 @@ impl NgramModel {
 
                 for wi in 0..window_len {
                     for j in 0..ad {
-                        g_av[j * h..(j + 1) * h].iter_mut()
+                        g_av[j * h..(j + 1) * h]
+                            .iter_mut()
                             .zip(all_hidden[start + wi].iter())
                             .for_each(|(g, &h_val)| *g += scores[wi] * d_attn_vec[j] * h_val);
                     }
@@ -395,7 +495,11 @@ impl NgramModel {
                         d_scores[wi] += d_attn_vec[j] * values[wi][j] * scores[wi];
                         d_scores[wi] += d_attn_vec[j] * values[wi][j];
                     }
-                    d_scores[wi] -= d_attn_vec.iter().zip(values[wi].iter()).map(|(&da, &vl)| da * vl * scores[wi]).sum::<f32>();
+                    d_scores[wi] -= d_attn_vec
+                        .iter()
+                        .zip(values[wi].iter())
+                        .map(|(&da, &vl)| da * vl * scores[wi])
+                        .sum::<f32>();
                 }
 
                 let mut d_scores_clean = vec![0.0f32; window_len];
@@ -404,7 +508,11 @@ impl NgramModel {
                         d_scores_clean[wi] += d_attn_vec[j] * values[wi][j];
                     }
                     for wj in 0..window_len {
-                        let dot: f32 = d_attn_vec.iter().zip(values[wj].iter()).map(|(&da, &vl)| da * vl).sum();
+                        let dot: f32 = d_attn_vec
+                            .iter()
+                            .zip(values[wj].iter())
+                            .map(|(&da, &vl)| da * vl)
+                            .sum();
                         d_scores_clean[wi] -= scores[wi] * scores[wj] * dot;
                     }
                 }
@@ -418,7 +526,8 @@ impl NgramModel {
                 let mut d_keys = vec![vec![0.0f32; ad]; window_len];
                 for wi in 0..window_len {
                     for j in 0..ad {
-                        d_keys[wi][j] = d_scores_clean[wi] * self.attn_query[j] / (ad as f32).sqrt();
+                        d_keys[wi][j] =
+                            d_scores_clean[wi] * self.attn_query[j] / (ad as f32).sqrt();
                     }
                 }
 
@@ -444,7 +553,9 @@ impl NgramModel {
                 let mut logits = vec![0.0f32; v];
                 for (vi, logit) in logits.iter_mut().enumerate() {
                     let w = &self.lm_head[vi * h..(vi + 1) * h];
-                    for (hi, hn) in hidden.iter().enumerate() { *logit += w[hi] * hn; }
+                    for (hi, hn) in hidden.iter().enumerate() {
+                        *logit += w[hi] * hn;
+                    }
                 }
                 softmax(&mut logits);
 
@@ -457,7 +568,10 @@ impl NgramModel {
                 }
             }
 
-            let act_grads: Vec<f32> = all_pre_act[i].iter().map(|&pv| activate_grad(pv, &self.activation)).collect();
+            let act_grads: Vec<f32> = all_pre_act[i]
+                .iter()
+                .map(|&pv| activate_grad(pv, &self.activation))
+                .collect();
             for hi in 0..h {
                 for j in 0..d {
                     g_proj[hi * d + j] += d_hidden_final[hi] * act_grads[hi] * all_ln[i][j];
@@ -480,14 +594,30 @@ impl NgramModel {
         }
 
         let n = count as f32;
-        for x in g_embed.iter_mut() { *x /= n; }
-        for gc in g_ctx.iter_mut() { for x in gc.iter_mut() { *x /= n; } }
-        for x in g_proj.iter_mut() { *x /= n; }
-        for x in g_head.iter_mut() { *x /= n; }
+        for x in g_embed.iter_mut() {
+            *x /= n;
+        }
+        for gc in g_ctx.iter_mut() {
+            for x in gc.iter_mut() {
+                *x /= n;
+            }
+        }
+        for x in g_proj.iter_mut() {
+            *x /= n;
+        }
+        for x in g_head.iter_mut() {
+            *x /= n;
+        }
         if self.use_attention {
-            for x in g_aq.iter_mut() { *x /= n; }
-            for x in g_ak.iter_mut() { *x /= n; }
-            for x in g_av.iter_mut() { *x /= n; }
+            for x in g_aq.iter_mut() {
+                *x /= n;
+            }
+            for x in g_ak.iter_mut() {
+                *x /= n;
+            }
+            for x in g_av.iter_mut() {
+                *x /= n;
+            }
         }
 
         opt_embed.update(&mut self.embed, &g_embed, lr);
@@ -505,51 +635,101 @@ impl NgramModel {
 }
 
 fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> (f32, f32) {
-    let eval_step = if model.use_attention { (seq_len + 1) * 8 } else { seq_len + 1 };
+    let eval_step = if model.use_attention {
+        (seq_len + 1) * 8
+    } else {
+        seq_len + 1
+    };
     let mut total = 0.0f32;
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(eval_step) {
         let end = (c + seq_len + 1).min(tokens.len());
-        if end - c < model.ctx.len() + 3 { continue; }
+        if end - c < model.ctx.len() + 3 {
+            continue;
+        }
         let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() { total += loss / LN_2; n += 1; }
+        if loss.is_finite() {
+            total += loss / LN_2;
+            n += 1;
+        }
     }
-    if n == 0 { return (f32::MAX, f32::MAX); }
+    if n == 0 {
+        return (f32::MAX, f32::MAX);
+    }
     let bpb = total / n as f32;
     (bpb * LN_2, bpb)
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
-    if step < warmup { return base_lr * step as f32 / warmup as f32; }
+    if step < warmup {
+        return base_lr * step as f32 / warmup as f32;
+    }
     let p = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let seed: u64 = args.iter().find(|a| a.starts_with("--seed="))
-        .map(|a| a[7..].parse::<u64>().unwrap_or(42)).unwrap_or(42);
-    let steps: usize = args.iter().find(|a| a.starts_with("--steps="))
-        .map(|a| a[8..].parse::<usize>().unwrap_or(10000)).unwrap_or(10000);
-    let base_lr: f32 = args.iter().find(|a| a.starts_with("--lr="))
-        .map(|a| a[5..].parse::<f32>().unwrap_or(0.003)).unwrap_or(0.003);
-    let hidden: usize = args.iter().find(|a| a.starts_with("--hidden="))
-        .map(|a| a[9..].parse::<usize>().unwrap_or(128)).unwrap_or(128);
-    let wd: f32 = args.iter().find(|a| a.starts_with("--wd="))
-        .map(|a| a[5..].parse::<f32>().unwrap_or(0.04)).unwrap_or(0.04);
-    let activation = args.iter().find(|a| a.starts_with("--activation="))
-        .map(|a| a[13..].to_string()).unwrap_or_else(|| "relu".to_string());
+    let seed: u64 = args
+        .iter()
+        .find(|a| a.starts_with("--seed="))
+        .map(|a| a[7..].parse::<u64>().unwrap_or(42))
+        .unwrap_or(42);
+    let steps: usize = args
+        .iter()
+        .find(|a| a.starts_with("--steps="))
+        .map(|a| a[8..].parse::<usize>().unwrap_or(10000))
+        .unwrap_or(10000);
+    let base_lr: f32 = args
+        .iter()
+        .find(|a| a.starts_with("--lr="))
+        .map(|a| a[5..].parse::<f32>().unwrap_or(0.003))
+        .unwrap_or(0.003);
+    let hidden: usize = args
+        .iter()
+        .find(|a| a.starts_with("--hidden="))
+        .map(|a| a[9..].parse::<usize>().unwrap_or(128))
+        .unwrap_or(128);
+    let wd: f32 = args
+        .iter()
+        .find(|a| a.starts_with("--wd="))
+        .map(|a| a[5..].parse::<f32>().unwrap_or(0.04))
+        .unwrap_or(0.04);
+    let activation = args
+        .iter()
+        .find(|a| a.starts_with("--activation="))
+        .map(|a| a[13..].to_string())
+        .unwrap_or_else(|| "relu".to_string());
     let has_ctx5 = args.iter().any(|a| a == "--ctx5");
     let has_ctx4 = args.iter().any(|a| a == "--ctx4");
     let has_ctx3 = args.iter().any(|a| a == "--ctx3");
-    let num_ctx = if has_ctx5 { 5 } else if has_ctx4 { 4 } else if has_ctx3 { 3 } else { 2 };
+    let num_ctx = if has_ctx5 {
+        5
+    } else if has_ctx4 {
+        4
+    } else if has_ctx3 {
+        3
+    } else {
+        2
+    };
     let ngram_order = num_ctx + 2;
     let use_attention = args.iter().any(|a| a == "--attention");
 
     let ngram_name = format!("{}-Gram", ngram_order);
-    let act_name = match activation.as_str() { "gelu" => "GELU", "relu2" => "ReLU²", _ => "ReLU" };
-    let attn_str = if use_attention { " + AttentionPool" } else { "" };
-    println!("=== {} Context Model + {} Hidden{} ===", ngram_name, act_name, attn_str);
+    let act_name = match activation.as_str() {
+        "gelu" => "GELU",
+        "relu2" => "ReLU²",
+        _ => "ReLU",
+    };
+    let attn_str = if use_attention {
+        " + AttentionPool"
+    } else {
+        ""
+    };
+    println!(
+        "=== {} Context Model + {} Hidden{} ===",
+        ngram_name, act_name, attn_str
+    );
     println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} wd={} ctx={} activation={} attention={}",
         VOCAB, DIM, hidden, SEQ, steps, seed, base_lr, wd, num_ctx, activation, use_attention);
 
@@ -561,28 +741,49 @@ fn main() {
     let val = &tokens[train_end..];
     println!("Split: {} train / {} val", train.len(), val.len());
 
-    let mut model = NgramModel::new(VOCAB, DIM, hidden, activation.clone(), seed, num_ctx, use_attention);
+    let mut model = NgramModel::new(
+        VOCAB,
+        DIM,
+        hidden,
+        activation.clone(),
+        seed,
+        num_ctx,
+        use_attention,
+    );
     let ps = VOCAB * DIM;
-    let mut optimizer = args.iter().find(|a| a.starts_with("--optimizer="))
-        .map(|a| a[11..].to_string()).unwrap_or_else(|| "adamw".to_string());
+    let mut optimizer = args
+        .iter()
+        .find(|a| a.starts_with("--optimizer="))
+        .map(|a| a[11..].to_string())
+        .unwrap_or_else(|| "adamw".to_string());
     let use_muon = optimizer == "muon";
 
     fn make_opt(size: usize, wd: f32, muon: bool) -> Box<dyn Optimizer> {
-		if muon { Box::new(MuonOptimizer::new(size, 0.004, 0.95, wd as f64)) } else { Box::new(LocalAdamW::new(size, wd)) }
+        if muon {
+            Box::new(MuonOptimizer::new(size, 0.004, 0.95, wd as f64))
+        } else {
+            Box::new(LocalAdamW::new(size, wd))
+        }
     }
     let mut opt_embed: Box<dyn Optimizer> = make_opt(ps, wd, use_muon);
-    let mut opt_ctx: Vec<Box<dyn Optimizer>> = (0..num_ctx).map(|_| make_opt(ps, wd, use_muon)).collect();
+    let mut opt_ctx: Vec<Box<dyn Optimizer>> =
+        (0..num_ctx).map(|_| make_opt(ps, wd, use_muon)).collect();
     let mut opt_proj: Box<dyn Optimizer> = make_opt(hidden * DIM, wd, use_muon);
     let mut opt_head: Box<dyn Optimizer> = make_opt(VOCAB * hidden, wd, use_muon);
     let ad = hidden / 4;
     let mut opt_aq: Box<dyn Optimizer> = make_opt(if use_attention { ad } else { 1 }, wd, use_muon);
-    let mut opt_ak: Box<dyn Optimizer> = make_opt(if use_attention { ad * hidden } else { 1 }, wd, use_muon);
-    let mut opt_av: Box<dyn Optimizer> = make_opt(if use_attention { ad * hidden } else { 1 }, wd, use_muon);
+    let mut opt_ak: Box<dyn Optimizer> =
+        make_opt(if use_attention { ad * hidden } else { 1 }, wd, use_muon);
+    let mut opt_av: Box<dyn Optimizer> =
+        make_opt(if use_attention { ad * hidden } else { 1 }, wd, use_muon);
 
     let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
     println!("Initial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>8}", "step", "val_loss", "val_bpb", "best_bpb", "ms");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
+        "step", "val_loss", "val_bpb", "best_bpb", "ms"
+    );
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
@@ -594,23 +795,42 @@ fn main() {
         let lr = cosine_lr(step, steps, base_lr, steps / 10);
         let off = (step * 97 + seed as usize) % (dl.saturating_sub(SEQ + 1));
         {
-            model.train_step(&train[off..off + SEQ + 1], lr,
-                opt_embed.as_mut(), &mut opt_ctx[..], opt_proj.as_mut(), opt_head.as_mut(),
-                opt_aq.as_mut(), opt_ak.as_mut(), opt_av.as_mut());
+            model.train_step(
+                &train[off..off + SEQ + 1],
+                lr,
+                opt_embed.as_mut(),
+                &mut opt_ctx[..],
+                opt_proj.as_mut(),
+                opt_head.as_mut(),
+                opt_aq.as_mut(),
+                opt_ak.as_mut(),
+                opt_av.as_mut(),
+            );
         }
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
             let (vl, vb) = evaluate(&model, val, SEQ);
-            if vb < best_bpb && vb.is_finite() { best_bpb = vb; }
-            println!("{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms", step, vl, vb, best_bpb, ms);
+            if vb < best_bpb && vb.is_finite() {
+                best_bpb = vb;
+            }
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                step, vl, vb, best_bpb, ms
+            );
             results.push((step, vl, vb));
         }
     }
 
     let total = t0.elapsed();
     println!("\n=== Done ===");
-    println!("Time: {:.1}s | BPB: {:.4} → {:.4} | Delta: {:.4}", total.as_secs_f64(), init_bpb, best_bpb, best_bpb - init_bpb);
+    println!(
+        "Time: {:.1}s | BPB: {:.4} → {:.4} | Delta: {:.4}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        best_bpb - init_bpb
+    );
 
     let _ = fs::create_dir_all(".trinity/results");
     let attn_tag = if use_attention { "_attn" } else { "" };
@@ -629,13 +849,21 @@ fn main() {
         "duration_seconds": total.as_secs_f64(),
         "results": results.iter().map(|(s, l, b)| serde_json::json!({"step":*s,"loss":*l,"bpb":*b})).collect::<Vec<_>>(),
     });
-    let rp = format!(".trinity/results/{}gram_{}_seed{}.json",
-        ngram_order, activation, seed);
-    fs::File::create(&rp).unwrap().write_all(serde_json::to_string_pretty(&rj).unwrap().as_bytes()).unwrap();
+    let rp = format!(
+        ".trinity/results/{}gram_{}_seed{}.json",
+        ngram_order, activation, seed
+    );
+    fs::File::create(&rp)
+        .unwrap()
+        .write_all(serde_json::to_string_pretty(&rj).unwrap().as_bytes())
+        .unwrap();
     println!("Results: {}", rp);
 
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
-    let ep = format!(".trinity/experience/trios_{}.trinity", chrono::Utc::now().format("%Y%m%d"));
+    let ep = format!(
+        ".trinity/experience/trios_{}.trinity",
+        chrono::Utc::now().format("%Y%m%d")
+    );
     let _ = fs::create_dir_all(".trinity/experience");
     let _ = fs::OpenOptions::new().create(true).append(true).open(&ep).unwrap()
         .write_all(format!("[{}] TASK: {}-gram{} training | seed={} | steps={} | val_bpb={:.4}->{:.4} | {:.1}s\n",

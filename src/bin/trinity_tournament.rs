@@ -20,8 +20,8 @@ use trios_trainer::{
     optimizer::AdamWCpu,
     ortho_init_baseline::ortho_init_baseline,
     phi_ortho_init::phi_ortho_init,
-    swa_phi::{swa_init, SwaState},
     sliding_eval::SlidingEvalConfig,
+    swa_phi::{swa_init, SwaState},
 };
 
 const STEPS: usize = 200;
