@@ -386,14 +386,22 @@ mod tests {
 
     fn row_43_below_target() -> LedgerRow {
         LedgerRow {
-            agent: "trios-trainer-igla-gate2".into(),
-            bpb: 2.497,
             step: 12_000,
+            bpb: 2.497,
             seed: 43,
             sha: "6a40e17".into(),
+            agent: "trios-trainer-igla-gate2".into(),
             jsonl_row: 1,
             gate_status: "below_target_evidence".into(),
             ts: "2026-04-26T12:34:38Z".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         }
     }
 
@@ -416,14 +424,22 @@ mod tests {
             ..Default::default()
         };
         let row = LedgerRow {
-            agent: "trios-trainer-igla-pretrain".into(),
-            bpb: 3.5,
             step: 1_000,
+            bpb: 3.5,
             seed: 43,
             sha: "deadbee".into(),
+            agent: "trios-trainer-igla-pretrain".into(),
             jsonl_row: 2,
             gate_status: "below_champion".into(),
             ts: "2026-04-26T00:00:00Z".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         };
         assert!(!matches(&f, &row));
     }
@@ -439,14 +455,22 @@ mod tests {
 
     fn make(seed: u64, bpb: f64, step: u64) -> LedgerRow {
         LedgerRow {
-            agent: "a".into(),
-            bpb,
             step,
+            bpb,
             seed,
             sha: "aaaaaaa".into(),
+            agent: "a".into(),
             jsonl_row: 0,
             gate_status: "victory_candidate".into(),
             ts: "t".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         }
     }
 
@@ -520,14 +544,22 @@ mod tests {
     #[test]
     fn triplet_renders_canonical() {
         let row = LedgerRow {
-            agent: "trios-trainer-igla-gate2".into(),
-            bpb: 2.2393,
             step: 27_000,
+            bpb: 2.2393,
             seed: 43,
             sha: "2446855abcde".into(),
+            agent: "trios-trainer-igla-gate2".into(),
             jsonl_row: 7,
             gate_status: "below_champion".into(),
             ts: "2026-04-26T12:34:38Z".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         };
         assert_eq!(
             render_triplet(&row),
@@ -538,14 +570,22 @@ mod tests {
     #[test]
     fn triplet_sha_is_seven_chars() {
         let row = LedgerRow {
-            agent: "x".into(),
-            bpb: 2.0,
             step: 5_000,
+            bpb: 2.0,
             seed: 43,
             sha: "abcdef0123456789".into(),
+            agent: "x".into(),
             jsonl_row: 0,
             gate_status: "below_champion".into(),
             ts: "t".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         };
         let line = render_triplet(&row);
         assert!(line.contains("sha=abcdef0"));
@@ -555,14 +595,22 @@ mod tests {
     #[test]
     fn triplet_falls_back_to_unknown_gate() {
         let row = LedgerRow {
-            agent: "x".into(),
-            bpb: 2.5,
             step: 5_000,
+            bpb: 2.5,
             seed: 43,
             sha: "1234567".into(),
+            agent: "x".into(),
             jsonl_row: 9,
             gate_status: String::new(),
             ts: "t".into(),
+            val_bpb_24k: None,
+            val_bpb_27k: None,
+            ema_bpb: None,
+            optimizer: None,
+            hidden: None,
+            lr: None,
+            attn_layers: None,
+            time_s: None,
         };
         assert!(render_triplet(&row).ends_with("gate_status=unknown"));
     }
