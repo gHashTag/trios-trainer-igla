@@ -50,11 +50,19 @@ struct Cli {
     eval_every: usize,
 
     /// Path to training data.
-    #[arg(long, env = "TRIOS_TRAIN_PATH", default_value = "data/tiny_shakespeare.txt")]
+    #[arg(
+        long,
+        env = "TRIOS_TRAIN_PATH",
+        default_value = "data/tiny_shakespeare.txt"
+    )]
     train_data: String,
 
     /// Path to validation data.
-    #[arg(long, env = "TRIOS_VAL_PATH", default_value = "data/tiny_shakespeare_val.txt")]
+    #[arg(
+        long,
+        env = "TRIOS_VAL_PATH",
+        default_value = "data/tiny_shakespeare_val.txt"
+    )]
     val_data: String,
 
     /// Run 3-seed sweep {43, 44, 45} instead of single seed.
