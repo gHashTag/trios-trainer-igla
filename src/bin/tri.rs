@@ -5,7 +5,7 @@ use std::sync::RwLock;
 
 const RAILWAY_PROJECT: &str = "trios-trainer";
 const RAILWAY_PROJECT_ID: &str = "abdf752c-20ac-4813-a586-04a031db96e8";
-const GATE_SEEDS: &[u64] = &[42, 43, 44];
+const GATE_SEEDS: &[u64] = &[43, 44, 45];
 
 #[derive(Parser)]
 #[command(
