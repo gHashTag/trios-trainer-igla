@@ -26,13 +26,15 @@ RUN mkdir -p /data && \
 # TODO: Replace stub data with real FineWeb dataset
 
 ENV RUST_LOG=info
-ENV TRIOS_SEED=43
 ENV TRIOS_STEPS=81000
 ENV TRIOS_LR=0.003
 ENV TRIOS_TARGET_BPB=1.50
-
 ENV TRIOS_CONFIG=/configs/gate2-attempt.toml
 
+# Seed is set via Railway environment variable at deploy time
+# Default seed if not specified (can be overridden by TRIOS_SEED env var)
+ENV TRIOS_SEED=42
+
 ENTRYPOINT ["/usr/local/bin/trios-train"]
-CMD ["--config", "/configs/gate2-attempt.toml"]
+CMD ["--config", "/configs/gate2-attempt.toml", "--seed", "${TRIOS_SEED:-42}"]
 # Railway cache invalidation: Mon Apr 27 00:34:24 +07 2026

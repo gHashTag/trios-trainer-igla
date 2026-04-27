@@ -48,6 +48,23 @@ railway add --service igla-trainer-seed-45 --variables "TRIOS_SEED=45"
 railway up --service igla-trainer-seed-45
 ```
 
+### Method 3: Redeploy with NEW seeds (Dynamic)
+
+To deploy with NEW seeds (e.g., 100, 101, 102 instead of 43, 44, 45):
+
+```bash
+# Delete old services first
+railway delete --service igla-trainer-seed-43
+railway delete --service igla-trainer-seed-44
+railway delete --service igla-trainer-seed-45
+
+# Deploy with new seeds
+for seed in 100 101 102; do
+  railway add --service "igla-trainer-seed-$seed" --variables "TRIOS_SEED=$seed"
+  railway up --service "igla-trainer-seed-$seed"
+done
+```
+
 ## Using Deployment Scripts
 
 ```bash
@@ -88,11 +105,22 @@ railway delete --service igla-trainer-seed-45
 ## Training Configuration
 
 Each seed service will use:
-- **TRIOS_SEED**: 43, 44, or 45
+- **TRIOS_SEED**: DYNAMIC - set via Railway `--variables` when creating service
+- Default seed in Dockerfile: 42 (overridden by Railway env var)
 - **TRIOS_CONFIG**: `/configs/gate2-attempt.toml` (from Dockerfile)
 - **TRIOS_STEPS**: 81000 (from Dockerfile)
 - **TRIOS_LR**: 0.003 (from Dockerfile)
 - **TRIOS_TARGET_BPB**: 1.50 (from Dockerfile)
+
+### Dynamic Seed Handling
+
+The Dockerfile now reads seed from Railway environment variable:
+```dockerfile
+ENV TRIOS_SEED=42  # Default, overridden by Railway
+CMD ["--config", "/configs/gate2-attempt.toml", "--seed", "${TRIOS_SEED:-42}"]
+```
+
+Each service gets its own seed value at deployment time!
 
 ## Notes
 
