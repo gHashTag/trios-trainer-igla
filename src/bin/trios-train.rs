@@ -25,7 +25,7 @@ struct Cli {
     #[arg(long, env = "TRIOS_CONFIG")]
     config: Option<std::path::PathBuf>,
 
-    /// Override seed. Use 0 to run 3-seed sweep {42,43,44}.
+    /// Override seed. Use 0 to run 3-seed sweep {43,44,45}.
     #[arg(long, env = "TRIOS_SEED", default_value_t = 43)]
     seed: u64,
 
@@ -34,35 +34,35 @@ struct Cli {
     steps: usize,
 
     /// Hidden dimension (phi-scaled: 828).
-    #[arg(long, default_value_t = 828)]
+    #[arg(long, env = "TRIOS_HIDDEN", default_value_t = 828)]
     hidden: usize,
 
     /// Learning rate.
-    #[arg(long, default_value_t = 0.003)]
+    #[arg(long, env = "TRIOS_LR", default_value_t = 0.003)]
     lr: f32,
 
     /// Number of attention layers.
-    #[arg(long, default_value_t = 2)]
+    #[arg(long, env = "TRIOS_ATTN_LAYERS", default_value_t = 2)]
     attn_layers: u8,
 
     /// Evaluate every N steps.
-    #[arg(long, default_value_t = 1000)]
+    #[arg(long, env = "TRIOS_EVAL_EVERY", default_value_t = 1000)]
     eval_every: usize,
 
     /// Path to training data.
-    #[arg(long, default_value = "data/tiny_shakespeare.txt")]
+    #[arg(long, env = "TRIOS_TRAIN_PATH", default_value = "data/tiny_shakespeare.txt")]
     train_data: String,
 
     /// Path to validation data.
-    #[arg(long, default_value = "data/tiny_shakespeare_val.txt")]
+    #[arg(long, env = "TRIOS_VAL_PATH", default_value = "data/tiny_shakespeare_val.txt")]
     val_data: String,
 
-    /// Run 3-seed sweep {42, 43, 44} instead of single seed.
+    /// Run 3-seed sweep {43, 44, 45} instead of single seed.
     #[arg(long)]
     sweep: bool,
 
     /// Optimizer: adamw, muon, or muon-cwd (P1 lab).
-    #[arg(long, default_value = "adamw")]
+    #[arg(long, env = "TRIOS_OPTIMIZER", default_value = "adamw")]
     optimizer: String,
 }
 

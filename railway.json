@@ -5,7 +5,6 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "trios-train --seed 43 --steps 81000 --hidden 828 --lr 0.003 --attn-layers 2",
     "restartPolicyType": "NEVER"
   }
 }

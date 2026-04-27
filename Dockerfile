@@ -6,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 COPY . .
-RUN cargo build --release --bin trios-train --bin hybrid_train -p trios-trainer
+RUN cargo build --release --bin trios-train
 
 FROM debian:bookworm-slim AS runtime
 
@@ -16,9 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /work
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
-COPY --from=builder /build/target/release/hybrid_train /usr/local/bin/hybrid_train
-COPY --from=builder /build/src/bin/railway_start.sh /usr/local/bin/railway_start.sh
-RUN chmod +x /usr/local/bin/railway_start.sh
 
 RUN mkdir -p /work/data && \
     curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
@@ -26,12 +23,11 @@ RUN mkdir -p /work/data && \
 
 ENV RUST_LOG=info
 ENV TRIOS_SEED=43
-ENV TRIOS_STEPS=27000
-ENV TRIOS_HIDDEN=384
-ENV TRIOS_LR=0.004
+ENV TRIOS_STEPS=81000
+ENV TRIOS_HIDDEN=828
+ENV TRIOS_LR=0.003
 ENV TRIOS_ATTN_LAYERS=2
-ENV TRIOS_OPTIMIZER=adamw
 ENV TRIOS_EVAL_EVERY=1000
+ENV TRIOS_OPTIMIZER=adamw
 
-CMD ["/usr/local/bin/railway_start.sh"]
-# cache invalidation: force rebuild Sun Apr 27 01:30 +07 2026
+CMD ["trios-train"]
