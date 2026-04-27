@@ -141,7 +141,11 @@ pub struct EmaCheckpoint {
 ///
 /// # Returns
 /// EMA-averaged weight vector, or error if checkpoints is empty.
-pub fn ema_average(checkpoints: &[Vec<f32>], decay: f64, steps: &[usize]) -> anyhow::Result<EmaCheckpoint> {
+pub fn ema_average(
+    checkpoints: &[Vec<f32>],
+    decay: f64,
+    steps: &[usize],
+) -> anyhow::Result<EmaCheckpoint> {
     anyhow::ensure!(
         !checkpoints.is_empty(),
         "need at least 1 checkpoint for EMA"
