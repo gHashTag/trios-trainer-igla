@@ -17,6 +17,7 @@ use std::fs;
 use std::time::Instant;
 
 use trios_trainer::model_hybrid_attn::HybridAttn;
+use trios_trainer::optimizer::MuonOptimizer;
 
 const VOCAB: usize = 128;
 const DIM: usize = 64;
@@ -29,6 +30,10 @@ const PHI_INV: f32 = 0.618033988749895;
 const GF16_FLOOR_FRAC: f32 = 0.7;
 const GATE_FINAL_SEEDS: [u64; 3] = [42, 43, 44];
 const CTX_WEIGHTS: [f32; NUM_CTX] = [0.70, 0.45, 0.30, 0.20, 0.13, 0.08];
+const NCA_WEIGHT: f32 = 0.25;
+const NCA_K: usize = 9;
+const NCA_ENTROPY_MIN: f32 = 1.5;
+const NCA_ENTROPY_MAX: f32 = 2.8;
 
 fn load_data(path: &str) -> Vec<usize> {
     let raw = fs::read(path).unwrap_or_else(|e| {
@@ -283,6 +288,26 @@ fn compute_grads_for_positions(
             }
         }
 
+        let nca_loss = nca_entropy_loss(&logits);
+        if nca_loss > 0.0 {
+            let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let mut probs: Vec<f32> = logits.iter().map(|&x| (x - max_val).exp()).collect();
+            let sum: f32 = probs.iter().sum();
+            for p in probs.iter_mut() { *p /= sum; }
+            let entropy: f32 = -probs.iter().map(|&p: &f32| p.max(1e-10).ln() * p).sum::<f32>();
+            let nca_grad = if entropy < NCA_ENTROPY_MIN {
+                -2.0 * NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy)
+            } else {
+                2.0 * NCA_WEIGHT * (entropy - NCA_ENTROPY_MAX)
+            };
+            for vi in 0..VOCAB {
+                let d_ent = probs[vi] * (probs[vi].max(1e-10).ln() + entropy);
+                for hi in 0..h {
+                    g_head[vi * h + hi] += nca_grad * d_ent * hidden[hi] * 0.01;
+                }
+            }
+        }
+
         let mut d_attn_up_out = vec![0.0f32; h];
         for hi in 0..h {
             d_attn_up_out[hi] = d_hidden[hi] * 0.1;
@@ -367,6 +392,24 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
     }
 }
 
+fn nca_entropy_loss(logits: &[f32]) -> f32 {
+    let n = logits.len() as f32;
+    let max_val = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let mut probs = logits.iter().map(|&x| (x - max_val).exp()).collect::<Vec<_>>();
+    let sum: f32 = probs.iter().sum();
+    for p in probs.iter_mut() {
+        *p /= sum;
+    }
+    let entropy: f32 = -probs.iter().map(|&p: &f32| p.max(1e-10).ln() * p).sum::<f32>();
+    if entropy < NCA_ENTROPY_MIN {
+        NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy).powi(2)
+    } else if entropy > NCA_ENTROPY_MAX {
+        NCA_WEIGHT * (entropy - NCA_ENTROPY_MAX).powi(2)
+    } else {
+        0.0
+    }
+}
+
 fn find_arg<T: std::str::FromStr>(args: &[String], key: &str, default: T) -> T {
     args.iter()
         .find(|a| a.starts_with(key))
@@ -435,10 +478,13 @@ fn main() {
         let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX)
             .map(|_| AdamW::new(VOCAB * DIM, wd))
             .collect();
-    let mut opt_proj = AdamW::new(hidden * DIM, wd);
-    let mut opt_attn_down = AdamW::new(d * hidden, wd);
-    let mut opt_attn_up = AdamW::new(hidden * d, wd);
-    let mut opt_head = AdamW::new(VOCAB * hidden, wd);
+        let mut opt_proj = MuonOptimizer::with_matrix_shape(
+            hidden * DIM, hidden, DIM,
+            base_lr as f64, 0.95, wd as f64,
+        );
+        let mut opt_attn_down = AdamW::new(d * hidden, wd);
+        let mut opt_attn_up = AdamW::new(hidden * d, wd);
+        let mut opt_head = AdamW::new(VOCAB * hidden, wd);
 
         let init_bpb = evaluate(&model, &val_data);
         eprintln!("Initial val_bpb={:.4}", init_bpb);
@@ -527,7 +573,7 @@ fn main() {
             for (ci, oc) in opt_ctx.iter_mut().enumerate() {
                 oc.update(&mut model.ctx[ci], &g_ctx[ci], lr);
             }
-        opt_proj.update(&mut model.proj, &g_proj, lr);
+        opt_proj.step(&mut model.proj, &g_proj);
         opt_attn_down.update(&mut model.attn_down, &g_attn_down, lr);
         opt_attn_up.update(&mut model.attn_up, &g_attn_up, lr);
         opt_head.update(&mut model.lm_head, &g_head, lr);
