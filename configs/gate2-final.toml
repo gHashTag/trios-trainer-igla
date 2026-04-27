@@ -18,19 +18,16 @@ seq_len     = 1024
 hybrid_attn = false
 
 [optimizer]
-# Optimizer selection (Muon vs AdamW) - winner from P1 Lab
-kind          = "muon"
-lr            = 0.0235    # η2D from P1 (IMU-1)
-beta1         = 0.95
+# Optimizer selection — AdamW chosen based on P1 null result
+# P1 evidence: Muon performed WORSE by +0.07 BPB at 3000 steps
+# Documented in docs/audit/P1_null.md
+kind          = "adamw"
+lr            = 0.004     # Champion LR (INV-8 φ-band)
+beta1         = 0.9
 beta2         = 0.95
-weight_decay  = 0.01    # Lower than baseline per Muon spec
+weight_decay  = 0.04
 schedule      = "phi"
 warmup_steps  = 500
-
-# Muon-specific parameters
-muon_eta_1d = 0.007    # η1D from P1
-muon_ns_steps = 7         # Newton-Schulz steps
-muon_use_cwd = false          # Optional CWD (use if P1 showed benefit)
 
 [data]
 corpus       = "fineweb"
