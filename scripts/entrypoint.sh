@@ -3,16 +3,17 @@ set -euo pipefail
 
 SEED="${TRIOS_SEED:-43}"
 STEPS="${TRIOS_STEPS:-27000}"
-CONFIG="${TRIOS_CONFIG:-configs/gate2-final.toml}"
+LR="${TRIOS_LR:-0.003}"
+HIDDEN="${TRIOS_HIDDEN:-384}"
+OPT="${TRIOS_OPTIMIZER:-adamw}"
 
-echo "[entrypoint] trios-train seed=$SEED steps=$STEPS config=$CONFIG"
+echo "[entrypoint] trios-train seed=$SEED steps=$STEPS lr=$LR hidden=$HIDDEN opt=$OPT"
 
-# If config is specified, use config mode
-if [ -n "$CONFIG" ]; then
-    exec /usr/local/bin/trios-train \
-        --config="$CONFIG"
-else
-    exec /usr/local/bin/trios-train \
-        --seed="$SEED" \
-        --steps="$STEPS"
-fi
+exec /usr/local/bin/trios-train \
+    --seed="$SEED" \
+    --steps="$STEPS" \
+    --lr="$LR" \
+    --hidden="$HIDDEN" \
+    --optimizer="$OPT" \
+    --train-data=data/tiny_shakespeare.txt \
+    --val-data=data/tiny_shakespeare_val.txt
