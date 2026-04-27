@@ -1,4 +1,13 @@
-FROM rust:1.90-slim-bookworm AS builder
+FROM debian:bookworm-slim AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates pkg-config build-essential git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust 1.91 via rustup
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+RUN rustup default 1.91
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates pkg-config build-essential git \
