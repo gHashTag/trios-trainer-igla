@@ -14,3 +14,6 @@
 - Current best BPB: 2.3586 (seed 43, 27K steps)
 - Gap to target (1.85): 0.5086 BPB
 - Time remaining to deadline: ~3 days
+[2026-04-27T20:23:00Z] TASK: Railway deployment attempt | result: Upload timeout (11MB) | Railway still uses old cached config (igla-trainer package) | Next: Try alternative deployment method, focus on local experiments
+[2026-04-27T20:25:00Z] TASK: Local training attempt | result: Processes killed, exit code 144 | Data files are tiny placeholders (60KB train, 160B val) | Need real data for meaningful training | Next: Try alternative deployment (Fly.io, Render) or Railway new service
+[2026-04-27T20:30:00Z] TASK: Autonomous cron job scheduled | result: Job 52357b2d scheduled hourly at :57 | Will continue work autonomously | Priority: Find working deployment method
