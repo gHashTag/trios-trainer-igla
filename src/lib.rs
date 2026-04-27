@@ -17,6 +17,7 @@ pub mod ledger;
 pub mod model;
 pub mod model_hybrid_attn;
 pub mod mup;
+pub mod neon_writer;
 pub mod objective;
 pub mod optimizer;
 pub mod phi_numbers;
