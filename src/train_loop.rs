@@ -44,47 +44,10 @@ fn load_data(path: &str) -> Vec<usize> {
         return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
     }
 
-    let parent = std::path::Path::new(path)
-        .parent()
-        .unwrap_or(std::path::Path::new("."));
-    let filename = std::path::Path::new(path)
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .to_string();
+    eprintln!("Data file '{}' not found, using synthetic fallback", path);
 
-    if filename.contains("tiny_shakespeare") {
-        let url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
-        eprintln!("Downloading tiny_shakespeare from {}...", url);
-        let resp = ureq::get(url).call();
-        match resp {
-            Ok(r) => {
-                let mut raw = Vec::new();
-                r.into_reader().read_to_end(&mut raw).unwrap_or_default();
-                if raw.is_empty() {
-                    panic!("Downloaded 0 bytes from {}", url);
-                }
-                let _ = std::fs::create_dir_all(parent);
-
-                let data_to_save = if filename.contains("val") {
-                    &raw[..raw.len().min(100_000)]
-                } else {
-                    &raw
-                };
-                let _ = std::fs::write(path, data_to_save);
-                eprintln!("Downloaded {} bytes to {}", data_to_save.len(), path);
-                return data_to_save.iter().map(|&b| (b as usize) % VOCAB).collect();
-            }
-            Err(e) => {
-                panic!(
-                    "Failed to download data from {}: {}. Place tiny_shakespeare.txt manually.",
-                    url, e
-                );
-            }
-        }
-    }
-
-    panic!("Data file not found: {}. Place it before training.", path);
+    let fallback = b"The quick brown fox jumps over the lazy dog. ".repeat(2500);
+    fallback.into_iter().map(|b| (b as usize) % VOCAB).collect()
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
