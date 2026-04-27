@@ -1,3 +1,6 @@
+[workspace]
+# Empty workspace to isolate from parent trios workspace
+
 [package]
 name        = "trios-trainer"
 version     = "0.1.0"

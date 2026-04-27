@@ -59,20 +59,43 @@ pub const DEFAULT_EMBARGO_PATH: &str = "assertions/embargo.txt";
 /// (`Deserialize`) can evolve without forcing one struct to do both.
 ///
 /// Schema must stay in sync with the writer; see [`crate::ledger`].
+///
+/// NOTE: Supports both legacy schema (with `steps`, `optimizer`, etc.)
+/// and new schema (with `agent`, `jsonl_row`, `ts`). Fields are optional
+/// to handle backwards compatibility with existing ledger entries.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LedgerRow {
-    #[serde(default)]
-    pub agent: String,
-    pub bpb: f64,
+    /// Legacy field: 'steps' (older rows), new field: 'step'
+    #[serde(alias = "steps", default)]
     pub step: u64,
+    pub bpb: f64,
     pub seed: u64,
     pub sha: String,
+    #[serde(default)]
+    pub agent: String,
     #[serde(default)]
     pub jsonl_row: u64,
     #[serde(default)]
     pub gate_status: String,
     #[serde(default)]
     pub ts: String,
+    /// Legacy fields from older schema - kept for compatibility
+    #[serde(default)]
+    pub val_bpb_24k: Option<f64>,
+    #[serde(default)]
+    pub val_bpb_27k: Option<f64>,
+    #[serde(default)]
+    pub ema_bpb: Option<f64>,
+    #[serde(default)]
+    pub optimizer: Option<String>,
+    #[serde(default)]
+    pub hidden: Option<u64>,
+    #[serde(default)]
+    pub lr: Option<f64>,
+    #[serde(default)]
+    pub attn_layers: Option<u64>,
+    #[serde(default)]
+    pub time_s: Option<u64>,
 }
 
 /// Filter predicate composed from CLI flags. Each `Option` is `None`

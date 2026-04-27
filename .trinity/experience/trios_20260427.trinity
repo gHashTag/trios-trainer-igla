@@ -1,0 +1,8 @@
+[2026-04-27T17:30:00Z] TASK: IGLA RACE autonomous status update | result: P1 setup complete, awaiting Railway deployment
+- Fixed igla.rs LedgerRow deserialization for legacy schema
+- Added workspace isolation to Cargo.toml
+- Updated P1 configs data paths
+- Updated Dockerfile, nixpacks.toml, railway.json
+- Current best BPB: 2.3586 (seed 43, 27K steps)
+- Gap to target (1.85): 0.5086 BPB
+- Next: Set RAILWAY_TOKEN and deploy P1 to Railway
