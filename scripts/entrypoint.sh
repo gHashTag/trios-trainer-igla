@@ -1,17 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-SEED="${TRIOS_SEED:-100}"
-STEPS="${TRIOS_STEPS:-81000}"
-ENCODER_LR="${TRIOS_ENCODER_LR:-0.003}"
-NTP_LR="${TRIOS_NTP_LR:-0.003}"
+SEED="${TRIOS_SEED:-43}"
+STEPS="${TRIOS_STEPS:-27000}"
+CONFIG="${TRIOS_CONFIG:-configs/gate2-final.toml}"
 
-echo "[entrypoint] tjepa_train champion seed=$SEED steps=$STEPS enc_lr=$ENCODER_LR ntp_lr=$NTP_LR"
+echo "[entrypoint] trios-train seed=$SEED steps=$STEPS config=$CONFIG"
 
-exec /usr/local/bin/tjepa_train \
-    --seed="$SEED" \
-    --steps="$STEPS" \
-    --encoder-lr="$ENCODER_LR" \
-    --ntp-lr="$NTP_LR" \
-    --no-jepa \
-    --no-nca
+# If config is specified, use config mode
+if [ -n "$CONFIG" ]; then
+    exec /usr/local/bin/trios-train \
+        --config="$CONFIG"
+else
+    exec /usr/local/bin/trios-train \
+        --seed="$SEED" \
+        --steps="$STEPS"
+fi
