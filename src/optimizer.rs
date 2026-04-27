@@ -687,10 +687,10 @@ pub fn wsd_lr_schedule(
 /// Interpolated parameter `y_t` for use in optimizer update
 ///
 /// # Formula
-/// ```
-/// c_{t+1} = 1 / (t + 1)
-/// y_t = (1 - beta1) * z_t + beta1 * x_t
-/// ```
+///
+/// Text only (not a doctest):
+///   c_{t+1} = 1 / (t + 1)
+///   y_t = (1 - beta1) * z_t + beta1 * x_t
 /// where `z_t` is the AdamW update step and `x_t` is the previous iterate.
 pub fn schedule_free_interpolation(step: usize, beta1: Option<f64>) -> f64 {
     let b1 = beta1.unwrap_or(0.9);

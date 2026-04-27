@@ -4,6 +4,7 @@
 //! P4 addition: `ema_average` for post-hoc EMA over last N checkpoints.
 //! Reference: Sanyal et al. 2024 — free generalization gain at zero training cost.
 
+use anyhow::Result;
 use std::path::PathBuf;
 
 /// Exponential Moving Average (EMA) of checkpoints
