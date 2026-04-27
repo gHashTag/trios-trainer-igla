@@ -77,14 +77,22 @@ impl TrigramModel {
     fn new(vocab: usize, dim: usize, seed: u64) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let t = ((s >> 33) as f32) / (u32::MAX as f32);
             (t * 2.0 - 1.0) * (6.0 / (vocab + dim) as f32).sqrt()
         };
         let embed: Vec<f32> = (0..vocab * dim).map(|_| rng()).collect();
         let context: Vec<f32> = (0..vocab * dim).map(|_| rng()).collect();
         let lm_head: Vec<f32> = (0..vocab * dim).map(|_| rng()).collect();
-        Self { embed, context, lm_head, vocab, dim }
+        Self {
+            embed,
+            context,
+            lm_head,
+            vocab,
+            dim,
+        }
     }
 
     fn forward_pair(&self, id_prev: usize, id_cur: usize) -> Vec<f32> {
@@ -94,15 +102,27 @@ impl TrigramModel {
         let cur = id_cur.min(v - 1);
         let e_prev = &self.context[prev * d..(prev + 1) * d];
         let e_cur = &self.embed[cur * d..(cur + 1) * d];
-        let combined: Vec<f32> = e_prev.iter().zip(e_cur.iter()).map(|(a, b)| a + b).collect();
-        (0..v).map(|vi| {
-            let w = &self.lm_head[vi * d..(vi + 1) * d];
-            combined.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
-        }).collect()
+        let combined: Vec<f32> = e_prev
+            .iter()
+            .zip(e_cur.iter())
+            .map(|(a, b)| a + b)
+            .collect();
+        (0..v)
+            .map(|vi| {
+                let w = &self.lm_head[vi * d..(vi + 1) * d];
+                combined
+                    .iter()
+                    .zip(w.iter())
+                    .map(|(a, b)| a * b)
+                    .sum::<f32>()
+            })
+            .collect()
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
-        if tokens.len() < 3 { return 0.0; }
+        if tokens.len() < 3 {
+            return 0.0;
+        }
         let mut total = 0.0f32;
         for i in 1..tokens.len() - 1 {
             let logits = self.forward_pair(tokens[i - 1], tokens[i]);
@@ -115,8 +135,17 @@ impl TrigramModel {
         total / (tokens.len() - 2) as f32
     }
 
-    fn train_step(&mut self, tokens: &[usize], lr: f32, opt_e: &mut AdamWState, opt_c: &mut AdamWState, opt_h: &mut AdamWState) {
-        if tokens.len() < 3 { return; }
+    fn train_step(
+        &mut self,
+        tokens: &[usize],
+        lr: f32,
+        opt_e: &mut AdamWState,
+        opt_c: &mut AdamWState,
+        opt_h: &mut AdamWState,
+    ) {
+        if tokens.len() < 3 {
+            return;
+        }
         let d = self.dim;
         let v = self.vocab;
 
@@ -148,9 +177,15 @@ impl TrigramModel {
         }
 
         let n = (tokens.len() - 2) as f32;
-        for g in grad_embed.iter_mut() { *g /= n; }
-        for g in grad_context.iter_mut() { *g /= n; }
-        for g in grad_head.iter_mut() { *g /= n; }
+        for g in grad_embed.iter_mut() {
+            *g /= n;
+        }
+        for g in grad_context.iter_mut() {
+            *g /= n;
+        }
+        for g in grad_head.iter_mut() {
+            *g /= n;
+        }
 
         opt_e.update(&mut self.embed, &grad_embed, lr);
         opt_c.update(&mut self.context, &grad_context, lr);
@@ -163,7 +198,9 @@ fn evaluate(model: &TrigramModel, tokens: &[usize], seq_len: usize) -> (f32, f32
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
-        if end - c < 4 { continue; }
+        if end - c < 4 {
+            continue;
+        }
         let seq = &tokens[c..end];
         let loss = model.loss_on_seq(seq);
         if loss.is_finite() {
@@ -171,7 +208,9 @@ fn evaluate(model: &TrigramModel, tokens: &[usize], seq_len: usize) -> (f32, f32
             n += 1;
         }
     }
-    if n == 0 { return (f32::MAX, f32::MAX); }
+    if n == 0 {
+        return (f32::MAX, f32::MAX);
+    }
     let bpb = total / n as f32;
     (bpb * LN_2, bpb)
 }
@@ -201,7 +240,10 @@ fn main() {
         .unwrap_or(0.003);
 
     println!("=== IGLA-STACK-502 Trigram Training ===");
-    println!("vocab={} dim={} seq={} steps={} seed={} lr={}", VOCAB, DIM, SEQ, steps, seed, base_lr);
+    println!(
+        "vocab={} dim={} seq={} steps={} seed={} lr={}",
+        VOCAB, DIM, SEQ, steps, seed, base_lr
+    );
     println!();
 
     let tokens = load_data("data/tinyshakespeare.txt");
@@ -216,7 +258,10 @@ fn main() {
     let (init_loss, init_bpb) = evaluate(&model, &tokens, SEQ);
     println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>8} | {:>6}", "step", "loss", "bpb", "best_bpb", "ms", "lr");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>8} | {:>6}",
+        "step", "loss", "bpb", "best_bpb", "ms", "lr"
+    );
     println!("{}", "-".repeat(70));
 
     let t0 = Instant::now();
@@ -236,8 +281,10 @@ fn main() {
             if eval_bpb < best_bpb && eval_bpb.is_finite() {
                 best_bpb = eval_bpb;
             }
-            println!("{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms | {:.6}",
-                step, eval_loss, eval_bpb, best_bpb, ms, lr);
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms | {:.6}",
+                step, eval_loss, eval_bpb, best_bpb, ms, lr
+            );
             results.push((step, eval_loss, eval_bpb));
         }
     }
@@ -245,8 +292,13 @@ fn main() {
     let total = t0.elapsed();
     println!();
     println!("=== Training Complete ===");
-    println!("Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} | Delta: {:.4}",
-        total.as_secs_f64(), init_bpb, best_bpb, best_bpb - init_bpb);
+    println!(
+        "Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} | Delta: {:.4}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        best_bpb - init_bpb
+    );
 
     let _ = fs::create_dir_all(".trinity/results");
     let result_json = serde_json::json!({
@@ -269,19 +321,33 @@ fn main() {
     });
 
     let rpath = format!(".trinity/results/igla_trigram_seed{}.json", seed);
-    fs::File::create(&rpath).unwrap()
-        .write_all(serde_json::to_string_pretty(&result_json).unwrap().as_bytes()).unwrap();
+    fs::File::create(&rpath)
+        .unwrap()
+        .write_all(
+            serde_json::to_string_pretty(&result_json)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     println!("Results: {}", rpath);
 
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let edir = ".trinity/experience";
     let _ = fs::create_dir_all(edir);
-    let epath = format!("{}/trios_{}.trinity", edir, chrono::Utc::now().format("%Y%m%d"));
+    let epath = format!(
+        "{}/trios_{}.trinity",
+        edir,
+        chrono::Utc::now().format("%Y%m%d")
+    );
     let entry = format!(
         "[{}] TASK: IGLA trigram training | seed={} | steps={} | bpb={:.4}->{:.4} | delta={:.4} | {:.1}s\n",
         ts, seed, steps, init_bpb, best_bpb, best_bpb - init_bpb, total.as_secs_f64()
     );
-    let _ = fs::OpenOptions::new().create(true).append(true)
-        .open(&epath).unwrap().write_all(entry.as_bytes());
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&epath)
+        .unwrap()
+        .write_all(entry.as_bytes());
     println!("Experience: {}", epath);
 }

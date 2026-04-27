@@ -110,9 +110,9 @@ impl GFTernary {
     /// Encode as 2 bits
     pub fn encode_bits(self) -> u8 {
         match self {
-            Self::NegPhi => 0b01,  // -1 in ternary (but we use 01 for -φ)
-            Self::Zero => 0b10,  // 0
-            Self::PosPhi => 0b11,  // +1 (but we use 11 for +φ)
+            Self::NegPhi => 0b01, // -1 in ternary (but we use 01 for -φ)
+            Self::Zero => 0b10,   // 0
+            Self::PosPhi => 0b11, // +1 (but we use 11 for +φ)
         }
     }
 
@@ -435,7 +435,12 @@ mod tests {
         for v in phi_vals {
             let gf = GFTernary::from_f64(v);
             // All should be PosPhi (positive > φ/2)
-            assert_eq!(gf, GFTernary::PosPhi, "φ-family value {} should be PosPhi", v);
+            assert_eq!(
+                gf,
+                GFTernary::PosPhi,
+                "φ-family value {} should be PosPhi",
+                v
+            );
         }
     }
 
@@ -532,7 +537,11 @@ mod tests {
 
         // Also verify negative step
         let step_neg = GFTernary::Zero.to_f64() - GFTernary::NegPhi.to_f64();
-        assert!((step_neg - PHI).abs() < 1e-10, "Negative step should be φ: {}", step_neg);
+        assert!(
+            (step_neg - PHI).abs() < 1e-10,
+            "Negative step should be φ: {}",
+            step_neg
+        );
     }
 
     #[test]
@@ -543,7 +552,11 @@ mod tests {
         let gf_bits = GFTernary::PosPhi.bit_width();
         let f16_bits = 16;
         let compression = f16_bits as f64 / gf_bits as f64;
-        assert!((compression - 8.0).abs() < 1e-10, "Compression ratio should be 8×: {}", compression);
+        assert!(
+            (compression - 8.0).abs() < 1e-10,
+            "Compression ratio should be 8×: {}",
+            compression
+        );
     }
 
     #[test]
@@ -566,7 +579,11 @@ mod tests {
 
         // Test identity
         assert_eq!(a + GFTernary::Zero, a, "Zero not additive identity");
-        assert_eq!(a * GFTernary::PosPhi, a, "PosPhi not multiplicative identity");
+        assert_eq!(
+            a * GFTernary::PosPhi,
+            a,
+            "PosPhi not multiplicative identity"
+        );
     }
 
     #[test]
@@ -580,7 +597,11 @@ mod tests {
             // GFTernary has very high quantization error (coarse quantization)
             // But it's predictable and uses only 2 bits
             assert!(gf_err >= 0.0);
-            assert!(gf_err <= 1.0, "Relative error should be reasonable: {}", gf_err);
+            assert!(
+                gf_err <= 1.0,
+                "Relative error should be reasonable: {}",
+                gf_err
+            );
         }
     }
 }

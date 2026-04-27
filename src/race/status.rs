@@ -3,7 +3,8 @@ use anyhow::Result;
 use crate::race::neon::NeonDb;
 
 pub async fn show_status(db: &NeonDb) -> Result<()> {
-    let rows = db.client()
+    let rows = db
+        .client()
         .query(
             "SELECT trial_id, machine_id, status, \
                     COALESCE(best_bpb::text, '-'), \
@@ -18,8 +19,10 @@ pub async fn show_status(db: &NeonDb) -> Result<()> {
 
     eprintln!();
     eprintln!("IGLA RACE LEADERBOARD");
-    eprintln!("{:<6} {:<20} {:<10} {:<8} {:<10}",
-              "Rank", "Trial", "Status", "BPB", "Arch");
+    eprintln!(
+        "{:<6} {:<20} {:<10} {:<8} {:<10}",
+        "Rank", "Trial", "Status", "BPB", "Arch"
+    );
     eprintln!("{}", "-".repeat(60));
 
     for (i, row) in rows.iter().enumerate() {
@@ -35,15 +38,22 @@ pub async fn show_status(db: &NeonDb) -> Result<()> {
             trial_id
         };
 
-        eprintln!("#{:<5} {:<20} {:<10} {:<8} {:<10}",
-                   i + 1, tid_trunc, status, bpb, arch);
+        eprintln!(
+            "#{:<5} {:<20} {:<10} {:<8} {:<10}",
+            i + 1,
+            tid_trunc,
+            status,
+            bpb,
+            arch
+        );
     }
     eprintln!();
     Ok(())
 }
 
 pub async fn show_best(db: &NeonDb) -> Result<()> {
-    let row = db.client()
+    let row = db
+        .client()
         .query_one(
             "SELECT trial_id, machine_id, config::text, \
                     COALESCE(best_bpb::text, '-'), status \
@@ -68,7 +78,10 @@ pub async fn show_best(db: &NeonDb) -> Result<()> {
             eprintln!("  Machine: {}", machine_id);
             eprintln!("  Status:  {}", status);
             eprintln!("  BPB:     {}", bpb);
-            eprintln!("  Config:  {}", serde_json::to_string_pretty(&config).unwrap_or_default());
+            eprintln!(
+                "  Config:  {}",
+                serde_json::to_string_pretty(&config).unwrap_or_default()
+            );
         }
         Err(_) => {
             eprintln!("No completed trials yet");

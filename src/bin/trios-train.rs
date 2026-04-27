@@ -16,7 +16,10 @@ use clap::Parser;
 use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 
 #[derive(Parser, Debug)]
-#[command(name = "trios-train", about = "IGLA RACE training pipeline (gHashTag/trios#143)")]
+#[command(
+    name = "trios-train",
+    about = "IGLA RACE training pipeline (gHashTag/trios#143)"
+)]
 struct Cli {
     /// Path to TOML config (optional; standalone mode if omitted).
     #[arg(long, env = "TRIOS_CONFIG")]
@@ -57,6 +60,10 @@ struct Cli {
     /// Run 3-seed sweep {42, 43, 44} instead of single seed.
     #[arg(long)]
     sweep: bool,
+
+    /// Optimizer: adamw, muon, or muon-cwd (P1 lab).
+    #[arg(long, default_value = "adamw")]
+    optimizer: String,
 }
 
 fn main() -> Result<()> {
@@ -77,13 +84,23 @@ fn main() -> Result<()> {
     if cli.sweep || cli.seed == 0 {
         tracing::info!("3-seed sweep: {:?}", GATE_FINAL_SEEDS);
         let results = train_loop::run_sweep(
-            cli.steps, cli.hidden, cli.lr, cli.attn_layers, cli.eval_every,
-            &cli.train_data, &cli.val_data,
+            cli.steps,
+            cli.hidden,
+            cli.lr,
+            cli.attn_layers,
+            cli.eval_every,
+            &cli.train_data,
+            &cli.val_data,
         )?;
         for r in &results {
-            println!("DONE: seed={} bpb={:.4} steps={}", r.seed, r.final_bpb, r.steps_done);
+            println!(
+                "DONE: seed={} bpb={:.4} steps={}",
+                r.seed, r.final_bpb, r.steps_done
+            );
         }
-        let all_pass = results.iter().all(|r| r.final_bpb < train_loop::DEFAULT_IGLA_TARGET_BPB);
+        let all_pass = results
+            .iter()
+            .all(|r| r.final_bpb < train_loop::DEFAULT_IGLA_TARGET_BPB);
         println!("GATE-2: {}", if all_pass { "PASS" } else { "NOT YET" });
     } else {
         let args = TrainArgs {
@@ -96,8 +113,15 @@ fn main() -> Result<()> {
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
         };
-        let outcome = train_loop::run_single(&args)?;
-        println!("DONE: seed={} bpb={:.4} steps={}", outcome.seed, outcome.final_bpb, outcome.steps_done);
+        let outcome = match cli.optimizer.as_str() {
+            "muon" => train_loop::run_single_muon(&args, false)?,
+            "muon-cwd" => train_loop::run_single_muon(&args, true)?,
+            _ => train_loop::run_single(&args)?,
+        };
+        println!(
+            "DONE: seed={} bpb={:.4} steps={} opt={}",
+            outcome.seed, outcome.final_bpb, outcome.steps_done, cli.optimizer
+        );
     }
 
     Ok(())

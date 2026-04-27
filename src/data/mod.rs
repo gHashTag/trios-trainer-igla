@@ -1,7 +1,7 @@
 pub mod tokenizer;
 
-use anyhow::Result;
 use crate::config::DataConfig;
+use anyhow::Result;
 
 pub struct DataPipeline {
     pub corpus: String,
@@ -17,5 +17,5 @@ pub fn build(cfg: &DataConfig) -> Result<DataPipeline> {
     })
 }
 
-pub use tokenizer::BPETokenizer;
 pub use tokenizer::tokenize_batch;
+pub use tokenizer::BPETokenizer;

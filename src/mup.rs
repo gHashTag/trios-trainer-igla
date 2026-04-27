@@ -65,7 +65,7 @@ impl MupScaler {
             ref_width,
             input_mult: sqrt_ratio,
             output_mult: sqrt_ratio,
-            attn_mult: 1.0 / (width as f64).sqrt(),  // 1/√d_head
+            attn_mult: 1.0 / (width as f64).sqrt(), // 1/√d_head
             embedding_lr_mult: 1.0 / sqrt_ratio,    // LR scales inversely with √width
             output_lr_mult: 1.0 / sqrt_ratio,
             attn_lr_mult: 1.0 / sqrt_ratio,
@@ -183,10 +183,10 @@ pub struct MupSweepConfig {
 impl Default for MupSweepConfig {
     fn default() -> Self {
         Self {
-            proxy_width: 128,  // 8M proxy
-            lr_values: vec![1e-3, 2e-3, 4e-3, 8e-3, 16e-3],
-            target_width: 384,  // 70M target
-            max_degradation_pct: 5.0,  // <5% degradation
+            proxy_width: 128, // 8M proxy
+            lr_values: vec![1e-3, 2e-3, 4e-3, 8e-3, 1e-2],
+            target_width: 384,        // 70M target
+            max_degradation_pct: 5.0, // <5% degradation
         }
     }
 }
@@ -196,7 +196,7 @@ impl MupSweepConfig {
     pub fn new(proxy_width: usize, target_width: usize) -> Self {
         Self {
             proxy_width,
-            lr_values: vec![1e-3, 2e-3, 4e-3, 8e-3, 16e-3],
+            lr_values: vec![1e-3, 2e-3, 4e-3, 8e-3, 1e-2],
             target_width,
             max_degradation_pct: 5.0,
         }
@@ -208,7 +208,9 @@ impl MupSweepConfig {
     ///
     /// true if all LR values are valid, false otherwise
     pub fn validate_lr_values(&self) -> bool {
-        self.lr_values.iter().all(|&lr| MupScaler::validate_inv8(lr))
+        self.lr_values
+            .iter()
+            .all(|&lr| MupScaler::validate_inv8(lr))
     }
 
     /// Get the best LR from sweep results
@@ -224,7 +226,10 @@ impl MupSweepConfig {
         if results.is_empty() {
             return None;
         }
-        results.iter().min_by(|a, b| a.1.partial_cmp(&b.1).unwrap()).map(|(lr, _)| *lr)
+        results
+            .iter()
+            .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap())
+            .map(|(lr, _)| *lr)
     }
 }
 

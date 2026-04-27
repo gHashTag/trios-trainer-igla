@@ -11,7 +11,7 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
-use trios_trainer::gf16::{GF16, QuantizationMetrics};
+use trios_trainer::gf16::{QuantizationMetrics, GF16};
 
 const VOCAB: usize = 128;
 const SEQ: usize = 64;
@@ -35,8 +35,13 @@ fn load_data(path: &str) -> Vec<usize> {
 fn softmax(v: &mut [f32]) {
     let max = v.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mut sum = 0.0f32;
-    for x in v.iter_mut() { *x = (*x - max).exp(); sum += *x; }
-    for x in v.iter_mut() { *x /= sum; }
+    for x in v.iter_mut() {
+        *x = (*x - max).exp();
+        sum += *x;
+    }
+    for x in v.iter_mut() {
+        *x /= sum;
+    }
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -54,7 +59,9 @@ struct Gf16Parameters {
 
 impl Gf16Parameters {
     fn new(size: usize) -> Self {
-        Self { data: vec![GF16::ZERO; size] }
+        Self {
+            data: vec![GF16::ZERO; size],
+        }
     }
 
     fn from_f32(values: &[f32]) -> Self {
@@ -181,23 +188,51 @@ impl NgramModelGF16 {
     ) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
-        let n_ctx = if use_ctx5 { 6 } else if use_ctx4 { 5 } else if use_ctx3 { 4 } else { 3 };
+        let n_ctx = if use_ctx5 {
+            6
+        } else if use_ctx4 {
+            5
+        } else if use_ctx3 {
+            4
+        } else {
+            3
+        };
         let lim = (6.0f32 / (n_ctx * dim) as f32).sqrt();
         let lim_h = (6.0f32 / (dim + hidden) as f32).sqrt();
         let lim_o = (6.0f32 / (hidden + dim) as f32).sqrt();
 
         Self {
-            embed: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            ctx1: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            ctx2: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            ctx3: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            ctx4: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            ctx5: Gf16Parameters::from_f32(&(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>()),
-            proj: Gf16Parameters::from_f32(&(0..hidden * dim).map(|_| rng() * lim_h).collect::<Vec<_>>()),
-            lm_head: Gf16Parameters::from_f32(&(0..vocab * hidden).map(|_| rng() * lim_o).collect::<Vec<_>>()),
+            embed: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            ctx1: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            ctx2: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            ctx3: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            ctx4: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            ctx5: Gf16Parameters::from_f32(
+                &(0..vocab * dim).map(|_| rng() * lim).collect::<Vec<_>>(),
+            ),
+            proj: Gf16Parameters::from_f32(
+                &(0..hidden * dim).map(|_| rng() * lim_h).collect::<Vec<_>>(),
+            ),
+            lm_head: Gf16Parameters::from_f32(
+                &(0..vocab * hidden)
+                    .map(|_| rng() * lim_o)
+                    .collect::<Vec<_>>(),
+            ),
             vocab,
             dim,
             hidden,
@@ -233,7 +268,12 @@ impl NgramModelGF16 {
             let c4: Vec<f32> = (0..d).map(|j| self.ctx4.get(t4 * d + j)).collect();
             let c5: Vec<f32> = (0..d).map(|j| self.ctx5.get(t5 * d + j)).collect();
             for j in 0..d {
-                combined[j] = e0[j] + c1[j] * 0.35 + c2[j] * 0.22 + c3[j] * 0.15 + c4[j] * 0.11 + c5[j] * 0.17;
+                combined[j] = e0[j]
+                    + c1[j] * 0.35
+                    + c2[j] * 0.22
+                    + c3[j] * 0.15
+                    + c4[j] * 0.11
+                    + c5[j] * 0.17;
             }
         } else if self.use_ctx4 {
             let c3: Vec<f32> = (0..d).map(|j| self.ctx3.get(t3 * d + j)).collect();
@@ -267,7 +307,8 @@ impl NgramModelGF16 {
             };
             // Dropout
             if self.dropout > 0.0 {
-                let mask = ((hi as u64).wrapping_mul(6364136223846793005u64) >> 33) as f32 / u32::MAX as f32;
+                let mask = ((hi as u64).wrapping_mul(6364136223846793005u64) >> 33) as f32
+                    / u32::MAX as f32;
                 if mask < self.dropout {
                     hidden[hi] = 0.0;
                 } else {
@@ -409,8 +450,12 @@ impl NgramModelGF16 {
                 let c4: Vec<f32> = (0..d).map(|j| self.ctx4.get(t4 * d + j)).collect();
                 let c5: Vec<f32> = (0..d).map(|j| self.ctx5.get(t5 * d + j)).collect();
                 for j in 0..d {
-                    combined[j] =
-                        e0[j] + c1[j] * 0.35 + c2[j] * 0.22 + c3[j] * 0.15 + c4[j] * 0.11 + c5[j] * 0.17;
+                    combined[j] = e0[j]
+                        + c1[j] * 0.35
+                        + c2[j] * 0.22
+                        + c3[j] * 0.15
+                        + c4[j] * 0.11
+                        + c5[j] * 0.17;
                 }
             } else if self.use_ctx4 {
                 let c3: Vec<f32> = (0..d).map(|j| self.ctx3.get(t3 * d + j)).collect();
@@ -435,10 +480,17 @@ impl NgramModelGF16 {
                     // GELU derivative approximation
                     let x = hidden[hi];
                     0.5 * (1.0 + (0.7978846 * (x + 0.044715 * x * x * x)).tanh())
-                        + 0.5 * x * 0.7978846 * (1.0 + 0.134145 * x * x * x)
+                        + 0.5
+                            * x
+                            * 0.7978846
+                            * (1.0 + 0.134145 * x * x * x)
                             * (1.0 - (0.7978846 * (x + 0.044715 * x * x * x)).tanh().powi(2))
                 } else {
-                    if hidden[hi] > 0.0 { 1.0 } else { 0.0 }
+                    if hidden[hi] > 0.0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
                 };
                 for j in 0..d {
                     g_proj[hi * d + j] += d_hidden[hi] * activation_grad * ln[j];
@@ -453,14 +505,22 @@ impl NgramModelGF16 {
                             * if self.activation == "gelu" {
                                 let x = hidden[hi];
                                 0.5 * (1.0 + (0.7978846 * (x + 0.044715 * x * x * x)).tanh())
-                                    + 0.5 * x * 0.7978846 * (1.0 + 0.134145 * x * x * x)
+                                    + 0.5
+                                        * x
+                                        * 0.7978846
+                                        * (1.0 + 0.134145 * x * x * x)
                                         * (1.0
                                             - (0.7978846 * (x + 0.044715 * x * x * x))
                                                 .tanh()
                                                 .powi(2))
                             } else {
-                                if hidden[hi] > 0.0 { 1.0 } else { 0.0 }
-                            } * dh
+                                if hidden[hi] > 0.0 {
+                                    1.0
+                                } else {
+                                    0.0
+                                }
+                            }
+                            * dh
                     })
                     .sum::<f32>();
                 g_embed[t0 * d + j] += grad_j;
@@ -534,7 +594,10 @@ impl NgramModelGF16 {
         .concat();
 
         // Quantize and compare
-        let quantized: Vec<f32> = all_f32.iter().map(|&x| GF16::from_f32(x).to_f32()).collect();
+        let quantized: Vec<f32> = all_f32
+            .iter()
+            .map(|&x| GF16::from_f32(x).to_f32())
+            .collect();
         QuantizationMetrics::compute(&all_f32, &quantized)
     }
 }
@@ -626,11 +689,7 @@ fn main() {
     } else {
         "4-Gram"
     };
-    let activation_name = if activation == "gelu" {
-        "GELU"
-    } else {
-        "ReLU"
-    };
+    let activation_name = if activation == "gelu" { "GELU" } else { "ReLU" };
 
     println!("=== GF16 {} Context Model + {} ===", ngram, activation_name);
     println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} activation={} wd={} warmup={} dropout={}",
@@ -672,7 +731,10 @@ fn main() {
     let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
     println!("Initial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>12}", "step", "val_loss", "val_bpb", "best_bpb", "max_q_err%");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>12}",
+        "step", "val_loss", "val_bpb", "best_bpb", "max_q_err%"
+    );
     println!("{}", "-".repeat(65));
 
     let t0 = Instant::now();
@@ -702,7 +764,10 @@ fn main() {
 
             // Early stopping
             if steps_without_improvement >= patience {
-                println!("\n>>> Early stopping at step {} (patience={} exceeded)", step, patience);
+                println!(
+                    "\n>>> Early stopping at step {} (patience={} exceeded)",
+                    step, patience
+                );
                 break;
             }
 
@@ -721,7 +786,14 @@ fn main() {
     let total = t0.elapsed();
     let q_final = model.quantization_report();
     println!("\n=== GF16 Training Complete ===");
-    println!("Time: {:.1}s | BPB: {:.4} → {:.4} | Delta: {:.4} | Best step: {}", total.as_secs_f64(), init_bpb, best_bpb, best_bpb - init_bpb, best_step);
+    println!(
+        "Time: {:.1}s | BPB: {:.4} → {:.4} | Delta: {:.4} | Best step: {}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        best_bpb - init_bpb,
+        best_step
+    );
     println!("\nFinal Quantization Metrics:");
     println!("  φ-distance:    {:.6}", q_final.phi_error);
     println!("  Max error:     {:.4}%", q_final.max_error_pct);
@@ -755,8 +827,16 @@ fn main() {
         },
         "results": results.iter().map(|(s, l, b)| serde_json::json!({"step":*s,"loss":*l,"bpb":*b})).collect::<Vec<_>>(),
     });
-    let rp = format!(".trinity/results/gf16_{}gram_{}_seed{}.json", ngram.to_lowercase(), activation, seed);
-    fs::File::create(&rp).unwrap().write_all(serde_json::to_string_pretty(&rj).unwrap().as_bytes()).unwrap();
+    let rp = format!(
+        ".trinity/results/gf16_{}gram_{}_seed{}.json",
+        ngram.to_lowercase(),
+        activation,
+        seed
+    );
+    fs::File::create(&rp)
+        .unwrap()
+        .write_all(serde_json::to_string_pretty(&rj).unwrap().as_bytes())
+        .unwrap();
     println!("\nResults: {}", rp);
 
     // Experience log
