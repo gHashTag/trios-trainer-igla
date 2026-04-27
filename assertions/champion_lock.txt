@@ -1,2 +1,1 @@
-champion@a12bf4f
-champion@9e2e338
+champion@2446855 BPB=2.2393 seed=43 step=27000

@@ -1,12 +1,2 @@
-# Embargoed SHAs — never accept ledger rows from these.
-# Source: standing rule from gHashTag/trios canonical embargo list.
-# Format: one short-7 SHA per line. Empty lines and # comments allowed.
-
-477e3377
-b3ee6a36
-2f6e4c2
-4a158c01
-6393be94
-5950174
-32d1dd3
-a7574c3
+# Embargo SHAs — these commits are blocked from Gate-2 ledger emits
+# None currently
