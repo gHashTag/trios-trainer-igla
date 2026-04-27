@@ -1,5 +1,7 @@
 FROM rust:1.90-slim-bookworm AS builder
 
+ARG CACHEBUST=1
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates pkg-config build-essential git \
     && rm -rf /var/lib/apt/lists/*
