@@ -34,3 +34,4 @@ ENV TRIOS_OPTIMIZER=adamw
 ENV TRIOS_EVAL_EVERY=1000
 
 CMD ["/usr/local/bin/railway_start.sh"]
+# cache invalidation: force rebuild Sun Apr 27 01:30 +07 2026
