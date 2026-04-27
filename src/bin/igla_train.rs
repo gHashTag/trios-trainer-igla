@@ -38,27 +38,38 @@ impl EmbeddingModel {
     fn new(vocab: usize, dim: usize, seed: u64) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let t = ((s >> 33) as f32) / (u32::MAX as f32);
             t * 0.04 - 0.02
         };
         let embed: Vec<f32> = (0..vocab * dim).map(|_| rng()).collect();
         let lm_head: Vec<f32> = (0..vocab * dim).map(|_| rng()).collect();
-        Self { embed, lm_head, vocab, dim }
+        Self {
+            embed,
+            lm_head,
+            vocab,
+            dim,
+        }
     }
 
     fn forward(&self, input_id: usize) -> Vec<f32> {
         let id = input_id.min(self.vocab - 1);
         let d = self.dim;
         let x = &self.embed[id * d..(id + 1) * d];
-        (0..self.vocab).map(|v| {
-            let w = &self.lm_head[v * d..(v + 1) * d];
-            x.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
-        }).collect()
+        (0..self.vocab)
+            .map(|v| {
+                let w = &self.lm_head[v * d..(v + 1) * d];
+                x.iter().zip(w.iter()).map(|(a, b)| a * b).sum::<f32>()
+            })
+            .collect()
     }
 
     fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
-        if tokens.len() < 2 { return 0.0; }
+        if tokens.len() < 2 {
+            return 0.0;
+        }
         let mut total = 0.0f32;
         for i in 0..tokens.len() - 1 {
             let logits = self.forward(tokens[i]);
@@ -72,7 +83,9 @@ impl EmbeddingModel {
     }
 
     fn train_step(&mut self, tokens: &[usize], lr: f32) {
-        if tokens.len() < 2 { return; }
+        if tokens.len() < 2 {
+            return;
+        }
         let d = self.dim;
         let v = self.vocab;
 
@@ -104,7 +117,9 @@ fn evaluate(model: &EmbeddingModel, tokens: &[usize], seq_len: usize) -> (f32, f
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
-        if end - c < 3 { continue; }
+        if end - c < 3 {
+            continue;
+        }
         let seq = &tokens[c..end];
         let loss = model.loss_on_seq(seq);
         if loss.is_finite() {
@@ -112,7 +127,9 @@ fn evaluate(model: &EmbeddingModel, tokens: &[usize], seq_len: usize) -> (f32, f
             n += 1;
         }
     }
-    if n == 0 { return (f32::MAX, f32::MAX); }
+    if n == 0 {
+        return (f32::MAX, f32::MAX);
+    }
     let bpb = total / n as f32;
     (bpb * LN_2, bpb)
 }
@@ -132,7 +149,10 @@ fn main() {
         .unwrap_or(0.1);
 
     println!("=== IGLA-STACK-502 Embedding Training ===");
-    println!("vocab={} dim={} seq={} steps={} seed={} lr={}", VOCAB, DIM, SEQ, steps, seed, lr);
+    println!(
+        "vocab={} dim={} seq={} steps={} seed={} lr={}",
+        VOCAB, DIM, SEQ, steps, seed, lr
+    );
     println!();
 
     let tokens = load_data("data/tinyshakespeare.txt");
@@ -143,7 +163,10 @@ fn main() {
     let (init_loss, init_bpb) = evaluate(&model, &tokens, SEQ);
     println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
-    println!("{:>6} | {:>10} | {:>10} | {:>10} | {:>8}", "step", "loss", "bpb", "best_bpb", "ms");
+    println!(
+        "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
+        "step", "loss", "bpb", "best_bpb", "ms"
+    );
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
@@ -162,8 +185,10 @@ fn main() {
             if eval_bpb < best_bpb && eval_bpb.is_finite() {
                 best_bpb = eval_bpb;
             }
-            println!("{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                step, eval_loss, eval_bpb, best_bpb, ms);
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                step, eval_loss, eval_bpb, best_bpb, ms
+            );
             results.push((step, eval_loss, eval_bpb));
         }
     }
@@ -171,8 +196,13 @@ fn main() {
     let total = t0.elapsed();
     println!();
     println!("=== Training Complete ===");
-    println!("Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} | Delta: {:.4}",
-        total.as_secs_f64(), init_bpb, best_bpb, best_bpb - init_bpb);
+    println!(
+        "Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} | Delta: {:.4}",
+        total.as_secs_f64(),
+        init_bpb,
+        best_bpb,
+        best_bpb - init_bpb
+    );
 
     let _ = fs::create_dir_all(".trinity/results");
     let result_json = serde_json::json!({
@@ -194,20 +224,35 @@ fn main() {
     });
 
     let rpath = format!(".trinity/results/igla_train_seed{}.json", seed);
-    fs::File::create(&rpath).unwrap()
-        .write_all(serde_json::to_string_pretty(&result_json).unwrap().as_bytes()).unwrap();
+    fs::File::create(&rpath)
+        .unwrap()
+        .write_all(
+            serde_json::to_string_pretty(&result_json)
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
     println!("Results: {}", rpath);
 
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let edir = ".trinity/experience";
     let _ = fs::create_dir_all(edir);
-    let epath = format!("{}/trios_{}.trinity", edir, chrono::Utc::now().format("%Y%m%d"));
-    let entry = format!(
+    let epath = format!(
+        "{}/trios_{}.trinity",
+        edir,
+        chrono::Utc::now().format("%Y%m%d")
+    );
+    let entry =
+        format!(
         "[{}] TASK: IGLA training | seed={} | steps={} | bpb={:.4}->{:.4} | delta={:.4} | {:.1}s\n",
         ts, seed, steps, init_bpb, best_bpb, best_bpb - init_bpb, total.as_secs_f64()
     );
-    let _ = fs::OpenOptions::new().create(true).append(true)
-        .open(&epath).unwrap().write_all(entry.as_bytes());
+    let _ = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&epath)
+        .unwrap()
+        .write_all(entry.as_bytes());
     println!("Experience: {}", epath);
 
     // L-R8: stdout must end with BPB=X.XXXX for ASHA worker parsing

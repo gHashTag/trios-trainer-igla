@@ -5,9 +5,9 @@
 /// EMA configuration
 #[derive(Debug, Clone, Copy)]
 pub struct EmaConfig {
-    pub start: f64,  // Starting decay rate (0.996)
-    pub end: f64,    // Target decay rate (1.0)
-    pub ramp_steps: usize,  // Steps to reach end (30000)
+    pub start: f64,        // Starting decay rate (0.996)
+    pub end: f64,          // Target decay rate (1.0)
+    pub ramp_steps: usize, // Steps to reach end (30000)
 }
 
 impl Default for EmaConfig {
@@ -128,7 +128,11 @@ mod tests {
         }
         // After 50 steps, should be at 0.75 (halfway)
         let decay_50 = ema.decay();
-        assert!((decay_50 - 0.75).abs() < 0.01, "decay at step 50: {}", decay_50);
+        assert!(
+            (decay_50 - 0.75).abs() < 0.01,
+            "decay at step 50: {}",
+            decay_50
+        );
 
         for _ in 50..100 {
             ema.step += 1;

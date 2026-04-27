@@ -50,29 +50,48 @@ pub struct PredictionOutput {
 
 impl PredictionOutput {
     pub fn new(predicted: Vec<f32>, target: Vec<f32>, loss: f64) -> Self {
-        Self { predicted, target, loss }
+        Self {
+            predicted,
+            target,
+            loss,
+        }
     }
 }
 
 /// L2 normalize a vector to unit length (prevents representation collapse)
 pub fn l2_normalize(v: &[f32]) -> Vec<f32> {
     let norm = v.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-    if norm < 1e-8 { v.to_vec() } else { v.iter().map(|x| x / norm).collect() }
+    if norm < 1e-8 {
+        v.to_vec()
+    } else {
+        v.iter().map(|x| x / norm).collect()
+    }
 }
 
 /// Jacobian of L2 normalization: grad_in = (grad_out - (grad_out · x_norm)*x_norm) / norm
 fn l2_norm_backward(grad_out: &[f32], x_norm: &[f32], norm: f32) -> Vec<f32> {
-    if norm < 1e-8 { return grad_out.to_vec(); }
+    if norm < 1e-8 {
+        return grad_out.to_vec();
+    }
     let dot: f32 = grad_out.iter().zip(x_norm.iter()).map(|(g, n)| g * n).sum();
-    grad_out.iter().zip(x_norm.iter()).map(|(g, n)| (g - dot * n) / norm).collect()
+    grad_out
+        .iter()
+        .zip(x_norm.iter())
+        .map(|(g, n)| (g - dot * n) / norm)
+        .collect()
 }
 
 /// Softmax with temperature scaling
 pub fn softmax_with_temp(scores: &mut [f32], temperature: f32) {
     let max = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
     let mut sum = 0.0f32;
-    for x in scores.iter_mut() { *x = ((*x - max) / temperature).exp(); sum += *x; }
-    for x in scores.iter_mut() { *x /= sum; }
+    for x in scores.iter_mut() {
+        *x = ((*x - max) / temperature).exp();
+        sum += *x;
+    }
+    for x in scores.iter_mut() {
+        *x /= sum;
+    }
 }
 
 struct ForwardCache {
@@ -110,14 +129,23 @@ impl JepaPredictor {
         let scale = (6.0 / (d_model + d_key) as f64).sqrt() as f32;
         let mut s = 42u64;
         let mut rng = || -> f32 {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let w_q: Vec<f32> = (0..d_model * d_key).map(|_| rng() * scale).collect();
         let w_k: Vec<f32> = (0..d_model * d_key).map(|_| rng() * scale).collect();
         let w_v: Vec<f32> = (0..d_model * d_key).map(|_| rng() * scale).collect();
         let w_out: Vec<f32> = (0..d_key * d_model).map(|_| rng() * scale).collect();
-        Self { config, w_q, w_k, w_v, w_out, optimizer: AdamWCpu::new(total_params, 0.0004) }
+        Self {
+            config,
+            w_q,
+            w_k,
+            w_v,
+            w_out,
+            optimizer: AdamWCpu::new(total_params, 0.0004),
+        }
     }
 
     /// Forward pass, caches intermediates for backward
@@ -135,7 +163,9 @@ impl JepaPredictor {
         let mut context_avg = vec![0.0f32; d];
         if seq_len > 0 {
             for i in 0..d {
-                for s in 0..seq_len { context_avg[i] += context_embeddings[s * d + i]; }
+                for s in 0..seq_len {
+                    context_avg[i] += context_embeddings[s * d + i];
+                }
                 context_avg[i] /= seq_len as f32;
             }
         }
@@ -143,14 +173,18 @@ impl JepaPredictor {
         // Q = context_avg @ W_q  [dk]
         let mut q = vec![0.0f32; dk];
         for i in 0..dk {
-            for j in 0..d { q[i] += context_avg[j] * self.w_q[j * dk + i]; }
+            for j in 0..d {
+                q[i] += context_avg[j] * self.w_q[j * dk + i];
+            }
         }
 
         // K = targets @ W_k  [num_targets * dk]
         let mut k = vec![0.0f32; num_targets * dk];
         for t in 0..num_targets {
             for i in 0..dk {
-                for j in 0..d { k[t * dk + i] += target_embeddings[t * d + j] * self.w_k[j * dk + i]; }
+                for j in 0..d {
+                    k[t * dk + i] += target_embeddings[t * d + j] * self.w_k[j * dk + i];
+                }
             }
         }
 
@@ -158,7 +192,9 @@ impl JepaPredictor {
         let mut v = vec![0.0f32; num_targets * dk];
         for t in 0..num_targets {
             for i in 0..dk {
-                for j in 0..d { v[t * dk + i] += target_embeddings[t * d + j] * self.w_v[j * dk + i]; }
+                for j in 0..d {
+                    v[t * dk + i] += target_embeddings[t * d + j] * self.w_v[j * dk + i];
+                }
             }
         }
 
@@ -166,7 +202,9 @@ impl JepaPredictor {
         let scale_factor = (dk as f32).sqrt();
         let mut attn_scores_raw = vec![0.0f32; num_targets];
         for t in 0..num_targets {
-            for i in 0..dk { attn_scores_raw[t] += q[i] * k[t * dk + i]; }
+            for i in 0..dk {
+                attn_scores_raw[t] += q[i] * k[t * dk + i];
+            }
             attn_scores_raw[t] /= scale_factor;
         }
 
@@ -177,23 +215,46 @@ impl JepaPredictor {
         // Attn out = weights @ V  [dk]
         let mut attn_out = vec![0.0f32; dk];
         for i in 0..dk {
-            for t in 0..num_targets { attn_out[i] += attn_weights[t] * v[t * dk + i]; }
+            for t in 0..num_targets {
+                attn_out[i] += attn_weights[t] * v[t * dk + i];
+            }
         }
 
         // Out = attn_out @ W_out  [d]
         let mut predicted_prenorm = vec![0.0f32; d];
         for i in 0..d {
-            for j in 0..dk { predicted_prenorm[i] += attn_out[j] * self.w_out[j * d + i]; }
+            for j in 0..dk {
+                predicted_prenorm[i] += attn_out[j] * self.w_out[j * d + i];
+            }
         }
 
         // L2 normalize
-        let pred_norm_val = predicted_prenorm.iter().map(|x| x.powi(2)).sum::<f32>().sqrt();
-        let predicted_norm = if self.config.use_l2_norm { l2_normalize(&predicted_prenorm) } else { predicted_prenorm.clone() };
+        let pred_norm_val = predicted_prenorm
+            .iter()
+            .map(|x| x.powi(2))
+            .sum::<f32>()
+            .sqrt();
+        let predicted_norm = if self.config.use_l2_norm {
+            l2_normalize(&predicted_prenorm)
+        } else {
+            predicted_prenorm.clone()
+        };
         let target_norm = l2_normalize(&target_embeddings[..d]);
 
-        ForwardCache { context_avg, q, k, v, attn_scores_raw, attn_weights, attn_out,
-            predicted_prenorm, predicted_norm, predicted_norm_val: pred_norm_val,
-            target_norm, num_targets }
+        ForwardCache {
+            context_avg,
+            q,
+            k,
+            v,
+            attn_scores_raw,
+            attn_weights,
+            attn_out,
+            predicted_prenorm,
+            predicted_norm,
+            predicted_norm_val: pred_norm_val,
+            target_norm,
+            num_targets,
+        }
     }
 
     /// Real backward pass + AdamW update. Returns MSE loss.
@@ -203,25 +264,40 @@ impl JepaPredictor {
         target_embeddings: &[f32],
         num_targets: usize,
     ) -> f32 {
-        if num_targets == 0 { return 0.0; }
-        let d  = self.config.d_model;
+        if num_targets == 0 {
+            return 0.0;
+        }
+        let d = self.config.d_model;
         let dk = self.config.d_key;
 
         let cache = self.forward_with_cache(context_embeddings, target_embeddings, num_targets);
 
         // MSE loss on first target (representative)
-        let loss: f32 = cache.predicted_norm.iter().zip(cache.target_norm.iter())
-            .map(|(p, t)| (p - t).powi(2)).sum::<f32>() / d as f32;
+        let loss: f32 = cache
+            .predicted_norm
+            .iter()
+            .zip(cache.target_norm.iter())
+            .map(|(p, t)| (p - t).powi(2))
+            .sum::<f32>()
+            / d as f32;
 
         // ── BACKWARD ───────────────────────────────────────────────────────────────
 
         // 1. dL/d_predicted_norm = 2*(pred_norm - tgt_norm)/d
-        let dl_dpred_norm: Vec<f32> = cache.predicted_norm.iter().zip(cache.target_norm.iter())
-            .map(|(p, t)| 2.0 * (p - t) / d as f32).collect();
+        let dl_dpred_norm: Vec<f32> = cache
+            .predicted_norm
+            .iter()
+            .zip(cache.target_norm.iter())
+            .map(|(p, t)| 2.0 * (p - t) / d as f32)
+            .collect();
 
         // 2. Through L2 norm: dL/d_predicted_prenorm
         let dl_dpred = if self.config.use_l2_norm {
-            l2_norm_backward(&dl_dpred_norm, &cache.predicted_norm, cache.predicted_norm_val)
+            l2_norm_backward(
+                &dl_dpred_norm,
+                &cache.predicted_norm,
+                cache.predicted_norm_val,
+            )
         } else {
             dl_dpred_norm.clone()
         };
@@ -229,13 +305,17 @@ impl JepaPredictor {
         // 3. dL/dW_out[j,i] = attn_out[j] * dl_dpred[i]  [dk * d]
         let mut dw_out = vec![0.0f32; dk * d];
         for j in 0..dk {
-            for i in 0..d { dw_out[j * d + i] = cache.attn_out[j] * dl_dpred[i]; }
+            for i in 0..d {
+                dw_out[j * d + i] = cache.attn_out[j] * dl_dpred[i];
+            }
         }
 
         // 4. dL/d_attn_out[j] = sum_i W_out[j,i] * dl_dpred[i]  [dk]
         let mut dl_dattn_out = vec![0.0f32; dk];
         for j in 0..dk {
-            for i in 0..d { dl_dattn_out[j] += self.w_out[j * d + i] * dl_dpred[i]; }
+            for i in 0..d {
+                dl_dattn_out[j] += self.w_out[j * d + i] * dl_dpred[i];
+            }
         }
 
         // 5. Softmax backward: dL/d_attn_scores_raw
@@ -245,43 +325,60 @@ impl JepaPredictor {
         //    where dl/d_weights[t] = dl/d_attn_out · V[t]
         let mut dl_dattn_weights = vec![0.0f32; cache.num_targets];
         for t in 0..cache.num_targets {
-            for i in 0..dk { dl_dattn_weights[t] += dl_dattn_out[i] * cache.v[t * dk + i]; }
+            for i in 0..dk {
+                dl_dattn_weights[t] += dl_dattn_out[i] * cache.v[t * dk + i];
+            }
         }
-        let dot_sw: f32 = dl_dattn_weights.iter().zip(cache.attn_weights.iter()).map(|(g, s)| g * s).sum();
+        let dot_sw: f32 = dl_dattn_weights
+            .iter()
+            .zip(cache.attn_weights.iter())
+            .map(|(g, s)| g * s)
+            .sum();
         let mut dl_dattn_scores = vec![0.0f32; cache.num_targets];
         for t in 0..cache.num_targets {
-            dl_dattn_scores[t] = cache.attn_weights[t] * (dl_dattn_weights[t] - dot_sw) / (dk as f32).sqrt();
+            dl_dattn_scores[t] =
+                cache.attn_weights[t] * (dl_dattn_weights[t] - dot_sw) / (dk as f32).sqrt();
         }
 
         // 6. dL/dV[t,i] = attn_weights[t] * dl_dattn_out[i]  [num_targets * dk]
         let mut dl_dv = vec![0.0f32; cache.num_targets * dk];
         for t in 0..cache.num_targets {
-            for i in 0..dk { dl_dv[t * dk + i] = cache.attn_weights[t] * dl_dattn_out[i]; }
+            for i in 0..dk {
+                dl_dv[t * dk + i] = cache.attn_weights[t] * dl_dattn_out[i];
+            }
         }
 
         // 7. dL/dK[t,i] = dl_dattn_scores[t] * Q[i]  [num_targets * dk]
         let mut dl_dk = vec![0.0f32; cache.num_targets * dk];
         for t in 0..cache.num_targets {
-            for i in 0..dk { dl_dk[t * dk + i] = dl_dattn_scores[t] * cache.q[i]; }
+            for i in 0..dk {
+                dl_dk[t * dk + i] = dl_dattn_scores[t] * cache.q[i];
+            }
         }
 
         // 8. dL/dQ[i] = sum_t dl_dattn_scores[t] * K[t,i]  [dk]
         let mut dl_dq = vec![0.0f32; dk];
         for i in 0..dk {
-            for t in 0..cache.num_targets { dl_dq[i] += dl_dattn_scores[t] * cache.k[t * dk + i]; }
+            for t in 0..cache.num_targets {
+                dl_dq[i] += dl_dattn_scores[t] * cache.k[t * dk + i];
+            }
         }
 
         // 9. dL/dW_q[j,i] = context_avg[j] * dl_dq[i]  [d * dk]
         let mut dw_q = vec![0.0f32; d * dk];
         for j in 0..d {
-            for i in 0..dk { dw_q[j * dk + i] = cache.context_avg[j] * dl_dq[i]; }
+            for i in 0..dk {
+                dw_q[j * dk + i] = cache.context_avg[j] * dl_dq[i];
+            }
         }
 
         // 10. dL/dW_k[j,i] = sum_t target[t,j] * dl_dk[t,i]  [d * dk]
         let mut dw_k = vec![0.0f32; d * dk];
         for j in 0..d {
             for t in 0..cache.num_targets {
-                for i in 0..dk { dw_k[j * dk + i] += target_embeddings[t * d + j] * dl_dk[t * dk + i]; }
+                for i in 0..dk {
+                    dw_k[j * dk + i] += target_embeddings[t * d + j] * dl_dk[t * dk + i];
+                }
             }
         }
 
@@ -289,7 +386,9 @@ impl JepaPredictor {
         let mut dw_v = vec![0.0f32; d * dk];
         for j in 0..d {
             for t in 0..cache.num_targets {
-                for i in 0..dk { dw_v[j * dk + i] += target_embeddings[t * d + j] * dl_dv[t * dk + i]; }
+                for i in 0..dk {
+                    dw_v[j * dk + i] += target_embeddings[t * d + j] * dl_dv[t * dk + i];
+                }
             }
         }
 
@@ -311,9 +410,9 @@ impl JepaPredictor {
         // Scatter updated params back
         let n = d * dk;
         self.w_q.copy_from_slice(&all_params[..n]);
-        self.w_k.copy_from_slice(&all_params[n..2*n]);
-        self.w_v.copy_from_slice(&all_params[2*n..3*n]);
-        self.w_out.copy_from_slice(&all_params[3*n..4*n]);
+        self.w_k.copy_from_slice(&all_params[n..2 * n]);
+        self.w_v.copy_from_slice(&all_params[2 * n..3 * n]);
+        self.w_out.copy_from_slice(&all_params[3 * n..4 * n]);
 
         loss
     }
@@ -326,7 +425,9 @@ impl JepaPredictor {
         target_embeddings: &[f32],
     ) -> Vec<f32> {
         let num_targets = target_positions.len();
-        if num_targets == 0 { return vec![]; }
+        if num_targets == 0 {
+            return vec![];
+        }
         let cache = self.forward_with_cache(context_embeddings, target_embeddings, num_targets);
         cache.predicted_norm
     }
@@ -338,7 +439,11 @@ impl JepaPredictor {
         } else {
             (predicted.to_vec(), target.to_vec())
         };
-        p.iter().zip(t.iter()).map(|(a, b)| (a - b).powi(2) as f64).sum::<f64>() / d as f64
+        p.iter()
+            .zip(t.iter())
+            .map(|(a, b)| (a - b).powi(2) as f64)
+            .sum::<f64>()
+            / d as f64
     }
 
     /// Legacy: proportional gradient (kept for API compat, use forward_backward instead)
@@ -350,8 +455,12 @@ impl JepaPredictor {
         self.w_q.len() + self.w_k.len() + self.w_v.len() + self.w_out.len()
     }
 
-    pub fn config(&self) -> &PredictorConfig { &self.config }
-    pub fn reset_optimizer(&mut self) { self.optimizer.reset(); }
+    pub fn config(&self) -> &PredictorConfig {
+        &self.config
+    }
+    pub fn reset_optimizer(&mut self) {
+        self.optimizer.reset();
+    }
 }
 
 /// Backward-compatible Predictor wrapper
@@ -361,7 +470,9 @@ pub struct Predictor {
 
 impl Predictor {
     pub fn new(config: PredictorConfig) -> Self {
-        Self { inner: JepaPredictor::new(config) }
+        Self {
+            inner: JepaPredictor::new(config),
+        }
     }
 
     pub fn default_with_dim(d_model: usize) -> Self {
@@ -370,7 +481,11 @@ impl Predictor {
 
     pub fn forward(&mut self, _context: &[f32], _target_positions: &[usize]) -> PredictionOutput {
         let d = self.inner.config.d_model;
-        PredictionOutput { predicted: vec![0.0; _target_positions.len() * d], target: vec![0.0; _target_positions.len() * d], loss: 0.0 }
+        PredictionOutput {
+            predicted: vec![0.0; _target_positions.len() * d],
+            target: vec![0.0; _target_positions.len() * d],
+            loss: 0.0,
+        }
     }
 
     pub fn compute_loss(&self, predicted: &[f32], target: &[f32]) -> f64 {
@@ -480,7 +595,8 @@ impl Predictor {
 
         total_loss /= (n_tgt * d_model) as f64;
         let _loss_f32 = total_loss as f32;
-        self.inner.optimizer_step(total_loss, &all_predicted, target_embeddings);
+        self.inner
+            .optimizer_step(total_loss, &all_predicted, target_embeddings);
 
         PredictionOutput::new(all_predicted, target_embeddings.to_vec(), total_loss)
     }
@@ -492,19 +608,26 @@ impl Predictor {
         target_embeddings: &[f32],
         num_targets: usize,
     ) -> f32 {
-        self.inner.forward_backward(context, target_embeddings, num_targets)
+        self.inner
+            .forward_backward(context, target_embeddings, num_targets)
     }
 
-    pub fn num_params(&self) -> usize { self.inner.num_params() }
-    pub fn config(&self) -> &PredictorConfig { self.inner.config() }
+    pub fn num_params(&self) -> usize {
+        self.inner.num_params()
+    }
+    pub fn config(&self) -> &PredictorConfig {
+        self.inner.config()
+    }
 }
 
 pub fn reshape_to_matrix(flat: &[f32], d_model: usize) -> Vec<Vec<f32>> {
     let n = flat.len() / d_model;
-    (0..n).map(|i| {
-        let start = i * d_model;
-        flat[start..(start + d_model).min(flat.len())].to_vec()
-    }).collect()
+    (0..n)
+        .map(|i| {
+            let start = i * d_model;
+            flat[start..(start + d_model).min(flat.len())].to_vec()
+        })
+        .collect()
 }
 
 pub fn flatten_matrix(matrix: &[Vec<f32>]) -> Vec<f32> {
@@ -560,7 +683,12 @@ mod tests {
         for _ in 0..100 {
             loss_last = predictor.forward_backward(&context, &target_emb, 1);
         }
-        assert!(loss_last < loss0 || loss_last.is_finite(), "loss should decrease or be finite: {} -> {}", loss0, loss_last);
+        assert!(
+            loss_last < loss0 || loss_last.is_finite(),
+            "loss should decrease or be finite: {} -> {}",
+            loss0,
+            loss_last
+        );
     }
 
     #[test]

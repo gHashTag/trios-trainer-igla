@@ -1,0 +1,46 @@
+# P2 muP Transfer — 24M intermediate (LR* from 8M)
+# µP transfer: apply optimal LR from 8M sweep to 24M width.
+
+name        = "p2-proxy-24m"
+steps       = 12_000
+seed        = 43
+target_bpb  = 2.00
+champion_bpb = 2.2393
+
+[model]
+d_model     = 256      # 24M params ≈ d_model=256, n_layers=3, n_heads=8
+n_layers    = 3
+n_heads     = 8
+vocab_size  = 32_000
+seq_len     = 1024
+hybrid_attn = false
+
+[optimizer]
+kind          = "adamw"
+lr            = 0.001    # Placeholder; will use lr* from 8M sweep
+beta1         = 0.9
+beta2         = 0.95
+weight_decay  = 0.04
+schedule      = "phi"
+warmup_steps  = 500
+
+# muP-specific: reference width for LR transfer
+mup_ref_width = 128    # 8M proxy width
+mup_target_width = 256    # 24M target width
+
+[data]
+corpus       = "fineweb"
+train_path   = "/data/fineweb_train.bin"
+val_path     = "/data/fineweb_val.bin"
+batch_size   = 4
+batch_tokens = 524_288
+
+[objective]
+w_ce   = 1.0
+w_jepa = 0.0
+w_nca  = 0.0
+
+[ledger]
+jsonl_path    = "assertions/lab/p2_transfer.jsonl"
+push          = false
+embargo_path  = ".embargo"

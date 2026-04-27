@@ -1,0 +1,62 @@
+# Gate-2 Final Configuration
+# Combines best hyperparameters from P0-P4 for 3-seed victory run.
+# Target: BPB < 1.85 on 3 seeds (43, 44, 45) with step >= 4000
+
+name        = "gate2-final"
+steps       = 30_000
+seed        = 43
+target_bpb  = 1.85
+champion_bpb = 2.2393
+
+[model]
+# Winner architecture from P0-P4 experiments
+d_model     = 256
+n_layers    = 3
+n_heads     = 8
+vocab_size  = 32_000
+seq_len     = 1024
+hybrid_attn = false
+
+[optimizer]
+# Optimizer selection (Muon vs AdamW) - winner from P1 Lab
+kind          = "muon"
+lr            = 0.0235    # η2D from P1 (IMU-1)
+beta1         = 0.95
+beta2         = 0.95
+weight_decay  = 0.01    # Lower than baseline per Muon spec
+schedule      = "phi"
+warmup_steps  = 500
+
+# Muon-specific parameters
+muon_eta_1d = 0.007    # η1D from P1
+muon_ns_steps = 7         # Newton-Schulz steps
+muon_use_cwd = false          # Optional CWD (use if P1 showed benefit)
+
+[data]
+corpus       = "fineweb"
+train_path   = "/data/fineweb_train.bin"
+val_path     = "/data/fineweb_val.bin"
+batch_size   = 4
+batch_tokens = 524_288
+
+[objective]
+# Multi-objective weights from P4 Lab (best combination)
+w_ce   = 1.0
+w_jepa = 0.15    # JEPA auxiliary weight (P4 sweep result)
+w_nca  = 0.10    # NCA auxiliary weight (P4 sweep result)
+
+[ledger]
+jsonl_path    = "assertions/seed_results.jsonl"
+push          = true     # Auto-commit and push after each seed
+embargo_path  = ".embargo"
+
+[gate2]
+# Gate-2 requirements
+min_step = 4000          # R8: only valid after 4000 steps
+seeds       = [43, 44, 45]   # 3 distinct seeds for victory
+victory_bpb = 1.85          # Target threshold
+
+# µP LR transfer settings (from P2)
+mup_ref_width = 128         # 8M proxy width (LR* found here)
+mup_target_width = 384        # 70M target width
+mup_lr_star = 0.008        # Optimal LR from 8M proxy sweep (hypothetical)
