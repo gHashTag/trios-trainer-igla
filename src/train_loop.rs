@@ -610,38 +610,11 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         muon_mom,
         muon_wd,
     );
-    opt_proj_muon.ns_steps = 3;
-    let mut opt_attn_down_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
-        d * args.hidden,
-        d,
-        args.hidden,
-        muon_lr,
-        muon_mom,
-        muon_wd,
-    );
-    opt_attn_down_muon.ns_steps = 3;
-    let mut opt_attn_up_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
-        args.hidden * d,
-        args.hidden,
-        d,
-        muon_lr,
-        muon_mom,
-        muon_wd,
-    );
-    opt_attn_up_muon.ns_steps = 3;
+    opt_proj_muon.ns_steps = if use_cwd { 3 } else { 1 };
+    let mut opt_attn_down = AdamW::new(d * args.hidden, adamw_wd);
+    let mut opt_attn_up = AdamW::new(args.hidden * d, adamw_wd);
     let mut opt_head = AdamW::new(VOCAB * args.hidden, adamw_wd);
-
-    let mut cwd_opt: Option<crate::optimizer::MuonCwd> = if use_cwd {
-        Some(crate::optimizer::MuonCwd::new(
-            args.hidden * DIM,
-            muon_lr,
-            muon_mom,
-            muon_wd,
-            cwd_lambda,
-        ))
-    } else {
-        None
-    };
+    let _cwd_lambda = cwd_lambda; // reserved for future MuonCwd integration
 
     let init_bpb = evaluate(&model, &val);
     eprintln!("Initial val_bpb={:.4}", init_bpb);
@@ -758,14 +731,9 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             oc.update(&mut model.ctx[ci], &gc[ci], lr);
         }
         opt_proj_muon.step(&mut model.proj, &gp);
-        opt_attn_down_muon.step(&mut model.attn_down, &g_ad);
-        opt_attn_up_muon.step(&mut model.attn_up, &g_au);
+        opt_attn_down.update(&mut model.attn_down, &g_ad, lr);
+        opt_attn_up.update(&mut model.attn_up, &g_au, lr);
         opt_head.update(&mut model.lm_head, &gh, lr);
-
-        if let Some(ref mut cwd) = cwd_opt {
-            let mut cwd_gp = gp.clone();
-            cwd.step(&mut model.proj, &cwd_gp);
-        }
 
         if step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
