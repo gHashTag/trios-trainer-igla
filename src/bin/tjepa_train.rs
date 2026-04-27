@@ -448,14 +448,40 @@ fn evaluate(model: &NgramModel, tokens: &[usize]) -> f32 {
 }
 
 fn load_data(path: &str) -> Vec<usize> {
-    let raw = fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. "
-            .repeat(100)
-            .to_vec()
-    });
-    assert!(!raw.is_empty(), "loaded data is empty");
-    raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
+    if let Ok(raw) = fs::read(path) {
+        if !raw.is_empty() {
+            eprintln!("Loaded {} bytes from {}", raw.len(), path);
+            return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
+        }
+    }
+
+    let is_val = path.contains("val");
+    let url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
+    eprintln!("Downloading TinyShakespeare from {}...", url);
+    match ureq::get(url).call() {
+        Ok(resp) => {
+            let mut bytes = Vec::new();
+            use std::io::Read;
+            resp.into_reader().read_to_end(&mut bytes).unwrap_or_default();
+            if bytes.is_empty() {
+                panic!("Downloaded 0 bytes from {}", url);
+            }
+            eprintln!("Downloaded {} bytes", bytes.len());
+            let data = if is_val {
+                &bytes[..bytes.len().min(100_000)]
+            } else {
+                &bytes
+            };
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                let _ = fs::create_dir_all(parent);
+            }
+            let _ = fs::write(path, data);
+            data.iter().map(|&b| (b as usize) % VOCAB).collect()
+        }
+        Err(e) => {
+            panic!("Failed to load {} and download failed: {}", path, e);
+        }
+    }
 }
 
 // ── config ──
