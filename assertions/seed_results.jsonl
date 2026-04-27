@@ -3,3 +3,6 @@
 {"agent":"railway-adamw-81k","bpb":2.1874,"gate_action":"below_target_evidence","seed":42,"sha":"7c4bd98","step":81000,"ts":"2026-04-27T01:45:00Z","victory_check":"pre_validated_at_emit"}
 {"agent":"railway-adamw-81k","bpb":2.1845,"gate_action":"below_target_evidence","seed":43,"sha":"7c4bd98","step":81000,"ts":"2026-04-27T01:45:00Z","victory_check":"pre_validated_at_emit"}
 {"agent":"railway-adamw-81k","bpb":2.1892,"gate_action":"below_target_evidence","seed":44,"sha":"7c4bd98","step":81000,"ts":"2026-04-27T01:45:00Z","victory_check":"pre_validated_at_emit"}
+{"agent":"railway-muon-54k","bpb":2.4101,"gate_action":"below_target_evidence","seed":42,"sha":"97665f4","step":54000,"ts":"2026-04-27T02:50:00Z","victory_check":"pre_validated_at_emit"}
+{"agent":"railway-muon-54k","bpb":2.4186,"gate_action":"below_target_evidence","seed":43,"sha":"97665f4","step":54000,"ts":"2026-04-27T02:50:00Z","victory_check":"pre_validated_at_emit"}
+{"agent":"railway-muon-54k","bpb":2.4025,"gate_action":"below_target_evidence","seed":44,"sha":"97665f4","step":54000,"ts":"2026-04-27T02:50:00Z","victory_check":"pre_validated_at_emit"}
