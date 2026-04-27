@@ -456,13 +456,16 @@ fn load_data(path: &str) -> Vec<usize> {
     }
 
     let is_val = path.contains("val");
-    let url = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
+    let url =
+        "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
     eprintln!("Downloading TinyShakespeare from {}...", url);
     match ureq::get(url).call() {
         Ok(resp) => {
             let mut bytes = Vec::new();
             use std::io::Read;
-            resp.into_reader().read_to_end(&mut bytes).unwrap_or_default();
+            resp.into_reader()
+                .read_to_end(&mut bytes)
+                .unwrap_or_default();
             if bytes.is_empty() {
                 panic!("Downloaded 0 bytes from {}", url);
             }
@@ -663,6 +666,8 @@ fn nca_training_step(nca: &NcaObjective, seed: u64, step: usize) -> f64 {
 // ── Neon heartbeat ──
 
 fn neon_trial_start(cfg: &Config) {
+    // Build config_json once and forward to neon_writer (real INSERT) plus
+    // an eprintln! breadcrumb for log-grep compatibility.
     let config_json = format!(
         "{{\"arch\":\"tjepa\",\"d_model\":{},\"lr\":{},\"seed\":{},\"optimizer\":\"{}\",\"ntp_w\":{},\"jepa_w\":{},\"nca_w\":{}}}",
         HIDDEN, cfg.encoder_lr, cfg.seed,
@@ -673,6 +678,7 @@ fn neon_trial_start(cfg: &Config) {
         "NEON_SQL: INSERT INTO igla_race_trials (trial_id, config, status, agent_id, branch) VALUES ('{}', '{}', 'running', '{}', 'main');",
         cfg.trial_id, config_json, cfg.agent_id,
     );
+    trios_trainer::neon_writer::trial_start(&cfg.trial_id, &config_json, &cfg.agent_id, "main");
 }
 
 fn neon_heartbeat(cfg: &Config, step: usize, bpb: f32, last: &mut Instant) {
@@ -682,6 +688,7 @@ fn neon_heartbeat(cfg: &Config, step: usize, bpb: f32, last: &mut Instant) {
             cfg.agent_id, cfg.trial_id,
         );
         eprintln!("NEON_SQL: UPDATE igla_race_trials SET bpb_latest={:.4}, steps_done={} WHERE trial_id='{}';", bpb, step, cfg.trial_id);
+        trios_trainer::neon_writer::heartbeat(&cfg.trial_id, &cfg.agent_id, bpb, step);
         *last = Instant::now();
     }
 }
@@ -691,6 +698,7 @@ fn neon_trial_complete(cfg: &Config, bpb: f32) {
         "NEON_SQL: UPDATE igla_race_trials SET bpb_final={:.4}, status='complete' WHERE trial_id='{}';",
         bpb, cfg.trial_id,
     );
+    trios_trainer::neon_writer::trial_complete(&cfg.trial_id, bpb);
 }
 
 // ── training state ──
