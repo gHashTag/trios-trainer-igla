@@ -1,7 +1,7 @@
 # IGLA RACE #143 — Autonomous Dashboard
 
-**Generated:** 2026-04-27 21:30 UTC
-**Deadline:** 2026-04-30 23:59 UTC (~72 hours remaining)
+**Generated:** 2026-04-28 00:37 UTC
+**Deadline:** 2026-04-30 23:59 UTC (~71.5 hours remaining)
 **Current Branch:** main (feat/igla-race-real-training)
 
 ---
@@ -63,7 +63,7 @@ P0 Audit  ->  P1 OptLab  ->  P2 muP  ->  P3 SF  ->  P4 Multi  ->  P5 Push
 
 ## Recent Experiments (E36-E40)
 
-5 T-JEPA experiments running since ~14:15 local (~3h15m elapsed):
+5 T-JEPA experiments running since ~14:15 local (~10.5h elapsed, ~50% through 200K steps):
 
 | Experiment | Agent | Seed | Steps | Status |
 |------------|-------|------|-------|--------|
@@ -75,6 +75,7 @@ P0 Audit  ->  P1 OptLab  ->  P2 muP  ->  P3 SF  ->  P4 Multi  ->  P5 Push
 
 **Note:** These are from `trios` main repo (T-JEPA), not IGLA trainer.
 **IGLA Status:** 4-gram baseline training complete (seeds 100-102 @ 4K steps, BPB ~3.06)
+**System Load:** High (~100) - experiments actively consuming CPU
 
 ---
 
@@ -152,6 +153,11 @@ P0 Audit  ->  P1 OptLab  ->  P2 muP  ->  P3 SF  ->  P4 Multi  ->  P5 Push
 ```
 
 **Last Entry:** 2026-04-27T21:05:00Z — Cron job cleanup
+**Recent Commits:**
+- 5a10de3 (igla): Update experience log with dashboard progress
+- 77cb783 (igla): Add autonomous priority dashboard
+- 722c8052 (trios): Add 4-gram baseline results for seeds 100-102
+- 9a2203c2 (trios): Add MCP server for tri/trios-igla CLI wrappers
 
 ---
 
