@@ -33,3 +33,9 @@
   2. Prepare new experiment configurations
   3. Continue code improvements
   4. Wait for user intervention on Railway deployment
+[2026-04-27T20:50:00Z] TASK: Fix compilation errors | result: All LedgerRow constructions fixed
+- Fixed 6 test functions with missing LedgerRow fields
+- Added optional fields with default values (val_bpb_24k, val_bpb_27k, ema_bpb, optimizer, hidden, lr, attn_layers, time_s)
+- Build: ✅ success (release: 1m 58s)
+- Clippy: ✅ zero warnings (L3 compliant)
+- Committed and pushed: 06de218
