@@ -1,0 +1,20 @@
+[phases.build]
+cmds = ["cargo build --release --bin trios-train -p trios-trainer"]
+
+[phases.setup]
+nixPkgs = ["pkg-config", "openssl", "git"]
+
+[phases.install]
+cmds = [
+  "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y",
+  "export PATH=\"$HOME/.cargo/bin:${PATH}\"",
+  "rustup default stable",
+  "rustup update stable"
+]
+
+[build.env]
+RUST_VERSION = "stable"
+PATH = "/root/.cargo/bin:${PATH}"
+
+[start]
+cmd = "/usr/local/bin/entrypoint.sh"
