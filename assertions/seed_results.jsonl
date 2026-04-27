@@ -10,3 +10,6 @@
 {"seed":42,"steps":81000,"bpb":2.6861,"ema_bpb":2.6861,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
 {"seed":43,"steps":81000,"bpb":2.6810,"ema_bpb":2.6810,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
 {"seed":44,"steps":81000,"bpb":2.6781,"ema_bpb":2.6781,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
+{"seed":42,"steps":81000,"bpb":2.2224,"ema_bpb":2.2224,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
+{"seed":43,"steps":81000,"bpb":2.2111,"ema_bpb":2.2111,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
+{"seed":44,"steps":81000,"bpb":2.2176,"ema_bpb":2.2176,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
