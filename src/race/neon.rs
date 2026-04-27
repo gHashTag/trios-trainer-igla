@@ -90,12 +90,7 @@ impl NeonDb {
         Ok(())
     }
 
-    pub async fn record_checkpoint(
-        &self,
-        trial_id: &Uuid,
-        rung: i32,
-        bpb: f64,
-    ) -> Result<()> {
+    pub async fn record_checkpoint(&self, trial_id: &Uuid, rung: i32, bpb: f64) -> Result<()> {
         info!("Checkpoint recorded (STUB): trial={trial_id} rung={rung} BPB={bpb:.4}");
         Ok(())
     }
@@ -153,13 +148,27 @@ impl NeonDb {
         Ok(vec![])
     }
 
-    pub async fn query(&self, query: &str, _params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<Vec<tokio_postgres::Row>> {
-        info!("Query (STUB): {}", query.trim().chars().take(80).collect::<String>());
+    pub async fn query(
+        &self,
+        query: &str,
+        _params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<Vec<tokio_postgres::Row>> {
+        info!(
+            "Query (STUB): {}",
+            query.trim().chars().take(80).collect::<String>()
+        );
         Ok(vec![])
     }
 
-    pub async fn query_one(&self, query: &str, _params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) -> Result<tokio_postgres::Row> {
-        info!("Query one (STUB): {}", query.trim().chars().take(80).collect::<String>());
+    pub async fn query_one(
+        &self,
+        query: &str,
+        _params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
+    ) -> Result<tokio_postgres::Row> {
+        info!(
+            "Query one (STUB): {}",
+            query.trim().chars().take(80).collect::<String>()
+        );
         Err(anyhow::anyhow!("no rows (STUB)"))
     }
 }
@@ -255,8 +264,7 @@ mod tests {
 
     #[test]
     fn test_dashboard_meta_with_branch() {
-        let meta = DashboardMeta::new("GAMMA", "macbook-pro-1", "w0")
-            .with_branch("feat/jepa");
+        let meta = DashboardMeta::new("GAMMA", "macbook-pro-1", "w0").with_branch("feat/jepa");
         assert_eq!(meta.branch, "feat/jepa");
     }
 

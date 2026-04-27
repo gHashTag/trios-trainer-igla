@@ -58,7 +58,10 @@ pub const RUNG_COUNT: usize = (MAX_RUNG_EXP as usize) + 1;
 const _: () = {
     assert!(TRINITY_BASE == 3, "Trinity base must be 3 (φ² + φ⁻²)");
     assert!(RUNG_UNIT == 1_000, "Rung unit pinned by INV-12 JSON anchor");
-    assert!(MAX_RUNG_EXP == 3, "Max rung exponent pinned to 3 (rung 27000)");
+    assert!(
+        MAX_RUNG_EXP == 3,
+        "Max rung exponent pinned to 3 (rung 27000)"
+    );
 };
 
 // ─── Rung type ───────────────────────────────────────────────────────────
@@ -184,10 +187,7 @@ pub fn check_inv12_rung_valid(step: u32) -> Result<Rung, InvError> {
 
 /// Convenience: validate a `usize` step (used by `asha.rs::record_checkpoint`).
 pub fn check_inv12_rung_valid_usize(step: usize) -> Result<Rung, InvError> {
-    let s32 = u32::try_from(step).map_err(|_| InvError::Inv4GridMismatch {
-        grid: step,
-        k: 0,
-    })?;
+    let s32 = u32::try_from(step).map_err(|_| InvError::Inv4GridMismatch { grid: step, k: 0 })?;
     check_inv12_rung_valid(s32)
 }
 
