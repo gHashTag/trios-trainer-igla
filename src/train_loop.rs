@@ -44,7 +44,9 @@ fn load_data(path: &str) -> Vec<usize> {
         return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
     }
 
-    let parent = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
+    let parent = std::path::Path::new(path)
+        .parent()
+        .unwrap_or(std::path::Path::new("."));
     let filename = std::path::Path::new(path)
         .file_name()
         .unwrap_or_default()
@@ -74,7 +76,10 @@ fn load_data(path: &str) -> Vec<usize> {
                 return data_to_save.iter().map(|&b| (b as usize) % VOCAB).collect();
             }
             Err(e) => {
-                panic!("Failed to download data from {}: {}. Place tiny_shakespeare.txt manually.", url, e);
+                panic!(
+                    "Failed to download data from {}: {}. Place tiny_shakespeare.txt manually.",
+                    url, e
+                );
             }
         }
     }

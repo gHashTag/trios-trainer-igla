@@ -5,6 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
+    "startCommand": "/usr/local/bin/entrypoint.sh",
     "restartPolicyType": "NEVER"
   }
 }

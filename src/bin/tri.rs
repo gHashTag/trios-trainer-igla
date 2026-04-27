@@ -8,7 +8,11 @@ const RAILWAY_PROJECT_ID: &str = "abdf752c-20ac-4813-a586-04a031db96e8";
 const GATE_SEEDS: &[u64] = &[42, 43, 44];
 
 #[derive(Parser)]
-#[command(name = "tri", about = "IGLA Race CLI — Railway deploy + local train", version)]
+#[command(
+    name = "tri",
+    about = "IGLA Race CLI — Railway deploy + local train",
+    version
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -101,7 +105,11 @@ fn railway(args: &[&str]) -> anyhow::Result<()> {
         .env("RAILWAY_NON_INTERACTIVE", "1")
         .status()?;
     if !status.success() {
-        anyhow::bail!("railway {} failed with exit code {:?}", args.join(" "), status.code());
+        anyhow::bail!(
+            "railway {} failed with exit code {:?}",
+            args.join(" "),
+            status.code()
+        );
     }
     Ok(())
 }
@@ -112,13 +120,25 @@ fn railway_output(args: &[&str]) -> anyhow::Result<String> {
         .env("RAILWAY_NON_INTERACTIVE", "1")
         .output()?;
     if !output.status.success() {
-        anyhow::bail!("railway {} failed: {}", args.join(" "), String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "railway {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
 fn railway_var_set(svc: &str, key: &str, value: &str) -> anyhow::Result<()> {
-    railway(&["variable", "set", "-s", svc, "-e", "production", &format!("{}={}", key, value)])
+    railway(&[
+        "variable",
+        "set",
+        "-s",
+        svc,
+        "-e",
+        "production",
+        &format!("{}={}", key, value),
+    ])
 }
 
 fn create_service(svc: &str) -> anyhow::Result<()> {
@@ -140,9 +160,18 @@ fn service_name(seed: u64) -> String {
     format!("trainer-seed-{}", seed)
 }
 
-fn deploy_seed(seed: u64, steps: usize, hidden: usize, lr: f64, attn_layers: u8) -> anyhow::Result<()> {
+fn deploy_seed(
+    seed: u64,
+    steps: usize,
+    hidden: usize,
+    lr: f64,
+    attn_layers: u8,
+) -> anyhow::Result<()> {
     let svc = service_name(seed);
-    eprintln!("Deploying {} (seed={}, steps={}, hidden={}, lr={:.4}, attn={}) ...", svc, seed, steps, hidden, lr, attn_layers);
+    eprintln!(
+        "Deploying {} (seed={}, steps={}, hidden={}, lr={:.4}, attn={}) ...",
+        svc, seed, steps, hidden, lr, attn_layers
+    );
 
     railway(&["link", "--project", RAILWAY_PROJECT_ID, "-e", "production"])?;
 
@@ -164,10 +193,21 @@ fn deploy_seed(seed: u64, steps: usize, hidden: usize, lr: f64, attn_layers: u8)
     railway_var_set(&svc, "TRIOS_OPTIMIZER", "adamw")?;
     railway_var_set(&svc, "TRIOS_EVAL_EVERY", "1000")?;
 
-    railway(&["link", "--project", RAILWAY_PROJECT_ID, "--service", &svc, "-e", "production"])?;
+    railway(&[
+        "link",
+        "--project",
+        RAILWAY_PROJECT_ID,
+        "--service",
+        &svc,
+        "-e",
+        "production",
+    ])?;
     railway(&["up", "--detach"])?;
 
-    eprintln!("Deployed {} — stream logs: tri deploy logs --seed {}", svc, seed);
+    eprintln!(
+        "Deployed {} — stream logs: tri deploy logs --seed {}",
+        svc, seed
+    );
     Ok(())
 }
 
@@ -177,10 +217,21 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Deploy { deploy_cmd } => match deploy_cmd {
-            DeployCommands::Seed { seed, steps, hidden, lr, attn_layers } => {
+            DeployCommands::Seed {
+                seed,
+                steps,
+                hidden,
+                lr,
+                attn_layers,
+            } => {
                 deploy_seed(seed, steps, hidden, lr, attn_layers)?;
             }
-            DeployCommands::All { steps, hidden, lr, attn_layers } => {
+            DeployCommands::All {
+                steps,
+                hidden,
+                lr,
+                attn_layers,
+            } => {
                 for &seed in GATE_SEEDS {
                     deploy_seed(seed, steps, hidden, lr, attn_layers)?;
                 }
@@ -215,12 +266,15 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let machine_id = hostname_or_default();
                 let best_bpb = Arc::new(RwLock::new(f64::MAX));
-                let result = trios_trainer::race::asha::run_worker(
-                    &neon_url, &machine_id, 0, best_bpb,
-                ).await;
+                let result =
+                    trios_trainer::race::asha::run_worker(&neon_url, &machine_id, 0, best_bpb)
+                        .await;
                 match result {
                     Ok(bpb) => println!("BPB={:.4}", bpb),
-                    Err(e) => { eprintln!("ASHA worker error: {e}"); std::process::exit(1); }
+                    Err(e) => {
+                        eprintln!("ASHA worker error: {e}");
+                        std::process::exit(1);
+                    }
                 }
             }
             RaceCommands::Status => {
@@ -242,10 +296,26 @@ async fn main() -> anyhow::Result<()> {
                 trios_trainer::race::status::show_best(&db).await?;
             }
         },
-        Commands::Train { seed, steps, hidden, lr, attn_layers, eval_every, train_data, val_data, optimizer } => {
+        Commands::Train {
+            seed,
+            steps,
+            hidden,
+            lr,
+            attn_layers,
+            eval_every,
+            train_data,
+            val_data,
+            optimizer,
+        } => {
             let args = trios_trainer::train_loop::TrainArgs {
-                seed, steps, hidden, lr: lr as f32, attn_layers, eval_every,
-                train_path: train_data, val_path: val_data,
+                seed,
+                steps,
+                hidden,
+                lr: lr as f32,
+                attn_layers,
+                eval_every,
+                train_path: train_data,
+                val_path: val_data,
             };
             let outcome = match optimizer.as_str() {
                 "muon" => trios_trainer::train_loop::run_single_muon(&args, false)?,
