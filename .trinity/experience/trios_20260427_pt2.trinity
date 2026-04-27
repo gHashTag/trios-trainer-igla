@@ -1,0 +1,16 @@
+[2026-04-27T18:45:00Z] TASK: IGLA RACE Railway deployment attempts | result: Blocked by Rust toolchain issue
+- P1 null result documented in docs/audit/P1_null.md
+- gate2-final.toml updated to use AdamW (was Muon)
+- Attempted 4 Railway deployment fixes:
+  1. Updated nixpacks.toml with Rust v1.91 provider
+  2. Removed nixpacks files to force Dockerfile use
+  3. Updated Dockerfile to build trios-train (was tjepa_train)
+  4. Updated entrypoint.sh to use trios-train and config mode
+  5. Changed Dockerfile base to debian with explicit Rust 1.91 via rustup
+- Railway PERSISTENTLY uses Rust 1.82.0 (edition2024 not supported)
+- Build error: "feature edition2024 is required" from hashbrown dependency
+- Railway appears to NOT be using Dockerfile (shows wrong build command)
+- Next: Manual Railway dashboard configuration or alternative deployment method
+- Current best BPB: 2.3586 (seed 43, 27K steps)
+- Gap to target (1.85): 0.5086 BPB
+- Time remaining to deadline: ~3 days
