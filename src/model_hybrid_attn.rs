@@ -189,20 +189,50 @@ impl HybridAttnConfig {
 // The block itself
 // ═══════════════════════════════════════════════════════════════════
 
-/// Weights are stored row-major.  Supports 1 or 2 attention layers.
-/// Layer 2 shares RoPE with layer 1 (per Gate-final DRAFT §6 lever 1).
-/// Residual + LayerNorm between layers.
 #[derive(Debug, Clone)]
 pub struct HybridAttn {
     cfg: HybridAttnConfig,
-    wq: Vec<f32>,
-    wk: Vec<f32>,
-    wv: Vec<f32>,
-    wo: Vec<f32>,
-    wq2: Vec<f32>,
-    wk2: Vec<f32>,
-    wv2: Vec<f32>,
-    wo2: Vec<f32>,
+    pub wq: Vec<f32>,
+    pub wk: Vec<f32>,
+    pub wv: Vec<f32>,
+    pub wo: Vec<f32>,
+    pub wq2: Vec<f32>,
+    pub wk2: Vec<f32>,
+    pub wv2: Vec<f32>,
+    pub wo2: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct AttentionCache {
+    pub input: Vec<f32>,
+    pub q1: Vec<f32>,
+    pub k1: Vec<f32>,
+    pub v1: Vec<f32>,
+    pub attn_weights1: Vec<Vec<Vec<f32>>>,
+    pub attn_pre_wo1: Vec<f32>,
+    pub residual1: Vec<f32>,
+    pub normed1: Vec<f32>,
+    pub q2: Vec<f32>,
+    pub k2: Vec<f32>,
+    pub v2: Vec<f32>,
+    pub attn_weights2: Vec<Vec<Vec<f32>>>,
+    pub attn_pre_wo2: Vec<f32>,
+    pub residual2: Vec<f32>,
+    pub output: Vec<f32>,
+    pub seq_len: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttentionGrads {
+    pub gwq: Vec<f32>,
+    pub gwk: Vec<f32>,
+    pub gwv: Vec<f32>,
+    pub gwo: Vec<f32>,
+    pub gwq2: Vec<f32>,
+    pub gwk2: Vec<f32>,
+    pub gwv2: Vec<f32>,
+    pub gwo2: Vec<f32>,
+    pub d_input: Vec<f32>,
 }
 
 impl HybridAttn {
@@ -400,6 +430,343 @@ impl HybridAttn {
     }
 }
 
+impl HybridAttn {
+    pub fn forward_with_cache(
+        &self,
+        tokens: &[f32],
+        seq_len: usize,
+    ) -> Result<(Vec<f32>, AttentionCache), HybridAttnError> {
+        if tokens.iter().any(|x| !x.is_finite()) {
+            return Err(HybridAttnError::NonFinite);
+        }
+        let d = self.cfg.d_model;
+        assert_eq!(tokens.len(), seq_len * d);
+        let input = tokens.to_vec();
+
+        let (layer1_out, q1, k1, v1, aw1, ap1) =
+            self.forward_single_layer_cached(tokens, seq_len)?;
+        let residual1 = add_residual(tokens, &layer1_out);
+        let normed1 = layer_norm_rows(&residual1, seq_len, d);
+
+        if self.cfg.num_attn_layers == 1 {
+            if normed1.iter().any(|x| !x.is_finite()) {
+                return Err(HybridAttnError::NonFinite);
+            }
+            let cache = AttentionCache {
+                input,
+                q1,
+                k1,
+                v1,
+                attn_weights1: aw1,
+                attn_pre_wo1: ap1,
+                residual1,
+                normed1: normed1.clone(),
+                q2: vec![],
+                k2: vec![],
+                v2: vec![],
+                attn_weights2: vec![],
+                attn_pre_wo2: vec![],
+                residual2: vec![],
+                output: normed1,
+                seq_len,
+            };
+            return Ok((cache.output.clone(), cache));
+        }
+
+        let (layer2_out, q2, k2, v2, aw2, ap2) =
+            self.forward_single_layer_cached(&normed1, seq_len)?;
+        let residual2 = add_residual(&normed1, &layer2_out);
+        let output = layer_norm_rows(&residual2, seq_len, d);
+
+        if output.iter().any(|x| !x.is_finite()) {
+            return Err(HybridAttnError::NonFinite);
+        }
+
+        let cache = AttentionCache {
+            input,
+            q1,
+            k1,
+            v1,
+            attn_weights1: aw1,
+            attn_pre_wo1: ap1,
+            residual1,
+            normed1,
+            q2,
+            k2,
+            v2,
+            attn_weights2: aw2,
+            attn_pre_wo2: ap2,
+            residual2: residual2.clone(),
+            output,
+            seq_len,
+        };
+        Ok((cache.output.clone(), cache))
+    }
+
+    fn forward_single_layer_cached(
+        &self,
+        tokens: &[f32],
+        seq_len: usize,
+    ) -> Result<
+        (
+            Vec<f32>,
+            Vec<f32>,
+            Vec<f32>,
+            Vec<f32>,
+            Vec<Vec<Vec<f32>>>,
+            Vec<f32>,
+        ),
+        HybridAttnError,
+    > {
+        let d = self.cfg.d_model;
+        let h = self.cfg.num_heads;
+        let d_head = d / h;
+
+        let q = matmul(tokens, &self.wq, seq_len, d, d);
+        let k = matmul(tokens, &self.wk, seq_len, d, d);
+        let v = matmul(tokens, &self.wv, seq_len, d, d);
+
+        let scale = (d_head as f32).sqrt();
+        let mut attn_out = vec![0.0_f32; seq_len * d];
+        let mut attn_weights: Vec<Vec<Vec<f32>>> = vec![vec![vec![]; h]; seq_len];
+
+        for head in 0..h {
+            let ho = head * d_head;
+            for i in 0..seq_len {
+                let mut scores = vec![0.0_f32; i + 1];
+                for (j, score) in scores.iter_mut().enumerate() {
+                    let mut s = 0.0_f32;
+                    for ki in 0..d_head {
+                        s += q[i * d + ho + ki] * k[j * d + ho + ki];
+                    }
+                    *score = (self.cfg.qk_gain as f32) * s / scale;
+                }
+                softmax_inplace(&mut scores);
+                attn_weights[i][head] = scores.clone();
+                for j in 0..=i {
+                    let w = attn_weights[i][head][j];
+                    for ki in 0..d_head {
+                        attn_out[i * d + ho + ki] += w * v[j * d + ho + ki];
+                    }
+                }
+            }
+        }
+
+        let out = matmul(&attn_out, &self.wo, seq_len, d, d);
+        if out.iter().any(|x| !x.is_finite()) {
+            return Err(HybridAttnError::NonFinite);
+        }
+        Ok((out, q, k, v, attn_weights, attn_out))
+    }
+
+    pub fn backward(&self, cache: &AttentionCache, d_output: &[f32]) -> AttentionGrads {
+        let d = self.cfg.d_model;
+        let seq_len = cache.seq_len;
+        let dd = d * d;
+
+        if self.cfg.num_attn_layers == 2 {
+            let d_residual2 =
+                layer_norm_rows_backward(&cache.residual2, &cache.output, d_output, seq_len, d);
+            let d_normed1_from_res = d_residual2.clone();
+            let d_layer2_out = d_residual2;
+
+            let (gwq2, gwk2, gwv2, gwo2, d_normed1_from_attn) = self.backward_single_layer(
+                &d_layer2_out,
+                &cache.normed1,
+                &cache.q2,
+                &cache.k2,
+                &cache.v2,
+                &cache.attn_weights2,
+                &cache.attn_pre_wo2,
+                &self.wq2,
+                &self.wk2,
+                &self.wv2,
+                &self.wo2,
+                seq_len,
+            );
+
+            let mut d_normed1 = d_normed1_from_res;
+            for i in 0..seq_len * d {
+                d_normed1[i] += d_normed1_from_attn[i];
+            }
+
+            let d_residual1 = layer_norm_rows_backward(
+                &cache.residual1,
+                &cache.normed1,
+                &d_normed1,
+                seq_len,
+                d,
+            );
+            let d_input_from_res = d_residual1.clone();
+            let d_layer1_out = d_residual1;
+
+            let (gwq, gwk, gwv, gwo, d_input_from_attn) = self.backward_single_layer(
+                &d_layer1_out,
+                &cache.input,
+                &cache.q1,
+                &cache.k1,
+                &cache.v1,
+                &cache.attn_weights1,
+                &cache.attn_pre_wo1,
+                &self.wq,
+                &self.wk,
+                &self.wv,
+                &self.wo,
+                seq_len,
+            );
+
+            let mut d_input = d_input_from_res.clone();
+            for i in 0..seq_len * d {
+                d_input[i] += d_input_from_attn[i];
+            }
+
+            AttentionGrads {
+                gwq,
+                gwk,
+                gwv,
+                gwo,
+                gwq2,
+                gwk2,
+                gwv2,
+                gwo2,
+                d_input,
+            }
+        } else {
+            let d_residual1 = layer_norm_rows_backward(
+                &cache.residual1,
+                &cache.output,
+                d_output,
+                seq_len,
+                d,
+            );
+            let d_input_from_res = d_residual1.clone();
+            let d_layer1_out = d_residual1;
+
+            let (gwq, gwk, gwv, gwo, d_input_from_attn) = self.backward_single_layer(
+                &d_layer1_out,
+                &cache.input,
+                &cache.q1,
+                &cache.k1,
+                &cache.v1,
+                &cache.attn_weights1,
+                &cache.attn_pre_wo1,
+                &self.wq,
+                &self.wk,
+                &self.wv,
+                &self.wo,
+                seq_len,
+            );
+
+            let mut d_input = d_input_from_res.clone();
+            for i in 0..seq_len * d {
+                d_input[i] += d_input_from_attn[i];
+            }
+
+            AttentionGrads {
+                gwq,
+                gwk,
+                gwv,
+                gwo,
+                gwq2: vec![0.0; dd],
+                gwk2: vec![0.0; dd],
+                gwv2: vec![0.0; dd],
+                gwo2: vec![0.0; dd],
+                d_input,
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn backward_single_layer(
+        &self,
+        d_out: &[f32],
+        input: &[f32],
+        q: &[f32],
+        k: &[f32],
+        v: &[f32],
+        attn_weights: &[Vec<Vec<f32>>],
+        attn_pre_wo: &[f32],
+        wq: &[f32],
+        wk: &[f32],
+        wv: &[f32],
+        wo: &[f32],
+        seq_len: usize,
+    ) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+        let d = self.cfg.d_model;
+        let h = self.cfg.num_heads;
+        let d_head = d / h;
+        let scale = (d_head as f32).sqrt();
+        let qk_gain = self.cfg.qk_gain as f32;
+
+        let d_attn_pre_wo = matmul_transpose_b(d_out, wo, seq_len, d, d);
+        let gwo = matmul_transpose_a(attn_pre_wo, d_out, seq_len, d, d);
+
+        let mut d_q = vec![0.0f32; seq_len * d];
+        let mut d_k = vec![0.0f32; seq_len * d];
+        let mut d_v = vec![0.0f32; seq_len * d];
+
+        for head in 0..h {
+            let ho = head * d_head;
+            for i in 0..seq_len {
+                let mut d_aw = vec![0.0f32; i + 1];
+                for j in 0..=i {
+                    let mut s = 0.0f32;
+                    for ki in 0..d_head {
+                        s += d_attn_pre_wo[i * d + ho + ki] * v[j * d + ho + ki];
+                    }
+                    d_aw[j] = s;
+                }
+
+                let w = &attn_weights[i][head];
+                let sum_wdaw: f32 = (0..=i).map(|jj| w[jj] * d_aw[jj]).sum();
+                let mut d_scores = vec![0.0f32; i + 1];
+                for j in 0..=i {
+                    d_scores[j] = w[j] * (d_aw[j] - sum_wdaw) * qk_gain / scale;
+                }
+
+                for j in 0..=i {
+                    for ki in 0..d_head {
+                        d_q[i * d + ho + ki] += d_scores[j] * k[j * d + ho + ki];
+                        d_k[j * d + ho + ki] += d_scores[j] * q[i * d + ho + ki];
+                        d_v[j * d + ho + ki] += w[j] * d_attn_pre_wo[i * d + ho + ki];
+                    }
+                }
+            }
+        }
+
+        let gwq = matmul_transpose_a(input, &d_q, seq_len, d, d);
+        let gwk = matmul_transpose_a(input, &d_k, seq_len, d, d);
+        let gwv = matmul_transpose_a(input, &d_v, seq_len, d, d);
+
+        let d_input_q = matmul_transpose_b(&d_q, wq, seq_len, d, d);
+        let d_input_k = matmul_transpose_b(&d_k, wk, seq_len, d, d);
+        let d_input_v = matmul_transpose_b(&d_v, wv, seq_len, d, d);
+        let mut d_input = vec![0.0f32; seq_len * d];
+        for i in 0..seq_len * d {
+            d_input[i] = d_input_q[i] + d_input_k[i] + d_input_v[i];
+        }
+
+        (gwq, gwk, gwv, gwo, d_input)
+    }
+
+    pub fn wq2_mut(&mut self) -> &mut [f32] {
+        &mut self.wq2
+    }
+    pub fn wk2_mut(&mut self) -> &mut [f32] {
+        &mut self.wk2
+    }
+    pub fn wv2_mut(&mut self) -> &mut [f32] {
+        &mut self.wv2
+    }
+    pub fn wo2_mut(&mut self) -> &mut [f32] {
+        &mut self.wo2
+    }
+
+    pub fn total_weights_all(&self) -> usize {
+        8 * self.cfg.d_model * self.cfg.d_model
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Helpers (kept private; test-visible via the `HybridAttn::forward` call)
 // ═══════════════════════════════════════════════════════════════════
@@ -454,6 +821,59 @@ fn softmax_inplace(v: &mut [f32]) {
             *x /= sum;
         }
     }
+}
+
+fn matmul_transpose_a(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut out = vec![0.0_f32; k * n];
+    for i in 0..m {
+        for p in 0..k {
+            let a_ip = a[i * k + p];
+            for j in 0..n {
+                out[p * n + j] += a_ip * b[i * n + j];
+            }
+        }
+    }
+    out
+}
+
+fn matmul_transpose_b(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut out = vec![0.0_f32; m * n];
+    for i in 0..m {
+        for j in 0..n {
+            let mut s = 0.0_f32;
+            for p in 0..k {
+                s += a[i * k + p] * b[j * k + p];
+            }
+            out[i * n + j] = s;
+        }
+    }
+    out
+}
+
+fn layer_norm_rows_backward(
+    x: &[f32],
+    y: &[f32],
+    dy: &[f32],
+    rows: usize,
+    cols: usize,
+) -> Vec<f32> {
+    let eps = 1e-5_f32;
+    let mut dx = vec![0.0f32; rows * cols];
+    for r in 0..rows {
+        let row_x = &x[r * cols..(r + 1) * cols];
+        let row_y = &y[r * cols..(r + 1) * cols];
+        let row_dy = &dy[r * cols..(r + 1) * cols];
+        let n = cols as f32;
+        let mean: f32 = row_x.iter().sum::<f32>() / n;
+        let var: f32 = row_x.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / n;
+        let std_inv = 1.0 / (var + eps).sqrt();
+        let sum_dy: f32 = row_dy.iter().sum();
+        let sum_dy_y: f32 = row_dy.iter().zip(row_y.iter()).map(|(d, yi)| d * yi).sum();
+        for c in 0..cols {
+            dx[r * cols + c] = (row_dy[c] - sum_dy / n - row_y[c] * sum_dy_y / n) * std_inv;
+        }
+    }
+    dx
 }
 
 // ═══════════════════════════════════════════════════════════════════
