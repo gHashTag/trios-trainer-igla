@@ -7,9 +7,6 @@
 {"seed":42,"steps":3000,"bpb":2.7473,"ema_bpb":3.8157,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
 {"seed":43,"steps":3000,"bpb":2.7784,"ema_bpb":3.8360,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
 {"seed":44,"steps":3000,"bpb":2.7551,"ema_bpb":3.8067,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
-{"seed":42,"steps":81000,"bpb":2.6861,"ema_bpb":2.6861,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
-{"seed":43,"steps":81000,"bpb":2.6810,"ema_bpb":2.6810,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
-{"seed":44,"steps":81000,"bpb":2.6781,"ema_bpb":2.6781,"optimizer":"adamw+muon_proj+nca","hidden":828,"lr":0.003,"attn_layers":2,"sha":"82458c3","gate_status":"below_target_evidence","agent":"railway-hybrid-81k"}
-{"seed":42,"steps":81000,"bpb":2.2224,"ema_bpb":2.2224,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
-{"seed":43,"steps":81000,"bpb":2.2111,"ema_bpb":2.2111,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
-{"seed":44,"steps":81000,"bpb":2.2176,"ema_bpb":2.2176,"optimizer":"adamw","hidden":384,"lr":0.003,"attn_layers":2,"sha":"22bb11f","gate_status":"new_champion","agent":"railway-trios-train-81k"}
+{"seed": 43, "bpb": 2.1919, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
+{"seed": 44, "bpb": 2.2024, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
+{"seed": 45, "bpb": 2.1944, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
