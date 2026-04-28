@@ -624,12 +624,17 @@ impl CpuModel {
 }
 
 fn main() {
+    let format_type = std::env::var("TRIOS_FORMAT_TYPE").ok();
     let seed = arg_or("seed", "42").parse::<u64>().unwrap_or(42);
     let steps = arg_or("steps", "3000").parse::<usize>().unwrap_or(3000);
     let lr = arg_or("lr", "0.003").parse::<f32>().unwrap_or(0.003);
     let vocab: usize = arg_or("vocab", "128").parse().unwrap_or(128);
     let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
     let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
+
+    // For Phase E.GF v2, use format type in result filename
+    let default_format = "f32".to_string();
+    let format_suffix = format_type.as_ref().unwrap_or(&default_format);
 
     let raw_tokens = load_data("data/tinyshakespeare.txt");
     let tokens: Vec<usize> = raw_tokens.iter().map(|&t| t % vocab).collect();
@@ -726,7 +731,7 @@ fn main() {
         "duration_seconds": total.as_secs_f64(),
     });
 
-    let rpath = format!(".trinity/results/cpu_train_seed{}.json", seed);
+    let rpath = format!(".trinity/results/cpu_train_{}_seed{}.json", format_suffix, seed);
     fs::File::create(&rpath)
         .unwrap()
         .write_all(
