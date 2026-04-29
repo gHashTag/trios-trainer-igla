@@ -731,7 +731,10 @@ fn main() {
         "duration_seconds": total.as_secs_f64(),
     });
 
-    let rpath = format!(".trinity/results/cpu_train_{}_seed{}.json", format_suffix, seed);
+    let rpath = format!(
+        ".trinity/results/cpu_train_{}_seed{}.json",
+        format_suffix, seed
+    );
     fs::File::create(&rpath)
         .unwrap()
         .write_all(
