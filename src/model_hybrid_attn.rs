@@ -554,7 +554,9 @@ impl HybridAttn {
         let mut cache = ForwardCache::new(seq_len, d, self.cfg.num_heads);
         cache.tokens.copy_from_slice(tokens);
 
-        let (layer1_out, cache1) = self.forward_single_layer_cached(tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo, 1)?;
+        let (layer1_out, cache1) = self.forward_single_layer_cached(
+            tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo, 1,
+        )?;
         cache.q1 = cache1.q;
         cache.k1 = cache1.k;
         cache.v1 = cache1.v;
@@ -572,7 +574,9 @@ impl HybridAttn {
             return Ok((normed1, cache));
         }
 
-        let (layer2_out, cache2) = self.forward_single_layer_cached(&normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2, 2)?;
+        let (layer2_out, cache2) = self.forward_single_layer_cached(
+            &normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2, 2,
+        )?;
         cache.q2 = cache2.q;
         cache.k2 = cache2.k;
         cache.v2 = cache2.v;
@@ -692,7 +696,8 @@ impl HybridAttn {
             let mut d_normed1 = d_normed2.clone();
 
             // Backward through output projection WO2
-            let (d_attn_out, d_wo2) = matmul_backward(&cache.layer2_out, &d_layer2_out, &self.wo2, seq_len, d, d);
+            let (d_attn_out, d_wo2) =
+                matmul_backward(&cache.layer2_out, &d_layer2_out, &self.wo2, seq_len, d, d);
             gradients.d_wo2 = d_wo2;
 
             // Backward through attention mechanism (layer 2)
@@ -739,7 +744,8 @@ impl HybridAttn {
         let mut d_tokens = d_normed1.clone();
 
         // Backward through output projection WO1
-        let (d_attn_out, d_wo) = matmul_backward(&cache.layer1_out, &d_layer1_out, &self.wo, seq_len, d, d);
+        let (d_attn_out, d_wo) =
+            matmul_backward(&cache.layer1_out, &d_layer1_out, &self.wo, seq_len, d, d);
         gradients.d_wo = d_wo;
 
         // Backward through attention mechanism (layer 1)
@@ -786,7 +792,13 @@ struct LayerCache {
 }
 
 /// LayerNorm backward pass (row-wise, for multiple rows).
-fn layer_norm_backward_cached(x: &[f32], dx: &[f32], rows: usize, cols: usize, eps: f32) -> Vec<f32> {
+fn layer_norm_backward_cached(
+    x: &[f32],
+    dx: &[f32],
+    rows: usize,
+    cols: usize,
+    eps: f32,
+) -> Vec<f32> {
     let mut dln_output = vec![0.0_f32; x.len()];
 
     for r in 0..rows {
@@ -822,7 +834,14 @@ fn layer_norm_backward_cached(x: &[f32], dx: &[f32], rows: usize, cols: usize, e
 ///
 /// Given forward: output = input @ weight
 /// Returns (d_input, d_weight)
-fn matmul_backward(input: &[f32], d_output: &[f32], weight: &[f32], m: usize, k: usize, n: usize) -> (Vec<f32>, Vec<f32>) {
+fn matmul_backward(
+    input: &[f32],
+    d_output: &[f32],
+    weight: &[f32],
+    m: usize,
+    k: usize,
+    n: usize,
+) -> (Vec<f32>, Vec<f32>) {
     let mut d_input = vec![0.0_f32; m * k];
     let mut d_weight = vec![0.0_f32; k * n];
 
@@ -901,12 +920,8 @@ fn attention_backward_cached(
                 }
 
                 // Backprop through softmax
-                let softmax_grad = softmax_backward_single(
-                    idx_base + j,
-                    &attn_weights[head],
-                    d_attn_w,
-                    i + 1,
-                );
+                let softmax_grad =
+                    softmax_backward_single(idx_base + j, &attn_weights[head], d_attn_w, i + 1);
 
                 // Backprop to Q (at position i)
                 for k_idx in 0..d_head {
@@ -931,15 +946,19 @@ fn attention_backward_cached(
 /// d_softmax[i] = dL/dsoftmax[i] - sum_j(dL/dsoftmax[j] * softmax[j]) * softmax[i]
 fn softmax_backward_single(target_idx: usize, softmax: &[f32], d_loss: f32, n: usize) -> f32 {
     let target = softmax[target_idx];
-    let sum: f32 = softmax.iter().zip(0..n).map(|(&s, j)| {
-        if j < softmax.len() {
-            let idx = j * (j + 1) / 2 + (target_idx - j);
-            if idx < softmax.len() {
-                // This is a simplification - in practice, we'd need the full softmax vector
+    let sum: f32 = softmax
+        .iter()
+        .zip(0..n)
+        .map(|(&s, j)| {
+            if j < softmax.len() {
+                let idx = j * (j + 1) / 2 + (target_idx - j);
+                if idx < softmax.len() {
+                    // This is a simplification - in practice, we'd need the full softmax vector
+                }
             }
-        }
-        s
-    }).sum();
+            s
+        })
+        .sum();
 
     // For causal attention, we use a simplified gradient
     // The full implementation would require storing the full score vector
@@ -1107,13 +1126,8 @@ impl HybridAttn {
                 d_normed1[i] += d_normed1_from_attn[i];
             }
 
-            let d_residual1 = layer_norm_rows_backward(
-                &cache.residual1,
-                &cache.normed1,
-                &d_normed1,
-                seq_len,
-                d,
-            );
+            let d_residual1 =
+                layer_norm_rows_backward(&cache.residual1, &cache.normed1, &d_normed1, seq_len, d);
             let d_input_from_res = d_residual1.clone();
             let d_layer1_out = d_residual1;
 
@@ -1149,13 +1163,8 @@ impl HybridAttn {
                 d_input,
             }
         } else {
-            let d_residual1 = layer_norm_rows_backward(
-                &cache.residual1,
-                &cache.output,
-                d_output,
-                seq_len,
-                d,
-            );
+            let d_residual1 =
+                layer_norm_rows_backward(&cache.residual1, &cache.output, d_output, seq_len, d);
             let d_input_from_res = d_residual1.clone();
             let d_layer1_out = d_residual1;
 
@@ -1591,7 +1600,9 @@ mod falsifiers {
 
         // Simple input
         let tokens = vec![1.0_f32; seq_len * d];
-        let (out, cache) = block.forward_cached(&tokens, seq_len).expect("forward should succeed");
+        let (out, cache) = block
+            .forward_cached(&tokens, seq_len)
+            .expect("forward should succeed");
 
         // Upstream gradient (all ones)
         let d_output = vec![1.0_f32; seq_len * d];
@@ -1601,11 +1612,26 @@ mod falsifiers {
         let d_input = block.backward(&d_output, &cache, &mut grads);
 
         // All gradients should be finite
-        assert!(grads.d_wq.iter().all(|x| x.is_finite()), "d_wq should be finite");
-        assert!(grads.d_wk.iter().all(|x| x.is_finite()), "d_wk should be finite");
-        assert!(grads.d_wv.iter().all(|x| x.is_finite()), "d_wv should be finite");
-        assert!(grads.d_wo.iter().all(|x| x.is_finite()), "d_wo should be finite");
-        assert!(d_input.iter().all(|x| x.is_finite()), "d_input should be finite");
+        assert!(
+            grads.d_wq.iter().all(|x| x.is_finite()),
+            "d_wq should be finite"
+        );
+        assert!(
+            grads.d_wk.iter().all(|x| x.is_finite()),
+            "d_wk should be finite"
+        );
+        assert!(
+            grads.d_wv.iter().all(|x| x.is_finite()),
+            "d_wv should be finite"
+        );
+        assert!(
+            grads.d_wo.iter().all(|x| x.is_finite()),
+            "d_wo should be finite"
+        );
+        assert!(
+            d_input.iter().all(|x| x.is_finite()),
+            "d_input should be finite"
+        );
 
         // Gradients should have correct shape
         assert_eq!(grads.d_wq.len(), d * d, "d_wq shape");
@@ -1625,18 +1651,35 @@ mod falsifiers {
         let d = block.config().d_model;
         let tokens = vec![1.0_f32; seq_len * d];
 
-        let (out, cache) = block.forward_cached(&tokens, seq_len).expect("forward should succeed");
+        let (out, cache) = block
+            .forward_cached(&tokens, seq_len)
+            .expect("forward should succeed");
         let d_output = vec![1.0_f32; seq_len * d];
 
         let mut grads = AttentionGradients::new(d);
         let d_input = block.backward(&d_output, &cache, &mut grads);
 
         // All gradients including layer 2 should be finite
-        assert!(grads.d_wq2.iter().all(|x| x.is_finite()), "d_wq2 should be finite");
-        assert!(grads.d_wk2.iter().all(|x| x.is_finite()), "d_wk2 should be finite");
-        assert!(grads.d_wv2.iter().all(|x| x.is_finite()), "d_wv2 should be finite");
-        assert!(grads.d_wo2.iter().all(|x| x.is_finite()), "d_wo2 should be finite");
-        assert!(d_input.iter().all(|x| x.is_finite()), "d_input should be finite");
+        assert!(
+            grads.d_wq2.iter().all(|x| x.is_finite()),
+            "d_wq2 should be finite"
+        );
+        assert!(
+            grads.d_wk2.iter().all(|x| x.is_finite()),
+            "d_wk2 should be finite"
+        );
+        assert!(
+            grads.d_wv2.iter().all(|x| x.is_finite()),
+            "d_wv2 should be finite"
+        );
+        assert!(
+            grads.d_wo2.iter().all(|x| x.is_finite()),
+            "d_wo2 should be finite"
+        );
+        assert!(
+            d_input.iter().all(|x| x.is_finite()),
+            "d_input should be finite"
+        );
     }
 
     /// L-h5 — Gradient accumulation (multiple backward passes)
@@ -1652,20 +1695,28 @@ mod falsifiers {
         let mut grads = AttentionGradients::new(d);
 
         // First backward pass
-        let (_, cache) = block.forward_cached(&tokens, seq_len).expect("forward should succeed");
+        let (_, cache) = block
+            .forward_cached(&tokens, seq_len)
+            .expect("forward should succeed");
         block.backward(&d_output, &cache, &mut grads);
 
         let grads_1 = grads.d_wq.clone();
 
         // Second backward pass (gradients should accumulate)
-        let (_, cache2) = block.forward_cached(&tokens, seq_len).expect("forward should succeed");
+        let (_, cache2) = block
+            .forward_cached(&tokens, seq_len)
+            .expect("forward should succeed");
         block.backward(&d_output, &cache2, &mut grads);
 
         // Gradients should be approximately doubled
         for i in 0..grads.d_wq.len() {
-            assert!((grads.d_wq[i] - 2.0 * grads_1[i]).abs() < 1e-5,
+            assert!(
+                (grads.d_wq[i] - 2.0 * grads_1[i]).abs() < 1e-5,
                 "gradient accumulation at index {}: got {}, expected {}",
-                i, grads.d_wq[i], 2.0 * grads_1[i]);
+                i,
+                grads.d_wq[i],
+                2.0 * grads_1[i]
+            );
         }
     }
 
@@ -1677,10 +1728,22 @@ mod falsifiers {
 
         grads.clear();
 
-        assert!(grads.d_wq.iter().all(|x| *x == 0.0), "d_wq should be cleared");
-        assert!(grads.d_wk.iter().all(|x| *x == 0.0), "d_wk should be cleared");
-        assert!(grads.d_wv.iter().all(|x| *x == 0.0), "d_wv should be cleared");
-        assert!(grads.d_wo.iter().all(|x| *x == 0.0), "d_wo should be cleared");
+        assert!(
+            grads.d_wq.iter().all(|x| *x == 0.0),
+            "d_wq should be cleared"
+        );
+        assert!(
+            grads.d_wk.iter().all(|x| *x == 0.0),
+            "d_wk should be cleared"
+        );
+        assert!(
+            grads.d_wv.iter().all(|x| *x == 0.0),
+            "d_wv should be cleared"
+        );
+        assert!(
+            grads.d_wo.iter().all(|x| *x == 0.0),
+            "d_wo should be cleared"
+        );
     }
 
     /// L-h5 — Forward cache structure
