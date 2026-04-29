@@ -10,7 +10,12 @@ RUN rustup default 1.91
 
 WORKDIR /build
 COPY . .
-RUN cargo build --release --bin trios-train -p trios-trainer
+RUN cargo build --release \
+        --bin entrypoint \
+        --bin trios-train \
+        --bin gf16_test \
+        --bin ngram_train_gf16 \
+        -p trios-trainer
 
 FROM debian:bookworm-slim AS runtime
 
@@ -19,9 +24,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /work
+COPY --from=builder /build/target/release/entrypoint /usr/local/bin/entrypoint
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
-COPY scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
+COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
 
 RUN mkdir -p /work/data && \
     curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
@@ -34,4 +40,4 @@ ENV TRIOS_LR=0.003
 ENV TRIOS_HIDDEN=384
 ENV TRIOS_OPTIMIZER=adamw
 
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
