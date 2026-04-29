@@ -26,7 +26,9 @@ fn attn_scale() -> f32 {
 }
 
 fn gf16_enabled() -> bool {
-    std::env::var("TRIOS_GF16_DISABLE").map(|v| v != "1").unwrap_or(true)
+    std::env::var("TRIOS_GF16_DISABLE")
+        .map(|v| v != "1")
+        .unwrap_or(true)
 }
 
 fn attn_seq_override() -> usize {
@@ -271,12 +273,7 @@ impl HybridModel {
         let (attn_output, attn_cache) = self
             .attn
             .forward_with_cache(&attn_input, attn_seq)
-            .unwrap_or_else(|_| {
-                (
-                    vec![0.0f32; attn_seq * d],
-                    AttentionCache::default(),
-                )
-            });
+            .unwrap_or_else(|_| (vec![0.0f32; attn_seq * d], AttentionCache::default()));
 
         let attn_out = attn_output[(attn_seq - 1) * d..attn_seq * d].to_vec();
 
@@ -592,7 +589,8 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 pos.push((rng_s as usize) % cnt);
             }
             compute_grads(
-                &model, chunk, &pos, &mut ge, &mut gc, &mut gp, &mut gh, &mut g_ad, &mut g_au, &mut g_aw,
+                &model, chunk, &pos, &mut ge, &mut gc, &mut gp, &mut gh, &mut g_ad, &mut g_au,
+                &mut g_aw,
             );
         }
 
@@ -807,7 +805,8 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 pos.push((rng_s as usize) % cnt);
             }
             compute_grads(
-                &model, chunk, &pos, &mut ge, &mut gc, &mut gp, &mut gh, &mut g_ad, &mut g_au, &mut g_aw,
+                &model, chunk, &pos, &mut ge, &mut gc, &mut gp, &mut gh, &mut g_ad, &mut g_au,
+                &mut g_aw,
             );
         }
 

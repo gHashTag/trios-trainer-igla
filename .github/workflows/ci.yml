@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: ci
     steps:
       - uses: actions/checkout@v4
       - name: Build docker image
