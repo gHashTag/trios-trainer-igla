@@ -20,6 +20,10 @@ name = "trios_trainer"
 path = "src/lib.rs"
 
 [[bin]]
+name = "entrypoint"
+path = "src/bin/entrypoint.rs"
+
+[[bin]]
 name = "trios-train"
 path = "src/bin/trios-train.rs"
 

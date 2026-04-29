@@ -75,5 +75,18 @@ Every PR opened in this repo MUST cite:
 PRs that touch `gHashTag/trios` itself (L-T3, L-T4) MUST also cite the same
 quartet so the legacy hub keeps a back-link.
 
+## L1 purge (2026-04-29) — `scripts/*.sh` removed
+
+LAWS.md L1 ("No Shell Scripts") forbids `.sh` files. All five legacy
+helpers were removed:
+
+| File | Disposition | Replacement / where to look |
+|------|-------------|-----------------------------|
+| `scripts/entrypoint.sh` | replaced by Rust bin | `src/bin/entrypoint.rs` (`[[bin]] name = "entrypoint"`); Dockerfile now `ENTRYPOINT ["/usr/local/bin/entrypoint"]`. Same `TRIOS_*` env contract, plus `TRIOS_TRAINER_BIN ∈ {trios-train, gf16_test, ngram_train_gf16}` for ORDER-8 path-B selection. |
+| `scripts/deploy-seeds.sh` | deleted (operator-only one-off) | The script just printed `railway add … && railway up …` lines for seeds 100/101/102. Run those commands by hand, or re-add as a Rust bin under `src/bin/` if it becomes a recurring need. |
+| `scripts/p1-deploy.sh` | deleted (operator-only one-off) | P1 Optimizer Lab deploy was a manual fan-out over `p1-adamw`/`p1-muon`/`p1-muon-cwd`. Same — drive `railway` directly, or write a Rust helper. |
+| `scripts/launch_E41_E45.sh` | deleted (one-shot experiment launcher) | E41–E45 sweeps used `tjepa_train` directly with parallel `&` background jobs. Re-do via GHA matrix or a Rust bin if reproduction is needed. |
+| `scripts/railway-seed-deploy.sh` | deleted (operator-only one-off) | Curl-against-Railway-GraphQL helper for fleet 100/101/102. If this comes back, write a Rust bin using `reqwest` (already in workspace). |
+
 Anchor: `phi^2 + phi^-2 = 3` —
 [Zenodo 10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877).
