@@ -1,11 +1,25 @@
 name: Docker Publish (GHCR)
 
-# L-T5 (gHashTag/trios-trainer-igla#8) — push image to
-# ghcr.io/ghashtag/trios-trainer-igla:latest after every main merge.
+# L-T5 (gHashTag/trios-trainer-igla#8) — push image to GHCR after every
+# main merge.
+#
+# Promotion-path Step D (gHashTag/trios-railway#90): the real-seed-agent
+# Dockerfile expects `ghcr.io/ghashtag/trios-train:latest`. We preserve
+# the historical `trios-trainer-igla` tag for backward compatibility and
+# additionally publish under the new `trios-train` name that PR-B
+# (`Dockerfile.real-seed-agent`) consumes.
 
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Dockerfile"
+      - ".github/workflows/docker-publish.yml"
   workflow_dispatch:
 
 permissions:
@@ -31,13 +45,28 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push
-        uses: docker/build-push-action@v5
+      - name: Build & push (legacy + promotion tags)
+        uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: |
             ghcr.io/ghashtag/trios-trainer-igla:latest
             ghcr.io/ghashtag/trios-trainer-igla:${{ github.sha }}
+            ghcr.io/ghashtag/trios-train:latest
+            ghcr.io/ghashtag/trios-train:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  smoke-image:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Pull and inspect both image names
+        run: |
+          docker pull ghcr.io/ghashtag/trios-trainer-igla:latest
+          docker pull ghcr.io/ghashtag/trios-train:latest
+          docker run --rm --entrypoint /bin/sh \
+            ghcr.io/ghashtag/trios-train:latest \
+            -c 'ls -la /usr/local/bin/trios-train && /usr/local/bin/trios-train --help 2>&1 | head -20 || true'
