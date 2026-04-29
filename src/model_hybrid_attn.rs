@@ -554,7 +554,7 @@ impl HybridAttn {
         let mut cache = ForwardCache::new(seq_len, d, self.cfg.num_heads);
         cache.tokens.copy_from_slice(tokens);
 
-        let (layer1_out, cache1) = self.forward_single_layer_cached(
+        let (layer1_out, cache1) = self.forward_single_layer_cached_v2(
             tokens, seq_len, &self.wq, &self.wk, &self.wv, &self.wo, 1,
         )?;
         cache.q1 = cache1.q;
@@ -574,7 +574,7 @@ impl HybridAttn {
             return Ok((normed1, cache));
         }
 
-        let (layer2_out, cache2) = self.forward_single_layer_cached(
+        let (layer2_out, cache2) = self.forward_single_layer_cached_v2(
             &normed1, seq_len, &self.wq2, &self.wk2, &self.wv2, &self.wo2, 2,
         )?;
         cache.q2 = cache2.q;
@@ -592,8 +592,12 @@ impl HybridAttn {
         Ok((out, cache))
     }
 
-    /// Forward pass for a single layer with caching.
-    fn forward_single_layer_cached(
+    /// Forward pass for a single layer with caching (Step E canonical).
+    ///
+    /// Renamed from `forward_single_layer_cached` to disambiguate from the
+    /// legacy 2-arg method below, which is still used by the L-T2 path
+    /// `forward_cached(tokens, seq_len) -> AttentionCache` until JEPA migration in #5.
+    fn forward_single_layer_cached_v2(
         &self,
         tokens: &[f32],
         seq_len: usize,
@@ -655,7 +659,13 @@ impl HybridAttn {
         Ok((out, cache))
     }
 
-    /// Backward pass: computes gradients for all weights.
+    /// Backward pass (Step E canonical): computes gradients for all weights.
+    ///
+    /// Renamed from `backward` to disambiguate from the legacy
+    /// `backward(&AttentionCache, &[f32]) -> AttentionGrads` method below,
+    /// which is still used by `train_loop.rs:415` on the L-T2 path until
+    /// the migration to JEPA. The two cannot coexist on the same impl
+    /// block under the same name (E0034 multiple applicable items).
     ///
     /// # Arguments
     ///
@@ -666,7 +676,7 @@ impl HybridAttn {
     /// # Returns
     ///
     /// Gradient of loss wrt input tokens (seq_len × d_model)
-    pub fn backward(
+    pub fn backward_v2(
         &self,
         d_output: &[f32],
         cache: &ForwardCache,
@@ -1039,6 +1049,10 @@ impl HybridAttn {
         Ok((cache.output.clone(), cache))
     }
 
+    /// Legacy forward pass for a single layer (pre-Step-E).
+    /// Used by the L-T2 path's `forward_cached(...) -> AttentionCache` and the
+    /// matching legacy `backward(...)`. Kept until JEPA migration in #5.
+    /// The Step-E canonical is `forward_single_layer_cached_v2` above.
     fn forward_single_layer_cached(
         &self,
         tokens: &[f32],
@@ -1095,6 +1109,9 @@ impl HybridAttn {
         Ok((out, q, k, v, attn_weights, attn_out))
     }
 
+    /// Legacy backward pass (pre-Step-E). Returns weight-gradients as `AttentionGrads`.
+    /// Kept for the L-T2 path used by `train_loop.rs:415` until JEPA migration in #5.
+    /// The Step-E canonical implementation is `backward_v2` above.
     pub fn backward(&self, cache: &AttentionCache, d_output: &[f32]) -> AttentionGrads {
         let d = self.cfg.d_model;
         let seq_len = cache.seq_len;
@@ -1609,7 +1626,7 @@ mod falsifiers {
 
         // Compute backward pass
         let mut grads = AttentionGradients::new(d);
-        let d_input = block.backward(&d_output, &cache, &mut grads);
+        let d_input = block.backward_v2(&d_output, &cache, &mut grads);
 
         // All gradients should be finite
         assert!(
@@ -1657,7 +1674,7 @@ mod falsifiers {
         let d_output = vec![1.0_f32; seq_len * d];
 
         let mut grads = AttentionGradients::new(d);
-        let d_input = block.backward(&d_output, &cache, &mut grads);
+        let d_input = block.backward_v2(&d_output, &cache, &mut grads);
 
         // All gradients including layer 2 should be finite
         assert!(
@@ -1698,7 +1715,7 @@ mod falsifiers {
         let (_, cache) = block
             .forward_cached(&tokens, seq_len)
             .expect("forward should succeed");
-        block.backward(&d_output, &cache, &mut grads);
+        block.backward_v2(&d_output, &cache, &mut grads);
 
         let grads_1 = grads.d_wq.clone();
 
@@ -1706,7 +1723,7 @@ mod falsifiers {
         let (_, cache2) = block
             .forward_cached(&tokens, seq_len)
             .expect("forward should succeed");
-        block.backward(&d_output, &cache2, &mut grads);
+        block.backward_v2(&d_output, &cache2, &mut grads);
 
         // Gradients should be approximately doubled
         for i in 0..grads.d_wq.len() {
