@@ -38,7 +38,11 @@ fn client() -> Option<&'static Client> {
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            let dsn = std::env::var("TRIOS_NEON_DSN").ok()?;
+            let dsn = std::env::var("TRIOS_NEON_DSN")
+                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+                .or_else(|_| std::env::var("DATABASE_URL"))
+                .ok()?;
+            eprintln!("[neon_writer] connecting to Neon …");
             let connect = rt().block_on(async {
                 let connector = tokio_postgres::connect(&dsn, NoTls).await;
                 match connector {
@@ -130,6 +134,41 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
         "UPDATE igla_race_trials SET bpb_final=$1, status='complete' WHERE trial_id=$2",
         &[&(bpb as f64), &trial_id],
     );
+}
+
+
+/// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
+///
+/// This is the canonical write path for IGLA RACE leader/follower telemetry.
+/// Caller invokes this every `TRIOS_CHECKPOINT_INTERVAL` steps (default 200).
+///
+/// Schema (verified against NEON 2026-04-30):
+///   id BIGSERIAL, canon_name TEXT, seed INT, step INT, bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
+pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
+    execute(
+        "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
+         VALUES ($1, $2, $3, $4, NOW())",
+        &[&canon_name, &seed, &step, &(bpb as f64)],
+    );
+}
+
+/// Apply idempotent DDL: ensure `bpb_latest` column exists on `igla_race_trials`.
+/// Safe to call repeatedly. No-op when the column already exists.
+pub fn ensure_schema() {
+    execute(
+        "ALTER TABLE igla_race_trials ADD COLUMN IF NOT EXISTS bpb_latest DOUBLE PRECISION",
+        &[],
+    );
+}
+
+/// Default checkpoint interval honoured by trainers writing to bpb_samples.
+/// Reads `TRIOS_CHECKPOINT_INTERVAL` env var; defaults to 200 (Fibonacci-friendly,
+/// short enough to surface mid-training BPB before Gate-2 horizon at 4096 steps).
+pub fn checkpoint_interval() -> usize {
+    std::env::var("TRIOS_CHECKPOINT_INTERVAL")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(200)
 }
 
 #[cfg(test)]
