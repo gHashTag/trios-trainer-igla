@@ -10,9 +10,18 @@
 
 fn main() {
     let canon = std::env::var("CANON_NAME").unwrap_or_else(|_| "bpb_smoke_test".to_string());
-    let seed: i32 = std::env::var("SEED").ok().and_then(|s| s.parse().ok()).unwrap_or(1597);
-    let step: i32 = std::env::var("STEP").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
-    let bpb: f32 = std::env::var("BPB").ok().and_then(|s| s.parse().ok()).unwrap_or(2.5);
+    let seed: i32 = std::env::var("SEED")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1597);
+    let step: i32 = std::env::var("STEP")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0);
+    let bpb: f32 = std::env::var("BPB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2.5);
 
     eprintln!("[bpb_smoke] writing canon={canon} seed={seed} step={step} bpb={bpb}");
     trios_trainer::neon_writer::ensure_schema();

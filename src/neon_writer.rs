@@ -136,7 +136,6 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
     );
 }
 
-
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
 /// This is the canonical write path for IGLA RACE leader/follower telemetry.
