@@ -412,7 +412,7 @@ impl GF24Alt2 {
         if exp == 1023 {
             return if mant == 0 { sign * f32::INFINITY } else { f32::NAN };
         }
-        let exp_val = if exp > 0 { 2.0_f32.powi(exp - Self::EXP_BIAS as i32) } else { 0.0 };
+        let exp_val = 2.0_f32.powi(exp - Self::EXP_BIAS as i32);
         sign * exp_val * (1.0 + (mant as f32) / 8192.0)
     }
 
