@@ -71,6 +71,35 @@ fn load_data(path: &str) -> Vec<usize> {
     fallback.into_iter().map(|b| (b as usize) % VOCAB).collect()
 }
 
+/// Assert train/val streams are byte-disjoint at a sample level. Called by
+/// `run_single` and `run_single_muon` right after load, before any gradient
+/// step. Panics if the first 1024 bytes of val occur as a substring of train
+/// (the classic "val is a prefix of train" leak fixed in
+/// trios-trainer-igla#60 — Dockerfile was doing `head -c 100000 train > val`).
+///
+/// Keeps the check cheap: only compares two 1 KB hash windows. Does not
+/// catch all possible overlaps, but blocks the specific regression that
+/// produced the 216 leak-tainted BPB < 0.1 rows in the 2026-04-30 ledger.
+pub(crate) fn assert_train_val_disjoint(train: &[usize], val: &[usize]) {
+    let probe_len = 1024.min(val.len());
+    if probe_len == 0 || train.is_empty() {
+        return; // nothing to compare (synthetic fallback path)
+    }
+    let val_probe = &val[..probe_len];
+    // Scan train in 1 KB windows looking for val prefix identity.
+    let hit = train
+        .windows(probe_len)
+        .step_by(probe_len / 4) // stride = 256 tokens, ~75% overlap coverage
+        .any(|w| w == val_probe);
+    assert!(
+        !hit,
+        "TRAIN/VAL OVERLAP DETECTED: first {} val tokens appear in train. \
+         This is the 2026-04-30 ledger leak bug (trios-trainer-igla#60). \
+         Rebuild image with byte-disjoint split: head -c $((SIZE-100000)) for train, tail -c 100000 for val.",
+        probe_len
+    );
+}
+
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
     let n = x.len() as f32;
     let mean = x.iter().sum::<f32>() / n;
@@ -529,6 +558,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
     eprintln!("train={} val={}", train.len(), val.len());
+    assert_train_val_disjoint(&train, &val);
 
     let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
     let d = model.attn.config().d_model;
@@ -736,6 +766,7 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
     );
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
+    assert_train_val_disjoint(&train, &val);
 
     let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
     let d = model.attn.config().d_model;

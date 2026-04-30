@@ -31,9 +31,20 @@ COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
 COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
 COPY --from=builder /build/target/release/bpb_smoke /usr/local/bin/bpb_smoke
 
+# Byte-disjoint train/val split. The previous version ran
+#   head -c 100000 tiny_shakespeare.txt > tiny_shakespeare_val.txt
+# which made val a strict prefix of train and produced BPB ≈ 0 on every
+# experiment after enough steps to memorise 100 KB. Fixed in
+# trios-trainer-igla#60: train = first (size-100000) bytes, val = last
+# 100000 bytes, strictly disjoint.
 RUN mkdir -p /work/data && \
-    curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
-    head -c 100000 /work/data/tiny_shakespeare.txt > /work/data/tiny_shakespeare_val.txt
+    curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /tmp/full.txt && \
+    SIZE=$(stat -c%s /tmp/full.txt) && \
+    HEAD=$((SIZE - 100000)) && \
+    head -c $HEAD /tmp/full.txt > /work/data/tiny_shakespeare.txt && \
+    tail -c 100000 /tmp/full.txt > /work/data/tiny_shakespeare_val.txt && \
+    rm /tmp/full.txt && \
+    echo "[corpus-split] train=$(stat -c%s /work/data/tiny_shakespeare.txt) bytes  val=$(stat -c%s /work/data/tiny_shakespeare_val.txt) bytes"
 
 ENV RUST_LOG=info
 ENV TRIOS_SEED=43
