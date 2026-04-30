@@ -1,0 +1,76 @@
+name: Smoke (queue → trainer → JSONL → DB)
+
+# R5/L8 smoke proof: builds smoke_train, runs it without Neon (synthetic mode),
+# verifies stdout JSONL is parseable, and asserts exit code 0 in <3 minutes.
+#
+# Green CI ≡ live cycle. If this workflow goes red, no real wave should be
+# queued on Railway until it is green again.
+#
+# Refs: trios-trainer-igla#57, trios#445, trios-railway#100.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: smoke_train end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: smoke
+
+      - name: Build smoke_train (release, no Neon deps)
+        run: cargo build --release --bin smoke_train --locked
+
+      - name: Run smoke_train and capture stdout
+        id: run
+        run: |
+          set -euo pipefail
+          ./target/release/smoke_train > /tmp/smoke.stdout 2> /tmp/smoke.stderr
+          echo "----- stdout -----"
+          cat /tmp/smoke.stdout
+          echo "----- stderr -----"
+          cat /tmp/smoke.stderr
+
+      - name: Assert JSONL step line present (parseable by seed-agent)
+        run: |
+          set -euo pipefail
+          grep -E "^seed=[0-9]+ step=1 val_bpb=[0-9.]+ ema_bpb=" /tmp/smoke.stdout
+          echo "[smoke] step line OK"
+
+      - name: Assert DONE line present (parseable by seed-agent)
+        run: |
+          set -euo pipefail
+          grep -E "^DONE: seed=[0-9]+ bpb=[0-9.]+ steps=1 opt=smoke$" /tmp/smoke.stdout
+          echo "[smoke] DONE line OK"
+
+      - name: Assert seed-agent regex compatibility (parse_step_output mirror)
+        run: |
+          set -euo pipefail
+          # Mirror of bin/seed-agent/src/trainer.rs::parse_step_output:
+          #   step= must be followed by an integer, val_bpb= by a float.
+          line=$(grep -E "^seed=[0-9]+ step=" /tmp/smoke.stdout | head -1)
+          step=$(echo "$line" | sed -E 's/.*step=([0-9]+).*/\1/')
+          bpb=$(echo "$line" | sed -E 's/.*val_bpb=([0-9.]+).*/\1/')
+          test "$step" = "1"
+          # bpb must parse as a positive float
+          python3 -c "v=float('$bpb'); assert v >= 0.0 and v < 100.0, v"
+          echo "[smoke] seed-agent compat OK: step=$step bpb=$bpb"

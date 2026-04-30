@@ -712,6 +712,12 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 last_nca_entropy,
                 t0.elapsed().as_secs_f64()
             );
+            // R5/L8: flush stdout immediately so seed-agent reads the JSONL
+            // line. Without this the line stays in the BufWriter for the
+            // child stdout pipe and the parent reader times out before EOF.
+            // Refs: trios-railway#100, trios-trainer-igla#57.
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
         }
     }
 
@@ -929,6 +935,9 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 last_nca_entropy,
                 t0.elapsed().as_secs_f64()
             );
+            // R5/L8: flush stdout immediately. See note in run_single().
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
         }
     }
 

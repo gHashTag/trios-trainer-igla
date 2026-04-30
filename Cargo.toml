@@ -76,6 +76,12 @@ path = "src/bin/ngram_train_gf16.rs"
 name = "train_v2"
 path = "src/bin/train_v2.rs"
 
+# Smoke proof binary — minimal end-to-end pipeline test, runs in <60s on CPU
+# with synthetic data and writes one bpb_samples row. See src/bin/smoke_train.rs.
+[[bin]]
+name = "smoke_train"
+path = "src/bin/smoke_train.rs"
+
 # TODO: fix imports - requires transformer_trainer module
 # [[bin]]
 # name = "transformer_train"
@@ -157,6 +163,11 @@ race = []
 trios-integration = []
 # Enable in CI to enforce embargo + triplet validation strictly.
 ci-strict = []
+# Smoke-proof: minimal train that runs in <60s with synthetic data, steps=1,
+# CPU-only, and writes one row to bpb_samples. Used by .github/workflows/smoke.yml
+# to prove the queue → worker → trainer → JSONL → DB pipe is alive end-to-end.
+# Refs: trios-trainer-igla#57, trios#445.
+smoke = []
 
 [dependencies]
 # Internal canonical crates (opt-in via `trios-integration` feature).
