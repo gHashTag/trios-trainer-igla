@@ -17,6 +17,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use rustls::{ClientConfig, RootCertStore};
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 use tokio::time::sleep;
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -32,6 +33,7 @@ struct TrainerSpec {
     ctx: Option<u32>,
     format: Option<String>,
     seed: Option<u64>,
+    optimizer: Option<String>,
     val_split_seed: Option<String>,
 }
 
@@ -77,7 +79,7 @@ struct Strategy {
 /// `FOR UPDATE SKIP LOCKED` ensures two scarabs never race on the same row.
 async fn claim_any_pending(
     client: &tokio_postgres::Client,
-    worker_host: &str,
+    scarab_id: &uuid::Uuid,
 ) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
@@ -93,9 +95,9 @@ async fn claim_any_pending(
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, canon_name, steps_budget, config_json
+            RETURNING id, canon_name, steps_budget, config_json::text
             "#,
-            &[&worker_host],
+            &[&scarab_id],
         )
         .await?;
 
@@ -137,31 +139,73 @@ async fn run_strategy(
     let hidden = t.hidden.unwrap_or(828).to_string();
     let lr = t.lr.unwrap_or(0.0004).to_string();
     let steps = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
-    let ctx = t.ctx.unwrap_or(12).to_string();
+    let _ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
-    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
+    let optimizer = t.optimizer.clone().unwrap_or_else(|| "adamw".into());
+    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(3600);
 
     println!(
-        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed}",
+        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed} opt={optimizer} max_secs={max_secs}",
         strat.id, strat.canon_name
     );
 
+    // NEON_DATABASE_URL is inherited from parent env automatically.
+    // trios-train reads it from env, not from CLI args.
     let mut cmd = Command::new("trios-train");
-    cmd.args([
-        "--hidden", &hidden, "--lr", &lr, "--steps", &steps, "--seed", &seed,
-    ])
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+    cmd.env("CANON_NAME", &strat.canon_name)
+        .args([
+            "--hidden", &hidden,
+            "--lr", &lr,
+            "--steps", &steps,
+            "--seed", &seed,
+            "--format", &format,
+            "--optimizer", &optimizer,
+        ])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
-    let (status_str, err_msg): (&str, Option<String>) =
-        match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
-            Ok(Ok(s)) if s.success() => ("done", None),
-            Ok(Ok(s)) => ("failed", Some(format!("exit: {s}"))),
-            Ok(Err(e)) => ("failed", Some(format!("spawn error: {e}"))),
-            Err(_) => ("failed", Some(format!("timeout after {max_secs}s"))),
-        };
+    // Spawn the child process
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
+        Err(e) => {
+            let err_msg = format!("spawn error: {e}");
+            eprintln!("[{label}] SPAWN FAILED: {err_msg}");
+            client.execute(
+                "UPDATE strategy_queue SET status='failed', finished_at=NOW(), last_error=$1 WHERE id=$2",
+                &[&err_msg, &strat.id],
+            ).await?;
+            return Ok(());
+        }
+    };
+
+    // Wait for completion with timeout.
+    // No background heartbeat here — the main loop sends heartbeats before/after
+    // this call, and tokio_postgres::Client is not Send+'static for tokio::spawn.
+    let result = tokio::time::timeout(Duration::from_secs(max_secs), child.wait()).await;
+
+    let (status_str, err_msg) = match result {
+        Ok(Ok(s)) if s.success() => ("done", None::<String>),
+        Ok(Ok(s)) => {
+            // Read stderr for diagnostics (async — ChildStderr implements AsyncRead)
+            let mut stderr_text = String::new();
+            if let Some(mut stderr) = child.stderr.take() {
+                let _ = stderr.read_to_string(&mut stderr_text).await;
+            }
+            let short_stderr = if stderr_text.len() > 500 {
+                format!("...{}", &stderr_text[stderr_text.len() - 500..])
+            } else {
+                stderr_text
+            };
+            ("failed", Some(format!("exit: {s} stderr: {short_stderr}")))
+        }
+        Ok(Err(e)) => ("failed", Some(format!("wait error: {e}"))),
+        Err(_) => {
+            // Timeout — kill the process
+            let _ = child.kill().await;
+            ("failed", Some(format!("timeout after {max_secs}s")))
+        }
+    };
 
     client
         .execute(
@@ -178,15 +222,15 @@ async fn run_strategy(
 
 // ── register + heartbeat ─────────────────────────────────────────────────────
 
-async fn register_scarab(client: &tokio_postgres::Client, railway_acc: &str, host: &str) -> String {
-    // Generate a UUID for this scarab instance
-    let scarab_id = uuid::Uuid::new_v4().to_string();
+async fn register_scarab(client: &tokio_postgres::Client, railway_acc: &str, host: &str) -> uuid::Uuid {
+    let scarab_id = uuid::Uuid::new_v4();
+    let scarab_id_str = scarab_id.to_string();
     client
         .execute(
             "INSERT INTO scarabs (id, railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
-             VALUES ($1::uuid, $2, $3, $4, $5, NOW(), NOW()) \
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW()) \
              ON CONFLICT (id) DO UPDATE SET last_heartbeat=NOW()",
-            &[&scarab_id, &railway_acc, &scarab_id, &format!("scarab-{}", railway_acc), &host],
+            &[&scarab_id, &railway_acc, &scarab_id_str, &format!("scarab-{}", railway_acc), &host],
         )
         .await
         .map_err(|e| {
@@ -196,12 +240,12 @@ async fn register_scarab(client: &tokio_postgres::Client, railway_acc: &str, hos
     scarab_id
 }
 
-async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_exp_id: Option<i64>) {
+async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &uuid::Uuid, current_exp_id: Option<i64>) {
     let _ = client
         .execute(
             "UPDATE scarabs \
              SET last_heartbeat = NOW(), current_exp_id = $1 \
-             WHERE id = $2::uuid",
+             WHERE id = $2",
             &[&current_exp_id, &scarab_id],
         )
         .await;
@@ -217,12 +261,12 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 
     tokio::spawn(async move {
         // Create TLS config for notify connection
+        let mut roots = RootCertStore::empty();
+        roots.extend(TLS_SERVER_ROOTS.iter().cloned());
         let tls = MakeRustlsConnect::new(
             ClientConfig::builder()
-                .with_root_certificates(RootCertStore {
-                    roots: TLS_SERVER_ROOTS.into(),
-                })
-                .with_no_client_auth(),
+                .with_root_certificates(roots)
+                .with_no_client_auth()
         );
 
         loop {
@@ -256,6 +300,11 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Install rustls crypto provider (required for rustls 0.23+)
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     // SCARAB_ACCOUNT is a cosmetic log tag only.
     // It does NOT affect which tasks this scarab picks up.
@@ -263,12 +312,12 @@ async fn main() -> anyhow::Result<()> {
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
 
     // Connect to Neon with TLS
+    let mut roots = RootCertStore::empty();
+    roots.extend(TLS_SERVER_ROOTS.iter().cloned());
     let tls = MakeRustlsConnect::new(
         ClientConfig::builder()
-            .with_root_certificates(RootCertStore {
-                roots: TLS_SERVER_ROOTS.into(),
-            })
-            .with_no_client_auth(),
+            .with_root_certificates(roots)
+            .with_no_client_auth()
     );
     let (client, conn) = tokio_postgres::connect(&db_url, tls).await?;
     tokio::spawn(async move {
@@ -284,7 +333,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         // Drain all pending strategies before sleeping.
         loop {
-            match claim_any_pending(&client, &host).await {
+            match claim_any_pending(&client, &scarab_id).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
                     heartbeat(&client, &scarab_id, Some(sid)).await;

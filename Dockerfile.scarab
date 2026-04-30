@@ -20,6 +20,7 @@ WORKDIR /build
 COPY . .
 RUN cargo build --release --bin scarab --bin trios-train
 
+# Cache bust: 2026-05-01T03:50:00Z
 # ── runtime ────────────────────────────────────────────────────────────────────
 FROM debian:bookworm-slim
 
