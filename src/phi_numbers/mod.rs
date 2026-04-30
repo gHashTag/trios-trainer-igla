@@ -2,15 +2,27 @@
 //!
 //! Implements φ-optimized floating point formats and related golden ratio constants.
 
+pub mod experimental;
 pub mod fibonacci_dims;
+pub mod gf12;
+pub mod gf20;
+pub mod gf24;
 pub mod gf32;
+pub mod gf4;
 pub mod gf64;
 pub mod gf8;
 pub mod gfternary;
 pub mod phi_constants;
 
+pub use experimental::{
+    GF12Alt, GF12Alt2, GF20Alt, GF24Alt, GF24Alt2,
+};
 pub use fibonacci_dims::*;
+pub use gf12::GF12;
+pub use gf20::GF20;
+pub use gf24::GF24;
 pub use gf32::GF32;
+pub use gf4::GF4;
 pub use gf64::GF64;
 pub use gf8::GF8;
 pub use gfternary::GFTernary;
