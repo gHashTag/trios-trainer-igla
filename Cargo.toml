@@ -82,6 +82,12 @@ path = "src/bin/train_v2.rs"
 name = "smoke_train"
 path = "src/bin/smoke_train.rs"
 
+# Scarab Worker — fungible-pool claim loop. One image, N replicas.
+# See src/bin/scarab.rs and docs/SCARAB_WORKER.md.
+[[bin]]
+name = "scarab"
+path = "src/bin/scarab.rs"
+
 # TODO: fix imports - requires transformer_trainer module
 # [[bin]]
 # name = "transformer_train"
