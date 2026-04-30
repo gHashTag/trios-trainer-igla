@@ -145,6 +145,9 @@ fn main() -> Result<()> {
             "DONE: seed={} bpb={:.4} steps={} opt={}",
             outcome.seed, outcome.final_bpb, outcome.steps_done, cli.optimizer
         );
+        // R5/L8: flush so seed-agent reader sees DONE before EOF.
+        use std::io::Write as _;
+        let _ = std::io::stdout().flush();
     }
 
     Ok(())
