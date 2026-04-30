@@ -1,0 +1,40 @@
+# Iterative Improvement V2: Learning Rate Sweep
+# Hypothesis: Optimal LR is lower than 0.003
+# Based on: LR=0.003 achieved BPB=2.1919
+
+name = "iter-v2-lr-sweep"
+steps = 81000
+target_bpb = 1.85
+
+[model]
+d_model = 828
+n_layers = 2
+n_heads = 8
+vocab_size = 32000
+seq_len = 1024
+hybrid_attn = true
+
+[optimizer]
+kind = "adamw"
+lr = 0.0025  # DOWN from 0.003 (-17%)
+beta1 = 0.9
+beta2 = 0.95
+weight_decay = 0.04
+schedule = "phi"
+warmup_steps = 1000
+
+[data]
+corpus = "tiny_shakespeare"
+train_path = "data/tiny_shakespeare.txt"
+val_path = "data/tiny_shakespeare_val.txt"
+batch_size = 4
+batch_tokens = 524288
+
+[objective]
+w_ce = 1.0
+w_jepa = 0.15
+w_nca = 0.10
+
+[ledger]
+jsonl_path = "assertions/iter_v2_results.jsonl"
+push = true

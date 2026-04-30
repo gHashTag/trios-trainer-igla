@@ -124,6 +124,10 @@ name = "gf16_test"
 path = "src/bin/gf16_test.rs"
 
 [[bin]]
+name = "gf_benchmarks"
+path = "src/bin/gf_benchmarks.rs"
+
+[[bin]]
 name = "igla_trigram"
 path = "src/bin/igla_trigram.rs"
 

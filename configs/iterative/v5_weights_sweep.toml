@@ -1,0 +1,40 @@
+# Iterative Improvement V5: Multi-Objective Weights Sweep
+# Hypothesis: Different JEPA/NCA balances improve convergence
+# Current: w_jepa=0.15, w_nca=0.10
+
+name = "iter-v5-weights-sweep"
+steps = 81000
+target_bpb = 1.85
+
+[model]
+d_model = 828
+n_layers = 2
+n_heads = 8
+vocab_size = 32000
+seq_len = 1024
+hybrid_attn = true
+
+[optimizer]
+kind = "adamw"
+lr = 0.003
+beta1 = 0.9
+beta2 = 0.95
+weight_decay = 0.04
+schedule = "phi"
+warmup_steps = 1000
+
+[data]
+corpus = "tiny_shakespeare"
+train_path = "data/tiny_shakespeare.txt"
+val_path = "data/tiny_shakespeare_val.txt"
+batch_size = 4
+batch_tokens = 524288
+
+[objective]
+w_ce = 1.0
+w_jepa = 0.20  # UP from 0.15
+w_nca = 0.15  # UP from 0.10
+
+[ledger]
+jsonl_path = "assertions/iter_v5_results.jsonl"
+push = true
