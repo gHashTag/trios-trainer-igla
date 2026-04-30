@@ -18,7 +18,6 @@ RUN rustup default 1.91
 
 WORKDIR /build
 COPY . .
-
 RUN cargo build --release --bin scarab --bin trios-train
 
 # ── runtime ────────────────────────────────────────────────────────────────────
