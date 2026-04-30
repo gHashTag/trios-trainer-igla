@@ -18,7 +18,9 @@ use std::time::Duration;
 
 use tokio::process::Command;
 use tokio::time::sleep;
-use tokio_postgres::NoTls;
+use tokio_postgres_rustls::MakeRustlsConnect;
+use rustls::{ClientConfig, RootCertStore};
+use webpki_roots::TLS_SERVER_ROOTS;
 
 // ── StrategySpec: full spec lives in config_json JSONB ──────────────────────
 
@@ -146,25 +148,16 @@ async fn run_strategy(
         strat.id, strat.canon_name
     );
 
-    let mut cmd = Command::new("trios-igla");
+    let mut cmd = Command::new("trios-train");
     cmd.args([
-        "train",
         "--hidden",
         &hidden,
         "--lr",
         &lr,
         "--steps",
         &steps,
-        "--ctx",
-        &ctx,
-        "--format",
-        &format,
         "--seed",
         &seed,
-        "--exp-id",
-        &strat.id.to_string(),
-        "--neon-url",
-        &neon,
     ])
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
@@ -180,7 +173,7 @@ async fn run_strategy(
     client
         .execute(
             "UPDATE strategy_queue \
-             SET status = $1, finished_at = NOW(), error_msg = $2 \
+             SET status = $1, finished_at = NOW(), last_error = $2 \
              WHERE id = $3",
             &[&status_str, &err_msg, &strat.id],
         )
@@ -192,28 +185,31 @@ async fn run_strategy(
 
 // ── register + heartbeat ─────────────────────────────────────────────────────
 
-async fn register_scarab(client: &tokio_postgres::Client, label: &str, host: &str) -> String {
+async fn register_scarab(client: &tokio_postgres::Client, railway_acc: &str, host: &str) -> String {
+    // Generate a UUID for this scarab instance
+    let scarab_id = uuid::Uuid::new_v4().to_string();
     client
-        .query_one(
-            "INSERT INTO scarabs (label, host, last_heartbeat, registered_at) \
-             VALUES ($1, $2, NOW(), NOW()) RETURNING id::text",
-            &[&label, &host],
+        .execute(
+            "INSERT INTO scarabs (id, railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
+             VALUES ($1::uuid, $2, $3, $4, $5, NOW(), NOW()) \
+             ON CONFLICT (id) DO UPDATE SET last_heartbeat=NOW()",
+            &[&scarab_id, &railway_acc, &scarab_id, &format!("scarab-{}", railway_acc), &host],
         )
         .await
-        .map(|r| r.get::<_, String>(0))
-        .unwrap_or_else(|e| {
+        .map_err(|e| {
             eprintln!("[scarab] register failed (run migrations/002 first): {e}");
-            "unknown".into()
         })
+        .ok();
+    scarab_id
 }
 
-async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id: Option<i64>) {
+async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_exp_id: Option<i64>) {
     let _ = client
         .execute(
             "UPDATE scarabs \
-             SET last_heartbeat = NOW(), current_strategy_id = $1 \
+             SET last_heartbeat = NOW(), current_exp_id = $1 \
              WHERE id = $2::uuid",
-            &[&current_id, &scarab_id],
+            &[&current_exp_id, &scarab_id],
         )
         .await;
 }
@@ -227,8 +223,17 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
     let db_url = db_url.to_owned();
 
     tokio::spawn(async move {
+        // Create TLS config for notify connection
+        let tls = MakeRustlsConnect::new(
+            ClientConfig::builder()
+                .with_root_certificates(RootCertStore {
+                    roots: TLS_SERVER_ROOTS.into(),
+                })
+                .with_no_client_auth()
+        );
+
         loop {
-            let Ok((client, conn)) = tokio_postgres::connect(&db_url, NoTls).await else {
+            let Ok((client, conn)) = tokio_postgres::connect(&db_url, tls.clone()).await else {
                 sleep(Duration::from_secs(5)).await;
                 continue;
             };
@@ -261,17 +266,25 @@ async fn main() -> anyhow::Result<()> {
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     // SCARAB_ACCOUNT is a cosmetic log tag only.
     // It does NOT affect which tasks this scarab picks up.
-    let label = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into());
+    let railway_acc = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "acc0".into());
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
 
-    let (client, conn) = tokio_postgres::connect(&db_url, NoTls).await?;
+    // Connect to Neon with TLS
+    let tls = MakeRustlsConnect::new(
+        ClientConfig::builder()
+            .with_root_certificates(RootCertStore {
+                roots: TLS_SERVER_ROOTS.into(),
+            })
+            .with_no_client_auth()
+    );
+    let (client, conn) = tokio_postgres::connect(&db_url, tls).await?;
     tokio::spawn(async move {
         let _ = conn.await;
     });
 
-    let scarab_id = register_scarab(&client, &label, &host).await;
-    println!("[scarab][{label}] ready | id={scarab_id} host={host}");
-    println!("[scarab][{label}] fungible pool — no account filter");
+    let scarab_id = register_scarab(&client, &railway_acc, &host).await;
+    println!("[scarab][{railway_acc}] ready | scarab_id={scarab_id} host={host}");
+    println!("[scarab][{railway_acc}] fungible pool — no account filter");
 
     let mut notify_rx = setup_notify_listener(&db_url).await;
 
@@ -282,14 +295,14 @@ async fn main() -> anyhow::Result<()> {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
                     heartbeat(&client, &scarab_id, Some(sid)).await;
-                    run_strategy(&client, strat, &label)
+                    run_strategy(&client, strat, &railway_acc)
                         .await
-                        .unwrap_or_else(|e| eprintln!("[{label}] run error: {e}"));
+                        .unwrap_or_else(|e| eprintln!("[{railway_acc}] run error: {e}"));
                     heartbeat(&client, &scarab_id, None).await;
                 }
                 Ok(None) => break, // queue empty
                 Err(e) => {
-                    eprintln!("[{label}] claim error: {e}");
+                    eprintln!("[{railway_acc}] claim error: {e}");
                     break;
                 }
             }
