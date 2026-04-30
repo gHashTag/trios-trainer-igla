@@ -1,24 +1,16 @@
-//! Scarab Worker — один контейнер, стратегия из Neon.
+//! Scarab Worker — stateless fungible pool.
+//!
+//! Rule 1: Never touch the container.
+//! Rule 2: Change strategy only through Neon.
+//! Rule 3: No account affinity. Any scarab takes any task.
 //!
 //! ENV:
-//!   NEON_DATABASE_URL  — строка подключения к Neon Postgres (required)
-//!   SCARAB_ACCOUNT     — identity tag для logs/heartbeat (optional, default "acc0")
-//!                        ⚠️ NOT used as a routing key — claim is fungible.
+//!   NEON_DATABASE_URL  — Neon Postgres connection string (required)
+//!   SCARAB_ACCOUNT     — identity tag for logs only (optional)
+//!                        NOT a routing key. Does not filter claim.
 //!
-//! ## Stateless Scarab Pattern (Fungible Pool)
-//!
-//! Любой свободный скарабей берёт ЛЮБУЮ свободную стратегию из общего
-//! пула. `SCARAB_ACCOUNT` остаётся только как метка для logs/heartbeat
-//! ("кто этот жук"), но НЕ фильтрует claim. Это критично: иначе если
-//! acc3 умирает, его очередь застревает, пока другие аккаунты простаивают.
-//!
-//! Refs:
-//!   trios-railway#101 — Scarabaeus Engine umbrella
-//!   trios-railway#106 — same fungible-pool fix in seed-agent
-//!
-//! Логика: бесконечный loop → claim_next (fungible) → run_experiment → done.
-//! Масштабирование: запусти ещё один контейнер. Можно даже на ОДНОМ аккаунте.
-//! Изменение стратегии: INSERT в experiment_queue, контейнер не трогаем.
+//! Scaling: deploy another container. Done.
+//! Strategy change: INSERT into strategy_queue. Container untouched.
 
 use std::env;
 use std::process::Stdio;
@@ -28,39 +20,72 @@ use tokio::process::Command;
 use tokio::time::sleep;
 use tokio_postgres::NoTls;
 
-#[derive(Debug, serde::Deserialize)]
-struct ExpConfig {
+// ── StrategySpec: full spec lives in config_json JSONB ──────────────────────
+
+#[derive(Debug, serde::Deserialize, Default)]
+struct TrainerSpec {
     hidden: Option<u32>,
     lr: Option<f64>,
     steps: Option<u32>,
     ctx: Option<u32>,
     format: Option<String>,
     seed: Option<u64>,
+    val_split_seed: Option<String>,
 }
 
-struct Experiment {
+#[derive(Debug, serde::Deserialize, Default)]
+struct ConstraintsSpec {
+    /// Hard wall-clock timeout per experiment (seconds).
+    max_runtime_sec: Option<u64>,
+    min_step_for_done: Option<u32>,
+}
+
+#[derive(Debug, serde::Deserialize, Default)]
+struct SubmissionSpec {
+    track: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+}
+
+/// Full strategy specification stored in config_json.
+/// No account binding. No worker affinity.
+#[derive(Debug, serde::Deserialize, Default)]
+struct StrategySpec {
+    #[serde(default)]
+    trainer: TrainerSpec,
+    #[serde(default)]
+    constraints: ConstraintsSpec,
+    #[serde(default)]
+    submission: SubmissionSpec,
+}
+
+struct Strategy {
     id: i64,
     canon_name: String,
     steps_budget: i32,
-    config: ExpConfig,
+    spec: StrategySpec,
 }
 
-/// Fungible claim: any scarab takes any pending strategy. The previous
-/// version had `AND account = $1`, which pinned each scarab to the
-/// account it was deployed under. When that account died, its queue
-/// starved while others idled. Removed for parity with
-/// trios-railway#106 (same fix in seed-agent).
+// ── claim_any_pending ────────────────────────────────────────────────────────
+
+/// Claim the next pending strategy from the global pool.
 ///
-/// `FOR UPDATE SKIP LOCKED` continues to guarantee that two scarabs
-/// never claim the same row.
-async fn claim_next(client: &tokio_postgres::Client) -> anyhow::Result<Option<Experiment>> {
+/// Critically: NO `AND account = $1` filter.
+/// Any free scarab takes any pending task.
+/// `FOR UPDATE SKIP LOCKED` ensures two scarabs never race on the same row.
+async fn claim_any_pending(
+    client: &tokio_postgres::Client,
+    worker_host: &str,
+) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
             r#"
-            UPDATE experiment_queue
-            SET status = 'running', started_at = NOW()
+            UPDATE strategy_queue
+            SET status     = 'running',
+                started_at = NOW(),
+                worker_id  = $1
             WHERE id = (
-                SELECT id FROM experiment_queue
+                SELECT id FROM strategy_queue
                 WHERE status = 'pending'
                 ORDER BY priority DESC, id ASC
                 LIMIT 1
@@ -68,154 +93,205 @@ async fn claim_next(client: &tokio_postgres::Client) -> anyhow::Result<Option<Ex
             )
             RETURNING id, canon_name, steps_budget, config_json
             "#,
-            &[],
+            &[&worker_host],
         )
         .await?;
 
-    match row {
-        None => Ok(None),
-        Some(row) => {
-            // tokio-postgres here doesn't have the with-serde_json feature,
-            // so `config_json` must be read as text and parsed. Safe because
-            // the column is JSONB and Postgres emits valid JSON text.
-            let cfg_str: String = row.get(3);
-            let config: ExpConfig = serde_json::from_str(&cfg_str)?;
-            Ok(Some(Experiment {
-                id: row.get(0),
-                canon_name: row.get(1),
-                steps_budget: row.get(2),
-                config,
-            }))
+    let Some(row) = row else { return Ok(None) };
+
+    let raw: serde_json::Value = row.get(3);
+    // Support both formats:
+    //   new:    { "trainer": {...}, "constraints": {...}, "submission": {...} }
+    //   legacy: { "hidden": 828, "lr": 0.0004, ... }
+    let spec: StrategySpec = if raw.get("trainer").is_some() {
+        serde_json::from_value(raw)?
+    } else {
+        StrategySpec {
+            trainer: serde_json::from_value(raw)?,
+            ..Default::default()
         }
-    }
+    };
+
+    Ok(Some(Strategy {
+        id: row.get(0),
+        canon_name: row.get(1),
+        steps_budget: row.get(2),
+        spec,
+    }))
 }
 
-async fn run_experiment(
+// ── run_strategy ─────────────────────────────────────────────────────────────
+
+async fn run_strategy(
     client: &tokio_postgres::Client,
-    exp: Experiment,
-    account: &str,
+    strat: Strategy,
+    label: &str,
 ) -> anyhow::Result<()> {
-    let c = &exp.config;
-    let hidden = c.hidden.unwrap_or(828).to_string();
-    let lr = c.lr.unwrap_or(0.0004).to_string();
-    let steps = c.steps.unwrap_or(exp.steps_budget as u32).to_string();
-    let ctx = c.ctx.unwrap_or(12).to_string();
-    let format = c.format.clone().unwrap_or_else(|| "fp32".into());
-    let seed = c.seed.unwrap_or(1597).to_string();
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let t = &strat.spec.trainer;
+    let hidden = t.hidden.unwrap_or(828).to_string();
+    let lr     = t.lr.unwrap_or(0.0004).to_string();
+    let steps  = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
+    let ctx    = t.ctx.unwrap_or(12).to_string();
+    let format = t.format.clone().unwrap_or_else(|| "fp32".into());
+    let seed   = t.seed.unwrap_or(1597).to_string();
+    let neon   = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
     println!(
-        "[scarab][{account}] START id={} name={} h={hidden} lr={lr} steps={steps} fmt={format}",
-        exp.id, exp.canon_name
+        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed}",
+        strat.id, strat.canon_name
     );
 
-    let exit = Command::new("trios-igla")
-        .args([
-            "train",
-            "--hidden",
-            &hidden,
-            "--lr",
-            &lr,
-            "--steps",
-            &steps,
-            "--ctx",
-            &ctx,
-            "--format",
-            &format,
-            "--seed",
-            &seed,
-            "--exp-id",
-            &exp.id.to_string(),
-            "--neon-url",
-            &neon,
-        ])
-        .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit())
-        .status()
-        .await;
+    let mut cmd = Command::new("trios-igla");
+    cmd.args([
+        "train",
+        "--hidden",   &hidden,
+        "--lr",       &lr,
+        "--steps",    &steps,
+        "--ctx",      &ctx,
+        "--format",   &format,
+        "--seed",     &seed,
+        "--exp-id",   &strat.id.to_string(),
+        "--neon-url", &neon,
+    ])
+    .stdout(Stdio::inherit())
+    .stderr(Stdio::inherit());
 
-    let (status_str, err_msg): (&str, Option<String>) = match exit {
-        Ok(s) if s.success() => ("done", None),
-        Ok(s) => ("failed", Some(format!("exit: {s}"))),
-        Err(e) => ("failed", Some(format!("spawn: {e}"))),
-    };
+    let (status_str, err_msg): (&str, Option<String>) =
+        match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
+            Ok(Ok(s)) if s.success() => ("done", None),
+            Ok(Ok(s)) => ("failed", Some(format!("exit: {s}"))),
+            Ok(Err(e)) => ("failed", Some(format!("spawn error: {e}"))),
+            Err(_)    => ("failed", Some(format!("timeout after {max_secs}s"))),
+        };
 
     client
         .execute(
-            "UPDATE experiment_queue \
-             SET status=$1, finished_at=NOW(), error_msg=$2 WHERE id=$3",
-            &[&status_str, &err_msg, &exp.id],
+            "UPDATE strategy_queue \
+             SET status = $1, finished_at = NOW(), error_msg = $2 \
+             WHERE id = $3",
+            &[&status_str, &err_msg, &strat.id],
         )
         .await?;
 
-    println!("[scarab][{account}] DONE id={} status={status_str}", exp.id);
+    println!("[{label}] DONE id={} status={status_str}", strat.id);
     Ok(())
 }
+
+// ── register + heartbeat ─────────────────────────────────────────────────────
+
+async fn register_scarab(
+    client: &tokio_postgres::Client,
+    label: &str,
+    host: &str,
+) -> String {
+    client
+        .query_one(
+            "INSERT INTO scarabs (label, host, last_heartbeat, registered_at) \
+             VALUES ($1, $2, NOW(), NOW()) RETURNING id::text",
+            &[&label, &host],
+        )
+        .await
+        .map(|r| r.get::<_, String>(0))
+        .unwrap_or_else(|e| {
+            eprintln!("[scarab] register failed (run migrations/002 first): {e}");
+            "unknown".into()
+        })
+}
+
+async fn heartbeat(
+    client: &tokio_postgres::Client,
+    scarab_id: &str,
+    current_id: Option<i64>,
+) {
+    let _ = client
+        .execute(
+            "UPDATE scarabs \
+             SET last_heartbeat = NOW(), current_strategy_id = $1 \
+             WHERE id = $2::uuid",
+            &[&current_id, &scarab_id],
+        )
+        .await;
+}
+
+// ── LISTEN/NOTIFY helper ──────────────────────────────────────────────────────
+
+/// Opens a dedicated connection for NOTIFY and forwards wakeups via mpsc.
+/// Falls back to 30-second polling if the notify connection drops.
+async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> {
+    let (tx, rx) = tokio::sync::mpsc::channel::<()>(16);
+    let db_url = db_url.to_owned();
+
+    tokio::spawn(async move {
+        loop {
+            let Ok((client, conn)) = tokio_postgres::connect(&db_url, NoTls).await else {
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            };
+            tokio::spawn(async move { let _ = conn.await; });
+
+            if client.execute("LISTEN strategy_new", &[]).await.is_err() {
+                sleep(Duration::from_secs(5)).await;
+                continue;
+            }
+
+            // Any incoming message triggers a claim attempt.
+            loop {
+                sleep(Duration::from_millis(500)).await;
+                if tx.try_send(()).is_err() {
+                    break; // channel full or closed — reconnect
+                }
+            }
+        }
+    });
+
+    rx
+}
+
+// ── main ─────────────────────────────────────────────────────────────────────
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
-    let account = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "acc0".into());
-    let svc = env::var("RAILWAY_SERVICE_NAME").unwrap_or_else(|_| format!("scarab-{account}"));
+    // SCARAB_ACCOUNT is a cosmetic log tag only.
+    // It does NOT affect which tasks this scarab picks up.
+    let label  = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into());
+    let host   = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
 
     let (client, conn) = tokio_postgres::connect(&db_url, NoTls).await?;
-    tokio::spawn(async move {
-        let _ = conn.await;
-    });
+    tokio::spawn(async move { let _ = conn.await; });
 
-    // Регистрируем воркер
-    let worker_id: String = client
-        .query_one(
-            "INSERT INTO workers (railway_acc, railway_svc_name, last_heartbeat, registered_at) \
-             VALUES ($1,$2,NOW(),NOW()) RETURNING id::text",
-            &[&account, &svc],
-        )
-        .await
-        .map(|r| r.get(0))
-        .unwrap_or_else(|_| "unknown".into());
+    let scarab_id = register_scarab(&client, &label, &host).await;
+    println!("[scarab][{label}] ready | id={scarab_id} host={host}");
+    println!("[scarab][{label}] fungible pool — no account filter");
 
-    println!("[scarab][{account}] Ready. worker_id={worker_id}");
+    let mut notify_rx = setup_notify_listener(&db_url).await;
 
     loop {
-        // Heartbeat каждые 30 с пока idle
-        match claim_next(&client).await {
-            Ok(Some(exp)) => {
-                let exp_id = exp.id;
-                // Сообщаем DB что воркер занят
-                let _ = client
-                    .execute(
-                        "UPDATE workers SET last_heartbeat=NOW(), current_exp_id=$1 \
-                         WHERE id=$2::uuid",
-                        &[&exp_id, &worker_id],
-                    )
-                    .await;
+        // Drain all pending strategies before sleeping.
+        loop {
+            match claim_any_pending(&client, &host).await {
+                Ok(Some(strat)) => {
+                    let sid = strat.id;
+                    heartbeat(&client, &scarab_id, Some(sid)).await;
+                    run_strategy(&client, strat, &label)
+                        .await
+                        .unwrap_or_else(|e| eprintln!("[{label}] run error: {e}"));
+                    heartbeat(&client, &scarab_id, None).await;
+                }
+                Ok(None) => break, // queue empty
+                Err(e) => {
+                    eprintln!("[{label}] claim error: {e}");
+                    break;
+                }
+            }
+        }
 
-                run_experiment(&client, exp, &account)
-                    .await
-                    .unwrap_or_else(|e| eprintln!("[scarab] error: {e}"));
-
-                // Освобождаем
-                let _ = client
-                    .execute(
-                        "UPDATE workers SET current_exp_id=NULL, last_heartbeat=NOW() \
-                         WHERE id=$1::uuid",
-                        &[&worker_id],
-                    )
-                    .await;
-            }
-            Ok(None) => {
-                let _ = client
-                    .execute(
-                        "UPDATE workers SET last_heartbeat=NOW() WHERE id=$1::uuid",
-                        &[&worker_id],
-                    )
-                    .await;
-                sleep(Duration::from_secs(10)).await;
-            }
-            Err(e) => {
-                eprintln!("[scarab] claim error: {e}");
-                sleep(Duration::from_secs(10)).await;
-            }
+        // Sleep until next NOTIFY or 30-second fallback.
+        heartbeat(&client, &scarab_id, None).await;
+        tokio::select! {
+            _ = notify_rx.recv() => {},
+            _ = sleep(Duration::from_secs(30)) => {},
         }
     }
 }
