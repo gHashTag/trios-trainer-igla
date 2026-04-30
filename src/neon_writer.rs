@@ -18,8 +18,11 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use rustls::{ClientConfig, RootCertStore};
 use tokio::runtime::Runtime;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::Client;
+use tokio_postgres_rustls::MakeRustlsConnect;
+use webpki_roots::TLS_SERVER_ROOTS;
 
 /// Lazy-initialised tokio runtime shared by all sync wrappers.
 fn rt() -> &'static Runtime {
@@ -35,6 +38,11 @@ fn rt() -> &'static Runtime {
 /// Lazy-initialised Neon client. `None` if `TRIOS_NEON_DSN` is unset or the
 /// connection failed. Cached across calls.
 fn client() -> Option<&'static Client> {
+    // Install rustls crypto provider (required for rustls 0.23+)
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
@@ -44,7 +52,15 @@ fn client() -> Option<&'static Client> {
                 .ok()?;
             eprintln!("[neon_writer] connecting to Neon …");
             let connect = rt().block_on(async {
-                let connector = tokio_postgres::connect(&dsn, NoTls).await;
+                // Create TLS config for Neon connection
+                let mut roots = RootCertStore::empty();
+                roots.extend(TLS_SERVER_ROOTS.iter().cloned());
+                let tls = MakeRustlsConnect::new(
+                    ClientConfig::builder()
+                        .with_root_certificates(roots)
+                        .with_no_client_auth()
+                );
+                let connector = tokio_postgres::connect(&dsn, tls).await;
                 match connector {
                     Ok((client, conn)) => {
                         // Drive the connection task in the background.
