@@ -87,6 +87,11 @@ struct Cli {
     #[arg(long, env = "TRIOS_FORMAT_TYPE")]
     #[allow(dead_code)]
     format: Option<String>,
+
+    /// Neon database URL for bpb_samples writes (used by scarab worker).
+    #[arg(long, env = "TRIOS_NEON_DSN")]
+    #[allow(dead_code)]
+    neon: Option<String>,
 }
 
 fn install_panic_hook() {
@@ -130,9 +135,14 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Set NEON_DATABASE_URL if --neon flag is provided (used by scarab worker)
+    if let Some(neon_url) = &cli.neon {
+        std::env::set_var("NEON_DATABASE_URL", neon_url);
+    }
+
     eprintln!(
-        "[trios-train] parsed seed={} steps={} hidden={} lr={} ctx={:?} optimizer={}",
-        cli.seed, cli.steps, cli.hidden, cli.lr, cli.ctx, cli.optimizer
+        "[trios-train] parsed seed={} steps={} hidden={} lr={} ctx={:?} optimizer={} neon={:?}",
+        cli.seed, cli.steps, cli.hidden, cli.lr, cli.ctx, cli.optimizer, cli.neon
     );
     let _ = std::io::stderr().flush();
 
