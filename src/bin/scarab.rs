@@ -16,10 +16,10 @@ use std::env;
 use std::process::Stdio;
 use std::time::Duration;
 
+use rustls::{ClientConfig, RootCertStore};
 use tokio::process::Command;
 use tokio::time::sleep;
 use tokio_postgres_rustls::MakeRustlsConnect;
-use rustls::{ClientConfig, RootCertStore};
 use webpki_roots::TLS_SERVER_ROOTS;
 
 // ── StrategySpec: full spec lives in config_json JSONB ──────────────────────
@@ -150,14 +150,7 @@ async fn run_strategy(
 
     let mut cmd = Command::new("trios-train");
     cmd.args([
-        "--hidden",
-        &hidden,
-        "--lr",
-        &lr,
-        "--steps",
-        &steps,
-        "--seed",
-        &seed,
+        "--hidden", &hidden, "--lr", &lr, "--steps", &steps, "--seed", &seed,
     ])
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
@@ -229,7 +222,7 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
                 .with_root_certificates(RootCertStore {
                     roots: TLS_SERVER_ROOTS.into(),
                 })
-                .with_no_client_auth()
+                .with_no_client_auth(),
         );
 
         loop {
@@ -275,7 +268,7 @@ async fn main() -> anyhow::Result<()> {
             .with_root_certificates(RootCertStore {
                 roots: TLS_SERVER_ROOTS.into(),
             })
-            .with_no_client_auth()
+            .with_no_client_auth(),
     );
     let (client, conn) = tokio_postgres::connect(&db_url, tls).await?;
     tokio::spawn(async move {
