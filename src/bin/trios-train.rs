@@ -89,12 +89,52 @@ struct Cli {
     format: Option<String>,
 }
 
+fn install_panic_hook() {
+    // R5/L8: never let a panic vanish into the void. Print a one-line JSON
+    // diagnostic to stderr so seed-agent (which streams stderr via
+    // `Stdio::inherit()`) and Railway logs both capture it. Also write a
+    // marker line to stdout so the parent reader sees a non-empty stream.
+    std::panic::set_hook(Box::new(|info| {
+        use std::io::Write as _;
+        let loc = info
+            .location()
+            .map(|l| format!("{}:{}", l.file(), l.line()))
+            .unwrap_or_else(|| "unknown".to_string());
+        let msg = info.to_string();
+        eprintln!(
+            r#"{{"event":"panic","loc":{:?},"msg":{:?},"step":-1}}"#,
+            loc, msg
+        );
+        let _ = std::io::stderr().flush();
+        // Stdout marker so seed-agent's parse_step_output()/parse_done_output()
+        // log it as 'unrecognized' instead of producing zero JSONL silently.
+        println!("PANIC: trios-train aborted at {loc} (msg: {msg})");
+        let _ = std::io::stdout().flush();
+    }));
+}
+
 fn main() -> Result<()> {
+    install_panic_hook();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
+    eprintln!(
+        "[trios-train] startup args={:?} cwd={:?}",
+        std::env::args().collect::<Vec<_>>(),
+        std::env::current_dir().ok()
+    );
+    use std::io::Write as _;
+    let _ = std::io::stderr().flush();
+
     let cli = Cli::parse();
+
+    eprintln!(
+        "[trios-train] parsed seed={} steps={} hidden={} lr={} ctx={:?} optimizer={}",
+        cli.seed, cli.steps, cli.hidden, cli.lr, cli.ctx, cli.optimizer
+    );
+    let _ = std::io::stderr().flush();
 
     if let Some(config_path) = &cli.config {
         let cfg = trios_trainer::TrainConfig::from_toml(config_path)?;
