@@ -1,11 +1,23 @@
 //! Scarab Worker — один контейнер, стратегия из Neon.
 //!
 //! ENV:
-//!   NEON_DATABASE_URL  — строка подключения к Neon Postgres
-//!   SCARAB_ACCOUNT     — имя аккаунта воркера (acc0..acc5)
+//!   NEON_DATABASE_URL  — строка подключения к Neon Postgres (required)
+//!   SCARAB_ACCOUNT     — identity tag для logs/heartbeat (optional, default "acc0")
+//!                        ⚠️ NOT used as a routing key — claim is fungible.
 //!
-//! Логика: бесконечный loop → claim_next → run_experiment → done.
-//! Масштабирование: добавь ещё один сервис с другим SCARAB_ACCOUNT.
+//! ## Stateless Scarab Pattern (Fungible Pool)
+//!
+//! Любой свободный скарабей берёт ЛЮБУЮ свободную стратегию из общего
+//! пула. `SCARAB_ACCOUNT` остаётся только как метка для logs/heartbeat
+//! ("кто этот жук"), но НЕ фильтрует claim. Это критично: иначе если
+//! acc3 умирает, его очередь застревает, пока другие аккаунты простаивают.
+//!
+//! Refs:
+//!   trios-railway#101 — Scarabaeus Engine umbrella
+//!   trios-railway#106 — same fungible-pool fix in seed-agent
+//!
+//! Логика: бесконечный loop → claim_next (fungible) → run_experiment → done.
+//! Масштабирование: запусти ещё один контейнер. Можно даже на ОДНОМ аккаунте.
 //! Изменение стратегии: INSERT в experiment_queue, контейнер не трогаем.
 
 use std::env;
@@ -33,10 +45,15 @@ struct Experiment {
     config: ExpConfig,
 }
 
-async fn claim_next(
-    client: &tokio_postgres::Client,
-    account: &str,
-) -> anyhow::Result<Option<Experiment>> {
+/// Fungible claim: any scarab takes any pending strategy. The previous
+/// version had `AND account = $1`, which pinned each scarab to the
+/// account it was deployed under. When that account died, its queue
+/// starved while others idled. Removed for parity with
+/// trios-railway#106 (same fix in seed-agent).
+///
+/// `FOR UPDATE SKIP LOCKED` continues to guarantee that two scarabs
+/// never claim the same row.
+async fn claim_next(client: &tokio_postgres::Client) -> anyhow::Result<Option<Experiment>> {
     let row = client
         .query_opt(
             r#"
@@ -45,22 +62,24 @@ async fn claim_next(
             WHERE id = (
                 SELECT id FROM experiment_queue
                 WHERE status = 'pending'
-                  AND account = $1
                 ORDER BY priority DESC, id ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, canon_name, steps_budget, config_json
             "#,
-            &[&account],
+            &[],
         )
         .await?;
 
     match row {
         None => Ok(None),
         Some(row) => {
-            let config: ExpConfig =
-                serde_json::from_value(row.get::<_, serde_json::Value>(3))?;
+            // tokio-postgres here doesn't have the with-serde_json feature,
+            // so `config_json` must be read as text and parsed. Safe because
+            // the column is JSONB and Postgres emits valid JSON text.
+            let cfg_str: String = row.get(3);
+            let config: ExpConfig = serde_json::from_str(&cfg_str)?;
             Ok(Some(Experiment {
                 id: row.get(0),
                 canon_name: row.get(1),
@@ -78,12 +97,12 @@ async fn run_experiment(
 ) -> anyhow::Result<()> {
     let c = &exp.config;
     let hidden = c.hidden.unwrap_or(828).to_string();
-    let lr     = c.lr.unwrap_or(0.0004).to_string();
-    let steps  = c.steps.unwrap_or(exp.steps_budget as u32).to_string();
-    let ctx    = c.ctx.unwrap_or(12).to_string();
+    let lr = c.lr.unwrap_or(0.0004).to_string();
+    let steps = c.steps.unwrap_or(exp.steps_budget as u32).to_string();
+    let ctx = c.ctx.unwrap_or(12).to_string();
     let format = c.format.clone().unwrap_or_else(|| "fp32".into());
-    let seed   = c.seed.unwrap_or(1597).to_string();
-    let neon   = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let seed = c.seed.unwrap_or(1597).to_string();
+    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
 
     println!(
         "[scarab][{account}] START id={} name={} h={hidden} lr={lr} steps={steps} fmt={format}",
@@ -93,14 +112,22 @@ async fn run_experiment(
     let exit = Command::new("trios-igla")
         .args([
             "train",
-            "--hidden", &hidden,
-            "--lr",     &lr,
-            "--steps",  &steps,
-            "--ctx",    &ctx,
-            "--format", &format,
-            "--seed",   &seed,
-            "--exp-id", &exp.id.to_string(),
-            "--neon-url", &neon,
+            "--hidden",
+            &hidden,
+            "--lr",
+            &lr,
+            "--steps",
+            &steps,
+            "--ctx",
+            &ctx,
+            "--format",
+            &format,
+            "--seed",
+            &seed,
+            "--exp-id",
+            &exp.id.to_string(),
+            "--neon-url",
+            &neon,
         ])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -127,13 +154,14 @@ async fn run_experiment(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let db_url  = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     let account = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "acc0".into());
-    let svc     = env::var("RAILWAY_SERVICE_NAME")
-        .unwrap_or_else(|_| format!("scarab-{account}"));
+    let svc = env::var("RAILWAY_SERVICE_NAME").unwrap_or_else(|_| format!("scarab-{account}"));
 
     let (client, conn) = tokio_postgres::connect(&db_url, NoTls).await?;
-    tokio::spawn(async move { let _ = conn.await; });
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
 
     // Регистрируем воркер
     let worker_id: String = client
@@ -150,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         // Heartbeat каждые 30 с пока idle
-        match claim_next(&client, &account).await {
+        match claim_next(&client).await {
             Ok(Some(exp)) => {
                 let exp_id = exp.id;
                 // Сообщаем DB что воркер занят
@@ -162,7 +190,8 @@ async fn main() -> anyhow::Result<()> {
                     )
                     .await;
 
-                run_experiment(&client, exp, &account).await
+                run_experiment(&client, exp, &account)
+                    .await
                     .unwrap_or_else(|e| eprintln!("[scarab] error: {e}"));
 
                 // Освобождаем
