@@ -135,14 +135,22 @@ async fn run_strategy(
     let mut cmd = Command::new("trios-igla");
     cmd.args([
         "train",
-        "--hidden", &hidden,
-        "--lr",     &lr,
-        "--steps",  &steps,
-        "--ctx",    &ctx,
-        "--format", &format,
-        "--seed",   &seed,
-        "--exp-id", &strat.id.to_string(),
-        "--neon-url", &neon,
+        "--hidden",
+        &hidden,
+        "--lr",
+        &lr,
+        "--steps",
+        &steps,
+        "--ctx",
+        &ctx,
+        "--format",
+        &format,
+        "--seed",
+        &seed,
+        "--exp-id",
+        &strat.id.to_string(),
+        "--neon-url",
+        &neon,
     ])
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
@@ -215,7 +223,9 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
                 sleep(Duration::from_secs(5)).await;
                 continue;
             };
-            tokio::spawn(async move { let _ = conn.await; });
+            tokio::spawn(async move {
+                let _ = conn.await;
+            });
 
             if client.execute("LISTEN strategy_new", &[]).await.is_err() {
                 sleep(Duration::from_secs(5)).await;
@@ -243,7 +253,9 @@ async fn main() -> anyhow::Result<()> {
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
 
     let (client, conn) = tokio_postgres::connect(&db_url, NoTls).await?;
-    tokio::spawn(async move { let _ = conn.await; });
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
 
     let scarab_id = register_scarab(&client, &label, &host).await;
     println!("[scarab][{label}] ready | id={scarab_id} host={host}");
