@@ -208,7 +208,7 @@ async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_exp
         .execute(
             "UPDATE scarabs \
              SET last_heartbeat = NOW(), current_exp_id = $1 \
-             WHERE scarab_id = $2::uuid",
+             WHERE id = $2::uuid",
             &[&current_exp_id, &scarab_id],
         )
         .await;
