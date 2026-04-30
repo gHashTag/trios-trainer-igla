@@ -287,44 +287,6 @@ impl HybridModel {
         let h = self.hidden;
         let d = self.attn.config().d_model;
 
-        let attn_seq = attn_seq_override().min(pos + 1);
-        let seq_start = pos + 1 - attn_seq;
-
-        let mut attn_input = vec![0.0f32; attn_seq * d];
-        let mut combined_seq = vec![0.0f32; attn_seq * DIM];
-        let mut ln_seq = vec![0.0f32; attn_seq * DIM];
-
-        for (si, p) in (seq_start..=pos).enumerate() {
-            let t_last = tokens[p + NGRAM - 1].min(VOCAB - 1);
-            let mut combined = self.embed[t_last * DIM..(t_last + 1) * DIM].to_vec();
-            for (ci, cw) in CTX_WEIGHTS.iter().enumerate() {
-                let ctx_idx = NGRAM - 2 - ci;
-                let t = tokens[p + ctx_idx].min(VOCAB - 1);
-                let cv = &self.ctx[ci][t * DIM..(t + 1) * DIM];
-                for j in 0..DIM {
-                    combined[j] += cv[j] * cw;
-                }
-            }
-            let ln = layer_norm(&combined, 1e-5);
-            combined_seq[si * DIM..(si + 1) * DIM].copy_from_slice(&combined);
-            ln_seq[si * DIM..(si + 1) * DIM].copy_from_slice(&ln);
-            attn_input[si * DIM..(si + 1) * DIM].copy_from_slice(&ln);
-        }
-
-        let (attn_output, attn_cache) = self
-            .attn
-            .forward_with_cache(&attn_input, attn_seq)
-            .unwrap_or_else(|_| (vec![0.0f32; attn_seq * d], AttentionCache::default()));
-
-        let attn_out = attn_output[(attn_seq - 1) * d..attn_seq * d].to_vec();
-
-        let mut attn_up_out = vec![0.0f32; h];
-        for hi in 0..h {
-            for di in 0..d {
-                attn_up_out[hi] += self.attn_up[hi * d + di] * attn_out[di];
-            }
-        }
-
         let t_last = tokens[pos + NGRAM - 1].min(VOCAB - 1);
         let mut combined = self.embed[t_last * DIM..(t_last + 1) * DIM].to_vec();
         for (ci, cw) in CTX_WEIGHTS.iter().enumerate() {
@@ -343,15 +305,35 @@ impl HybridModel {
                 hidden_raw[hi] += self.proj[hi * DIM + j] * ln[j];
             }
         }
-        let mut hidden_pre_attn = vec![0.0f32; h];
+        let mut hidden = vec![0.0f32; h];
         for hi in 0..h {
-            hidden_pre_attn[hi] = if hidden_raw[hi] > 0.0 {
+            hidden[hi] = if hidden_raw[hi] > 0.0 {
                 hidden_raw[hi] * hidden_raw[hi]
             } else {
                 0.0
             };
         }
-        let mut hidden = hidden_pre_attn.clone();
+
+        let hidden_pre_attn = hidden.clone();
+
+        let mut attn_in = vec![0.0f32; d];
+        for di in 0..d {
+            for hi in 0..h {
+                attn_in[di] += self.attn_down[di * h + hi] * hidden[hi];
+            }
+        }
+
+        let attn_out = self
+            .attn
+            .forward(&attn_in, 1)
+            .unwrap_or_else(|_| vec![0.0f32; d]);
+
+        let mut attn_up_out = vec![0.0f32; h];
+        for hi in 0..h {
+            for di in 0..d {
+                attn_up_out[hi] += self.attn_up[hi * d + di] * attn_out[di];
+            }
+        }
         for hi in 0..h {
             hidden[hi] += attn_up_out[hi] * attn_scale();
         }
@@ -367,14 +349,14 @@ impl HybridModel {
             combined,
             ln,
             hidden_pre_attn,
-            attn_input,
+            attn_input: attn_in,
             attn_out,
             hidden,
             logits,
-            attn_cache: Some(attn_cache),
-            attn_seq,
-            combined_seq,
-            ln_seq,
+            attn_cache: None,
+            attn_seq: 1,
+            combined_seq: vec![],
+            ln_seq: vec![],
         }
     }
 
@@ -421,10 +403,10 @@ fn compute_grads(
             attn_out,
             hidden,
             mut logits,
-            attn_cache,
-            attn_seq,
-            combined_seq,
-            ln_seq,
+            attn_cache: _,
+            attn_seq: _,
+            combined_seq: _,
+            ln_seq: _,
         } = fc;
 
         softmax(&mut logits);
@@ -445,60 +427,6 @@ fn compute_grads(
             for di in 0..d {
                 g_attn_up[hi * d + di] += d_attn_up_out[hi] * attn_out[di];
                 d_attn_out_last[di] += d_attn_up_out[hi] * model.attn_up[hi * d + di];
-            }
-        }
-
-        if let Some(cache) = attn_cache {
-            let seq = attn_seq;
-            let mut d_output = vec![0.0f32; seq * d];
-            d_output[(seq - 1) * d..seq * d].copy_from_slice(&d_attn_out_last);
-
-            let grads = model.attn.backward(&cache, &d_output);
-
-            for i in 0..dd {
-                g_attn_weights[i] += grads.gwq[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[dd + i] += grads.gwk[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[2 * dd + i] += grads.gwv[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[3 * dd + i] += grads.gwo[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[4 * dd + i] += grads.gwq2[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[5 * dd + i] += grads.gwk2[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[6 * dd + i] += grads.gwv2[i];
-            }
-            for i in 0..dd {
-                g_attn_weights[7 * dd + i] += grads.gwo2[i];
-            }
-
-            let d_ai = grads.d_input;
-            for si in 0..seq {
-                let p = pos + 1 - attn_seq + si;
-                let d_ln_si = &d_ai[si * DIM..(si + 1) * DIM];
-                let c_si = &combined_seq[si * DIM..(si + 1) * DIM];
-                let l_si = &ln_seq[si * DIM..(si + 1) * DIM];
-                let d_combined_si = layer_norm_backward(c_si, l_si, d_ln_si, 1e-5);
-
-                let t_last = tokens[p + NGRAM - 1].min(VOCAB - 1);
-                for j in 0..DIM {
-                    g_embed[t_last * DIM + j] += d_combined_si[j];
-                }
-                for (ci, cw) in CTX_WEIGHTS.iter().enumerate() {
-                    let ctx_idx = NGRAM - 2 - ci;
-                    let t = tokens[p + ctx_idx].min(VOCAB - 1);
-                    for j in 0..DIM {
-                        g_ctx[ci][t * DIM + j] += cw * d_combined_si[j];
-                    }
-                }
             }
         }
 
@@ -707,26 +635,27 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         opt_attn_up.update(&mut model.attn_up, &g_au, lr);
         opt_head.update(&mut model.lm_head, &gh, lr);
 
-        {
-            let mut attn_flat = Vec::with_capacity(attn_total);
-            attn_flat.extend_from_slice(&model.attn.wq);
-            attn_flat.extend_from_slice(&model.attn.wk);
-            attn_flat.extend_from_slice(&model.attn.wv);
-            attn_flat.extend_from_slice(&model.attn.wo);
-            attn_flat.extend_from_slice(&model.attn.wq2);
-            attn_flat.extend_from_slice(&model.attn.wk2);
-            attn_flat.extend_from_slice(&model.attn.wv2);
-            attn_flat.extend_from_slice(&model.attn.wo2);
-            opt_attn_w.update(&mut attn_flat, &g_aw, lr);
-            model.attn.wq.copy_from_slice(&attn_flat[0..dd]);
-            model.attn.wk.copy_from_slice(&attn_flat[dd..2 * dd]);
-            model.attn.wv.copy_from_slice(&attn_flat[2 * dd..3 * dd]);
-            model.attn.wo.copy_from_slice(&attn_flat[3 * dd..4 * dd]);
-            model.attn.wq2.copy_from_slice(&attn_flat[4 * dd..5 * dd]);
-            model.attn.wk2.copy_from_slice(&attn_flat[5 * dd..6 * dd]);
-            model.attn.wv2.copy_from_slice(&attn_flat[6 * dd..7 * dd]);
-            model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
-        }
+        // Temporarily skip attn_weights update during T1 fix
+        // {
+        //     let mut attn_flat = Vec::with_capacity(attn_total);
+        //     attn_flat.extend_from_slice(&model.attn.wq);
+        //     attn_flat.extend_from_slice(&model.attn.wk);
+        //     attn_flat.extend_from_slice(&model.attn.wv);
+        //     attn_flat.extend_from_slice(&model.attn.wo);
+        //     attn_flat.extend_from_slice(&model.attn.wq2);
+        //     attn_flat.extend_from_slice(&model.attn.wk2);
+        //     attn_flat.extend_from_slice(&model.attn.wv2);
+        //     attn_flat.extend_from_slice(&model.attn.wo2);
+        //     opt_attn_w.update(&mut attn_flat, &g_aw, lr);
+        //     model.attn.wq.copy_from_slice(&attn_flat[0..dd]);
+        //     model.attn.wk.copy_from_slice(&attn_flat[dd..2 * dd]);
+        //     model.attn.wv.copy_from_slice(&attn_flat[2 * dd..3 * dd]);
+        //     model.attn.wo.copy_from_slice(&attn_flat[3 * dd..4 * dd]);
+        //     model.attn.wq2.copy_from_slice(&attn_flat[4 * dd..5 * dd]);
+        //     model.attn.wk2.copy_from_slice(&attn_flat[5 * dd..6 * dd]);
+        //     model.attn.wv2.copy_from_slice(&attn_flat[6 * dd..7 * dd]);
+        //     model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
+        // }
 
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
@@ -945,26 +874,27 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         opt_attn_up.update(&mut model.attn_up, &g_au, lr);
         opt_head.update(&mut model.lm_head, &gh, lr);
 
-        {
-            let mut attn_flat = Vec::with_capacity(8 * dd);
-            attn_flat.extend_from_slice(&model.attn.wq);
-            attn_flat.extend_from_slice(&model.attn.wk);
-            attn_flat.extend_from_slice(&model.attn.wv);
-            attn_flat.extend_from_slice(&model.attn.wo);
-            attn_flat.extend_from_slice(&model.attn.wq2);
-            attn_flat.extend_from_slice(&model.attn.wk2);
-            attn_flat.extend_from_slice(&model.attn.wv2);
-            attn_flat.extend_from_slice(&model.attn.wo2);
-            opt_attn_w_muon.update(&mut attn_flat, &g_aw, lr);
-            model.attn.wq.copy_from_slice(&attn_flat[0..dd]);
-            model.attn.wk.copy_from_slice(&attn_flat[dd..2 * dd]);
-            model.attn.wv.copy_from_slice(&attn_flat[2 * dd..3 * dd]);
-            model.attn.wo.copy_from_slice(&attn_flat[3 * dd..4 * dd]);
-            model.attn.wq2.copy_from_slice(&attn_flat[4 * dd..5 * dd]);
-            model.attn.wk2.copy_from_slice(&attn_flat[5 * dd..6 * dd]);
-            model.attn.wv2.copy_from_slice(&attn_flat[6 * dd..7 * dd]);
-            model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
-        }
+        // Temporarily skip attn_weights update during T1 fix
+        // {
+        //     let mut attn_flat = Vec::with_capacity(8 * dd);
+        //     attn_flat.extend_from_slice(&model.attn.wq);
+        //     attn_flat.extend_from_slice(&model.attn.wk);
+        //     attn_flat.extend_from_slice(&model.attn.wv);
+        //     attn_flat.extend_from_slice(&model.attn.wo);
+        //     attn_flat.extend_from_slice(&model.attn.wq2);
+        //     attn_flat.extend_from_slice(&model.attn.wk2);
+        //     attn_flat.extend_from_slice(&model.attn.wv2);
+        //     attn_flat.extend_from_slice(&model.attn.wo2);
+        //     opt_attn_w_muon.update(&mut attn_flat, &g_aw, lr);
+        //     model.attn.wq.copy_from_slice(&attn_flat[0..dd]);
+        //     model.attn.wk.copy_from_slice(&attn_flat[dd..2 * dd]);
+        //     model.attn.wv.copy_from_slice(&attn_flat[2 * dd..3 * dd]);
+        //     model.attn.wo.copy_from_slice(&attn_flat[3 * dd..4 * dd]);
+        //     model.attn.wq2.copy_from_slice(&attn_flat[4 * dd..5 * dd]);
+        //     model.attn.wk2.copy_from_slice(&attn_flat[5 * dd..6 * dd]);
+        //     model.attn.wv2.copy_from_slice(&attn_flat[6 * dd..7 * dd]);
+        //     model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
+        // }
 
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
