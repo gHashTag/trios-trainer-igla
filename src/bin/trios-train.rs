@@ -72,6 +72,21 @@ struct Cli {
     /// Optimizer: adamw, muon, or muon-cwd (P1 lab).
     #[arg(long, env = "TRIOS_OPTIMIZER", default_value = "adamw")]
     optimizer: String,
+
+    /// Context window (accepted for seed-agent compat; ignored — fixed by
+    /// `train_loop::NUM_CTX`). seed-agent (gHashTag/trios-railway) passes
+    /// `--ctx 12` because the legacy bisect found ctx=12 was the only working
+    /// value. We accept the flag here so unknown-arg parse errors don't crash
+    /// the trainer immediately. Refs: trios-railway#62, trios-trainer-igla#55.
+    #[arg(long, env = "TRIOS_CTX")]
+    #[allow(dead_code)]
+    ctx: Option<usize>,
+
+    /// Format type pass-through (accepted for seed-agent compat; honoured via
+    /// `TRIOS_FORMAT_TYPE` env). gf16 is the default in production.
+    #[arg(long, env = "TRIOS_FORMAT_TYPE")]
+    #[allow(dead_code)]
+    format: Option<String>,
 }
 
 fn main() -> Result<()> {

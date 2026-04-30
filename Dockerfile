@@ -15,6 +15,7 @@ RUN cargo build --release \
         --bin trios-train \
         --bin gf16_test \
         --bin ngram_train_gf16 \
+        --bin bpb_smoke \
         -p trios-trainer
 
 FROM debian:bookworm-slim AS runtime
@@ -28,6 +29,7 @@ COPY --from=builder /build/target/release/entrypoint /usr/local/bin/entrypoint
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
 COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
 COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
+COPY --from=builder /build/target/release/bpb_smoke /usr/local/bin/bpb_smoke
 
 RUN mkdir -p /work/data && \
     curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /work/data/tiny_shakespeare.txt && \
