@@ -1,0 +1,24 @@
+# ── Stage 1: Build ──────────────────────────────────────────────────────────
+FROM rust:1.78-slim AS builder
+
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+COPY src ./src
+
+RUN cargo build --release --bin scarab
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/target/release/scarab /usr/local/bin/scarab
+
+# Railway ENV (задать в Railway Variables):
+# NEON_DATABASE_URL=postgres://...
+# SCARAB_ACCOUNT=acc0   (или acc1..accN)
+ENV SCARAB_ACCOUNT=acc0
+
+CMD ["scarab"]
