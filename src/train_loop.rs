@@ -48,6 +48,8 @@ pub struct TrainArgs {
     pub eval_every: usize,
     pub train_path: String,
     pub val_path: String,
+    pub precision: String,
+    pub log_grad_norm: bool,
 }
 
 #[derive(Debug)]
@@ -110,6 +112,45 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
     }
     let p = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
+}
+
+/// Compute L2 norm of all gradients combined
+fn compute_grad_norm(
+    ge: &[f32],
+    gc: &[Vec<f32>],
+    gp: &[f32],
+    gh: &[f32],
+    g_ad: &[f32],
+    g_au: &[f32],
+    g_aw: &[f32],
+) -> f32 {
+    let mut sum_sq = 0.0f32;
+
+    for &v in ge {
+        sum_sq += v * v;
+    }
+    for g in gc {
+        for &v in g {
+            sum_sq += v * v;
+        }
+    }
+    for &v in gp {
+        sum_sq += v * v;
+    }
+    for &v in gh {
+        sum_sq += v * v;
+    }
+    for &v in g_ad {
+        sum_sq += v * v;
+    }
+    for &v in g_au {
+        sum_sq += v * v;
+    }
+    for &v in g_aw {
+        sum_sq += v * v;
+    }
+
+    sum_sq.sqrt()
 }
 
 struct AdamW {
@@ -702,16 +743,38 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             if ema_bpb < best_bpb && ema_bpb.is_finite() {
                 best_bpb = ema_bpb;
             }
-            println!(
-                "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
-                args.seed,
-                step,
-                vbpb,
-                ema_bpb,
-                best_bpb,
-                last_nca_entropy,
-                t0.elapsed().as_secs_f64()
-            );
+
+            // Compute gradient norm for PhD data collection
+            let grad_norm = if args.log_grad_norm {
+                Some(compute_grad_norm(&ge, &gc, &gp, &gh, &g_ad, &g_au, &g_aw))
+            } else {
+                None
+            };
+
+            if let Some(gn) = grad_norm {
+                println!(
+                    "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} grad_norm={:.6} t={:.1}s",
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_bpb,
+                    last_nca_entropy,
+                    gn,
+                    t0.elapsed().as_secs_f64()
+                );
+            } else {
+                println!(
+                    "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_bpb,
+                    last_nca_entropy,
+                    t0.elapsed().as_secs_f64()
+                );
+            }
         }
     }
 
@@ -918,17 +981,40 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             if ema_bpb < best_bpb && ema_bpb.is_finite() {
                 best_bpb = ema_bpb;
             }
-            println!(
-                "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
-                label,
-                args.seed,
-                step,
-                vbpb,
-                ema_bpb,
-                best_bpb,
-                last_nca_entropy,
-                t0.elapsed().as_secs_f64()
-            );
+
+            // Compute gradient norm for PhD data collection
+            let grad_norm = if args.log_grad_norm {
+                Some(compute_grad_norm(&ge, &gc, &gp, &gh, &g_ad, &g_au, &g_aw))
+            } else {
+                None
+            };
+
+            if let Some(gn) = grad_norm {
+                println!(
+                    "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} grad_norm={:.6} t={:.1}s",
+                    label,
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_bpb,
+                    last_nca_entropy,
+                    gn,
+                    t0.elapsed().as_secs_f64()
+                );
+            } else {
+                println!(
+                    "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} nca_h={:.3} t={:.1}s",
+                    label,
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_bpb,
+                    last_nca_entropy,
+                    t0.elapsed().as_secs_f64()
+                );
+            }
         }
     }
 
@@ -947,6 +1033,8 @@ pub fn run_sweep(
     eval_every: usize,
     train_path: &str,
     val_path: &str,
+    precision: &str,
+    log_grad_norm: bool,
 ) -> Result<Vec<RunOutcome>> {
     let mut results = Vec::new();
     for &seed in GATE_FINAL_SEEDS {
@@ -959,6 +1047,8 @@ pub fn run_sweep(
             eval_every,
             train_path: train_path.to_string(),
             val_path: val_path.to_string(),
+            precision: precision.to_string(),
+            log_grad_norm,
         })?);
     }
     Ok(results)
@@ -974,6 +1064,8 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
         eval_every: 1000,
         train_path: cfg.data.train_path.clone(),
         val_path: cfg.data.val_path.clone(),
+        precision: cfg.model.precision.clone(),
+        log_grad_norm: cfg.model.log_grad_norm,
     };
     let outcome = run_single(&args)?;
     if !cfg.ledger.jsonl_path.is_empty() {

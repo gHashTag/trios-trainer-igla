@@ -38,6 +38,16 @@ pub struct ModelConfig {
     /// Use HybridAttn (L-h2) instead of plain causal attention.
     #[serde(default)]
     pub hybrid_attn: bool,
+    /// Precision format for weights (PhD gradient experiments)
+    #[serde(default = "default_precision_format")]
+    pub precision: String,
+    /// Enable gradient norm logging for PhD gradient data collection
+    #[serde(default)]
+    pub log_grad_norm: bool,
+}
+
+fn default_precision_format() -> String {
+    "fp32".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +135,14 @@ impl TrainConfig {
         }
         if let Ok(s) = std::env::var("TRIOS_VAL_PATH") {
             self.data.val_path = s;
+        }
+        if let Ok(s) = std::env::var("TRIOS_PRECISION") {
+            if crate::phi_numbers::precision_format::PrecisionFormat::from_str(&s).is_some() {
+                self.model.precision = s;
+            }
+        }
+        if let Ok(s) = std::env::var("TRIOS_LOG_GRAD_NORM") {
+            self.model.log_grad_norm = matches!(s.as_str(), "1" | "true" | "yes");
         }
     }
 

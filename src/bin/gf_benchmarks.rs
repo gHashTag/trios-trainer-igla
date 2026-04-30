@@ -11,7 +11,7 @@
 use std::time::Instant;
 
 // Import phi_numbers module
-use trios_trainer_igla::phi_numbers::{
+use trios_trainer::phi_numbers::{
     experimental::{GF12Alt, GF12Alt2, GF20Alt, GF24Alt, GF24Alt2},
     gf12::GF12, gf20::GF20, gf24::GF24, gf32::GF32, gf4::GF4, gf64::GF64, gf8::GF8,
     PHI, PHI_CONJUGATE, PHI_INVERSE_SQUARED, PHI_SQUARED,
@@ -37,130 +37,134 @@ struct FormatBenchmark {
     bytes_per_value: usize,
 }
 
-impl FormatBenchmark {
-    fn new<F>(name: &str, bits: u8, exp_bits: u8, mant_bits: u8) -> Self
-    where
-        F: for<'a> Fn(f32) -> &'a dyn FormatTrait,
-    {
-        let format = F(PHI as f32);
-        let phi = PHI as f32;
+// Wrapper functions for trait methods
+fn gf4_to_f32(v: &GF4) -> f32 { v.to_f32() }
+fn gf8_to_f32(v: &GF8) -> f32 { v.to_f32() }
+fn gf12_to_f32(v: &GF12) -> f32 { v.to_f32() }
+fn gf20_to_f32(v: &GF20) -> f32 { v.to_f32() }
+fn gf24_to_f32(v: &GF24) -> f32 { v.to_f32() }
+fn gf32_to_f32(v: &GF32) -> f32 { v.to_f32() }
+fn gf12alt_to_f32(v: &GF12Alt) -> f32 { v.to_f32() }
+fn gf12alt2_to_f32(v: &GF12Alt2) -> f32 { v.to_f32() }
+fn gf20alt_to_f32(v: &GF20Alt) -> f32 { v.to_f32() }
+fn gf24alt_to_f32(v: &GF24Alt) -> f32 { v.to_f32() }
+fn gf24alt2_to_f32(v: &GF24Alt2) -> f32 { v.to_f32() }
 
-        // Measure encode performance
-        let iterations = 100_000;
-        let encode_start = Instant::now();
-        for _ in 0..iterations {
-            let _ = F(phi);
-        }
-        let encode_ns = encode_start.elapsed().as_nanos() as f64 / iterations as f64;
+fn create_benchmark<T: 'static>(
+    name: &str,
+    bits: u8,
+    exp_bits: u8,
+    mant_bits: u8,
+    encode_fn: fn(f32) -> T,
+    to_f32_fn: fn(&T) -> f32,
+) -> FormatBenchmark {
+    let phi = PHI as f32;
 
-        // Measure decode performance
-        let encoded = F(phi);
-        let decode_start = Instant::now();
-        for _ in 0..iterations {
-            let _ = encoded.to_f32();
-        }
-        let decode_ns = decode_start.elapsed().as_nanos() as f64 / iterations as f64;
+    // Measure encode performance
+    let iterations = 100_000;
+    let encode_start = Instant::now();
+    for _ in 0..iterations {
+        let _ = encode_fn(phi);
+    }
+    let encode_ns = encode_start.elapsed().as_nanos() as f64 / iterations as f64;
 
-        // Measure φ constant errors
-        let phi_encoded = F(PHI as f32);
-        let phi_decoded = phi_encoded.to_f32();
-        let phi_error = (phi_decoded - PHI as f32).abs() / PHI as f32;
+    // Measure decode performance
+    let encoded = encode_fn(phi);
+    let decode_start = Instant::now();
+    for _ in 0..iterations {
+        let _ = to_f32_fn(&encoded);
+    }
+    let decode_ns = decode_start.elapsed().as_nanos() as f64 / iterations as f64;
 
-        let phi_conj_encoded = F(PHI_CONJUGATE as f32);
-        let phi_conj_decoded = phi_conj_encoded.to_f32();
-        let phi_conj_error =
-            (phi_conj_decoded - PHI_CONJUGATE as f32).abs() / PHI_CONJUGATE as f32;
+    // Measure φ constant errors
+    let phi_encoded = encode_fn(PHI as f32);
+    let phi_decoded = to_f32_fn(&phi_encoded);
+    let phi_error = (phi_decoded - PHI as f32).abs() / PHI as f32;
 
-        let phi_sq_encoded = F(PHI_SQUARED as f32);
-        let phi_sq_decoded = phi_sq_encoded.to_f32();
-        let phi_sq_error =
-            (phi_sq_decoded - PHI_SQUARED as f32).abs() / PHI_SQUARED as f32;
+    let phi_conj_encoded = encode_fn(PHI_CONJUGATE as f32);
+    let phi_conj_decoded = to_f32_fn(&phi_conj_encoded);
+    let phi_conj_error =
+        (phi_conj_decoded - PHI_CONJUGATE as f32).abs() / PHI_CONJUGATE as f32;
 
-        // Trinity identity: φ² + 1/φ² = 3
-        let phi_inv_sq_encoded = F(PHI_INVERSE_SQUARED as f32);
-        let trinity_sum = phi_sq_decoded as f64 + phi_inv_sq_encoded.to_f32() as f64;
-        let trinity_error = (trinity_sum - 3.0).abs();
+    let phi_sq_encoded = encode_fn(PHI_SQUARED as f32);
+    let phi_sq_decoded = to_f32_fn(&phi_sq_encoded);
+    let phi_sq_error =
+        (phi_sq_decoded - PHI_SQUARED as f32).abs() / PHI_SQUARED as f32;
 
-        Self {
-            name: name.to_string(),
-            bits,
-            exp_bits,
-            mant_bits,
-            split_ratio: exp_bits as f64 / mant_bits as f64,
-            encode_ns,
-            decode_ns,
-            phi_error,
-            phi_conj_error,
-            phi_sq_error,
-            trinity_error,
-            bytes_per_value: (bits as usize + 7) / 8,
-        }
+    // Trinity identity: φ² + 1/φ² = 3
+    let phi_inv_sq_encoded = encode_fn(PHI_INVERSE_SQUARED as f32);
+    let trinity_sum = phi_sq_decoded as f64 + to_f32_fn(&phi_inv_sq_encoded) as f64;
+    let trinity_error = (trinity_sum - 3.0).abs();
+
+    FormatBenchmark {
+        name: name.to_string(),
+        bits,
+        exp_bits,
+        mant_bits,
+        split_ratio: exp_bits as f64 / mant_bits as f64,
+        encode_ns,
+        decode_ns,
+        phi_error: phi_error as f64,
+        phi_conj_error: phi_conj_error as f64,
+        phi_sq_error: phi_sq_error as f64,
+        trinity_error,
+        bytes_per_value: (bits as usize).div_ceil(8),
     }
 }
 
-trait FormatTrait {
-    fn to_f32(&self) -> f32;
-}
+// Special version for GF64 which uses f64 encoding
+fn create_benchmark_gf64(name: &str, bits: u8, exp_bits: u8, mant_bits: u8) -> FormatBenchmark {
+    let phi = PHI;
 
-// Implement FormatTrait for all GF types
-impl FormatTrait for GF4 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
+    // Measure encode performance
+    let iterations = 100_000;
+    let encode_start = Instant::now();
+    for _ in 0..iterations {
+        let _ = GF64::from_f64(phi);
     }
-}
-impl FormatTrait for GF8 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
+    let encode_ns = encode_start.elapsed().as_nanos() as f64 / iterations as f64;
+
+    // Measure decode performance
+    let encoded = GF64::from_f64(phi);
+    let decode_start = Instant::now();
+    for _ in 0..iterations {
+        let _ = encoded.to_f64();
     }
-}
-impl FormatTrait for GF12 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF20 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF24 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF32 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF64 {
-    fn to_f32(&self) -> f32 {
-        self.to_f64() as f32
-    }
-}
-impl FormatTrait for GF12Alt {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF12Alt2 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF20Alt {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF24Alt {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
-    }
-}
-impl FormatTrait for GF24Alt2 {
-    fn to_f32(&self) -> f32 {
-        self.to_f32()
+    let decode_ns = decode_start.elapsed().as_nanos() as f64 / iterations as f64;
+
+    // Measure φ constant errors (in f64 domain)
+    let phi_encoded = GF64::from_f64(PHI);
+    let phi_decoded = phi_encoded.to_f64();
+    let phi_error = (phi_decoded - PHI).abs() / PHI;
+
+    let phi_conj_encoded = GF64::from_f64(PHI_CONJUGATE);
+    let phi_conj_decoded = phi_conj_encoded.to_f64();
+    let phi_conj_error =
+        (phi_conj_decoded - PHI_CONJUGATE).abs() / PHI_CONJUGATE;
+
+    let phi_sq_encoded = GF64::from_f64(PHI_SQUARED);
+    let phi_sq_decoded = phi_sq_encoded.to_f64();
+    let phi_sq_error =
+        (phi_sq_decoded - PHI_SQUARED).abs() / PHI_SQUARED;
+
+    // Trinity identity: φ² + 1/φ² = 3
+    let phi_inv_sq_encoded = GF64::from_f64(PHI_INVERSE_SQUARED);
+    let trinity_sum = phi_sq_decoded + phi_inv_sq_encoded.to_f64();
+    let trinity_error = (trinity_sum - 3.0).abs();
+
+    FormatBenchmark {
+        name: name.to_string(),
+        bits,
+        exp_bits,
+        mant_bits,
+        split_ratio: exp_bits as f64 / mant_bits as f64,
+        encode_ns,
+        decode_ns,
+        phi_error,
+        phi_conj_error,
+        phi_sq_error,
+        trinity_error,
+        bytes_per_value: (bits as usize).div_ceil(8),
     }
 }
 
@@ -176,19 +180,19 @@ fn main() {
 
     // Run benchmarks for all formats
     let benchmarks = vec![
-        FormatBenchmark::new::<|v| GF4::from_f32(v)>("GF4", 4, 1, 2),
-        FormatBenchmark::new::<|v| GF8::from_f32(v)>("GF8", 8, 3, 4),
-        FormatBenchmark::new::<|v| GF12::from_f32(v)>("GF12", 12, 4, 7),
-        FormatBenchmark::new::<|v| GF20::from_f32(v)>("GF20", 20, 7, 12),
-        FormatBenchmark::new::<|v| GF24::from_f32(v)>("GF24", 24, 8, 15),
-        FormatBenchmark::new::<|v| GF32::from_f32(v)>("GF32", 32, 13, 18),
-        FormatBenchmark::new::<|v| GF64::from_f64(v)>("GF64", 64, 21, 42),
+        create_benchmark("GF4", 4, 1, 2, GF4::from_f32, gf4_to_f32),
+        create_benchmark("GF8", 8, 3, 4, GF8::from_f32, gf8_to_f32),
+        create_benchmark("GF12", 12, 4, 7, GF12::from_f32, gf12_to_f32),
+        create_benchmark("GF20", 20, 7, 12, GF20::from_f32, gf20_to_f32),
+        create_benchmark("GF24", 24, 8, 15, GF24::from_f32, gf24_to_f32),
+        create_benchmark("GF32", 32, 13, 18, GF32::from_f32, gf32_to_f32),
+        create_benchmark_gf64("GF64", 64, 21, 42),
         // Experimental variants
-        FormatBenchmark::new::<|v| GF12Alt::from_f32(v)>("GF12Alt (5:6)", 12, 5, 6),
-        FormatBenchmark::new::<|v| GF12Alt2::from_f32(v)>("GF12Alt2 (3:8)", 12, 3, 8),
-        FormatBenchmark::new::<|v| GF20Alt::from_f32(v)>("GF20Alt (8:11)", 20, 8, 11),
-        FormatBenchmark::new::<|v| GF24Alt::from_f32(v)>("GF24Alt (9:14)", 24, 9, 14),
-        FormatBenchmark::new::<|v| GF24Alt2::from_f32(v)>("GF24Alt2 (10:13)", 24, 10, 13),
+        create_benchmark("GF12Alt (5:6)", 12, 5, 6, GF12Alt::from_f32, gf12alt_to_f32),
+        create_benchmark("GF12Alt2 (3:8)", 12, 3, 8, GF12Alt2::from_f32, gf12alt2_to_f32),
+        create_benchmark("GF20Alt (8:11)", 20, 8, 11, GF20Alt::from_f32, gf20alt_to_f32),
+        create_benchmark("GF24Alt (9:14)", 24, 9, 14, GF24Alt::from_f32, gf24alt_to_f32),
+        create_benchmark("GF24Alt2 (10:13)", 24, 10, 13, GF24Alt2::from_f32, gf24alt2_to_f32),
     ];
 
     // Print format summary table
@@ -235,7 +239,7 @@ fn main() {
         .iter()
         .min_by(|a, b| a.phi_error.partial_cmp(&b.phi_error).unwrap())
         .unwrap();
-    println!("🏆 Best φ preservation: {} (error = {:.6})", best_phi.name, best_phi.error());
+    println!("🏆 Best φ preservation: {} (error = {:.6})", best_phi.name, best_phi.phi_error);
 
     let best_trinity = benchmarks
         .iter()

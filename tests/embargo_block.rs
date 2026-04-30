@@ -22,6 +22,8 @@ fn make_test_config(embargo_path: &str) -> TrainConfig {
             vocab_size: 1000,
             seq_len: 64,
             hybrid_attn: false,
+            precision: "fp32".to_string(),
+            log_grad_norm: false,
         },
         optimizer: OptimizerConfig {
             kind: "adamw".into(),

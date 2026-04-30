@@ -21,6 +21,8 @@ pub mod neon_writer;
 pub mod objective;
 pub mod optimizer;
 pub mod phi_numbers;
+
+pub use phi_numbers::precision_format::{PrecisionFormat, Quantize};
 pub mod race;
 pub mod train_loop;
 

@@ -72,6 +72,14 @@ struct Cli {
     /// Optimizer: adamw, muon, or muon-cwd (P1 lab).
     #[arg(long, env = "TRIOS_OPTIMIZER", default_value = "adamw")]
     optimizer: String,
+
+    /// Precision format: gf4, gf4a, gf6a, gf8, gf12, gf16, gf20, gf24, gf32, gf64, fp16, bf16, fp32
+    #[arg(long, env = "TRIOS_PRECISION", default_value = "fp32")]
+    precision: String,
+
+    /// Enable gradient norm logging for PhD gradient data collection
+    #[arg(long, env = "TRIOS_LOG_GRAD_NORM", default_value = "false")]
+    log_grad_norm: bool,
 }
 
 fn main() -> Result<()> {
@@ -99,6 +107,8 @@ fn main() -> Result<()> {
             cli.eval_every,
             &cli.train_data,
             &cli.val_data,
+            &cli.precision,
+            cli.log_grad_norm,
         )?;
         for r in &results {
             println!(
@@ -120,6 +130,8 @@ fn main() -> Result<()> {
             eval_every: cli.eval_every,
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
+            precision: cli.precision.clone(),
+            log_grad_norm: cli.log_grad_norm,
         };
         let outcome = match cli.optimizer.as_str() {
             "muon" => train_loop::run_single_muon(&args, false)?,
