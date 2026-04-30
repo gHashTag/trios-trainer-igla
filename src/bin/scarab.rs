@@ -129,12 +129,12 @@ async fn run_strategy(
 ) -> anyhow::Result<()> {
     let t = &strat.spec.trainer;
     let hidden = t.hidden.unwrap_or(828).to_string();
-    let lr     = t.lr.unwrap_or(0.0004).to_string();
-    let steps  = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
-    let ctx    = t.ctx.unwrap_or(12).to_string();
+    let lr = t.lr.unwrap_or(0.0004).to_string();
+    let steps = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
+    let ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
-    let seed   = t.seed.unwrap_or(1597).to_string();
-    let neon   = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let seed = t.seed.unwrap_or(1597).to_string();
+    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
     let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
     println!(
@@ -145,14 +145,22 @@ async fn run_strategy(
     let mut cmd = Command::new("trios-igla");
     cmd.args([
         "train",
-        "--hidden",   &hidden,
-        "--lr",       &lr,
-        "--steps",    &steps,
-        "--ctx",      &ctx,
-        "--format",   &format,
-        "--seed",     &seed,
-        "--exp-id",   &strat.id.to_string(),
-        "--neon-url", &neon,
+        "--hidden",
+        &hidden,
+        "--lr",
+        &lr,
+        "--steps",
+        &steps,
+        "--ctx",
+        &ctx,
+        "--format",
+        &format,
+        "--seed",
+        &seed,
+        "--exp-id",
+        &strat.id.to_string(),
+        "--neon-url",
+        &neon,
     ])
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
@@ -162,7 +170,7 @@ async fn run_strategy(
             Ok(Ok(s)) if s.success() => ("done", None),
             Ok(Ok(s)) => ("failed", Some(format!("exit: {s}"))),
             Ok(Err(e)) => ("failed", Some(format!("spawn error: {e}"))),
-            Err(_)    => ("failed", Some(format!("timeout after {max_secs}s"))),
+            Err(_) => ("failed", Some(format!("timeout after {max_secs}s"))),
         };
 
     client
@@ -180,11 +188,7 @@ async fn run_strategy(
 
 // ── register + heartbeat ─────────────────────────────────────────────────────
 
-async fn register_scarab(
-    client: &tokio_postgres::Client,
-    label: &str,
-    host: &str,
-) -> String {
+async fn register_scarab(client: &tokio_postgres::Client, label: &str, host: &str) -> String {
     client
         .query_one(
             "INSERT INTO scarabs (label, host, last_heartbeat, registered_at) \
@@ -199,11 +203,7 @@ async fn register_scarab(
         })
 }
 
-async fn heartbeat(
-    client: &tokio_postgres::Client,
-    scarab_id: &str,
-    current_id: Option<i64>,
-) {
+async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id: Option<i64>) {
     let _ = client
         .execute(
             "UPDATE scarabs \
@@ -228,7 +228,9 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
                 sleep(Duration::from_secs(5)).await;
                 continue;
             };
-            tokio::spawn(async move { let _ = conn.await; });
+            tokio::spawn(async move {
+                let _ = conn.await;
+            });
 
             if client.execute("LISTEN strategy_new", &[]).await.is_err() {
                 sleep(Duration::from_secs(5)).await;
@@ -255,11 +257,13 @@ async fn main() -> anyhow::Result<()> {
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     // SCARAB_ACCOUNT is a cosmetic log tag only.
     // It does NOT affect which tasks this scarab picks up.
-    let label  = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into());
-    let host   = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
+    let label = env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into());
+    let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
 
     let (client, conn) = tokio_postgres::connect(&db_url, NoTls).await?;
-    tokio::spawn(async move { let _ = conn.await; });
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
 
     let scarab_id = register_scarab(&client, &label, &host).await;
     println!("[scarab][{label}] ready | id={scarab_id} host={host}");
