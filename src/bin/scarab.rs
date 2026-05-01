@@ -127,7 +127,12 @@ async fn run_strategy(
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
     let optimizer = t.optimizer.clone().unwrap_or_else(|| "adamw".into());
-    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(3600);
+    // Scale timeout to steps: ~200ms/step on 2vCPU Railway, with 2× safety margin.
+    // Minimum 3600s (1h), maximum 14400s (4h).
+    let estimated_secs = (strat.steps_budget as f64 * 0.20 * 2.0) as u64;
+    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or_else(|| {
+        estimated_secs.clamp(3600, 14400)
+    });
 
     println!(
         "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed} opt={optimizer}",
