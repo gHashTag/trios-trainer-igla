@@ -154,14 +154,45 @@ async fn run_strategy(
             &optimizer,
         ])
         .stdout(Stdio::inherit())
-        .stderr(Stdio::inherit());
+        .stderr(Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        anyhow::anyhow!("spawn trios-train: {e}")
+    })?;
+
+    // Drain stderr in background so the pipe doesn't deadlock.
+    let stderr_pipe = child.stderr.take().unwrap();
+    let stderr_task = tokio::spawn(async move {
+        use tokio::io::AsyncReadExt;
+        let mut buf = Vec::with_capacity(4096);
+        let mut r = tokio::io::BufReader::new(stderr_pipe);
+        let _ = r.read_to_end(&mut buf).await;
+        String::from_utf8_lossy(&buf).to_string()
+    });
 
     let (status_str, err_msg): (&str, Option<String>) =
-        match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
+        match tokio::time::timeout(Duration::from_secs(max_secs), child.wait()).await {
             Ok(Ok(s)) if s.success() => ("done", None),
-            Ok(Ok(s)) => ("failed", Some(format!("exit: {s}"))),
+            Ok(Ok(s)) => {
+                let stderr = stderr_task.await.unwrap_or_default();
+                let tail = if stderr.len() > 2000 {
+                    format!("...{}", &stderr[stderr.len() - 2000..])
+                } else {
+                    stderr
+                };
+                ("failed", Some(format!("exit: {s} stderr: {tail}")))
+            }
             Ok(Err(e)) => ("failed", Some(format!("spawn error: {e}"))),
-            Err(_) => ("failed", Some(format!("timeout after {max_secs}s"))),
+            Err(_) => {
+                let _ = child.kill().await;
+                let stderr = stderr_task.await.unwrap_or_default();
+                let tail = if stderr.len() > 2000 {
+                    format!("...{}", &stderr[stderr.len() - 2000..])
+                } else {
+                    stderr
+                };
+                ("failed", Some(format!("timeout after {max_secs}s stderr: {tail}")))
+            }
         };
 
     client
