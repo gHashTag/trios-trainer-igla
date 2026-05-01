@@ -130,9 +130,11 @@ async fn run_strategy(
     // Scale timeout to steps: ~200ms/step on 2vCPU Railway, with 2× safety margin.
     // Minimum 3600s (1h), maximum 14400s (4h).
     let estimated_secs = (strat.steps_budget as f64 * 0.20 * 2.0) as u64;
-    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or_else(|| {
-        estimated_secs.clamp(3600, 14400)
-    });
+    let max_secs = strat
+        .spec
+        .constraints
+        .max_runtime_sec
+        .unwrap_or_else(|| estimated_secs.clamp(3600, 14400));
 
     println!(
         "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed} opt={optimizer}",
@@ -161,9 +163,9 @@ async fn run_strategy(
         .stdout(Stdio::inherit())
         .stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| {
-        anyhow::anyhow!("spawn trios-train: {e}")
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("spawn trios-train: {e}"))?;
 
     // Drain stderr in background so the pipe doesn't deadlock.
     let stderr_pipe = child.stderr.take().unwrap();
@@ -196,7 +198,10 @@ async fn run_strategy(
                 } else {
                     stderr
                 };
-                ("failed", Some(format!("timeout after {max_secs}s stderr: {tail}")))
+                (
+                    "failed",
+                    Some(format!("timeout after {max_secs}s stderr: {tail}")),
+                )
             }
         };
 
