@@ -32,6 +32,10 @@ struct TrainerSpec {
     format: Option<String>,
     seed: Option<u64>,
     val_split_seed: Option<String>,
+    /// Override train data path (default: /work/data/tiny_shakespeare.txt)
+    train_path: Option<String>,
+    /// Override val data path (default: /work/data/tiny_shakespeare_val.txt)
+    val_path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, Default)]
@@ -139,11 +143,16 @@ async fn run_strategy(
     let ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
+    // Bug C fix: Read corpus paths from config_json.data.{train_path,val_path}
+    // This respects explicit corpus tags in strategy_queue entries.
+    // Falls back to tiny_shakespeare defaults for backward compatibility.
+    let train_path = t.train_path.clone().unwrap_or_else(|| "/work/data/tiny_shakespeare.txt".into());
+    let val_path = t.val_path.clone().unwrap_or_else(|| "/work/data/tiny_shakespeare_val.txt".into());
     let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
     let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
     println!(
-        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed}",
+        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed} train={train_path}",
         strat.id, strat.canon_name
     );
 
@@ -161,9 +170,15 @@ async fn run_strategy(
         &format,
         "--seed",
         &seed,
+        "--train-data",
+        &train_path,
+        "--val-data",
+        &val_path,
     ])
     .env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
     .env("TRIOS_CANON_NAME", &strat.canon_name)
+    // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
+    .env("NEON_DATABASE_URL", &neon)
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
 
@@ -175,12 +190,49 @@ async fn run_strategy(
             Err(_) => ("failed", Some(format!("timeout after {max_secs}s"))),
         };
 
+    // Bug 3 fix: write final_bpb / final_step back to strategy_queue.
+    // Query the latest bpb_samples row for this canon_name.
+    let mut final_bpb: Option<f64> = None;
+    let mut final_step: Option<i32> = None;
+    if status_str == "done" {
+        match client
+            .query_opt(
+                "SELECT step, bpb FROM bpb_samples \
+                 WHERE canon_name = $1 \
+                 ORDER BY ts DESC LIMIT 1",
+                &[&strat.canon_name],
+            )
+            .await
+        {
+            Ok(Some(row)) => {
+                final_step = Some(row.get::<_, i32>(0));
+                final_bpb = Some(row.get::<_, f64>(1));
+                println!(
+                    "[{label}] final_bpb={:.4} final_step={} for id={}",
+                    final_bpb.unwrap(),
+                    final_step.unwrap(),
+                    strat.id
+                );
+            }
+            Ok(None) => {
+                eprintln!(
+                    "[{label}] WARNING: trainer exited clean but 0 bpb_samples rows for canon={}",
+                    strat.canon_name
+                );
+            }
+            Err(e) => {
+                eprintln!("[{label}] bpb_samples query error: {e}");
+            }
+        }
+    }
+
     client
         .execute(
             "UPDATE strategy_queue \
-             SET status = $1, finished_at = NOW(), last_error = $2 \
-             WHERE id = $3",
-            &[&status_str, &err_msg, &strat.id],
+             SET status = $1, finished_at = NOW(), last_error = $2, \
+                 final_bpb = $3, final_step = $4 \
+             WHERE id = $5",
+            &[&status_str, &err_msg, &final_bpb, &final_step, &strat.id],
         )
         .await?;
 
