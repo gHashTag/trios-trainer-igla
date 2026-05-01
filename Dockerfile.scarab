@@ -18,6 +18,7 @@ RUN rustup default 1.91
 
 WORKDIR /build
 COPY . .
+
 RUN cargo build --release --bin scarab --bin trios-train
 
 # ── runtime ────────────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ COPY --from=builder /build/target/release/scarab      /usr/local/bin/scarab
 COPY --from=builder /build/target/release/trios-train  /usr/local/bin/trios-train
 
 # Byte-disjoint train/val split (same as main Dockerfile).
+# train = first (size-100000) bytes, val = last 100000 bytes.
 RUN mkdir -p /work/data && \
     curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /tmp/full.txt && \
     SIZE=$(stat -c%s /tmp/full.txt) && \
@@ -41,6 +43,7 @@ RUN mkdir -p /work/data && \
     rm /tmp/full.txt && \
     echo "[corpus-split] train=$(stat -c%s /work/data/tiny_shakespeare.txt) bytes  val=$(stat -c%s /work/data/tiny_shakespeare_val.txt) bytes"
 
+WORKDIR /work
 ENV RUST_LOG="info"
 
 CMD ["/usr/local/bin/scarab"]

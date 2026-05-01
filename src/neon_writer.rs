@@ -19,7 +19,7 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use tokio::runtime::Runtime;
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::Client;
 
 /// Lazy-initialised tokio runtime shared by all sync wrappers.
 fn rt() -> &'static Runtime {
@@ -32,71 +32,64 @@ fn rt() -> &'static Runtime {
     })
 }
 
-/// Connect to Neon and return a Client. Returns None if DSN is unset or
-/// the connection fails.
-fn connect() -> Option<Client> {
-    let dsn = std::env::var("TRIOS_NEON_DSN")
-        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
-        .or_else(|_| std::env::var("DATABASE_URL"))
-        .ok()?;
-    eprintln!("[neon_writer] connecting to Neon …");
-    rt().block_on(async {
-        match tokio_postgres::connect(&dsn, NoTls).await {
-            Ok((client, conn)) => {
-                // Drive the connection task in the background.
-                tokio::spawn(async move {
-                    if let Err(e) = conn.await {
-                        eprintln!("[neon_writer] connection task error: {e}");
+/// Build a rustls TLS config with system root CAs (required for Neon).
+fn make_tls_config() -> rustls::ClientConfig {
+    let mut roots = rustls::RootCertStore::empty();
+    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    rustls::ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth()
+}
+
+/// Lazy-initialised Neon client. `None` if `TRIOS_NEON_DSN` is unset or the
+/// connection failed. Cached across calls.
+fn client() -> Option<&'static Client> {
+    static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            let dsn = std::env::var("TRIOS_NEON_DSN")
+                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+                .or_else(|_| std::env::var("DATABASE_URL"))
+                .ok()?;
+            eprintln!("[neon_writer] connecting to Neon (TLS) …");
+            let connect = rt().block_on(async {
+                let tls_config = make_tls_config();
+                let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
+                let connector = tokio_postgres::connect(&dsn, tls).await;
+                match connector {
+                    Ok((client, conn)) => {
+                        // Drive the connection task in the background.
+                        tokio::spawn(async move {
+                            if let Err(e) = conn.await {
+                                eprintln!("[neon_writer] connection task error: {e}");
+                            }
+                        });
+                        Some(client)
                     }
-                });
-                Some(client)
-            }
-            Err(e) => {
-                eprintln!("[neon_writer] connect failed: {e}");
-                None
-            }
-        }
-    })
+                    Err(e) => {
+                        eprintln!("[neon_writer] connect failed: {e}");
+                        None
+                    }
+                }
+            });
+            connect
+        })
+        .as_ref()
 }
 
 /// Run an SQL statement with up to `max_attempts` retries on transient errors.
-/// Automatically reconnects if the cached connection is broken (Neon idle timeout).
 fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
-    use std::sync::Mutex;
-    static CLIENT: OnceLock<Mutex<Option<Client>>> = OnceLock::new();
-    let cell = CLIENT.get_or_init(|| Mutex::new(connect()));
-
-    // No DSN or initial connect failed.
-    {
-        let guard = cell.lock().unwrap();
-        if guard.is_none() {
-            eprintln!(
-                "[neon_writer] DSN unset or unreachable; skipping: {}",
-                short(stmt)
-            );
-            return;
-        }
-    }
-
+    let Some(c) = client() else {
+        // No DSN or connect failed: log only, like the legacy eprintln path.
+        eprintln!(
+            "[neon_writer] DSN unset or unreachable; skipping: {}",
+            short(stmt)
+        );
+        return;
+    };
     let max_attempts = 3u8;
     for attempt in 1..=max_attempts {
-        // Reconnect if the cached client was reset (broken connection).
-        {
-            let mut guard = cell.lock().unwrap();
-            if guard.is_none() {
-                eprintln!("[neon_writer] reconnecting (attempt {attempt}) …");
-                *guard = connect();
-            }
-        }
-
-        let res = {
-            let guard = cell.lock().unwrap();
-            match guard.as_ref() {
-                Some(c) => rt().block_on(c.execute(stmt, params)),
-                None => break, // connect failed, give up
-            }
-        };
-
+        let res = rt().block_on(c.execute(stmt, params));
         match res {
             Ok(rows) => {
                 eprintln!("[neon_writer] ok: {} ({} rows)", short(stmt), rows);
@@ -107,11 +100,6 @@ fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
                     "[neon_writer] attempt {attempt}/{max_attempts} failed for {} : {e}",
                     short(stmt)
                 );
-                // Connection is likely broken — reset so next attempt reconnects.
-                {
-                    let mut guard = cell.lock().unwrap();
-                    *guard = None;
-                }
                 std::thread::sleep(Duration::from_millis(500 * attempt as u64));
             }
         }

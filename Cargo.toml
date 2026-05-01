@@ -174,8 +174,16 @@ ci-strict = []
 # to prove the queue → worker → trainer → JSONL → DB pipe is alive end-to-end.
 # Refs: trios-trainer-igla#57, trios#445.
 smoke = []
+# GPU acceleration using Candle with CUDA support
+gpu = ["candle-core", "candle-nn"]
+
 
 [dependencies]
+# GPU/ML framework for CUDA support
+candle-core = { version = "0.7", features = ["cuda"], optional = true }
+candle-nn   = { version = "0.7", features = ["cuda"], optional = true }
+
+# Standard[dependencies]
 # Internal canonical crates (opt-in via `trios-integration` feature).
 # Temporarily disabled due to submodule issue — use local path or fix submodule.
 # trios-igla-race        = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
@@ -197,8 +205,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sha1               = "0.10"
 uuid               = { version = "1", features = ["v4"] }
 tokio              = { version = "1", features = ["full"] }
-tokio-postgres     = "0.7"
-ureq               = "2.12"
+tokio-postgres       = "0.7"
+tokio-postgres-rustls = "0.12"
+rustls               = "0.23"
+webpki-roots         = "0.26"
+ureq                  = "2.12"
 
 [dev-dependencies]
 tempfile = "3.10"
