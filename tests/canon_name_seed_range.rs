@@ -22,11 +22,11 @@ fn test_igla_naming_format() {
     ];
 
     let invalid_names = vec![
-        "probe-2033",           // Missing IGLA prefix
-        "IGLA-PROBE-2033",      // Missing -seed<N> suffix
-        "IGLA-PROBE-seed42",    // Missing NUM
-        "IGLA-2033-seed42",     // Missing TYPE
-        "IGLA-PROBE-2033-42",   // Missing TAG
+        "probe-2033",         // Missing IGLA prefix
+        "IGLA-PROBE-2033",    // Missing -seed<N> suffix
+        "IGLA-PROBE-seed42",  // Missing NUM
+        "IGLA-2033-seed42",   // Missing TYPE
+        "IGLA-PROBE-2033-42", // Missing TAG
     ];
 
     // Pattern: IGLA-<TYPE>-<NUM>-<TAG>-seed<N>
@@ -68,7 +68,10 @@ fn validate_igla_name(name: &str) -> bool {
     }
 
     // TAG: lowercase alphanumeric (e.g., smeargate)
-    if !parts[3].chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()) {
+    if !parts[3]
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    {
         return false;
     }
 
@@ -108,10 +111,7 @@ fn test_seed_extractable_from_canon_name() {
 
 fn extract_seed(name: &str) -> Option<i32> {
     // Extract seed from IGLA-*-seed<N> pattern
-    name.split("-seed")
-        .last()?
-        .parse()
-        .ok()
+    name.split("-seed").last()?.parse().ok()
 }
 
 #[test]
@@ -129,8 +129,11 @@ fn test_canon_name_uniqueness_per_seed() {
         canon_names.insert(name);
     }
 
-    assert_eq!(canon_names.len(), 3,
-        "Each seed must have a unique canon_name");
+    assert_eq!(
+        canon_names.len(),
+        3,
+        "Each seed must have a unique canon_name"
+    );
 
     // Bug scenario: same canon_name for different seeds
     // IGLA-PROBE-2033-smeargate used for seed=42 AND seed=43
@@ -149,9 +152,13 @@ fn test_trios_canon_name_env_var_required() {
 
     let test_canon = "IGLA-PROBE-2033-smeargate-seed42";
 
-    assert!(test_canon.starts_with("IGLA-"),
-        "CANON_NAME must start with IGLA- prefix");
+    assert!(
+        test_canon.starts_with("IGLA-"),
+        "CANON_NAME must start with IGLA- prefix"
+    );
 
-    assert!(test_canon.contains("-seed"),
-        "CANON_NAME must contain -seed<N> suffix");
+    assert!(
+        test_canon.contains("-seed"),
+        "CANON_NAME must contain -seed<N> suffix"
+    );
 }

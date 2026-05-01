@@ -10,7 +10,10 @@ use std::process::Command;
 /// Bug A regression check — NoTls cannot connect to Neon
 fn scarab_uses_rustls_tls() {
     let output = Command::new("grep")
-        .args(["tokio_postgres_rustls::MakeRustlsConnect", "src/bin/scarab.rs"])
+        .args([
+            "tokio_postgres_rustls::MakeRustlsConnect",
+            "src/bin/scarab.rs",
+        ])
         .output()
         .expect("grep should run");
 
@@ -230,7 +233,10 @@ fn scarab_uses_skip_locked() {
 fn scarab_claim_is_account_free() {
     // Verify claim query does NOT have "AND account = $1"
     let output = Command::new("grep")
-        .args(["UPDATE strategy_queue.*WHERE.*FOR UPDATE", "src/bin/scarab.rs"])
+        .args([
+            "UPDATE strategy_queue.*WHERE.*FOR UPDATE",
+            "src/bin/scarab.rs",
+        ])
         .output()
         .expect("grep should run");
 

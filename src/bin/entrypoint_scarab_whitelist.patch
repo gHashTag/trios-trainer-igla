@@ -1,0 +1,12 @@
+--- a/src/bin/entrypoint.rs
++++ b/src/bin/entrypoint.rs
+@@ -28,7 +28,7 @@
+     if !matches!(
+         trainer.as_str(),
+         "trios-train" | "gf16_test" | "ngram_train_gf16" | "scarab"
+     ) {
+         eprintln!(
+             "[entrypoint] {trainer:?} is not in the allowed set {{trios-train, gf16_test, ngram_train_gf16, scarab}}"
+         );
+         std::process::exit(2);
+     }

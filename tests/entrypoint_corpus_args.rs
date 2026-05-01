@@ -21,12 +21,16 @@ fn test_entrypoint_reads_corpus_env_vars() {
     let val_default = "/work/data/tiny_shakespeare_val.txt";
 
     // entrypoint.rs:24
-    assert_eq!(train_default, "/work/data/tiny_shakespeare.txt",
-        "Bug B root: hardcoded default in entrypoint.rs:24");
+    assert_eq!(
+        train_default, "/work/data/tiny_shakespeare.txt",
+        "Bug B root: hardcoded default in entrypoint.rs:24"
+    );
 
     // entrypoint.rs:25
-    assert_eq!(val_default, "/work/data/tiny_shakespeare_val.txt",
-        "Bug B root: hardcoded default in entrypoint.rs:25");
+    assert_eq!(
+        val_default, "/work/data/tiny_shakespeare_val.txt",
+        "Bug B root: hardcoded default in entrypoint.rs:25"
+    );
 }
 
 #[test]
@@ -62,6 +66,8 @@ fn test_trios_train_data_env_var_override() {
     // env::var(key).unwrap_or_else(|_| default.to_string())
 
     assert_eq!(custom_path, "/custom/corpus/shakespeare.txt");
-    assert_ne!(custom_path, "/work/data/tiny_shakespeare.txt",
-        "TRIOS_TRAIN_DATA should override hardcoded default");
+    assert_ne!(
+        custom_path, "/work/data/tiny_shakespeare.txt",
+        "TRIOS_TRAIN_DATA should override hardcoded default"
+    );
 }

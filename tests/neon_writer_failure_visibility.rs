@@ -38,8 +38,10 @@ fn test_connect_failure_not_silent() {
     ];
 
     for log_msg in failure_paths {
-        assert!(log_msg.contains("neon_writer"),
-            "All error logs must include 'neon_writer' prefix for filtering");
+        assert!(
+            log_msg.contains("neon_writer"),
+            "All error logs must include 'neon_writer' prefix for filtering"
+        );
     }
 }
 

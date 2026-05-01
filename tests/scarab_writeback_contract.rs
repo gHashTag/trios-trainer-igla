@@ -20,8 +20,14 @@ fn test_update_sql_includes_final_metrics() {
     "#;
 
     // Current state FAILS: doesn't include final_bpb/final_step
-    assert!(sql.contains("final_bpb"), "BUG X2: UPDATE missing final_bpb column");
-    assert!(sql.contains("final_step"), "BUG X2: UPDATE missing final_step column");
+    assert!(
+        sql.contains("final_bpb"),
+        "BUG X2: UPDATE missing final_bpb column"
+    );
+    assert!(
+        sql.contains("final_step"),
+        "BUG X2: UPDATE missing final_step column"
+    );
 
     // Expected SQL (after Bug E fix):
     let expected_sql = r#"

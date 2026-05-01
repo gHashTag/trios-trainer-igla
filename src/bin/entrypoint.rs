@@ -5,6 +5,11 @@
 //! used, logs the resolved configuration, and execs `trios-train` with
 //! matching CLI flags. The behavior matches the legacy shim 1:1.
 //!
+//! SCARAB MODE: When TRIOS_TRAINER_BIN=scarab, this entrypoint bypasses
+//! all argument construction and directly execs `/usr/local/bin/scarab`.
+//! Scarab manages its own lifecycle via Neon queue and does not accept
+//! CLI args like --seed, --steps, etc.
+//!
 //! Anchor: `phi^2 + phi^-2 = 3`.
 
 use std::env;
@@ -15,6 +20,35 @@ fn env_or(key: &str, default: &str) -> String {
 }
 
 fn main() {
+    let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
+
+    // Scarab mode: bypass entrypoint logic, run scarab directly
+    if trainer == "scarab" {
+        println!("[entrypoint] SCARAB MODE: executing /usr/local/bin/scarab");
+        println!(
+            "[entrypoint] scarab reads NEON_DATABASE_URL from env and claims from strategy_queue"
+        );
+
+        let mut cmd = Command::new("/usr/local/bin/scarab");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt;
+            let err = cmd.exec();
+            eprintln!("[entrypoint] scarab exec failed: {err}");
+            std::process::exit(1);
+        }
+
+        #[cfg(not(unix))]
+        {
+            let status = cmd
+                .status()
+                .unwrap_or_else(|err| panic!("[entrypoint] scarab spawn failed: {err}"));
+            std::process::exit(status.code().unwrap_or(1));
+        }
+    }
+
+    // Trainer mode: construct args and exec trios-train (or other whitelisted bin)
     let seed = env_or("TRIOS_SEED", "43");
     let steps = env_or("TRIOS_STEPS", "81000");
     let lr = env_or("TRIOS_LR", "0.003");
@@ -24,14 +58,14 @@ fn main() {
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");
 
-    let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
+    // Whitelist check for trainer binaries (scarab handled above)
     if !matches!(
         trainer.as_str(),
         "trios-train" | "gf16_test" | "ngram_train_gf16"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, gf16_test, ngram_train_gf16}}"
+             {{trios-train, gf16_test, ngram_train_gf16, scarab}}"
         );
         std::process::exit(2);
     }
