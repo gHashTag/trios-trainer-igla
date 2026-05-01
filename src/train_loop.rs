@@ -749,10 +749,10 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             use std::io::Write as _;
             let _ = std::io::stdout().flush();
 
-            // Write bpb_sample to Neon if CANON_NAME is set (scarab worker sets it).
-            // neon_writer is a no-op when DSN is unset (R5), so local runs are safe.
-            if let Ok(canon) = std::env::var("CANON_NAME") {
-                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb as f32);
+            // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
+            // is set (scarab sets this env var for the trainer subprocess).
+            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
+                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
             }
         }
     }
@@ -976,9 +976,10 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             use std::io::Write as _;
             let _ = std::io::stdout().flush();
 
-            // Write bpb_sample to Neon if CANON_NAME is set (scarab worker sets it).
-            if let Ok(canon) = std::env::var("CANON_NAME") {
-                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb as f32);
+            // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
+            // is set (scarab sets this env var for the trainer subprocess).
+            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
+                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
             }
         }
     }

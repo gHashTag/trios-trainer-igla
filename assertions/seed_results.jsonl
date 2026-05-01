@@ -9,4 +9,3 @@
 {"seed":44,"steps":3000,"bpb":2.7551,"ema_bpb":3.8067,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
 {"seed": 43, "bpb": 2.1919, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
 {"seed": 44, "bpb": 2.2024, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
-{"seed": 43, "bpb": 1.5492, "step": 12000, "sha": "944763a", "gate_status": "above_target", "optimizer": "adamw", "hidden": 384, "attn_layers": 2, "lr": 0.003, "arch": "gpt2_384", "corpus": "fineweb_16mb", "lane": "L0_local_mac", "verified_by": "fix-verify-s43"}
