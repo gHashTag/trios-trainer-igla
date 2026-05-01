@@ -146,8 +146,14 @@ async fn run_strategy(
     // Bug C fix: Read corpus paths from config_json.data.{train_path,val_path}
     // This respects explicit corpus tags in strategy_queue entries.
     // Falls back to tiny_shakespeare defaults for backward compatibility.
-    let train_path = t.train_path.clone().unwrap_or_else(|| "/work/data/tiny_shakespeare.txt".into());
-    let val_path = t.val_path.clone().unwrap_or_else(|| "/work/data/tiny_shakespeare_val.txt".into());
+    let train_path = t
+        .train_path
+        .clone()
+        .unwrap_or_else(|| "/work/data/tiny_shakespeare.txt".into());
+    let val_path = t
+        .val_path
+        .clone()
+        .unwrap_or_else(|| "/work/data/tiny_shakespeare_val.txt".into());
     let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
     let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
@@ -350,7 +356,8 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 async fn main() -> anyhow::Result<()> {
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     // RAILWAY_ACC identifies which account this scarab runs on (cosmetic, NOT a routing key).
-    let acc = env::var("RAILWAY_ACC").unwrap_or_else(|_| env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into()));
+    let acc = env::var("RAILWAY_ACC")
+        .unwrap_or_else(|_| env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into()));
     let svc_id = env::var("RAILWAY_SERVICE_ID").unwrap_or_else(|_| "unknown".into());
     let svc_name = env::var("RAILWAY_SERVICE_NAME").unwrap_or_else(|_| "scarab".into());
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
