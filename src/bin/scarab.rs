@@ -88,6 +88,7 @@ async fn claim_any_pending(
             UPDATE strategy_queue
             SET status     = 'running',
                 started_at = NOW(),
+                claimed_at = NOW(),
                 worker_id  = $1
             WHERE id = (
                 SELECT id FROM strategy_queue
