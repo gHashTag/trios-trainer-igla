@@ -13,6 +13,7 @@ COPY . .
 RUN cargo build --release \
         --bin entrypoint \
         --bin trios-train \
+        --bin scarab \
         --bin gf16_test \
         --bin ngram_train_gf16 \
         --bin bpb_smoke \
@@ -27,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /work
 COPY --from=builder /build/target/release/entrypoint /usr/local/bin/entrypoint
 COPY --from=builder /build/target/release/trios-train /usr/local/bin/trios-train
+COPY --from=builder /build/target/release/scarab /usr/local/bin/scarab
 COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
 COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
 COPY --from=builder /build/target/release/bpb_smoke /usr/local/bin/bpb_smoke

@@ -1,0 +1,1 @@
+{"build":{"builder":"DOCKERFILE","dockerfilePath":"Dockerfile.scarab"},"deploy":{"restartPolicyType":"ON_FAILURE"}}

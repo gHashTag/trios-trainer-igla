@@ -30,6 +30,7 @@ struct TrainerSpec {
     ctx: Option<u32>,
     format: Option<String>,
     seed: Option<u64>,
+    optimizer: Option<String>,
     val_split_seed: Option<String>,
 }
 
@@ -121,39 +122,37 @@ async fn run_strategy(
     let hidden = t.hidden.unwrap_or(828).to_string();
     let lr = t.lr.unwrap_or(0.0004).to_string();
     let steps = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
-    let ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
-    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
+    let optimizer = t.optimizer.clone().unwrap_or_else(|| "adamw".into());
+    let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(3600);
 
     println!(
-        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed}",
+        "[{label}] START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} seed={seed} opt={optimizer}",
         strat.id, strat.canon_name
     );
 
-    let mut cmd = Command::new("trios-igla");
-    cmd.args([
-        "train",
-        "--hidden",
-        &hidden,
-        "--lr",
-        &lr,
-        "--steps",
-        &steps,
-        "--ctx",
-        &ctx,
-        "--format",
-        &format,
-        "--seed",
-        &seed,
-        "--exp-id",
-        &strat.id.to_string(),
-        "--neon-url",
-        &neon,
-    ])
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+    // NEON_DATABASE_URL is inherited from parent env automatically.
+    // trios-train reads it from env (neon_writer reads TRIOS_NEON_DSN / NEON_DATABASE_URL).
+    // CANON_NAME is set so the train loop can write bpb_samples with the correct name.
+    let mut cmd = Command::new("trios-train");
+    cmd.env("CANON_NAME", &strat.canon_name)
+        .args([
+            "--hidden",
+            &hidden,
+            "--lr",
+            &lr,
+            "--steps",
+            &steps,
+            "--format",
+            &format,
+            "--seed",
+            &seed,
+            "--optimizer",
+            &optimizer,
+        ])
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     let (status_str, err_msg): (&str, Option<String>) =
         match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
