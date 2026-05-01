@@ -1,0 +1,8 @@
+seed=43 steps=12000 bpb=1.5492 canon_name=IGLA-CTX-FIX-SMOKE-v3-flush-fix-h384-LR0030-rng4181-step4000-acc2 lane=L0_local_mac gate2=PASSED
+verified_by=fix-verify-s43
+verified_at=2026-05-01T00:12:42Z
+sha256sum train_gpt.py: <placeholder>
+version=1.0.0
+trios#143
+notes=First verified fix-verify-s43 = 1.5492, gap to PASSED 0.31 BPB (champion target 1.83). Champion already at 1.53 BPB under old track.
+EOF
