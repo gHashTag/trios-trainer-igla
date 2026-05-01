@@ -68,7 +68,7 @@ struct Strategy {
 
 async fn claim_any_pending(
     client: &tokio_postgres::Client,
-    worker_host: &str,
+    scarab_id: &str,
 ) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
@@ -76,7 +76,9 @@ async fn claim_any_pending(
             UPDATE strategy_queue
             SET status     = 'running',
                 started_at = NOW(),
-                worker_id  = $1
+                claimed_at = NOW(),
+                worker_id  = $1::uuid,
+                attempts   = attempts + 1
             WHERE id = (
                 SELECT id FROM strategy_queue
                 WHERE status = 'pending'
@@ -86,7 +88,7 @@ async fn claim_any_pending(
             )
             RETURNING id, canon_name, steps_budget, config_json
             "#,
-            &[&worker_host],
+            &[&scarab_id],
         )
         .await?;
 
@@ -165,7 +167,7 @@ async fn run_strategy(
     client
         .execute(
             "UPDATE strategy_queue \
-             SET status = $1, finished_at = NOW(), error_msg = $2 \
+             SET status = $1, finished_at = NOW(), last_error = $2 \
              WHERE id = $3",
             &[&status_str, &err_msg, &strat.id],
         )
@@ -264,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         loop {
-            match claim_any_pending(&client, &host).await {
+            match claim_any_pending(&client, &scarab_id).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
                     heartbeat(&client, &scarab_id, Some(sid)).await;

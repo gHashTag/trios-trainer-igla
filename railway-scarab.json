@@ -1,1 +1,7 @@
-{"build":{"builder":"DOCKERFILE","dockerfilePath":"Dockerfile.scarab"},"deploy":{"restartPolicyType":"ON_FAILURE"}}
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile.scarab"
+  }
+}

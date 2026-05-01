@@ -32,6 +32,8 @@ COPY --from=builder /build/target/release/scarab /usr/local/bin/scarab
 COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
 COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
 COPY --from=builder /build/target/release/bpb_smoke /usr/local/bin/bpb_smoke
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Byte-disjoint train/val split. The previous version ran
 #   head -c 100000 tiny_shakespeare.txt > tiny_shakespeare_val.txt
@@ -55,4 +57,4 @@ ENV TRIOS_LR=0.003
 ENV TRIOS_HIDDEN=384
 ENV TRIOS_OPTIMIZER=adamw
 
-ENTRYPOINT ["/usr/local/bin/entrypoint"]
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
