@@ -2,16 +2,17 @@
 //
 // Replaces the previous `eprintln!("NEON_SQL: ...")` log-only emits with actual
 // INSERT/UPDATE statements over `tokio-postgres`. DSN is read from
-// `TRIOS_NEON_DSN`; if unset the writer is a no-op so existing developer
+// `NEON_DATABASE_URL` (canonical) or `TRIOS_NEON_DSN` / `DATABASE_URL` as
+// fallbacks; if unset the writer is a no-op so existing developer
 // workflows that don't have Neon access keep working.
 //
 // Drift code: D2_NEON_NOT_WRITTEN (ref: trios-trainer-igla #36).
 //
 // Constitutional notes:
-//   R5 — never panic the trainer on Neon errors; log a warn and continue.
-//   R7 — emits forward step/seed/bpb verbatim (caller already builds the
+//   R5 - never panic the trainer on Neon errors; log a warn and continue.
+//   R7 - emits forward step/seed/bpb verbatim (caller already builds the
 //        triplet for ledger::emit_row).
-//   R9 — writer never touches `ledger::emit_row`; embargo gate stays in trios.
+//   R9 - writer never touches `ledger::emit_row`; embargo gate stays in trios.
 
 #![allow(dead_code)]
 
@@ -32,31 +33,16 @@ fn rt() -> &'static Runtime {
     })
 }
 
-/// Install the rustls 0.23 process-level CryptoProvider exactly once.
-///
-/// rustls 0.23 stopped auto-selecting between `ring` and `aws-lc-rs` when
-/// both are present in the dependency graph (which they are here, via
-/// transitive deps of `tokio-postgres-rustls` + `webpki-roots`). Without
-/// an explicit install, `ClientConfig::builder()` panics on first use:
-///
-/// > panicked at rustls/src/crypto/mod.rs:249:14:
-/// > Could not automatically determine the process-level CryptoProvider
-///
-/// Refs: EPIC trios#446 acc0_new canary 2026-05-02, trainer-igla#75/#76/#78.
-fn ensure_crypto_provider() {
-    static INSTALLED: OnceLock<()> = OnceLock::new();
-    INSTALLED.get_or_init(|| {
-        // ring is already in the lockfile via webpki-roots / rustls-pki-types;
-        // aws-lc-rs is also present transitively. We pick `ring` deterministically
-        // because it cross-compiles cleanly to debian-bookworm-slim runtime
-        // images (no `aws-lc-sys` cmake dependency).
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
 /// Build a rustls TLS config with system root CAs (required for Neon).
+///
+/// Rustls 0.23+ requires a CryptoProvider to be installed before calling
+/// `ClientConfig::builder()`. We use `ring` and call `install_default()`
+/// here. The `Result` is intentionally ignored: if another thread already
+/// installed a provider the Err is benign.
 fn make_tls_config() -> rustls::ClientConfig {
-    ensure_crypto_provider();
+    // MUST be called before ClientConfig::builder() in rustls 0.23+.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder()
@@ -64,24 +50,23 @@ fn make_tls_config() -> rustls::ClientConfig {
         .with_no_client_auth()
 }
 
-/// Lazy-initialised Neon client. `None` if `TRIOS_NEON_DSN` is unset or the
+/// Lazy-initialised Neon client. `None` if DSN is unset or the
 /// connection failed. Cached across calls.
 fn client() -> Option<&'static Client> {
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            let dsn = std::env::var("TRIOS_NEON_DSN")
-                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+            let dsn = std::env::var("NEON_DATABASE_URL")
+                .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
                 .or_else(|_| std::env::var("DATABASE_URL"))
                 .ok()?;
-            eprintln!("[neon_writer] connecting to Neon (TLS) …");
+            eprintln!("[neon_writer] connecting to Neon (TLS) ...");
             let connect = rt().block_on(async {
                 let tls_config = make_tls_config();
                 let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
                 let connector = tokio_postgres::connect(&dsn, tls).await;
                 match connector {
                     Ok((client, conn)) => {
-                        // Drive the connection task in the background.
                         tokio::spawn(async move {
                             if let Err(e) = conn.await {
                                 eprintln!("[neon_writer] connection task error: {e}");
@@ -103,7 +88,6 @@ fn client() -> Option<&'static Client> {
 /// Run an SQL statement with up to `max_attempts` retries on transient errors.
 fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
     let Some(c) = client() else {
-        // No DSN or connect failed: log only, like the legacy eprintln path.
         eprintln!(
             "[neon_writer] DSN unset or unreachable; skipping: {}",
             short(stmt)
@@ -172,9 +156,6 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
-/// This is the canonical write path for IGLA RACE leader/follower telemetry.
-/// Caller invokes this every `TRIOS_CHECKPOINT_INTERVAL` steps (default 200).
-///
 /// Schema (verified against NEON 2026-04-30):
 ///   id BIGSERIAL, canon_name TEXT, seed INT, step INT, bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
@@ -186,7 +167,6 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
 }
 
 /// Apply idempotent DDL: ensure `bpb_latest` column exists on `igla_race_trials`.
-/// Safe to call repeatedly. No-op when the column already exists.
 pub fn ensure_schema() {
     execute(
         "ALTER TABLE igla_race_trials ADD COLUMN IF NOT EXISTS bpb_latest DOUBLE PRECISION",
@@ -195,8 +175,6 @@ pub fn ensure_schema() {
 }
 
 /// Default checkpoint interval honoured by trainers writing to bpb_samples.
-/// Reads `TRIOS_CHECKPOINT_INTERVAL` env var; defaults to 200 (Fibonacci-friendly,
-/// short enough to surface mid-training BPB before Gate-2 horizon at 4096 steps).
 pub fn checkpoint_interval() -> usize {
     std::env::var("TRIOS_CHECKPOINT_INTERVAL")
         .ok()
@@ -208,11 +186,10 @@ pub fn checkpoint_interval() -> usize {
 mod tests {
     use super::*;
 
-    /// When DSN is unset, all writers must be silent no-ops (no panic).
     #[test]
     fn no_dsn_is_safe() {
-        // Make sure DSN is unset for this test.
         std::env::remove_var("TRIOS_NEON_DSN");
+        std::env::remove_var("NEON_DATABASE_URL");
         trial_start("00000000-0000-0000-0000-000000000000", "{}", "TEST", "main");
         heartbeat("00000000-0000-0000-0000-000000000000", "TEST", 2.5, 1);
         trial_complete("00000000-0000-0000-0000-000000000000", 2.5);
