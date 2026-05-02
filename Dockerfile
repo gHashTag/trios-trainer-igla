@@ -14,6 +14,7 @@ RUN cargo build --release \
         --bin entrypoint \
         --bin trios-train \
         --bin scarab \
+        --bin e2e_oneshot \
         --bin gf16_test \
         --bin ngram_train_gf16 \
         --bin bpb_smoke \

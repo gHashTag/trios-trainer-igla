@@ -1,0 +1,58 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/trinity-core",
+    "crates/trinity-experiments",
+    "crates/trinity-trainer",
+    "crates/trinity-runner",
+    "crates/trinity-orchestrator",
+    "crates/trinity-gardener",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Dmitrii Vasilev <gierenmumindvy1t@hotmail.com>"]
+license = "MIT"
+repository = "https://github.com/gHashTag/trinity"
+homepage = "https://github.com/gHashTag/trinity"
+
+[workspace.dependencies]
+# Core math and serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Database
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+tokio = { version = "1", features = ["full"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# UUID
+uuid = { version = "0.8", features = ["v4", "serde"] }
+
+# Async runtime (re-export from tokio)
+tokio-rustls = "0.26"
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+webpki-roots = "0.26"
+tokio-postgres-rustls = "0.12"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Async traits
+async-trait = "0.1"
+
+# HTTP
+axum = "0.7"
+tower = "0.5"
+reqwest = { version = "0.12", features = ["json"] }
+toml = "0.8"
+
+# Testing
+tempfile = "3"

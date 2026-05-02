@@ -1,0 +1,24 @@
+[package]
+name = "trinity-gardener"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[[bin]]
+name = "trinity-gardener"
+path = "src/main.rs"
+
+[dependencies]
+trinity-experiments = { path = "../trinity-experiments" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+axum.workspace = true
+tower.workspace = true
+chrono.workspace = true
+uuid.workspace = true

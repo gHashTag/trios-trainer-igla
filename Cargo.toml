@@ -88,6 +88,11 @@ path = "src/bin/smoke_train.rs"
 name = "scarab"
 path = "src/bin/scarab.rs"
 
+# Download tiny_shakespeare dataset for local testing (RUST ONLY)
+[[bin]]
+name = "download_data"
+path = "src/bin/download_data.rs"
+
 # TODO: fix imports - requires transformer_trainer module
 # [[bin]]
 # name = "transformer_train"
@@ -207,7 +212,7 @@ uuid               = { version = "1", features = ["v4"] }
 tokio              = { version = "1", features = ["full"] }
 tokio-postgres       = "0.7"
 tokio-postgres-rustls = "0.12"
-rustls               = "0.23"
+rustls               = { version = "0.23", features = ["aws-lc-rs"] }
 webpki-roots         = "0.26"
 ureq                  = "2.12"
 
