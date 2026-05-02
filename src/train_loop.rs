@@ -751,9 +751,13 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 
             // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
             // is set (scarab sets this env var for the trainer subprocess).
-            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
-                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
-            }
+            // EPIC-446 follow-up: same triple-source canon resolution as
+            // run_single (TRIOS_CANON_NAME → CANON_NAME → fallback by seed).
+            let canon = std::env::var("TRIOS_CANON_NAME")
+                .ok()
+                .or_else(|| std::env::var("CANON_NAME").ok())
+                .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
+            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
         }
     }
 
@@ -978,9 +982,16 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
 
             // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
             // is set (scarab sets this env var for the trainer subprocess).
-            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
-                crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
-            }
+            // EPIC-446 follow-up: also accept the unprefixed CANON_NAME that
+            // the railway_template_deploy MCP tool injects, plus a deterministic
+            // fallback derived from seed so direct trios-train invocations
+            // still produce telemetry. R5: a missing canon_name must never
+            // cost us a 27 000-step training run silently again.
+            let canon = std::env::var("TRIOS_CANON_NAME")
+                .ok()
+                .or_else(|| std::env::var("CANON_NAME").ok())
+                .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
+            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
         }
     }
 
