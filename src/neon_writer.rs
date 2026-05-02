@@ -219,9 +219,17 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 /// Schema (verified against NEON 2026-04-30):
 ///   id BIGSERIAL, canon_name TEXT, seed INT, step INT, bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
+    // Idempotent: `bpb_samples_canon_name_seed_step_key` is UNIQUE
+    // (canon_name, seed, step). A duplicate emit (scarab restart on the
+    // same row, smoke retry, NOTIFY redelivery, etc.) used to throw
+    // "duplicate key value violates unique constraint" three times before
+    // giving up; now we let Postgres silently skip. Training output is
+    // deterministic for fixed (canon_name, seed, step), so DO NOTHING
+    // preserves the first-write timestamp and avoids redundant churn.
     execute(
         "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
-         VALUES ($1, $2, $3, $4, NOW())",
+         VALUES ($1, $2, $3, $4, NOW()) \
+         ON CONFLICT (canon_name, seed, step) DO NOTHING",
         &[&canon_name, &seed, &step, &(bpb as f64)],
     );
 }
