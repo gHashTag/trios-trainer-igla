@@ -56,10 +56,19 @@ fn client() -> Option<&'static Client> {
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            let dsn = std::env::var("NEON_DATABASE_URL")
+            let raw_dsn = std::env::var("NEON_DATABASE_URL")
                 .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
                 .or_else(|_| std::env::var("DATABASE_URL"))
                 .ok()?;
+            // tokio-postgres-rustls does NOT export tls-server-end-point
+            // channel binding (rustls 0.23 limitation). Neon's standard DSN
+            // contains `channel_binding=require` which would force SCRAM-SHA-256-PLUS
+            // and fail handshake with an opaque "db error". Strip it; sslmode=require
+            // is sufficient for at-rest TLS encryption (#84 round 3 root cause).
+            let dsn = strip_channel_binding(&raw_dsn);
+            if dsn != raw_dsn {
+                eprintln!("[neon_writer] stripped channel_binding from DSN (rustls limitation)");
+            }
             eprintln!("[neon_writer] connecting to Neon (TLS) ...");
             let connect = rt().block_on(async {
                 let tls_config = make_tls_config();
@@ -67,15 +76,19 @@ fn client() -> Option<&'static Client> {
                 let connector = tokio_postgres::connect(&dsn, tls).await;
                 match connector {
                     Ok((client, conn)) => {
+                        eprintln!("[neon_writer] connected OK");
                         tokio::spawn(async move {
                             if let Err(e) = conn.await {
-                                eprintln!("[neon_writer] connection task error: {e}");
+                                eprintln!(
+                                    "[neon_writer] connection task error: {e}{}",
+                                    full_error_chain(&e)
+                                );
                             }
                         });
                         Some(client)
                     }
                     Err(e) => {
-                        eprintln!("[neon_writer] connect failed: {e}");
+                        eprintln!("[neon_writer] connect failed: {e}{}", full_error_chain(&e));
                         None
                     }
                 }
@@ -104,8 +117,9 @@ fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
             }
             Err(e) => {
                 eprintln!(
-                    "[neon_writer] attempt {attempt}/{max_attempts} failed for {} : {e}",
-                    short(stmt)
+                    "[neon_writer] attempt {attempt}/{max_attempts} failed for {} : {e}{}",
+                    short(stmt),
+                    full_error_chain(&e)
                 );
                 std::thread::sleep(Duration::from_millis(500 * attempt as u64));
             }
@@ -120,6 +134,52 @@ fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
 fn short(s: &str) -> &str {
     let limit = 80usize.min(s.len());
     &s[..limit]
+}
+
+/// Render the full `Error::source()` chain after a top-level Display, so
+/// opaque errors like tokio_postgres' "db error" surface their real cause
+/// (TLS handshake, SCRAM, channel binding, OID mismatch, …).
+///
+/// Returns an empty string if the error has no source, so callers can
+/// concatenate unconditionally:  `eprintln!("failed: {e}{}", full_error_chain(&e))`.
+fn full_error_chain<E: std::error::Error + ?Sized>(err: &E) -> String {
+    let mut out = String::new();
+    let mut src: Option<&(dyn std::error::Error)> = err.source();
+    while let Some(s) = src {
+        out.push_str("\n  caused by: ");
+        out.push_str(&s.to_string());
+        src = s.source();
+    }
+    out
+}
+
+/// Remove `channel_binding=require` (or `=prefer`) from a Neon-style DSN.
+///
+/// `tokio-postgres-rustls` 0.12 / rustls 0.23 do not expose the TLS exporter
+/// needed for `tls-server-end-point` channel binding, so SCRAM-SHA-256-PLUS
+/// auth fails with an opaque "db error" the moment a server requires PLUS.
+/// Neon Postgres accepts plain SCRAM-SHA-256 over TLS just fine; stripping
+/// this query-string param is the minimal change that unblocks scarab’s writes
+/// without rewriting the TLS stack to native-tls.
+fn strip_channel_binding(dsn: &str) -> String {
+    // Match both URI and key=value forms. Keep parsing minimal — we only
+    // remove a single `channel_binding=...` token, leaving the rest of the
+    // DSN exactly as the operator supplied it (no URL-decoding/re-encoding).
+    let Some(qpos) = dsn.find('?') else {
+        return dsn.to_string();
+    };
+    let (head, query) = dsn.split_at(qpos + 1);
+    let kept: Vec<&str> = query
+        .split('&')
+        .filter(|kv| !kv.trim_start().starts_with("channel_binding="))
+        .collect();
+    let rebuilt = kept.join("&");
+    if rebuilt.is_empty() {
+        // strip the trailing `?` so libpq doesn't see an empty query.
+        head.trim_end_matches('?').to_string()
+    } else {
+        format!("{head}{rebuilt}")
+    }
 }
 
 /// Insert a fresh row into `igla_race_trials` (idempotent on `trial_id`).
@@ -193,5 +253,32 @@ mod tests {
         trial_start("00000000-0000-0000-0000-000000000000", "{}", "TEST", "main");
         heartbeat("00000000-0000-0000-0000-000000000000", "TEST", 2.5, 1);
         trial_complete("00000000-0000-0000-0000-000000000000", 2.5);
+    }
+
+    #[test]
+    fn strip_channel_binding_removes_only_that_param() {
+        let in_ = "postgresql://u:p@h/db?sslmode=require&channel_binding=require";
+        assert_eq!(
+            strip_channel_binding(in_),
+            "postgresql://u:p@h/db?sslmode=require"
+        );
+    }
+
+    #[test]
+    fn strip_channel_binding_when_only_param() {
+        let in_ = "postgresql://u:p@h/db?channel_binding=require";
+        assert_eq!(strip_channel_binding(in_), "postgresql://u:p@h/db");
+    }
+
+    #[test]
+    fn strip_channel_binding_passthrough_when_absent() {
+        let in_ = "postgresql://u:p@h/db?sslmode=require";
+        assert_eq!(strip_channel_binding(in_), in_);
+    }
+
+    #[test]
+    fn strip_channel_binding_passthrough_no_query_string() {
+        let in_ = "postgresql://u:p@h/db";
+        assert_eq!(strip_channel_binding(in_), in_);
     }
 }

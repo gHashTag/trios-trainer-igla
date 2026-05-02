@@ -393,9 +393,34 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 
 // ── main ─────────────────────────────────────────────────────────────────────
 
+/// Strip `channel_binding=...` from a Neon DSN — rustls 0.23 cannot
+/// satisfy SCRAM-SHA-256-PLUS (no TLS exporter). Same rationale as
+/// `neon_writer::strip_channel_binding` but duplicated so scarab has
+/// no dependency on the library-side writer module. (#84 round 3)
+fn strip_channel_binding(dsn: &str) -> String {
+    let Some(qpos) = dsn.find('?') else {
+        return dsn.to_string();
+    };
+    let (head, query) = dsn.split_at(qpos + 1);
+    let kept: Vec<&str> = query
+        .split('&')
+        .filter(|kv| !kv.trim_start().starts_with("channel_binding="))
+        .collect();
+    let rebuilt = kept.join("&");
+    if rebuilt.is_empty() {
+        head.trim_end_matches('?').to_string()
+    } else {
+        format!("{head}{rebuilt}")
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    let raw_db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    let db_url = strip_channel_binding(&raw_db_url);
+    if db_url != raw_db_url {
+        eprintln!("[scarab] stripped channel_binding from DSN (rustls limitation)");
+    }
     // RAILWAY_ACC identifies which account this scarab runs on (cosmetic, NOT a routing key).
     let acc = env::var("RAILWAY_ACC")
         .unwrap_or_else(|_| env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into()));
