@@ -1017,10 +1017,14 @@ pub fn run_sweep(
 }
 
 pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
+    let hidden = std::env::var("TRIOS_HIDDEN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(828);
     let args = TrainArgs {
         seed: cfg.seed,
         steps: cfg.steps,
-        hidden: 828,
+        hidden,
         lr: cfg.optimizer.lr as f32,
         attn_layers: if cfg.model.hybrid_attn { 2 } else { 1 },
         eval_every: 1000,
