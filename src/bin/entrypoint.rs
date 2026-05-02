@@ -27,7 +27,7 @@ fn main() {
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     if !matches!(
         trainer.as_str(),
-        "trios-train" | "gf16_test" | "ngram_train_gf16"
+        "trios-train" | "scarab" | "gf16_test" | "ngram_train_gf16"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
@@ -61,9 +61,12 @@ fn main() {
 
     #[cfg(not(unix))]
     {
-        let status = cmd
-            .status()
-            .unwrap_or_else(|err| panic!("[entrypoint] spawn failed: {err}"));
-        std::process::exit(status.code().unwrap_or(1));
+        match cmd.status() {
+            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
+            Err(err) => {
+                eprintln!("[entrypoint] spawn failed: {err}");
+                std::process::exit(1);
+            }
+        }
     }
 }
