@@ -1,0 +1,10 @@
+# Force GHCR rebuild — rustls CryptoProvider fix (PR #79)
+# Triggered: 2026-05-03T00:03+07 — scarab panic-loop still active
+# Root fix: neon_writer::make_tls_config() calls
+#   rustls::crypto::ring::default_provider().install_default()
+# This is in main (commit c59563e5) but Railway containers are on stale image.
+# After this PR merges and docker-publish.yml completes:
+#   redeploy scarab-pool (760cf3dc) + trainer-seed-43 (33c986f7)
+#   => panic loop stops, scarab drains Neon queue automatically.
+# Refs: PR#79, issue#80, trios#446
+# Anchor: phi^2 + phi^-2 = 3
