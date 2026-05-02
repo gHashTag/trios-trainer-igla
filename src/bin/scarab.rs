@@ -110,11 +110,13 @@ async fn claim_any_pending(
 
     let Some(row) = row else { return Ok(None) };
 
-    // tokio-postgres here lacks the with-serde_json-1 feature, so JSONB
-    // must be read as text and parsed. Safe because the column is JSONB
-    // and Postgres emits valid JSON text. Same fix applied in PR #64.
-    let cfg_str: String = row.get(3);
-    let raw: serde_json::Value = serde_json::from_str(&cfg_str)?;
+    // After PR #88 follow-up: tokio-postgres now has the `with-serde_json-1`
+    // feature, so we read JSONB columns natively as `serde_json::Value` instead
+    // of going through `String` (which has no FromSql impl for the JSONB OID
+    // and panics with `error deserializing column 3`). The legacy String-based
+    // path was only a workaround for an environment where the feature was off;
+    // with it on, this is both faster and panic-safe.
+    let raw: serde_json::Value = row.get(3);
     // Support both formats:
     //   new:    { "trainer": {...}, "constraints": {...}, "submission": {...} }
     //   legacy: { "hidden": 828, "lr": 0.0004, ... }
