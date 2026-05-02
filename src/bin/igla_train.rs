@@ -2,11 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
-mod neon_writer {
-    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/neon_writer.rs"));
-}
-
-use crate::neon_writer as nw;
+use trios_trainer::neon_writer as nw;
 
 const VOCAB: usize = 128;
 const DIM: usize = 64;
