@@ -32,8 +32,31 @@ fn rt() -> &'static Runtime {
     })
 }
 
+/// Install the rustls 0.23 process-level CryptoProvider exactly once.
+///
+/// rustls 0.23 stopped auto-selecting between `ring` and `aws-lc-rs` when
+/// both are present in the dependency graph (which they are here, via
+/// transitive deps of `tokio-postgres-rustls` + `webpki-roots`). Without
+/// an explicit install, `ClientConfig::builder()` panics on first use:
+///
+/// > panicked at rustls/src/crypto/mod.rs:249:14:
+/// > Could not automatically determine the process-level CryptoProvider
+///
+/// Refs: EPIC trios#446 acc0_new canary 2026-05-02, trainer-igla#75/#76/#78.
+fn ensure_crypto_provider() {
+    static INSTALLED: OnceLock<()> = OnceLock::new();
+    INSTALLED.get_or_init(|| {
+        // ring is already in the lockfile via webpki-roots / rustls-pki-types;
+        // aws-lc-rs is also present transitively. We pick `ring` deterministically
+        // because it cross-compiles cleanly to debian-bookworm-slim runtime
+        // images (no `aws-lc-sys` cmake dependency).
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 /// Build a rustls TLS config with system root CAs (required for Neon).
 fn make_tls_config() -> rustls::ClientConfig {
+    ensure_crypto_provider();
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder()
