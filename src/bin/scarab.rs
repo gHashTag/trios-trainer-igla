@@ -78,9 +78,13 @@ struct Strategy {
 /// Critically: NO `AND account = $1` filter.
 /// Any free scarab takes any pending task.
 /// `FOR UPDATE SKIP LOCKED` ensures two scarabs never race on the same row.
+///
+/// `worker_id` is a uuid column (FK to `scarabs.id`); pass the scarab's PK
+/// uuid string with explicit `::uuid` cast so tokio-postgres serialises it
+/// without a type mismatch (#84 root cause).
 async fn claim_any_pending(
     client: &tokio_postgres::Client,
-    worker_host: &str,
+    scarab_uuid: &str,
 ) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
@@ -88,7 +92,7 @@ async fn claim_any_pending(
             UPDATE strategy_queue
             SET status     = 'running',
                 started_at = NOW(),
-                worker_id  = $1
+                worker_id  = $1::uuid
             WHERE id = (
                 SELECT id FROM strategy_queue
                 WHERE status = 'pending'
@@ -98,7 +102,7 @@ async fn claim_any_pending(
             )
             RETURNING id, canon_name, steps_budget, config_json
             "#,
-            &[&worker_host],
+            &[&scarab_uuid],
         )
         .await?;
 
@@ -255,17 +259,24 @@ async fn register_scarab(
     svc_name: &str,
     host: &str,
 ) -> String {
+    // `scarabs.id` is `uuid NOT NULL` with no DB-side default, so we must
+    // generate it client-side. v4 random is fine — the column is the PK and
+    // collisions are statistically impossible. Pass as text and cast in SQL.
+    let id = uuid::Uuid::new_v4().to_string();
     client
         .query_one(
-            "INSERT INTO scarabs (railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
-             VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id::text",
-            &[&acc, &svc_id, &svc_name, &host],
+            "INSERT INTO scarabs (id, railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
+             VALUES ($1::uuid, $2, $3, $4, $5, NOW(), NOW()) RETURNING id::text",
+            &[&id, &acc, &svc_id, &svc_name, &host],
         )
         .await
         .map(|r| r.get::<_, String>(0))
         .unwrap_or_else(|e| {
             eprintln!("[scarab] register failed (check scarabs schema): {e}");
-            "unknown".into()
+            // Return the locally-generated uuid even on DB failure so claim_any_pending
+            // still has a valid uuid to bind into worker_id (otherwise every claim
+            // fails with `error serializing parameter 0`, #84).
+            id
         })
 }
 
@@ -396,8 +407,9 @@ async fn main() -> anyhow::Result<()> {
 
     loop {
         // Drain all pending strategies before sleeping.
+        // Pass scarab_id (uuid) — NOT host (text) — so worker_id binds cleanly. (#84)
         loop {
-            match claim_any_pending(&client, &host).await {
+            match claim_any_pending(&client, &scarab_id).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
                     heartbeat(&client, &scarab_id, Some(sid)).await;
