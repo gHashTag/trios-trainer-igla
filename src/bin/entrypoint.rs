@@ -24,6 +24,13 @@ fn main() {
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");
 
+    // Canon-name resolution: CANON_NAME → TRIOS_CANON_NAME → UNKNOWN-rng{seed}.
+    // This lets train_loop.rs write bpb_samples to Neon even when the pod
+    // was deployed via Path A (direct TRIOS_* env vars without seed-agent).
+    let canon_name = env::var("CANON_NAME")
+        .or_else(|_| env::var("TRIOS_CANON_NAME"))
+        .unwrap_or_else(|_| format!("UNKNOWN-rng{seed}"));
+
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     if !matches!(
         trainer.as_str(),
@@ -41,8 +48,10 @@ fn main() {
         "[entrypoint] {trainer} seed={seed} steps={steps} lr={lr} hidden={hidden} opt={optimizer}"
     );
     println!("[entrypoint] train={train_data} val={val_data}");
+    println!("[entrypoint] canon={canon_name}");
 
     let mut cmd = Command::new(&trainer_path);
+    cmd.env("TRIOS_CANON_NAME", &canon_name);
     cmd.arg(format!("--seed={seed}"))
         .arg(format!("--steps={steps}"))
         .arg(format!("--lr={lr}"))
