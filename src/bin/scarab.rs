@@ -79,12 +79,14 @@ struct Strategy {
 /// Any free scarab takes any pending task.
 /// `FOR UPDATE SKIP LOCKED` ensures two scarabs never race on the same row.
 ///
-/// `worker_id` is a uuid column (FK to `scarabs.id`); pass the scarab's PK
-/// uuid string with explicit `::uuid` cast so tokio-postgres serialises it
-/// without a type mismatch (#84 root cause).
+/// `worker_id` is a uuid column (FK to `scarabs.id`); we pass `uuid::Uuid`
+/// directly via the `with-uuid-1` feature on tokio-postgres so the wire-format
+/// encoder uses the binary uuid OID instead of trying to serialize a String
+/// into a uuid column (#84 root cause — `$1::uuid` SQL cast was insufficient,
+/// the type mismatch is at the wire-protocol layer, before SQL execution).
 async fn claim_any_pending(
     client: &tokio_postgres::Client,
-    scarab_uuid: &str,
+    scarab_uuid: uuid::Uuid,
 ) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
@@ -92,7 +94,7 @@ async fn claim_any_pending(
             UPDATE strategy_queue
             SET status     = 'running',
                 started_at = NOW(),
-                worker_id  = $1::uuid
+                worker_id  = $1
             WHERE id = (
                 SELECT id FROM strategy_queue
                 WHERE status = 'pending'
@@ -258,34 +260,38 @@ async fn register_scarab(
     svc_id: &str,
     svc_name: &str,
     host: &str,
-) -> String {
+) -> uuid::Uuid {
     // `scarabs.id` is `uuid NOT NULL` with no DB-side default, so we must
     // generate it client-side. v4 random is fine — the column is the PK and
-    // collisions are statistically impossible. Pass as text and cast in SQL.
-    let id = uuid::Uuid::new_v4().to_string();
-    client
-        .query_one(
+    // collisions are statistically impossible. Pass `uuid::Uuid` directly
+    // (with-uuid-1 feature on tokio-postgres encodes it natively).
+    let id = uuid::Uuid::new_v4();
+    let res = client
+        .execute(
             "INSERT INTO scarabs (id, railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
-             VALUES ($1::uuid, $2, $3, $4, $5, NOW(), NOW()) RETURNING id::text",
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW())",
             &[&id, &acc, &svc_id, &svc_name, &host],
         )
-        .await
-        .map(|r| r.get::<_, String>(0))
-        .unwrap_or_else(|e| {
-            eprintln!("[scarab] register failed (check scarabs schema): {e}");
-            // Return the locally-generated uuid even on DB failure so claim_any_pending
-            // still has a valid uuid to bind into worker_id (otherwise every claim
-            // fails with `error serializing parameter 0`, #84).
-            id
-        })
+        .await;
+    if let Err(e) = res {
+        eprintln!("[scarab] register failed (check scarabs schema): {e}");
+        // Return the locally-generated uuid even on DB failure so claim_any_pending
+        // still has a valid uuid to bind into worker_id (otherwise every claim
+        // fails with `error serializing parameter 0`, #84).
+    }
+    id
 }
 
-async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id: Option<i64>) {
+async fn heartbeat(
+    client: &tokio_postgres::Client,
+    scarab_id: uuid::Uuid,
+    current_id: Option<i64>,
+) {
     let _ = client
         .execute(
             "UPDATE scarabs \
              SET last_heartbeat = NOW(), current_exp_id = $1 \
-             WHERE id = $2::uuid",
+             WHERE id = $2",
             &[&current_id, &scarab_id],
         )
         .await;
@@ -409,14 +415,14 @@ async fn main() -> anyhow::Result<()> {
         // Drain all pending strategies before sleeping.
         // Pass scarab_id (uuid) — NOT host (text) — so worker_id binds cleanly. (#84)
         loop {
-            match claim_any_pending(&client, &scarab_id).await {
+            match claim_any_pending(&client, scarab_id).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
-                    heartbeat(&client, &scarab_id, Some(sid)).await;
+                    heartbeat(&client, scarab_id, Some(sid)).await;
                     run_strategy(&client, strat, &acc)
                         .await
                         .unwrap_or_else(|e| eprintln!("[{acc}] run error: {e}"));
-                    heartbeat(&client, &scarab_id, None).await;
+                    heartbeat(&client, scarab_id, None).await;
                 }
                 Ok(None) => break, // queue empty
                 Err(e) => {
@@ -427,7 +433,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         // Sleep until next NOTIFY or 30-second fallback.
-        heartbeat(&client, &scarab_id, None).await;
+        heartbeat(&client, scarab_id, None).await;
         tokio::select! {
             _ = notify_rx.recv() => {},
             _ = sleep(Duration::from_secs(30)) => {},

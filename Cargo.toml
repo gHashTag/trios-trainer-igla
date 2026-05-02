@@ -205,7 +205,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sha1               = "0.10"
 uuid               = { version = "1", features = ["v4"] }
 tokio              = { version = "1", features = ["full"] }
-tokio-postgres       = "0.7"
+tokio-postgres       = { version = "0.7", features = ["with-uuid-1"] }
 tokio-postgres-rustls = "0.12"
 rustls               = "0.23"
 webpki-roots         = "0.26"
