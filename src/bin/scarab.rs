@@ -282,9 +282,33 @@ async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id:
 
 // ── LISTEN/NOTIFY helper ──────────────────────────────────────────────────────
 
+/// Install the rustls 0.23 process-level CryptoProvider exactly once.
+///
+/// rustls 0.23 stopped auto-selecting between `ring` and `aws-lc-rs` when both
+/// are present in the dependency graph (which they are here, via transitive
+/// deps of `tokio-postgres-rustls` + `webpki-roots`). Without an explicit
+/// install, `ClientConfig::builder()` panics on first use:
+///
+/// > panicked at rustls/src/crypto/mod.rs:249:14:
+/// > Could not automatically determine the process-level CryptoProvider
+///
+/// `neon_writer.rs` already installs `ring`, but scarab spawns its own TLS
+/// path BEFORE the trainer subprocess imports `neon_writer`, so this binary
+/// has to install the provider in its own `main`. The OnceLock guarantees
+/// idempotent re-entry across the multiple call sites in this file
+/// (`connect_with_retry` + `setup_notify_listener`).
+fn ensure_crypto_provider() {
+    use std::sync::OnceLock;
+    static INSTALLED: OnceLock<()> = OnceLock::new();
+    INSTALLED.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 /// Opens a dedicated connection for NOTIFY and forwards wakeups via mpsc.
 /// Falls back to 30-second polling if the notify connection drops.
 fn make_tls_config() -> rustls::ClientConfig {
+    ensure_crypto_provider();
     let mut roots = rustls::RootCertStore::empty();
     roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder()
