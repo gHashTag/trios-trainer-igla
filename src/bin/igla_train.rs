@@ -2,6 +2,12 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
+mod neon_writer {
+    include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/neon_writer.rs"));
+}
+
+use crate::neon_writer as nw;
+
 const VOCAB: usize = 128;
 const DIM: usize = 64;
 const SEQ: usize = 32;
@@ -138,21 +144,38 @@ fn main() {
     let seed = std::env::args()
         .find(|a| a.starts_with("--seed="))
         .map(|a| a[7..].parse::<u64>().unwrap_or(42))
-        .unwrap_or(42);
+        .unwrap_or_else(|| {
+            std::env::var("SEED")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(42)
+        });
     let steps = std::env::args()
         .find(|a| a.starts_with("--steps="))
         .map(|a| a[8..].parse::<usize>().unwrap_or(5000))
-        .unwrap_or(5000);
+        .unwrap_or_else(|| {
+            std::env::var("STEPS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5000)
+        });
     let lr = std::env::args()
         .find(|a| a.starts_with("--lr="))
         .map(|a| a[5..].parse::<f32>().unwrap_or(0.1))
         .unwrap_or(0.1);
 
+    let checkpoint_interval = nw::checkpoint_interval();
+
+    // canon_name: prefer env var, fall back to deterministic name
+    let canon_name = std::env::var("CANON_NAME")
+        .unwrap_or_else(|_| format!("IGLA-TRAIN-igla_train-rng{}", seed));
+
     println!("=== IGLA-STACK-502 Embedding Training ===");
     println!(
-        "vocab={} dim={} seq={} steps={} seed={} lr={}",
-        VOCAB, DIM, SEQ, steps, seed, lr
+        "vocab={} dim={} seq={} steps={} seed={} lr={} checkpoint_interval={}",
+        VOCAB, DIM, SEQ, steps, seed, lr, checkpoint_interval
     );
+    println!("canon_name={}", canon_name);
     println!();
 
     let tokens = load_data("data/tinyshakespeare.txt");
@@ -162,6 +185,11 @@ fn main() {
 
     let (init_loss, init_bpb) = evaluate(&model, &tokens, SEQ);
     println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
+
+    // Write step=0 ping so queue knows trainer started
+    nw::bpb_sample(&canon_name, seed as i32, 0, init_bpb);
+    eprintln!("[neon] wrote step=0 bpb={:.4}", init_bpb);
+
     println!();
     println!(
         "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
@@ -179,7 +207,7 @@ fn main() {
         let seq = &tokens[offset..offset + SEQ + 1];
         model.train_step(seq, lr);
 
-        if step % 500 == 0 || step == steps {
+        if step % checkpoint_interval == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
             let (eval_loss, eval_bpb) = evaluate(&model, &tokens, SEQ);
             if eval_bpb < best_bpb && eval_bpb.is_finite() {
@@ -190,6 +218,12 @@ fn main() {
                 step, eval_loss, eval_bpb, best_bpb, ms
             );
             results.push((step, eval_loss, eval_bpb));
+
+            // P0 fix: wire bpb_sample to Neon every checkpoint_interval steps
+            if eval_bpb.is_finite() {
+                nw::bpb_sample(&canon_name, seed as i32, step as i32, eval_bpb);
+                eprintln!("[neon] wrote step={} bpb={:.4}", step, eval_bpb);
+            }
         }
     }
 
