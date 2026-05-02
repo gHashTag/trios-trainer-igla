@@ -705,8 +705,8 @@ fn main() {
     let activation_name = if activation == "gelu" { "GELU" } else { "ReLU" };
 
     // canon_name: prefer env var, fall back to deterministic name
-    let canon_name = std::env::var("CANON_NAME")
-        .unwrap_or_else(|_| format!("IGLA-GF16-{}-rng{}", ngram, seed));
+    let canon_name =
+        std::env::var("CANON_NAME").unwrap_or_else(|_| format!("IGLA-GF16-{}-rng{}", ngram, seed));
 
     println!("=== GF16 {} Context Model + {} ===", ngram, activation_name);
     println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} activation={} wd={} warmup={} dropout={} checkpoint_interval={}",
