@@ -12,6 +12,7 @@ use std::io::Write;
 use std::time::Instant;
 
 use trios_trainer::gf16::{QuantizationMetrics, GF16};
+use trios_trainer::neon_writer as nw;
 
 const VOCAB: usize = 128;
 const SEQ: usize = 64;
@@ -635,11 +636,21 @@ fn main() {
     let seed = std::env::args()
         .find(|a| a.starts_with("--seed="))
         .map(|a| a[7..].parse::<u64>().unwrap_or(42))
-        .unwrap_or(42);
+        .unwrap_or_else(|| {
+            std::env::var("SEED")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(42)
+        });
     let steps = std::env::args()
         .find(|a| a.starts_with("--steps="))
         .map(|a| a[8..].parse::<usize>().unwrap_or(10000))
-        .unwrap_or(10000);
+        .unwrap_or_else(|| {
+            std::env::var("STEPS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(10000)
+        });
     let base_lr = std::env::args()
         .find(|a| a.starts_with("--lr="))
         .map(|a| a[5..].parse::<f32>().unwrap_or(0.004))
@@ -680,6 +691,8 @@ fn main() {
         .map(|a| a[11..].parse::<usize>().unwrap_or(500))
         .unwrap_or(500);
 
+    let checkpoint_interval = nw::checkpoint_interval();
+
     let ngram = if use_ctx5 {
         "7-Gram"
     } else if use_ctx4 {
@@ -691,10 +704,15 @@ fn main() {
     };
     let activation_name = if activation == "gelu" { "GELU" } else { "ReLU" };
 
+    // canon_name: prefer env var, fall back to deterministic name
+    let canon_name = std::env::var("CANON_NAME")
+        .unwrap_or_else(|_| format!("IGLA-GF16-{}-rng{}", ngram, seed));
+
     println!("=== GF16 {} Context Model + {} ===", ngram, activation_name);
-    println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} activation={} wd={} warmup={} dropout={}",
-        VOCAB, dim, hidden, SEQ, steps, seed, base_lr, activation, wd, warmup, dropout);
+    println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} activation={} wd={} warmup={} dropout={} checkpoint_interval={}",
+        VOCAB, dim, hidden, SEQ, steps, seed, base_lr, activation, wd, warmup, dropout, checkpoint_interval);
     println!("GF16 φ-distance: {:.6}", GF16::phi_distance());
+    println!("canon_name={}", canon_name);
 
     let tokens = load_data("data/tinyshakespeare.txt");
     println!("Dataset: {} tokens", tokens.len());
@@ -730,6 +748,11 @@ fn main() {
 
     let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
     println!("Initial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
+
+    // Write step=0 ping so queue knows trainer started
+    nw::bpb_sample(&canon_name, seed as i32, 0, init_bpb);
+    eprintln!("[neon] wrote step=0 bpb={:.4}", init_bpb);
+
     println!();
     println!(
         "{:>6} | {:>10} | {:>10} | {:>10} | {:>12}",
@@ -750,7 +773,7 @@ fn main() {
         let off = (step * 97 + seed as usize) % (dl.saturating_sub(SEQ + 1));
         model.train_step(&train[off..off + SEQ + 1], lr, &mut opts);
 
-        if step % 500 == 0 || step == steps {
+        if step % checkpoint_interval == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
             let (vl, vb) = evaluate(&model, val, SEQ);
             let improved = vb < best_bpb && vb.is_finite();
@@ -759,7 +782,7 @@ fn main() {
                 best_step = step;
                 steps_without_improvement = 0;
             } else {
-                steps_without_improvement += 500;
+                steps_without_improvement += checkpoint_interval;
             }
 
             // Early stopping
@@ -768,6 +791,10 @@ fn main() {
                     "\n>>> Early stopping at step {} (patience={} exceeded)",
                     step, patience
                 );
+                // Write final sample before exit
+                if vb.is_finite() {
+                    nw::bpb_sample(&canon_name, seed as i32, step as i32, vb);
+                }
                 break;
             }
 
@@ -780,6 +807,12 @@ fn main() {
                 step, vl, vb, best_bpb, max_q_error
             );
             results.push((step, vl, vb));
+
+            // P0 fix: wire bpb_sample to Neon every checkpoint_interval steps
+            if vb.is_finite() {
+                nw::bpb_sample(&canon_name, seed as i32, step as i32, vb);
+                eprintln!("[neon] wrote step={} bpb={:.4}", step, vb);
+            }
         }
     }
 
@@ -859,4 +892,7 @@ fn main() {
             .as_bytes(),
         );
     println!("Experience: {}", ep);
+
+    // L-R8: stdout must end with BPB=X.XXXX for ASHA worker parsing
+    println!("BPB={:.4}", best_bpb);
 }
