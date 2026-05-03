@@ -12,6 +12,9 @@ const VOCAB: usize = 128;
 const DIM: usize = 64;
 const NUM_CTX: usize = 6;
 const NGRAM: usize = NUM_CTX + 2;
+/// Clamp for quadratic activation output to prevent f32 overflow.
+/// At 1e6 the sqrt in the backward pass yields 1e3 — well within f32 range.
+const QUAD_MAX: f32 = 1e6;
 const SEQ: usize = 128;
 const LN_2: f32 = std::f32::consts::LN_2;
 const PHI_INV: f32 = 0.618033988749895;
@@ -177,7 +180,10 @@ impl AdamW {
 fn gf16_floor(weights: &mut [f32]) {
     let scale = 16.0_f32;
     for w in weights.iter_mut() {
-        *w = (*w * scale).round() / scale;
+        // Guard: skip NaN / Inf to prevent silent propagation through quantization.
+        if w.is_finite() {
+            *w = (*w * scale).round() / scale;
+        }
     }
 }
 
@@ -334,7 +340,9 @@ impl HybridModel {
         let mut hidden_pre_attn = vec![0.0f32; h];
         for hi in 0..h {
             hidden_pre_attn[hi] = if hidden_raw[hi] > 0.0 {
-                hidden_raw[hi] * hidden_raw[hi]
+                let sq = hidden_raw[hi] * hidden_raw[hi];
+                // Clamp to QUAD_MAX to prevent f32 overflow → NaN in backward sqrt.
+                if sq.is_finite() { sq.min(QUAD_MAX) } else { QUAD_MAX }
             } else {
                 0.0
             };
@@ -493,7 +501,12 @@ fn compute_grads(
         let mut d_raw = vec![0.0f32; h];
         for hi in 0..h {
             if hidden_pre_attn[hi] > 0.0 {
-                d_raw[hi] = d_hidden[hi] * 2.0 * hidden_pre_attn[hi].sqrt();
+                let raw_approx = hidden_pre_attn[hi].sqrt();
+                // Belt-and-suspenders: skip non-finite gradients (shouldn't happen
+                // after QUAD_MAX clamp, but guards against stale NaN in weights).
+                if raw_approx.is_finite() && d_hidden[hi].is_finite() {
+                    d_raw[hi] = d_hidden[hi] * 2.0 * raw_approx;
+                }
             }
         }
         let mut d_ln = vec![0.0f32; DIM];

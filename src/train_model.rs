@@ -222,5 +222,10 @@ pub fn evaluate(model: &HybridModel, tokens: &[usize], seq_len: usize) -> f32 {
 
 pub fn gf16_floor(p: &mut [f32]) {
     let f = 1.0 / ((1.0f32 + 5.0f32.sqrt()) / 2.0).powi(6);
-    for v in p.iter_mut() { *v = v.signum() * v.abs().max(f); }
+    for v in p.iter_mut() {
+        // Guard: skip NaN / Inf to prevent silent propagation.
+        if v.is_finite() {
+            *v = v.signum() * v.abs().max(f);
+        }
+    }
 }

@@ -440,7 +440,10 @@ fn find_arg<T: std::str::FromStr>(args: &[String], key: &str, default: T) -> T {
 fn gf16_floor(weights: &mut [f32]) {
     let scale = 16.0_f32;
     for w in weights.iter_mut() {
-        *w = (*w * scale).round() / scale;
+        // Guard: skip NaN / Inf to prevent silent propagation through quantization.
+        if w.is_finite() {
+            *w = (*w * scale).round() / scale;
+        }
     }
 }
 
