@@ -2,7 +2,7 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
-use crate::fake_quant::{self, FormatKind};
+use trios_trainer::fake_quant::{self, FormatKind};
 
 const LN_2: f32 = std::f32::consts::LN_2;
 

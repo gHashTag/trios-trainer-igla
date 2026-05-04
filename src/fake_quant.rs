@@ -146,7 +146,7 @@ impl FormatKind {
             FormatKind::Int16 => 0,
             FormatKind::Int32 => 0,
             FormatKind::Uint8 => 0,
-            FormatKind::Nf4 => 2,   // 4-bit normal float
+            FormatKind::Nf4 => 2,    // 4-bit normal float
             FormatKind::Posit8 => 4, // approx
             FormatKind::Posit16 => 10,
             FormatKind::Posit32 => 26,
@@ -179,16 +179,23 @@ impl FormatKind {
 
     /// Whether this format uses floating-point representation
     pub fn is_float(&self) -> bool {
-        !matches!(self, FormatKind::Int4 | FormatKind::Int8 | FormatKind::Int16 | FormatKind::Int32 | FormatKind::Uint8)
+        !matches!(
+            self,
+            FormatKind::Int4
+                | FormatKind::Int8
+                | FormatKind::Int16
+                | FormatKind::Int32
+                | FormatKind::Uint8
+        )
     }
 
     /// Quantization scale for integer formats (max representable / levels)
     pub fn int_scale(&self) -> f32 {
         match self {
-            FormatKind::Int4 => 7.0 / 8.0,    // 4-bit signed: [-8, 7]
+            FormatKind::Int4 => 7.0 / 8.0, // 4-bit signed: [-8, 7]
             FormatKind::Int8 => 127.0 / 128.0,
             FormatKind::Int16 => 32767.0 / 32768.0,
-            FormatKind::Int32 => 1.0,          // effectively f32
+            FormatKind::Int32 => 1.0, // effectively f32
             FormatKind::Uint8 => 255.0 / 256.0,
             _ => 1.0,
         }
@@ -374,7 +381,11 @@ mod tests {
         let original = weights.clone();
         fake_quantize_weights(&mut weights, FormatKind::Int8);
         // At least some values should change
-        let changes = weights.iter().zip(original.iter()).filter(|(a, b)| a != b).count();
+        let changes = weights
+            .iter()
+            .zip(original.iter())
+            .filter(|(a, b)| a != b)
+            .count();
         assert!(changes > 0, "Int8 quantization should change some values");
     }
 }
