@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
+use crate::fake_quant::{self, FormatKind};
+
 const LN_2: f32 = std::f32::consts::LN_2;
 
 fn load_data(path: &str) -> Vec<usize> {
@@ -632,9 +634,18 @@ fn main() {
     let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
     let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
 
-    // For Phase E.GF v2, use format type in result filename
+    // Parse format type for QAT (FakeQuant + STE) — fixes trios#509
     let default_format = "f32".to_string();
     let format_suffix = format_type.as_ref().unwrap_or(&default_format);
+    let format_kind = format_type
+        .as_deref()
+        .and_then(FormatKind::from_env)
+        .unwrap_or(FormatKind::F32);
+    let use_fake_quant = format_kind != FormatKind::F32;
+
+    if use_fake_quant {
+        println!("QAT: FakeQuant enabled for format {:?}", format_kind);
+    }
 
     let raw_tokens = load_data("data/tinyshakespeare.txt");
     let tokens: Vec<usize> = raw_tokens.iter().map(|&t| t % vocab).collect();
@@ -657,6 +668,18 @@ fn main() {
     let mut model = CpuModel::new(vocab, dim, seed);
     let mut opt_embed = AdamW::new(vocab * dim, lr);
     let mut opt_head = AdamW::new(vocab * dim, lr);
+
+    // Apply FakeQuant to initial weights (QAT)
+    if use_fake_quant {
+        fake_quant::fake_quantize_weights(&mut model.embed, format_kind);
+        fake_quant::fake_quantize_weights(&mut model.lm_head, format_kind);
+        for ffn in &mut model.ffn_layers {
+            fake_quant::fake_quantize_weights(&mut ffn.w1, format_kind);
+            fake_quant::fake_quantize_weights(&mut ffn.b1, format_kind);
+            fake_quant::fake_quantize_weights(&mut ffn.w2, format_kind);
+            fake_quant::fake_quantize_weights(&mut ffn.b2, format_kind);
+        }
+    }
 
     let init_bpb = model.eval_bpb(val_tokens, seq);
     println!("Initial val BPB: {:.4}", init_bpb);
@@ -690,6 +713,18 @@ fn main() {
         };
         let batch = &train_tokens[offset..offset + seq + 1];
         let train_loss = model.train_step(batch, &mut opt_embed, &mut opt_head, current_lr);
+
+        // Apply FakeQuant after optimizer step (QAT: quantize→dequantize, STE in backward)
+        if use_fake_quant {
+            fake_quant::fake_quantize_weights(&mut model.embed, format_kind);
+            fake_quant::fake_quantize_weights(&mut model.lm_head, format_kind);
+            for ffn in &mut model.ffn_layers {
+                fake_quant::fake_quantize_weights(&mut ffn.w1, format_kind);
+                fake_quant::fake_quantize_weights(&mut ffn.b1, format_kind);
+                fake_quant::fake_quantize_weights(&mut ffn.w2, format_kind);
+                fake_quant::fake_quantize_weights(&mut ffn.b2, format_kind);
+            }
+        }
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
