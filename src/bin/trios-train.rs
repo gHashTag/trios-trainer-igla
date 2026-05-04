@@ -82,10 +82,17 @@ struct Cli {
     #[allow(dead_code)]
     ctx: Option<usize>,
 
-    /// Format type pass-through (accepted for seed-agent compat; honoured via
-    /// `TRIOS_FORMAT_TYPE` env). gf16 is the default in production.
+    /// Format type pass-through.
+    ///
+    /// Honoured by `train_loop::resolve_fake_quant_format()` via the
+    /// `TRIOS_FORMAT_TYPE` env var. Historically this flag was accepted but
+    /// silently dropped because clap stored it in `cli.format` and `main()`
+    /// never re-exported it; the result was a production-wide fp32-fallback
+    /// (trios#509: 52 ≡ 2.942101 / 49 ≡ 2.998885 collapse, scarab triplets
+    /// adamw-binary32 / adamw-GF16 / muon-GF16 producing identical BPB on the
+    /// same seed). The fix below re-exports `cli.format` into the env so the
+    /// `--format=gf16` CLI form behaves identically to `TRIOS_FORMAT_TYPE=gf16`.
     #[arg(long, env = "TRIOS_FORMAT_TYPE")]
-    #[allow(dead_code)]
     format: Option<String>,
 
     /// Neon database URL for bpb_samples writes (used by scarab worker).
@@ -134,6 +141,16 @@ fn main() -> Result<()> {
     let _ = std::io::stderr().flush();
 
     let cli = Cli::parse();
+
+    // R5/L8 fix (trios#509 follow-up): re-export `--format` into the env so
+    // `train_loop::resolve_fake_quant_format()` can see it. Without this line
+    // the CLI flag was a no-op and every scarab-spawned trainer silently fell
+    // back to F32 regardless of the strategy_queue config.
+    if let Some(fmt) = &cli.format {
+        if !fmt.is_empty() {
+            std::env::set_var("TRIOS_FORMAT_TYPE", fmt);
+        }
+    }
 
     // Set NEON_DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
     // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first
