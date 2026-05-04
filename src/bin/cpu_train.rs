@@ -2,6 +2,8 @@ use std::fs;
 use std::io::Write;
 use std::time::Instant;
 
+use trios_trainer::fake_quant::{fake_quant_in_place, fake_quant_nested, FormatKind};
+
 const LN_2: f32 = std::f32::consts::LN_2;
 
 fn load_data(path: &str) -> Vec<usize> {
@@ -256,6 +258,10 @@ struct CpuModel {
     bigram_scale: f32,
     vocab: usize,
     dim: usize,
+    /// Numeric format used for fake-quantization. `Fp32` = identity
+    /// (legacy Wave-1..Wave-3 behaviour). Set via `TRIOS_FORMAT_TYPE`.
+    /// See [trios#509](https://github.com/gHashTag/trios/issues/509).
+    format_kind: FormatKind,
 }
 
 impl CpuModel {
@@ -279,7 +285,8 @@ impl CpuModel {
             Vec::new()
         };
 
-        Self {
+        let format_kind = FormatKind::from_env();
+        let mut model = Self {
             embed,
             lm_head,
             bigram,
@@ -288,7 +295,22 @@ impl CpuModel {
             bigram_scale: 0.1,
             vocab,
             dim,
+            format_kind,
+        };
+        // Quantize initial weights so step-0 BPB already reflects the
+        // declared format. Identity for Fp32.
+        model.quantize_weights();
+        model
+    }
+
+    /// In-place fake-quantization of all learnable parameters.
+    fn quantize_weights(&mut self) {
+        if matches!(self.format_kind, FormatKind::Fp32) {
+            return;
         }
+        fake_quant_in_place(&mut self.embed, self.format_kind);
+        fake_quant_in_place(&mut self.lm_head, self.format_kind);
+        fake_quant_in_place(&mut self.bigram.embed, self.format_kind);
     }
 
     #[allow(dead_code)]
@@ -348,7 +370,12 @@ impl CpuModel {
                     .collect()
             })
             .collect();
-        let xs_smeared = self.smear.forward(&xs);
+        let mut xs_smeared = self.smear.forward(&xs);
+        // QAT: fake-quant activations once after the smear gate. This
+        // injects the format-specific rounding error into the forward
+        // signal that feeds the LM head. STE keeps the backward
+        // unchanged. trios#509.
+        fake_quant_nested(&mut xs_smeared, self.format_kind);
 
         let xs_final: Vec<Vec<f32>> = if !self.ffn_layers.is_empty() {
             let mut current = xs_smeared;
@@ -441,7 +468,11 @@ impl CpuModel {
                     .collect()
             })
             .collect();
-        let xs_smeared = self.smear.forward(&xs);
+        let mut xs_smeared = self.smear.forward(&xs);
+        // QAT: same fake-quant point as in `loss_and_grad` so that the
+        // recomputed activations stay consistent with the loss path.
+        // trios#509.
+        fake_quant_nested(&mut xs_smeared, self.format_kind);
 
         // d_from_logits[i][j] = sum over vocab of d_logits[i][v] * lm_head[v][j]
         // This is the gradient flowing back from the loss through the LM head
@@ -596,6 +627,11 @@ impl CpuModel {
         self.bigram.grad_step(tokens, &d_to_embed, lr);
         self.smear.grad_step(&d_to_embed, lr);
 
+        // QAT: re-quantize weights after the update so the next forward
+        // pass sees the format-rounded values. STE means gradients are
+        // already correct (identity through fake_quant). See trios#509.
+        self.quantize_weights();
+
         loss
     }
 
@@ -624,7 +660,10 @@ impl CpuModel {
 }
 
 fn main() {
-    let format_type = std::env::var("TRIOS_FORMAT_TYPE").ok();
+    // QAT: parse the declared numeric format from `TRIOS_FORMAT_TYPE`
+    // (or fall back to fp32). Wired into `CpuModel::new` via
+    // `FormatKind::from_env`. trios#509.
+    let format_kind = FormatKind::from_env();
     let seed = arg_or("seed", "42").parse::<u64>().unwrap_or(42);
     let steps = arg_or("steps", "3000").parse::<usize>().unwrap_or(3000);
     let lr = arg_or("lr", "0.003").parse::<f32>().unwrap_or(0.003);
@@ -632,17 +671,19 @@ fn main() {
     let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
     let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
 
-    // For Phase E.GF v2, use format type in result filename
-    let default_format = "f32".to_string();
-    let format_suffix = format_type.as_ref().unwrap_or(&default_format);
+    // For Phase E.GF v2, use format token in result filename. Always
+    // sourced from `FormatKind` so the file name and the actual kernel
+    // can never disagree.
+    let format_suffix = format_kind.token().to_string();
+    let format_suffix = &format_suffix;
 
     let raw_tokens = load_data("data/tinyshakespeare.txt");
     let tokens: Vec<usize> = raw_tokens.iter().map(|&t| t % vocab).collect();
 
     println!("=== trios CPU Training (Analytical Backprop) ===");
     println!(
-        "vocab={} dim={} seq={} steps={} seed={} lr={}",
-        vocab, dim, seq, steps, seed, lr
+        "vocab={} dim={} seq={} steps={} seed={} lr={} format={}",
+        vocab, dim, seq, steps, seed, lr, format_kind.token()
     );
 
     let train_end = (tokens.len() as f64 * 0.9) as usize;
