@@ -191,6 +191,11 @@ async fn run_strategy(
     ])
     .env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
     .env("TRIOS_CANON_NAME", &strat.canon_name)
+    // R5/L8 fix (trios#509 follow-up): defence-in-depth — set
+    // `TRIOS_FORMAT_TYPE` directly via env so `resolve_fake_quant_format()`
+    // sees it even if the trainer ever drops the `--format` CLI flag again.
+    // Both pathways (env + flag) now carry the same value.
+    .env("TRIOS_FORMAT_TYPE", &format)
     // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
     .env("NEON_DATABASE_URL", &neon)
     .stdout(Stdio::inherit())
