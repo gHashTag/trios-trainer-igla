@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# IGLA RACE — rainfrog launcher.
+# Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877
+#
+# Defaults to the SQLite leg (igla-sqlite).  Override:
+#   ./scripts/dash               # opens ./data.db (or $DB_PATH)
+#   ./scripts/dash phd           # opens phd-postgres-ssot (needs L-RF4 done)
+#   ./scripts/dash --url <URL>   # forwards arbitrary CLI args to rainfrog
+
+set -euo pipefail
+
+if ! command -v rainfrog >/dev/null 2>&1; then
+  echo "rainfrog not on PATH — install it first:" >&2
+  echo "  cargo install --locked rainfrog" >&2
+  exit 127
+fi
+
+DB_PATH="${DB_PATH:-./data.db}"
+
+target="${1:-sqlite}"
+case "$target" in
+  sqlite|igla|"")
+    exec rainfrog --url "sqlite://${DB_PATH}"
+    ;;
+  phd|postgres|ssot)
+    if [[ -z "${PHD_POSTGRES_URL:-}" ]]; then
+      echo "PHD_POSTGRES_URL is not set — populate it after L-RF4 (Railway TCP proxy)." >&2
+      exit 2
+    fi
+    exec rainfrog --url "$PHD_POSTGRES_URL"
+    ;;
+  --*|-*)
+    exec rainfrog "$@"
+    ;;
+  *)
+    echo "Unknown target: $target (use: sqlite | phd)" >&2
+    exit 2
+    ;;
+esac
