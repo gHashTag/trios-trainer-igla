@@ -1,4 +1,13 @@
 {
+  "_gating_header": {
+    "status": "GATED",
+    "blocked_by": "gHashTag/trios#509",
+    "unblock_condition": "PR #515 merged AND quantize-hook landed in cpu_train.rs::forward()",
+    "rationale": "Format dimension is NULL across 4,320 PHD-FULL-GRID experiments; baseline 2026-05-04 (trios#446 comment 4370442020) is noise floor \u2014 running 190-job format grid against it would be R5-violation by construction.",
+    "frozen_at_utc": "2026-05-06T12:35:00Z",
+    "queen_directive": "D1 (Option 1 local-first)",
+    "doi": "10.5281/zenodo.19227877"
+  },
   "wave": "Wave-9-ASYMLOGIT-NGRAM",
   "anchor": "phi^2 + phi^-2 = 3",
   "doi": "10.5281/zenodo.19227877",

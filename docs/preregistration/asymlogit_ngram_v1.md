@@ -2,6 +2,15 @@
 
 **Anchor:** φ² + φ⁻² = 3 · DOI [10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877)
 **Date frozen:** 2026-05-06 (Bangkok)
+
+## Blocked-by
+
+- **gHashTag/trios#509 P0** — `cpu_train.rs::forward()` does not call `quantize` / `gf16_encode` / `from_f32`; the `format_type` argument flows only to the output filename. Across the 4,320-point PHD-FULL-GRID, every format degenerates to f32 (σ ≤ ε_noise across formats).
+- **Unblocks when:** PR #515 merged in `gHashTag/trios` **AND** a quantize-hook is integrated in the `forward()` path (verified by a CI-green PR landing on `main`).
+- **Until then:** the forecast tables and per-cell Δ-BPB predictions in this document are **theoretical only**. **No GPU runs are scheduled.** The 190-job manifest is preserved as `manifests/wave9-asymlogit-ngram.GATED-ON-509.json` for documentation and review only; the `igla-dash` seed gate `WAVE9_GATED_ON_509` defaults to `false` and refuses to insert queued rows.
+- **Why this matters (R5):** running a 19×2 format grid against a 2026-05-04 baseline that is itself a noise-floor artefact would produce a paired Δ-BPB table whose every cell is bounded by measurement noise, not format precision. Publishing such a result would be a fabricated finding by construction.
+- **Companion fix already merged:** `trios-trainer-igla#98` (commit `d5ea4e3`, 2026-05-04) re-exports `--format` into `TRIOS_FORMAT_TYPE` env. This unblocks the env-plumbing leg of #509 but does **not** replace the upstream `forward()` quantize-hook fix in `gHashTag/trios`.
+
 **SOT:** `gHashTag/trios-trainer-igla/assertions/seed_results.jsonl`
 **Tracker:** `gHashTag/trios#508` · Active matrix: `trios#446` comment 4370442020
 **Source lineage:**

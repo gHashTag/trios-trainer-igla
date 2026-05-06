@@ -70,6 +70,15 @@ const WAVE8_IMAGE_SHA = "sha256:ecce23e9e72e61c662cfa7a149292087ccd3c1d7d5be2461
 // Stack delta vs Wave-8 = AsymLogit Rescale (init 30.0) + Token-Only N-gram tilt
 // (TOKEN_ORDER=8, THRESHOLD=0.80, BOOST=2.625).  Within/word/agree channels are
 // hard-disabled per pre-registration (R7 forbidden values).
+//
+// === GATING ===
+// Wave-9 dispatch is GATED on gHashTag/trios#509 P0 (cpu_train.rs::forward() does
+// not call quantize/gf16_encode/from_f32 — every format degenerates to f32).  Until
+// trios#515 is merged AND a quantize-hook lands in forward(), running this grid
+// would produce 190 noise-floor curves and constitute an R5 violation.
+// Default: WAVE9_GATED_ON_509=false (jobs NOT inserted).  Set to true ONLY after
+// the unblock conditions on the gated manifest are observed in trios main.
+const WAVE9_GATED_ON_509 = (process.env.WAVE9_GATED_ON_509 ?? "false").toLowerCase() === "true";
 const WAVE9_FORMATS = [
   "fp32", "fp64", "fp16", "bf16", "tf32",
   "gf64", "gf32", "gf24", "gf20", "gf16", "gf12", "gf8", "gf4",
@@ -194,6 +203,12 @@ export function seedChampion() {
 
   // Wave-9 ASYMLOGIT-NGRAM port — 190 queued jobs, status "queued" until
   // dispatcher picks them up.  Idempotent: skip if Wave-9 head already present.
+  // Hard-gated on trios#509 — see WAVE9_GATED_ON_509 above.  When OFF (default)
+  // we never insert Wave-9 rows; manifest in manifests/wave9-asymlogit-ngram.GATED-ON-509.json
+  // is documentation-only.
+  if (!WAVE9_GATED_ON_509) {
+    return;
+  }
   const w9Head = db.select().from(runs).where(sql`queue_id = ${String(WAVE9_QUEUE_START)}`).all();
   if (w9Head.length === 0) {
     let q9 = WAVE9_QUEUE_START;
