@@ -321,7 +321,7 @@ impl Adafactor {
         let (rows, cols, factored) = if size >= 4 {
             let cols = (size as f64).sqrt().round() as usize;
             let cols = cols.max(2);
-            let rows = (size + cols - 1) / cols;
+            let rows = size.div_ceil(cols);
             (rows, cols, true)
         } else {
             (1, size, false)
