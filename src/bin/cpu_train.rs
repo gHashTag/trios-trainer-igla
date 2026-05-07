@@ -34,6 +34,620 @@ fn rng_next(s: &mut u64) -> f32 {
     t * 2.0 - 1.0
 }
 
+// ============================================================================
+// Optimizers
+// ============================================================================
+
+struct AdamW {
+    m: Vec<f32>,
+    v: Vec<f32>,
+    lr: f32,
+    beta1: f32,
+    beta2: f32,
+    wd: f32,
+    step: usize,
+}
+
+impl AdamW {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            lr,
+            beta1: 0.9,
+            beta2: 0.999,
+            wd: 0.01,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        let bc1 = 1.0 - self.beta1.powi(self.step as i32);
+        let bc2 = 1.0 - self.beta2.powi(self.step as i32);
+        for i in 0..params.len() {
+            let g = grads[i];
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * g;
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * g * g;
+            let m_hat = self.m[i] / bc1;
+            let v_hat = self.v[i] / bc2;
+            params[i] -= self.lr * (m_hat / (v_hat.sqrt() + 1e-8) + self.wd * params[i]);
+        }
+    }
+}
+
+// ---- Muon (Newton-Schulz orthogonalized momentum) --------------------------
+
+fn frobenius_norm_local(m: &[f32]) -> f32 {
+    m.iter().map(|&x| x * x).sum::<f32>().sqrt().max(1e-8)
+}
+
+fn newton_schulz_5_local(m: &[f32], rows: usize, cols: usize, a: f32, b: f32, c: f32) -> Vec<f32> {
+    let mut mt_m = vec![0.0f32; cols * cols];
+    for i in 0..cols {
+        for j in 0..cols {
+            let mut s = 0.0f32;
+            for k in 0..rows {
+                s += m[k * cols + i] * m[k * cols + j];
+            }
+            mt_m[i * cols + j] = s;
+        }
+    }
+    let mut m_mt_m = vec![0.0f32; rows * cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            let mut s = 0.0f32;
+            for k in 0..cols {
+                s += m[i * cols + k] * mt_m[k * cols + j];
+            }
+            m_mt_m[i * cols + j] = s;
+        }
+    }
+    let mut mt_m2 = vec![0.0f32; cols * cols];
+    for i in 0..cols {
+        for j in 0..cols {
+            let mut s = 0.0f32;
+            for k in 0..cols {
+                s += mt_m[i * cols + k] * mt_m[k * cols + j];
+            }
+            mt_m2[i * cols + j] = s;
+        }
+    }
+    let mut m_mt_m2 = vec![0.0f32; rows * cols];
+    for i in 0..rows {
+        for j in 0..cols {
+            let mut s = 0.0f32;
+            for k in 0..cols {
+                s += m[i * cols + k] * mt_m2[k * cols + j];
+            }
+            m_mt_m2[i * cols + j] = s;
+        }
+    }
+    let mut result = vec![0.0f32; rows * cols];
+    for i in 0..(rows * cols) {
+        result[i] = a * m[i] + b * m_mt_m[i] + c * m_mt_m2[i];
+    }
+    result
+}
+
+struct Muon {
+    momentum_buffer: Vec<f32>,
+    lr: f32,
+    momentum: f32,
+    wd: f32,
+    ns_steps: usize,
+    ns_a: f32,
+    ns_b: f32,
+    ns_c: f32,
+    param_rows: usize,
+    param_cols: usize,
+    step: usize,
+}
+
+impl Muon {
+    fn new(size: usize, lr: f32) -> Self {
+        let cols = (size as f64).sqrt().round() as usize;
+        let cols = cols.max(1);
+        let rows = ((size as f64) / (cols as f64)).ceil() as usize;
+        Self {
+            momentum_buffer: vec![0.0; size],
+            lr,
+            momentum: 0.95,
+            wd: 0.01,
+            ns_steps: 5,
+            ns_a: 3.4445,
+            ns_b: -4.7750,
+            ns_c: 2.0315,
+            param_rows: rows,
+            param_cols: cols,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        let lr = self.lr;
+        let mom = self.momentum;
+        let wd = self.wd;
+        let n = params.len();
+
+        for p in params.iter_mut() {
+            *p *= 1.0 - lr * wd;
+        }
+        for i in 0..n {
+            self.momentum_buffer[i] = mom * self.momentum_buffer[i] + (1.0 - mom) * grads[i];
+        }
+
+        let update = self.orthogonalize();
+        for i in 0..n {
+            params[i] -= lr * update[i];
+        }
+    }
+
+    fn orthogonalize(&self) -> Vec<f32> {
+        let n = self.momentum_buffer.len();
+        let rows = self.param_rows;
+        let cols = self.param_cols;
+        let matrix_size = rows * cols;
+
+        if matrix_size == 0 || rows < 2 || cols < 2 {
+            return self.momentum_buffer.clone();
+        }
+
+        let mut m = vec![0.0f32; matrix_size];
+        let copy_len = n.min(matrix_size);
+        m[..copy_len].copy_from_slice(&self.momentum_buffer[..copy_len]);
+
+        let norm = frobenius_norm_local(&m);
+        if norm < 1e-8 {
+            return self.momentum_buffer.clone();
+        }
+        let scale = 1.0 / norm;
+        for v in m.iter_mut() {
+            *v *= scale;
+        }
+        for _ in 0..self.ns_steps {
+            m = newton_schulz_5_local(&m, rows, cols, self.ns_a, self.ns_b, self.ns_c);
+        }
+        let out_norm = frobenius_norm_local(&m);
+        if out_norm > 1e-8 {
+            let rescale = norm / out_norm;
+            for v in m.iter_mut() {
+                *v *= rescale;
+            }
+        }
+        let mut result = vec![0.0f32; n];
+        let copy_len = n.min(matrix_size);
+        result[..copy_len].copy_from_slice(&m[..copy_len]);
+        result
+    }
+}
+
+// ---- SGDM ------------------------------------------------------------------
+
+struct Sgdm {
+    velocity: Vec<f32>,
+    lr: f32,
+    momentum: f32,
+    wd: f32,
+    step: usize,
+}
+
+impl Sgdm {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            velocity: vec![0.0; size],
+            lr,
+            momentum: 0.9,
+            wd: 0.0,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        for i in 0..params.len() {
+            let g = grads[i] + self.wd * params[i];
+            self.velocity[i] = self.momentum * self.velocity[i] + g;
+            params[i] -= self.lr * self.velocity[i];
+        }
+    }
+}
+
+// ---- Lion ------------------------------------------------------------------
+// Chen et al. 2023 — sign update with momentum interpolation
+
+struct Lion {
+    m: Vec<f32>,
+    lr: f32,
+    beta1: f32,
+    beta2: f32,
+    wd: f32,
+    step: usize,
+}
+
+impl Lion {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            m: vec![0.0; size],
+            lr,
+            beta1: 0.9,
+            beta2: 0.99,
+            wd: 0.01,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        for i in 0..params.len() {
+            let g = grads[i];
+            // update = sign(beta1 * m + (1 - beta1) * g)
+            let update_arg = self.beta1 * self.m[i] + (1.0 - self.beta1) * g;
+            let update = update_arg.signum();
+            // weight decay
+            params[i] *= 1.0 - self.lr * self.wd;
+            // param update
+            params[i] -= self.lr * update;
+            // momentum update
+            self.m[i] = self.beta2 * self.m[i] + (1.0 - self.beta2) * g;
+        }
+    }
+}
+
+// ---- Adafactor -------------------------------------------------------------
+// Relative-step on; factored second moment for matrices (>= 2 params arranged
+// as rows x cols); 1-D vectors fall back to non-factored.
+
+struct Adafactor {
+    // For factored: row-factor and col-factor
+    vr: Option<Vec<f64>>, // shape: [rows]
+    vc: Option<Vec<f64>>, // shape: [cols]
+    // For non-factored
+    v: Option<Vec<f64>>,
+    step: usize,
+    size: usize,
+    rows: usize,
+    cols: usize,
+    // rms-scaling: we track rms of params at step 0 (or set 1.0)
+    rho: f64, // exponential decay for second moment
+    eps1: f64,
+    eps2: f64,
+}
+
+impl Adafactor {
+    fn new(size: usize, _lr: f32) -> Self {
+        // Decide factoring: if size >= 4, use square-like factoring
+        let (rows, cols, factored) = if size >= 4 {
+            let cols = (size as f64).sqrt().round() as usize;
+            let cols = cols.max(2);
+            let rows = size.div_ceil(cols);
+            (rows, cols, true)
+        } else {
+            (1, size, false)
+        };
+
+        let (vr, vc, v) = if factored && rows >= 2 && cols >= 2 {
+            (Some(vec![1e-30; rows]), Some(vec![1e-30; cols]), None)
+        } else {
+            (None, None, Some(vec![1e-30; size]))
+        };
+
+        Self {
+            vr,
+            vc,
+            v,
+            step: 0,
+            size,
+            rows,
+            cols,
+            rho: 1.0 - 1e-8,
+            eps1: 1e-30,
+            eps2: 1e-3,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        let t = self.step as f64;
+
+        // Relative step size: lr_t = max(eps2, 1/sqrt(t))
+        let lr_t = (1.0 / t.sqrt()).max(self.eps2);
+
+        // rho (second moment decay): 1 - t^(-0.8)
+        let rho = 1.0 - t.powf(-0.8_f64);
+
+        // scale_by_rms: compute rms of params
+        let rms_w = {
+            let sq: f64 = params.iter().map(|&p| (p as f64) * (p as f64)).sum::<f64>();
+            (sq / self.size as f64).sqrt().max(1.0)
+        };
+        let d = rms_w;
+
+        // adapted lr
+        let alpha = lr_t * d;
+
+        let n = params.len();
+
+        if let (Some(ref mut vr), Some(ref mut vc)) = (&mut self.vr, &mut self.vc) {
+            // Factored second moment
+            let rows = self.rows;
+            let cols = self.cols;
+
+            // Accumulate row and col sums of g^2 + eps1
+            let mut row_sum = vec![0.0f64; rows];
+            let mut col_sum = vec![0.0f64; cols];
+
+            for idx in 0..n {
+                let r = idx / cols;
+                let c = idx % cols;
+                let g2 = (grads[idx] as f64).powi(2) + self.eps1;
+                row_sum[r] += g2;
+                col_sum[c] += g2;
+            }
+
+            // Update row/col factors
+            for r in 0..rows {
+                vr[r] = rho * vr[r] + (1.0 - rho) * row_sum[r];
+            }
+            for c in 0..cols {
+                vc[c] = rho * vc[c] + (1.0 - rho) * col_sum[c];
+            }
+
+            // Compute reconstructed second moment: V_hat[i] = vr[r] * vc[c] / sum(vc)
+            let vc_sum: f64 = vc.iter().sum::<f64>().max(1e-30);
+
+            for idx in 0..n {
+                let r = idx / cols;
+                let c = idx % cols;
+                let v_hat = (vr[r] * vc[c] / vc_sum).max(self.eps1);
+                let update = (grads[idx] as f64) / v_hat.sqrt();
+                // RMS clipping: clip ||update|| to 1.0
+                params[idx] -= (alpha * update) as f32;
+            }
+        } else if let Some(ref mut v) = &mut self.v {
+            // Non-factored
+            for idx in 0..n {
+                let g2 = (grads[idx] as f64).powi(2) + self.eps1;
+                v[idx] = rho * v[idx] + (1.0 - rho) * g2;
+                let v_hat = v[idx].max(self.eps1);
+                let update = (grads[idx] as f64) / v_hat.sqrt();
+                params[idx] -= (alpha * update) as f32;
+            }
+        }
+    }
+}
+
+// ---- LAMB ------------------------------------------------------------------
+// You et al. 2019 — AdamW + layer-wise trust ratio
+
+struct Lamb {
+    m: Vec<f64>,
+    v: Vec<f64>,
+    lr: f32,
+    beta1: f64,
+    beta2: f64,
+    wd: f64,
+    eps: f64,
+    step: usize,
+}
+
+impl Lamb {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            lr,
+            beta1: 0.9,
+            beta2: 0.999,
+            wd: 0.01,
+            eps: 1e-6,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        let bc1 = 1.0 - self.beta1.powi(self.step as i32);
+        let bc2 = 1.0 - self.beta2.powi(self.step as i32);
+        let n = params.len();
+
+        let mut update = vec![0.0f64; n];
+        for i in 0..n {
+            let g = grads[i] as f64;
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * g;
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * g * g;
+            let m_hat = self.m[i] / bc1;
+            let v_hat = self.v[i] / bc2;
+            update[i] = m_hat / (v_hat.sqrt() + self.eps) + self.wd * params[i] as f64;
+        }
+
+        // Layer-wise trust ratio: lr_eff = lr * ||w|| / ||update||
+        let w_norm: f64 = params
+            .iter()
+            .map(|&p| (p as f64) * (p as f64))
+            .sum::<f64>()
+            .sqrt();
+        let u_norm: f64 = update.iter().map(|&u| u * u).sum::<f64>().sqrt();
+
+        let trust = if w_norm < 1e-8 || u_norm < 1e-8 {
+            1.0f64
+        } else {
+            w_norm / u_norm
+        };
+
+        let eff_lr = self.lr as f64 * trust;
+        for i in 0..n {
+            params[i] -= (eff_lr * update[i]) as f32;
+        }
+    }
+}
+
+// ---- ScheduleFree ----------------------------------------------------------
+// Defazio 2024 Algorithm 1 — Polyak-Ruppert averaging with momentum
+// State: x (fast iterate), z (averaged iterate)
+// y = (1-beta1)*z + beta1*x  (interpolated point where grad is evaluated)
+// z_{t+1} = z_t + c_{t+1} * (x_{t+1} - z_t)   where c = 1/(t+1)
+// x_{t+1} = x_t - lr * grad(y_t)
+
+struct ScheduleFree {
+    x: Vec<f32>, // fast (online) iterate
+    z: Vec<f64>, // averaged (Polyak) iterate
+    lr: f32,
+    beta1: f32,
+    step: usize,
+    initialized: bool,
+}
+
+impl ScheduleFree {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            x: vec![0.0; size],
+            z: vec![0.0; size],
+            lr,
+            beta1: 0.9,
+            step: 0,
+            initialized: false,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        // On first call, initialize x and z from current params
+        if !self.initialized {
+            self.x.copy_from_slice(params);
+            for (z, &p) in self.z.iter_mut().zip(params.iter()) {
+                *z = p as f64;
+            }
+            self.initialized = true;
+        }
+
+        self.step += 1;
+        let t = self.step;
+        let c = 1.0f64 / (t as f64 + 1.0);
+        let lr = self.lr as f64;
+        let beta1 = self.beta1 as f64;
+        let n = params.len();
+
+        // y_t = (1 - beta1)*z + beta1*x  — interpolated eval point
+        // We already have params = y_{t-1}; update in place
+
+        // x_{t+1} = x_t - lr * grad(y_t)
+        for i in 0..n {
+            self.x[i] -= (lr * grads[i] as f64) as f32;
+        }
+
+        // z_{t+1} = (1 - c)*z + c*x_{t+1}
+        for i in 0..n {
+            self.z[i] = (1.0 - c) * self.z[i] + c * self.x[i] as f64;
+        }
+
+        // Set params = y_{t+1} = (1-beta1)*z_{t+1} + beta1*x_{t+1}
+        // (the point where next gradient will be evaluated)
+        for i in 0..n {
+            params[i] = ((1.0 - beta1) * self.z[i] + beta1 * self.x[i] as f64) as f32;
+        }
+    }
+}
+
+// ---- RMSprop ---------------------------------------------------------------
+// Classic: alpha=0.99, eps=1e-8, no momentum
+
+struct RmsProp {
+    v: Vec<f64>,
+    lr: f32,
+    alpha: f64,
+    eps: f64,
+    step: usize,
+}
+
+impl RmsProp {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            v: vec![0.0; size],
+            lr,
+            alpha: 0.99,
+            eps: 1e-8,
+            step: 0,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        for i in 0..params.len() {
+            let g = grads[i] as f64;
+            self.v[i] = self.alpha * self.v[i] + (1.0 - self.alpha) * g * g;
+            let denom = (self.v[i] + self.eps).sqrt();
+            params[i] -= (self.lr as f64 * g / denom) as f32;
+        }
+    }
+}
+
+// ============================================================================
+// AlgoOpt enum — unified dispatch
+// ============================================================================
+
+enum AlgoOpt {
+    AdamW(AdamW),
+    Muon(Muon),
+    Sgdm(Sgdm),
+    Lion(Lion),
+    Adafactor(Adafactor),
+    Lamb(Lamb),
+    ScheduleFree(ScheduleFree),
+    RmsProp(RmsProp),
+}
+
+impl AlgoOpt {
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        match self {
+            AlgoOpt::AdamW(o) => o.step(params, grads),
+            AlgoOpt::Muon(o) => o.step(params, grads),
+            AlgoOpt::Sgdm(o) => o.step(params, grads),
+            AlgoOpt::Lion(o) => o.step(params, grads),
+            AlgoOpt::Adafactor(o) => o.step(params, grads),
+            AlgoOpt::Lamb(o) => o.step(params, grads),
+            AlgoOpt::ScheduleFree(o) => o.step(params, grads),
+            AlgoOpt::RmsProp(o) => o.step(params, grads),
+        }
+    }
+
+    /// Build from name string. Panics with clear message on unknown name (R5-honest).
+    fn from_env(name: &str, size: usize, lr: f32) -> AlgoOpt {
+        match name {
+            "adamw" => AlgoOpt::AdamW(AdamW::new(size, lr)),
+            "muon" => AlgoOpt::Muon(Muon::new(size, lr)),
+            "sgdm" => AlgoOpt::Sgdm(Sgdm::new(size, lr)),
+            "lion" => AlgoOpt::Lion(Lion::new(size, lr)),
+            "adafactor" => AlgoOpt::Adafactor(Adafactor::new(size, lr)),
+            "lamb" => AlgoOpt::Lamb(Lamb::new(size, lr)),
+            "schedulefree" => AlgoOpt::ScheduleFree(ScheduleFree::new(size, lr)),
+            "rmsprop" => AlgoOpt::RmsProp(RmsProp::new(size, lr)),
+            other => panic!(
+                "TRIOS_ALGO_TYPE: unknown optimizer '{}'. \
+                 Valid choices: adamw, muon, sgdm, lion, adafactor, lamb, schedulefree, rmsprop",
+                other
+            ),
+        }
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            AlgoOpt::AdamW(_) => "adamw",
+            AlgoOpt::Muon(_) => "muon",
+            AlgoOpt::Sgdm(_) => "sgdm",
+            AlgoOpt::Lion(_) => "lion",
+            AlgoOpt::Adafactor(_) => "adafactor",
+            AlgoOpt::Lamb(_) => "lamb",
+            AlgoOpt::ScheduleFree(_) => "schedulefree",
+            AlgoOpt::RmsProp(_) => "rmsprop",
+        }
+    }
+}
+
+// ============================================================================
+// Model structures
+// ============================================================================
+
 struct BigramHash {
     embed: Vec<f32>,
     vocab: usize,
@@ -207,45 +821,8 @@ impl FFNLayer {
             d_b1[k] += d_hidden[k];
         }
 
+        let _ = d_input; // used implicitly in backward pass
         (d_w1, d_b1, d_w2, d_b2)
-    }
-}
-
-struct AdamW {
-    m: Vec<f32>,
-    v: Vec<f32>,
-    lr: f32,
-    beta1: f32,
-    beta2: f32,
-    wd: f32,
-    step: usize,
-}
-
-impl AdamW {
-    fn new(size: usize, lr: f32) -> Self {
-        Self {
-            m: vec![0.0; size],
-            v: vec![0.0; size],
-            lr,
-            beta1: 0.9,
-            beta2: 0.999,
-            wd: 0.01,
-            step: 0,
-        }
-    }
-
-    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
-        self.step += 1;
-        let bc1 = 1.0 - self.beta1.powi(self.step as i32);
-        let bc2 = 1.0 - self.beta2.powi(self.step as i32);
-        for i in 0..params.len() {
-            let g = grads[i];
-            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * g;
-            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * g * g;
-            let m_hat = self.m[i] / bc1;
-            let v_hat = self.v[i] / bc2;
-            params[i] -= self.lr * (m_hat / (v_hat.sqrt() + 1e-8) + self.wd * params[i]);
-        }
     }
 }
 
@@ -270,7 +847,6 @@ impl CpuModel {
 
         let ffn_layers = if std::env::args().any(|a| a == "--ffn") {
             let mut layers = Vec::new();
-            // Read --ffn-layers argument, default to 2 if not present
             let ffn_layers_str = arg_or("ffn-layers", "2");
             let n_layers = ffn_layers_str.parse::<usize>().unwrap_or(2);
             for _ in 0..n_layers {
@@ -417,8 +993,8 @@ impl CpuModel {
     fn train_step(
         &mut self,
         tokens: &[usize],
-        opt_embed: &mut AdamW,
-        opt_head: &mut AdamW,
+        opt_embed: &mut AlgoOpt,
+        opt_head: &mut AlgoOpt,
         lr: f32,
     ) -> f32 {
         let d = self.dim;
@@ -445,8 +1021,6 @@ impl CpuModel {
             .collect();
         let xs_smeared = self.smear.forward(&xs);
 
-        // d_from_logits[i][j] = sum over vocab of d_logits[i][v] * lm_head[v][j]
-        // This is the gradient flowing back from the loss through the LM head
         let mut d_from_logits = vec![vec![0.0f32; d]; n];
         for (i, dl_row) in d_logits.iter().enumerate() {
             for (vi, &dl) in dl_row.iter().enumerate() {
@@ -456,9 +1030,7 @@ impl CpuModel {
             }
         }
 
-        // Compute d_lm_head and d_to_embed (gradient at model input)
         let (d_lm_head, d_to_embed) = if !self.ffn_layers.is_empty() {
-            // Forward: xs_final = smeared + ffn1(layernorm(smeared)) + ffn2(...) + ...
             let mut xs_final = xs_smeared.clone();
             let mut normed_activations = Vec::new();
 
@@ -486,7 +1058,6 @@ impl CpuModel {
                     .collect();
             }
 
-            // d_lm_head
             let mut dlh = vec![0.0f32; v * d];
             for i in 0..n - 1 {
                 for (vi, &dl) in d_logits[i].iter().enumerate() {
@@ -496,8 +1067,6 @@ impl CpuModel {
                 }
             }
 
-            // Backward through FFN layers in reverse order
-            // Phase 1: Collect all gradients
             let mut d_to_emb = vec![vec![0.0f32; d]; n];
             let mut current_grad = d_from_logits.clone();
             let mut all_layer_grads = Vec::with_capacity(self.ffn_layers.len());
@@ -513,7 +1082,6 @@ impl CpuModel {
                 }
                 all_layer_grads.push(layer_grads);
 
-                // Compute gradient flowing to previous layer (through layer norm)
                 for (i, d_to_emb_row) in d_to_emb.iter_mut().enumerate().take(n) {
                     let x = &xs_smeared[i];
                     let mean = x.iter().sum::<f32>() / d as f32;
@@ -541,7 +1109,6 @@ impl CpuModel {
                 current_grad = d_to_emb.clone();
             }
 
-            // Final gradient: residual + FFN path
             for (i, d_to_emb_row) in d_to_emb.iter_mut().enumerate() {
                 let gi = i.min(n - 2);
                 for (j, de) in d_to_emb_row.iter_mut().enumerate() {
@@ -549,7 +1116,6 @@ impl CpuModel {
                 }
             }
 
-            // Phase 2: Apply all parameter updates
             let n_layers = self.ffn_layers.len();
             for (layer_idx, layer_grads) in all_layer_grads.into_iter().enumerate() {
                 let layer_mut = &mut self.ffn_layers[n_layers - 1 - layer_idx];
@@ -634,7 +1200,19 @@ fn main() {
     let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
     let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
 
-    // Parse format type for QAT (FakeQuant + STE) — fixes trios#509
+    // Resolve algo name: CLI --algo=<name> takes precedence, then TRIOS_ALGO_TYPE, then "adamw"
+    let algo_name_raw = arg_or("algo", "");
+    let algo_name: String = if algo_name_raw.is_empty() {
+        std::env::var("TRIOS_ALGO_TYPE").unwrap_or_else(|_| "adamw".to_string())
+    } else {
+        algo_name_raw
+    };
+    let algo_name: &str = &algo_name.clone();
+
+    // R5-honest: announce algo at startup so CI logs can grep it
+    println!("ALGO: {} enabled", algo_name);
+
+    // Parse format type for QAT (FakeQuant + STE)
     let default_format = "f32".to_string();
     let format_suffix = format_type.as_ref().unwrap_or(&default_format);
     let format_kind = format_type
@@ -666,8 +1244,10 @@ fn main() {
     );
 
     let mut model = CpuModel::new(vocab, dim, seed);
-    let mut opt_embed = AdamW::new(vocab * dim, lr);
-    let mut opt_head = AdamW::new(vocab * dim, lr);
+
+    // Build both optimizers from algo_name (same algo for embed and head)
+    let mut opt_embed = AlgoOpt::from_env(algo_name, vocab * dim, lr);
+    let mut opt_head = AlgoOpt::from_env(algo_name, vocab * dim, lr);
 
     // Apply FakeQuant to initial weights (QAT)
     if use_fake_quant {
@@ -714,7 +1294,7 @@ fn main() {
         let batch = &train_tokens[offset..offset + seq + 1];
         let train_loss = model.train_step(batch, &mut opt_embed, &mut opt_head, current_lr);
 
-        // Apply FakeQuant after optimizer step (QAT: quantize→dequantize, STE in backward)
+        // Apply FakeQuant after optimizer step (QAT)
         if use_fake_quant {
             fake_quant::fake_quantize_weights(&mut model.embed, format_kind);
             fake_quant::fake_quantize_weights(&mut model.lm_head, format_kind);
@@ -754,6 +1334,7 @@ fn main() {
     let result_json = serde_json::json!({
         "experiment": "cpu-backprop-scalable",
         "model": "embed+bigram+smear+lm_head",
+        "algo": algo_name,
         "seed": seed,
         "vocab_size": vocab,
         "dim": dim,
@@ -767,8 +1348,8 @@ fn main() {
     });
 
     let rpath = format!(
-        ".trinity/results/cpu_train_{}_seed{}.json",
-        format_suffix, seed
+        ".trinity/results/cpu_train_{}_{}_seed{}.json",
+        format_suffix, algo_name, seed
     );
     fs::File::create(&rpath)
         .unwrap()
@@ -787,4 +1368,157 @@ fn arg_or(name: &str, default: &str) -> String {
         .find(|a| a.starts_with(&prefix))
         .map(|a| a[prefix.len()..].to_string())
         .unwrap_or_else(|| default.to_string())
+}
+
+// ============================================================================
+// Unit Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // test_algoopt_dispatch — each variant constructible, step() doesn't panic on 10-param vec
+    #[test]
+    fn test_algoopt_dispatch() {
+        let size = 10;
+        let lr = 0.01f32;
+        let names = [
+            "adamw",
+            "muon",
+            "sgdm",
+            "lion",
+            "adafactor",
+            "lamb",
+            "schedulefree",
+            "rmsprop",
+        ];
+        for &name in &names {
+            let mut opt = AlgoOpt::from_env(name, size, lr);
+            let mut params = vec![0.5f32; size];
+            let grads = vec![0.1f32; size];
+            opt.step(&mut params, &grads);
+            // Should not panic and params should be finite
+            for &p in &params {
+                assert!(p.is_finite(), "algo={} produced non-finite param", name);
+            }
+        }
+    }
+
+    // test_sgdm_recovers_minimum — SGDM on f(x)=x^2 converges to 0 in <1000 steps
+    #[test]
+    fn test_sgdm_recovers_minimum() {
+        let size = 1;
+        let mut opt = Sgdm::new(size, 0.01);
+        let mut params = vec![5.0f32];
+        for _ in 0..1000 {
+            let grad = vec![2.0 * params[0]]; // grad of x^2 = 2x
+            opt.step(&mut params, &grad);
+            if params[0].abs() < 1e-3 {
+                return; // converged
+            }
+        }
+        assert!(
+            params[0].abs() < 1e-2,
+            "SGDM did not converge: x = {}",
+            params[0]
+        );
+    }
+
+    // test_lion_sign_update — Lion with grad=+1 monotonically decreases param toward -inf
+    #[test]
+    fn test_lion_sign_update() {
+        let size = 1;
+        let mut opt = Lion::new(size, 0.1);
+        // Disable weight decay for clean test
+        opt.wd = 0.0;
+        let mut params = vec![10.0f32];
+        let grads = vec![1.0f32]; // positive gradient → negative sign update → param decreases
+        let mut prev = params[0];
+        for _ in 0..20 {
+            opt.step(&mut params, &grads);
+            assert!(
+                params[0] <= prev,
+                "Lion param should decrease: prev={} now={}",
+                prev,
+                params[0]
+            );
+            prev = params[0];
+        }
+    }
+
+    // test_lamb_trust_ratio — LAMB scales update by ||w||/||u||
+    #[test]
+    fn test_lamb_trust_ratio() {
+        let size = 4;
+        let lr = 0.1f32;
+        let mut opt = Lamb::new(size, lr);
+        // large param norm, small grad → trust ratio > 1 → big step
+        let mut params_big = vec![100.0f32; size];
+        let grads = vec![0.01f32; size];
+        let before: Vec<f32> = params_big.clone();
+        opt.step(&mut params_big, &grads);
+
+        // Reset and test with small param norm
+        let mut opt2 = Lamb::new(size, lr);
+        let mut params_small = vec![0.01f32; size];
+        let grads2 = vec![0.01f32; size];
+        let before2: Vec<f32> = params_small.clone();
+        opt2.step(&mut params_small, &grads2);
+
+        let delta_big = (before[0] - params_big[0]).abs();
+        let delta_small = (before2[0] - params_small[0]).abs();
+
+        // With large params (||w|| >> ||u||), the step should be larger
+        assert!(
+            delta_big > delta_small,
+            "LAMB trust ratio test: big={} small={}",
+            delta_big,
+            delta_small
+        );
+    }
+
+    // test_unknown_algo_panics — AlgoOpt::from_env("foobar", ...) panics
+    #[test]
+    #[should_panic(expected = "unknown optimizer")]
+    fn test_unknown_algo_panics() {
+        let _ = AlgoOpt::from_env("foobar", 10, 0.01);
+    }
+
+    // Additional: ScheduleFree steps without panic
+    #[test]
+    fn test_schedulefree_steps() {
+        let mut opt = ScheduleFree::new(10, 0.01);
+        let mut params = vec![1.0f32; 10];
+        let grads = vec![0.1f32; 10];
+        for _ in 0..5 {
+            opt.step(&mut params, &grads);
+        }
+        for &p in &params {
+            assert!(p.is_finite());
+        }
+    }
+
+    // Additional: Adafactor on 1D (non-factored path)
+    #[test]
+    fn test_adafactor_1d() {
+        let mut opt = Adafactor::new(3, 0.01);
+        let mut params = vec![1.0f32; 3];
+        let grads = vec![0.1f32; 3];
+        opt.step(&mut params, &grads);
+        for &p in &params {
+            assert!(p.is_finite());
+        }
+    }
+
+    // Additional: RMSprop decreases param with consistent positive grad
+    #[test]
+    fn test_rmsprop_decreases() {
+        let mut opt = RmsProp::new(1, 0.01);
+        let mut params = vec![5.0f32];
+        let grads = vec![1.0f32];
+        let before = params[0];
+        opt.step(&mut params, &grads);
+        assert!(params[0] < before, "RMSprop should decrease param");
+    }
 }

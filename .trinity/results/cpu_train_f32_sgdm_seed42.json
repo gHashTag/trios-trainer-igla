@@ -1,0 +1,15 @@
+{
+  "algo": "sgdm",
+  "delta_bpb": 0.01696920394897461,
+  "dim": 96,
+  "duration_seconds": 0.112179963,
+  "experiment": "cpu-backprop-scalable",
+  "final_bpb": 6.983424186706543,
+  "initial_bpb": 7.000393390655518,
+  "lr": 0.003000000026077032,
+  "model": "embed+bigram+smear+lm_head",
+  "seed": 42,
+  "seq_len": 32,
+  "steps": 50,
+  "vocab_size": 128
+}
