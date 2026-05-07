@@ -82,14 +82,7 @@ fn frobenius_norm_local(m: &[f32]) -> f32 {
     m.iter().map(|&x| x * x).sum::<f32>().sqrt().max(1e-8)
 }
 
-fn newton_schulz_5_local(
-    m: &[f32],
-    rows: usize,
-    cols: usize,
-    a: f32,
-    b: f32,
-    c: f32,
-) -> Vec<f32> {
+fn newton_schulz_5_local(m: &[f32], rows: usize, cols: usize, a: f32, b: f32, c: f32) -> Vec<f32> {
     let mut mt_m = vec![0.0f32; cols * cols];
     for i in 0..cols {
         for j in 0..cols {
@@ -182,8 +175,7 @@ impl Muon {
             *p *= 1.0 - lr * wd;
         }
         for i in 0..n {
-            self.momentum_buffer[i] =
-                mom * self.momentum_buffer[i] + (1.0 - mom) * grads[i];
+            self.momentum_buffer[i] = mom * self.momentum_buffer[i] + (1.0 - mom) * grads[i];
         }
 
         let update = self.orthogonalize();
@@ -309,8 +301,8 @@ impl Lion {
 
 struct Adafactor {
     // For factored: row-factor and col-factor
-    vr: Option<Vec<f64>>,  // shape: [rows]
-    vc: Option<Vec<f64>>,  // shape: [cols]
+    vr: Option<Vec<f64>>, // shape: [rows]
+    vc: Option<Vec<f64>>, // shape: [cols]
     // For non-factored
     v: Option<Vec<f64>>,
     step: usize,
@@ -318,7 +310,7 @@ struct Adafactor {
     rows: usize,
     cols: usize,
     // rms-scaling: we track rms of params at step 0 (or set 1.0)
-    rho: f64,   // exponential decay for second moment
+    rho: f64, // exponential decay for second moment
     eps1: f64,
     eps2: f64,
 }
@@ -499,8 +491,8 @@ impl Lamb {
 // x_{t+1} = x_t - lr * grad(y_t)
 
 struct ScheduleFree {
-    x: Vec<f32>,   // fast (online) iterate
-    z: Vec<f64>,   // averaged (Polyak) iterate
+    x: Vec<f32>, // fast (online) iterate
+    z: Vec<f64>, // averaged (Polyak) iterate
     lr: f32,
     beta1: f32,
     step: usize,
@@ -1392,7 +1384,14 @@ mod tests {
         let size = 10;
         let lr = 0.01f32;
         let names = [
-            "adamw", "muon", "sgdm", "lion", "adafactor", "lamb", "schedulefree", "rmsprop",
+            "adamw",
+            "muon",
+            "sgdm",
+            "lion",
+            "adafactor",
+            "lamb",
+            "schedulefree",
+            "rmsprop",
         ];
         for &name in &names {
             let mut opt = AlgoOpt::from_env(name, size, lr);
