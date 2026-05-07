@@ -261,3 +261,8 @@ useless_vec = "allow"
 [[bin]]
 name = "bpb_smoke"
 path = "src/bin/bpb_smoke.rs"
+
+[[bin]]
+name = "matrix_runner"
+path = "src/bin/matrix_runner.rs"
+

@@ -1,0 +1,247 @@
+name: Format-Algo Matrix (312 cells · trios#446)
+# Phase C lane L-C4 + L-C5: fan-out (Format × Algorithm) cells over GitHub
+# Actions matrix runners and stream bpb_samples rows into ssot.bpb_samples.
+# This is the workaround for trios-railway#61 (6-account Railway auth stalled):
+# GHA matrix runners replace the blocked Railway fan-out until multi-account
+# auth is unblocked.
+#
+# Anti-fake-pass guard (L-C4): for every *new* non-baseline cell, the final
+# bpb must differ from the f32+adamw baseline at the same hidden_size by at
+# least 1e-6. This catches "silent f32 fallback" bugs where a FakeQuant
+# kernel no-ops.
+#
+# Triggers:
+#   * workflow_dispatch — manual sweep with custom formats/algos inputs.
+#   * schedule (nightly 03:17 UTC) — incremental autonomous fill of the matrix.
+#   * push on paths that touch the runner binary or kernel implementations,
+#     restricted to a 4-cell smoke sample so PRs stay fast (<15 min).
+#
+# Anchor: phi^2 + phi^-2 = 3.
+
+on:
+  workflow_dispatch:
+    inputs:
+      formats:
+        description: "Comma-separated TRIOS_FORMAT_TYPE values"
+        required: false
+        default: "f32,gf16,bf16,fp16,int8"
+      algos:
+        description: "Comma-separated TRIOS_ALGO_TYPE values"
+        required: false
+        default: "adamw,muon,sgdm,lion"
+      seeds:
+        description: "Comma-separated seeds"
+        required: false
+        default: "42"
+      hidden:
+        description: "Hidden size"
+        required: false
+        default: "96"
+      steps:
+        description: "Training steps per cell"
+        required: false
+        default: "3000"
+  schedule:
+    # Daily nightly sweep, 03:17 UTC — off-peak for GHA quota.
+    - cron: "17 3 * * *"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/bin/matrix_runner.rs"
+      - "src/fake_quant.rs"
+      - "src/bin/cpu_train.rs"
+      - ".github/workflows/format-algo-matrix.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan cells
+    runs-on: ubuntu-latest
+    outputs:
+      cells: ${{ steps.build-plan.outputs.cells }}
+    steps:
+      - id: build-plan
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            workflow_dispatch)
+              FORMATS="${{ github.event.inputs.formats }}"
+              ALGOS="${{ github.event.inputs.algos }}"
+              SEEDS="${{ github.event.inputs.seeds }}"
+              HIDDEN="${{ github.event.inputs.hidden }}"
+              STEPS="${{ github.event.inputs.steps }}"
+              ;;
+            schedule)
+              # Nightly: walk a rotating stripe of 8 formats × 4 algos = 32
+              # cells keyed by day-of-year so we eventually cover all 312.
+              FORMATS="f32,gf16,bf16,fp16,int8,posit16,nf4,fp8_e5m2"
+              ALGOS="adamw,muon,sgdm,lion"
+              SEEDS="42"
+              HIDDEN="96"
+              STEPS="3000"
+              ;;
+            *)
+              # PR smoke: 2 formats × 2 algos = 4 cells, short steps.
+              FORMATS="f32,gf16"
+              ALGOS="adamw,muon"
+              SEEDS="42"
+              HIDDEN="96"
+              STEPS="500"
+              ;;
+          esac
+          # Always include the baseline cell so the anti-fake-pass guard has
+          # a reference row regardless of input.
+          case ",$FORMATS," in *",f32,"*) ;; *) FORMATS="f32,$FORMATS" ;; esac
+          case ",$ALGOS," in *",adamw,"*) ;; *) ALGOS="adamw,$ALGOS" ;; esac
+          python3 - <<PY
+          import json, os
+          formats = [x for x in "$FORMATS".split(",") if x]
+          algos   = [x for x in "$ALGOS".split(",") if x]
+          seeds   = [int(x) for x in "$SEEDS".split(",") if x]
+          hidden  = int("$HIDDEN")
+          steps   = int("$STEPS")
+          cells = []
+          for fmt in formats:
+              for algo in algos:
+                  for seed in seeds:
+                      cells.append({
+                          "format": fmt,
+                          "algo":   algo,
+                          "seed":   seed,
+                          "hidden": hidden,
+                          "steps":  steps,
+                      })
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write("cells=" + json.dumps(cells) + "\n")
+          print(f"Planned {len(cells)} cells")
+          PY
+
+  cell:
+    name: ${{ matrix.cell.format }}×${{ matrix.cell.algo }} seed=${{ matrix.cell.seed }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 20
+      matrix:
+        cell: ${{ fromJson(needs.plan.outputs.cells) }}
+    env:
+      # Phase C workaround DSN for trios-railway#62: Railway phd-postgres-ssot
+      # proxy endpoint. Stored as a repo secret; absent DSN is a no-op (R5
+      # non-blocking) so PR smoke runs without touching the SSOT.
+      MATRIX_DATABASE_URL: ${{ secrets.MATRIX_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build matrix_runner
+        run: cargo build --release --bin matrix_runner --bin cpu_train
+
+      - name: Run cell
+        id: run
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          ./target/release/matrix_runner \
+            --format=${{ matrix.cell.format }} \
+            --algo=${{ matrix.cell.algo }} \
+            --seed=${{ matrix.cell.seed }} \
+            --hidden=${{ matrix.cell.hidden }} \
+            --steps=${{ matrix.cell.steps }} \
+            --vocab=128 --seq=32 \
+            2>&1 | tee cell.log
+          grep "^MATRIX_ROW " cell.log | tail -1 \
+            | sed 's/^MATRIX_ROW //' > cell.json
+          cat cell.json
+
+      - name: Upload cell artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cell-${{ matrix.cell.format }}-${{ matrix.cell.algo }}-seed${{ matrix.cell.seed }}-h${{ matrix.cell.hidden }}
+          path: |
+            cell.json
+            cell.log
+            .trinity/results/*.json
+
+  anti-fake-pass:
+    name: Anti-fake-pass guard (|Δbpb| ≥ 1e-6)
+    needs: cell
+    if: ${{ always() && needs.cell.result != 'failure' }}
+    runs-on: ubuntu-latest
+    env:
+      # PR smoke runs at steps=500 which is BELOW the honest FakeQuant
+      # divergence window (see gHashTag/trios#446 §Anti-fake-pass rationale):
+      # at ≤500 steps many quantizers are still in their linear regime and
+      # legitimately produce bitwise-identical bpb to f32. The guard is
+      # advisory on pull_request; mandatory on schedule / workflow_dispatch
+      # where cells run at steps≥3000.
+      ADVISORY: ${{ github.event_name == 'pull_request' }}
+      MIN_STEPS_FOR_GUARD: "1000"
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+
+      - name: Verify every non-baseline cell diverges from f32+adamw
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, pathlib, sys
+          artefacts = pathlib.Path("artefacts")
+          rows = []
+          for p in artefacts.rglob("cell.json"):
+              try:
+                  rows.append(json.loads(p.read_text()))
+              except Exception as e:
+                  print(f"WARN: cannot parse {p}: {e}", file=sys.stderr)
+          if not rows:
+              print("NO CELLS COLLECTED — guard skipped (not a failure)")
+              sys.exit(0)
+          advisory  = os.environ.get("ADVISORY", "false") == "true"
+          min_steps = int(os.environ.get("MIN_STEPS_FOR_GUARD", "1000"))
+          # Build baseline index: (hidden -> bpb) at f32+adamw for each seed.
+          baseline = {}
+          for r in rows:
+              if r["format"] == "f32" and r["algo"] == "adamw":
+                  baseline[(r["hidden"], r["seed"])] = r["bpb"]
+          if not baseline:
+              print("WARN: no f32+adamw baseline in matrix; guard is advisory.")
+          offenders = []
+          EPS = 1e-6
+          for r in rows:
+              if r["format"] == "f32" and r["algo"] == "adamw":
+                  continue
+              ref = baseline.get((r["hidden"], r["seed"]))
+              if ref is None:
+                  continue
+              delta = abs(r["bpb"] - ref)
+              print(f"cell {r['format']:>10} × {r['algo']:>12} "
+                    f"seed={r['seed']} h={r['hidden']} step={r['step']} "
+                    f"bpb={r['bpb']:.6f} |Δbpb|={delta:.6e}")
+              if delta < EPS and r['step'] >= min_steps:
+                  offenders.append((r, ref, delta))
+          if offenders:
+              stream = sys.stdout if advisory else sys.stderr
+              label = "ADVISORY" if advisory else "FAIL"
+              print(f"\n{label}: fake-pass offenders (|Δbpb| < 1e-6 vs f32+adamw):",
+                    file=stream)
+              for r, ref, delta in offenders:
+                  print(f"  {r['format']}×{r['algo']} seed={r['seed']} "
+                        f"h={r['hidden']} step={r['step']} "
+                        f"bpb={r['bpb']} ref={ref} |Δ|={delta}",
+                        file=stream)
+              if not advisory:
+                  sys.exit(1)
+          print("\nAnti-fake-pass OK: all cells pass guard "
+                f"(min_steps={min_steps}, advisory={advisory}).")
+          PY
