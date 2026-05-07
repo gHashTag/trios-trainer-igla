@@ -53,7 +53,11 @@ on:
       - ".github/workflows/format-algo-matrix.yml"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Parallel workflow_dispatch sweeps must NOT cancel each other (we fan out
+  # 312 cells over multiple waves to stay under the per-account GHA queue
+  # quota). Per-run-id grouping lets each manual dispatch keep its slot.
+  # Schedule + pull_request still serialize on workflow+ref.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'shared' }}
   cancel-in-progress: false
 
 jobs:
