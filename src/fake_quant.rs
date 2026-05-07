@@ -241,97 +241,144 @@ impl FormatKind {
     pub fn all() -> &'static [FormatKind] {
         use FormatKind::*;
         &[
-            F32, F64, Fp16, Bf16, Tf32,
-            Fp8E4M3, Fp8E5M2, Fp6E2M3, Fp6E3M2, Fp4E2M1,
-            Gf16, Gf8, Gf4, Gf32, Gf64, Gf12, Gf20, Gf24,
-            Int8, Int4, Int16, Int32, Uint8,
-            Nf4, Nf8,
-            Posit8, Posit16, Posit32, Posit64,
+            F32,
+            F64,
+            Fp16,
+            Bf16,
+            Tf32,
+            Fp8E4M3,
+            Fp8E5M2,
+            Fp6E2M3,
+            Fp6E3M2,
+            Fp4E2M1,
+            Gf16,
+            Gf8,
+            Gf4,
+            Gf32,
+            Gf64,
+            Gf12,
+            Gf20,
+            Gf24,
+            Int8,
+            Int4,
+            Int16,
+            Int32,
+            Uint8,
+            Nf4,
+            Nf8,
+            Posit8,
+            Posit16,
+            Posit32,
+            Posit64,
             Lns8,
-            Mxfp4, Mxfp6, Mxfp8,
-            Binary128, Binary256,
-            Decimal32, Decimal64, Decimal128,
+            Mxfp4,
+            Mxfp6,
+            Mxfp8,
+            Binary128,
+            Binary256,
+            Decimal32,
+            Decimal64,
+            Decimal128,
             Fp80,
-            Bcd, Bcd8, Bcd16,
-            IbmHfp, IbmHfpShort, IbmHfpLong,
-            VaxF, VaxD, VaxG, VaxH,
+            Bcd,
+            Bcd8,
+            Bcd16,
+            IbmHfp,
+            IbmHfpShort,
+            IbmHfpLong,
+            VaxF,
+            VaxD,
+            VaxG,
+            VaxH,
             CrayFloat,
-            Minifloat, TaperedFp, BlockFp, SharedExp,
-            StochasticRnd, StochasticRound,
-            UnumI, UnumII, UnumI8, UnumI16, UnumII8, UnumII16,
-            AfP, QFormat, Q15, Q31,
+            Minifloat,
+            TaperedFp,
+            BlockFp,
+            SharedExp,
+            StochasticRnd,
+            StochasticRound,
+            UnumI,
+            UnumII,
+            UnumI8,
+            UnumI16,
+            UnumII8,
+            UnumII16,
+            AfP,
+            QFormat,
+            Q15,
+            Q31,
         ]
     }
 
     /// Lowercase canonical name matching the matrix headers in gHashTag/trios#446.
     pub fn name(&self) -> &'static str {
         match self {
-            FormatKind::F32          => "fp32",
-            FormatKind::F64          => "fp64",
-            FormatKind::Fp16         => "fp16",
-            FormatKind::Bf16         => "bf16",
-            FormatKind::Tf32         => "tf32",
-            FormatKind::Fp8E4M3      => "fp8_e4m3",
-            FormatKind::Fp8E5M2      => "fp8_e5m2",
-            FormatKind::Fp6E2M3      => "fp6_e2m3",
-            FormatKind::Fp6E3M2      => "fp6_e3m2",
-            FormatKind::Fp4E2M1      => "fp4_e2m1",
-            FormatKind::Gf16         => "gf16",
-            FormatKind::Gf8          => "gf8",
-            FormatKind::Gf4          => "gf4",
-            FormatKind::Gf32         => "gf32",
-            FormatKind::Gf64         => "gf64",
-            FormatKind::Gf12         => "gf12",
-            FormatKind::Gf20         => "gf20",
-            FormatKind::Gf24         => "gf24",
-            FormatKind::Int8         => "int8",
-            FormatKind::Int4         => "int4",
-            FormatKind::Int16        => "int16",
-            FormatKind::Int32        => "int32",
-            FormatKind::Uint8        => "uint8",
-            FormatKind::Nf4          => "nf4",
-            FormatKind::Nf8          => "nf8",
-            FormatKind::Posit8       => "posit8",
-            FormatKind::Posit16      => "posit16",
-            FormatKind::Posit32      => "posit32",
-            FormatKind::Posit64      => "posit64",
-            FormatKind::Lns8         => "lns8",
-            FormatKind::Mxfp4        => "mxfp4",
-            FormatKind::Mxfp6        => "mxfp6",
-            FormatKind::Mxfp8        => "mxfp8",
-            FormatKind::Binary128    => "binary128",
-            FormatKind::Binary256    => "binary256",
-            FormatKind::Decimal32    => "decimal32",
-            FormatKind::Decimal64    => "decimal64",
-            FormatKind::Decimal128   => "decimal128",
-            FormatKind::Fp80         => "fp80",
-            FormatKind::Bcd          => "bcd",
-            FormatKind::Bcd8         => "bcd8",
-            FormatKind::Bcd16        => "bcd16",
-            FormatKind::IbmHfp       => "ibm_hfp",
-            FormatKind::IbmHfpShort  => "ibm_hfp_short",
-            FormatKind::IbmHfpLong   => "ibm_hfp_long",
-            FormatKind::VaxF         => "vax_f",
-            FormatKind::VaxD         => "vax_d",
-            FormatKind::VaxG         => "vax_g",
-            FormatKind::VaxH         => "vax_h",
-            FormatKind::CrayFloat    => "cray_float",
-            FormatKind::Minifloat    => "minifloat",
-            FormatKind::TaperedFp    => "tapered_fp",
-            FormatKind::BlockFp      => "block_fp",
-            FormatKind::SharedExp    => "shared_exp",
-            FormatKind::StochasticRnd   => "stochastic_rnd",
+            FormatKind::F32 => "fp32",
+            FormatKind::F64 => "fp64",
+            FormatKind::Fp16 => "fp16",
+            FormatKind::Bf16 => "bf16",
+            FormatKind::Tf32 => "tf32",
+            FormatKind::Fp8E4M3 => "fp8_e4m3",
+            FormatKind::Fp8E5M2 => "fp8_e5m2",
+            FormatKind::Fp6E2M3 => "fp6_e2m3",
+            FormatKind::Fp6E3M2 => "fp6_e3m2",
+            FormatKind::Fp4E2M1 => "fp4_e2m1",
+            FormatKind::Gf16 => "gf16",
+            FormatKind::Gf8 => "gf8",
+            FormatKind::Gf4 => "gf4",
+            FormatKind::Gf32 => "gf32",
+            FormatKind::Gf64 => "gf64",
+            FormatKind::Gf12 => "gf12",
+            FormatKind::Gf20 => "gf20",
+            FormatKind::Gf24 => "gf24",
+            FormatKind::Int8 => "int8",
+            FormatKind::Int4 => "int4",
+            FormatKind::Int16 => "int16",
+            FormatKind::Int32 => "int32",
+            FormatKind::Uint8 => "uint8",
+            FormatKind::Nf4 => "nf4",
+            FormatKind::Nf8 => "nf8",
+            FormatKind::Posit8 => "posit8",
+            FormatKind::Posit16 => "posit16",
+            FormatKind::Posit32 => "posit32",
+            FormatKind::Posit64 => "posit64",
+            FormatKind::Lns8 => "lns8",
+            FormatKind::Mxfp4 => "mxfp4",
+            FormatKind::Mxfp6 => "mxfp6",
+            FormatKind::Mxfp8 => "mxfp8",
+            FormatKind::Binary128 => "binary128",
+            FormatKind::Binary256 => "binary256",
+            FormatKind::Decimal32 => "decimal32",
+            FormatKind::Decimal64 => "decimal64",
+            FormatKind::Decimal128 => "decimal128",
+            FormatKind::Fp80 => "fp80",
+            FormatKind::Bcd => "bcd",
+            FormatKind::Bcd8 => "bcd8",
+            FormatKind::Bcd16 => "bcd16",
+            FormatKind::IbmHfp => "ibm_hfp",
+            FormatKind::IbmHfpShort => "ibm_hfp_short",
+            FormatKind::IbmHfpLong => "ibm_hfp_long",
+            FormatKind::VaxF => "vax_f",
+            FormatKind::VaxD => "vax_d",
+            FormatKind::VaxG => "vax_g",
+            FormatKind::VaxH => "vax_h",
+            FormatKind::CrayFloat => "cray_float",
+            FormatKind::Minifloat => "minifloat",
+            FormatKind::TaperedFp => "tapered_fp",
+            FormatKind::BlockFp => "block_fp",
+            FormatKind::SharedExp => "shared_exp",
+            FormatKind::StochasticRnd => "stochastic_rnd",
             FormatKind::StochasticRound => "stochastic_round",
-            FormatKind::UnumI        => "unum_i",
-            FormatKind::UnumII       => "unum_ii",
-            FormatKind::UnumI8       => "unum_i8",
-            FormatKind::UnumI16      => "unum_i16",
-            FormatKind::UnumII8      => "unum_ii8",
-            FormatKind::UnumII16     => "unum_ii16",
-            FormatKind::AfP          => "afp",
-            FormatKind::QFormat      => "q_format",
-            FormatKind::Q15          => "q15",
-            FormatKind::Q31          => "q31",
+            FormatKind::UnumI => "unum_i",
+            FormatKind::UnumII => "unum_ii",
+            FormatKind::UnumI8 => "unum_i8",
+            FormatKind::UnumI16 => "unum_i16",
+            FormatKind::UnumII8 => "unum_ii8",
+            FormatKind::UnumII16 => "unum_ii16",
+            FormatKind::AfP => "afp",
+            FormatKind::QFormat => "q_format",
+            FormatKind::Q15 => "q15",
+            FormatKind::Q31 => "q31",
         }
     }
 
@@ -374,10 +421,7 @@ impl FormatKind {
             | FormatKind::Mxfp6
             | FormatKind::Mxfp8 => true,
             // Golden Float canonical kernels
-            FormatKind::Gf16
-            | FormatKind::Gf8
-            | FormatKind::Gf32
-            | FormatKind::Gf64 => true,
+            FormatKind::Gf16 | FormatKind::Gf8 | FormatKind::Gf32 | FormatKind::Gf64 => true,
             // Integer formats — per-tensor symmetric quantisation is faithful
             FormatKind::Int4
             | FormatKind::Int8
@@ -469,72 +513,72 @@ impl FormatKind {
     /// Number of effective mantissa bits (excluding implicit bit)
     pub fn mantissa_bits(&self) -> u32 {
         match self {
-            FormatKind::F32          => 23,
-            FormatKind::F64          => 52,
-            FormatKind::Fp16         => 10,
-            FormatKind::Bf16         => 7,
-            FormatKind::Tf32         => 10,
-            FormatKind::Fp8E4M3      => 3,
-            FormatKind::Fp8E5M2      => 2,
-            FormatKind::Fp6E2M3      => 3,
-            FormatKind::Fp6E3M2      => 2,
-            FormatKind::Fp4E2M1      => 1,
-            FormatKind::Gf16         => 9,
-            FormatKind::Gf8          => 4,
-            FormatKind::Gf4          => 2,
-            FormatKind::Gf32         => 18,
-            FormatKind::Gf64         => 42,
-            FormatKind::Gf12         => 7,
-            FormatKind::Gf20         => 12,
-            FormatKind::Gf24         => 14,
-            FormatKind::Int8         => 0,
-            FormatKind::Int4         => 0,
-            FormatKind::Int16        => 0,
-            FormatKind::Int32        => 0,
-            FormatKind::Uint8        => 0,
-            FormatKind::Nf4          => 2,
-            FormatKind::Nf8          => 7,   // 8-bit LUT → ~7 bits effective
-            FormatKind::Posit8       => 4,
-            FormatKind::Posit16      => 10,
-            FormatKind::Posit32      => 26,
-            FormatKind::Posit64      => 58,  // 64-bit posit
-            FormatKind::Lns8         => 4,
-            FormatKind::Mxfp4        => 1,
-            FormatKind::Mxfp6        => 2,
-            FormatKind::Mxfp8        => 3,
-            FormatKind::Binary128    => 112,
-            FormatKind::Binary256    => 236,
-            FormatKind::Decimal32    => 7,
-            FormatKind::Decimal64    => 16,
-            FormatKind::Decimal128   => 34,
-            FormatKind::Fp80         => 63,
-            FormatKind::Bcd          => 4,
-            FormatKind::Bcd8         => 4,   // 2 BCD digits
-            FormatKind::Bcd16        => 8,   // 4 BCD digits
-            FormatKind::IbmHfp       => 6,
-            FormatKind::IbmHfpShort  => 6,   // 32-bit IBM HFP: 1s + 7exp + 24frac (hex)
-            FormatKind::IbmHfpLong   => 14,  // 64-bit IBM HFP: 1s + 7exp + 56frac (hex)
-            FormatKind::VaxF         => 23,
-            FormatKind::VaxD         => 55,
-            FormatKind::VaxG         => 52,  // 64-bit VAX G-float
-            FormatKind::VaxH         => 112, // 128-bit VAX H-float
-            FormatKind::CrayFloat    => 48,
-            FormatKind::Minifloat    => 3,
-            FormatKind::TaperedFp    => 8,
-            FormatKind::BlockFp      => 4,
-            FormatKind::SharedExp    => 4,
-            FormatKind::StochasticRnd   => 23,
+            FormatKind::F32 => 23,
+            FormatKind::F64 => 52,
+            FormatKind::Fp16 => 10,
+            FormatKind::Bf16 => 7,
+            FormatKind::Tf32 => 10,
+            FormatKind::Fp8E4M3 => 3,
+            FormatKind::Fp8E5M2 => 2,
+            FormatKind::Fp6E2M3 => 3,
+            FormatKind::Fp6E3M2 => 2,
+            FormatKind::Fp4E2M1 => 1,
+            FormatKind::Gf16 => 9,
+            FormatKind::Gf8 => 4,
+            FormatKind::Gf4 => 2,
+            FormatKind::Gf32 => 18,
+            FormatKind::Gf64 => 42,
+            FormatKind::Gf12 => 7,
+            FormatKind::Gf20 => 12,
+            FormatKind::Gf24 => 14,
+            FormatKind::Int8 => 0,
+            FormatKind::Int4 => 0,
+            FormatKind::Int16 => 0,
+            FormatKind::Int32 => 0,
+            FormatKind::Uint8 => 0,
+            FormatKind::Nf4 => 2,
+            FormatKind::Nf8 => 7, // 8-bit LUT → ~7 bits effective
+            FormatKind::Posit8 => 4,
+            FormatKind::Posit16 => 10,
+            FormatKind::Posit32 => 26,
+            FormatKind::Posit64 => 58, // 64-bit posit
+            FormatKind::Lns8 => 4,
+            FormatKind::Mxfp4 => 1,
+            FormatKind::Mxfp6 => 2,
+            FormatKind::Mxfp8 => 3,
+            FormatKind::Binary128 => 112,
+            FormatKind::Binary256 => 236,
+            FormatKind::Decimal32 => 7,
+            FormatKind::Decimal64 => 16,
+            FormatKind::Decimal128 => 34,
+            FormatKind::Fp80 => 63,
+            FormatKind::Bcd => 4,
+            FormatKind::Bcd8 => 4,  // 2 BCD digits
+            FormatKind::Bcd16 => 8, // 4 BCD digits
+            FormatKind::IbmHfp => 6,
+            FormatKind::IbmHfpShort => 6, // 32-bit IBM HFP: 1s + 7exp + 24frac (hex)
+            FormatKind::IbmHfpLong => 14, // 64-bit IBM HFP: 1s + 7exp + 56frac (hex)
+            FormatKind::VaxF => 23,
+            FormatKind::VaxD => 55,
+            FormatKind::VaxG => 52,  // 64-bit VAX G-float
+            FormatKind::VaxH => 112, // 128-bit VAX H-float
+            FormatKind::CrayFloat => 48,
+            FormatKind::Minifloat => 3,
+            FormatKind::TaperedFp => 8,
+            FormatKind::BlockFp => 4,
+            FormatKind::SharedExp => 4,
+            FormatKind::StochasticRnd => 23,
             FormatKind::StochasticRound => 23,
-            FormatKind::UnumI        => 8,
-            FormatKind::UnumII       => 8,
-            FormatKind::UnumI8       => 4,
-            FormatKind::UnumI16      => 10,
-            FormatKind::UnumII8      => 4,
-            FormatKind::UnumII16     => 10,
-            FormatKind::AfP          => 4,
-            FormatKind::QFormat      => 8,
-            FormatKind::Q15          => 15,
-            FormatKind::Q31          => 31,
+            FormatKind::UnumI => 8,
+            FormatKind::UnumII => 8,
+            FormatKind::UnumI8 => 4,
+            FormatKind::UnumI16 => 10,
+            FormatKind::UnumII8 => 4,
+            FormatKind::UnumII16 => 10,
+            FormatKind::AfP => 4,
+            FormatKind::QFormat => 8,
+            FormatKind::Q15 => 15,
+            FormatKind::Q31 => 31,
         }
     }
 
@@ -658,7 +702,7 @@ impl FormatKind {
                 | FormatKind::Posit64       // 64-bit posit — wider than f32
                 | FormatKind::StochasticRnd
                 | FormatKind::StochasticRound // TODO: bernoulli-RNG path
-                | FormatKind::Q31            // 31 fractional bits > f32 mantissa
+                | FormatKind::Q31 // 31 fractional bits > f32 mantissa
         )
     }
 }
@@ -751,7 +795,11 @@ fn fake_quantize_ibm_hfp_short(val: f32) -> f32 {
     let rounded_bits = round_mantissa_unsigned(abs_bits, drop_bits);
     let rounded_abs = f32::from_bits(rounded_bits);
     // IBM HFP short max finite: ~ 7.2e75, which exceeds f32 max, so no clamp
-    if sign { -rounded_abs } else { rounded_abs }
+    if sign {
+        -rounded_abs
+    } else {
+        rounded_abs
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -769,7 +817,11 @@ fn fake_quantize_unum8(val: f32, max_mag: f32) -> f32 {
     let abs_bits = abs_val.to_bits();
     let rounded_bits = round_mantissa_unsigned(abs_bits, drop_bits);
     let rounded_abs = f32::from_bits(rounded_bits).min(max_mag);
-    if sign { -rounded_abs } else { rounded_abs }
+    if sign {
+        -rounded_abs
+    } else {
+        rounded_abs
+    }
 }
 
 /// Unum Type I / II 16-bit: approximate as Posit16-style (10 mantissa bits).
@@ -782,7 +834,11 @@ fn fake_quantize_unum16(val: f32, max_mag: f32) -> f32 {
     let abs_bits = abs_val.to_bits();
     let rounded_bits = round_mantissa_unsigned(abs_bits, drop_bits);
     let rounded_abs = f32::from_bits(rounded_bits).min(max_mag);
-    if sign { -rounded_abs } else { rounded_abs }
+    if sign {
+        -rounded_abs
+    } else {
+        rounded_abs
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -815,7 +871,7 @@ pub fn fake_quantize_f32(val: f32, fmt: FormatKind) -> f32 {
     // Bug G: route Golden Float formats through canonical kernels
     match fmt {
         FormatKind::Gf16 => return GF16::from_f32(val).to_f32(),
-        FormatKind::Gf8  => return GF8::from_f32(val).to_f32(),
+        FormatKind::Gf8 => return GF8::from_f32(val).to_f32(),
         FormatKind::Gf32 => return GF32::from_f32(val).to_f32(),
         FormatKind::Gf64 => return GF64::from_f64(val as f64).to_f64() as f32,
         _ => {}
@@ -838,8 +894,8 @@ pub fn fake_quantize_f32(val: f32, fmt: FormatKind) -> f32 {
 
     // BCD formats
     match fmt {
-        FormatKind::Bcd   => return fake_quantize_bcd8(val),
-        FormatKind::Bcd8  => return fake_quantize_bcd8(val),
+        FormatKind::Bcd => return fake_quantize_bcd8(val),
+        FormatKind::Bcd8 => return fake_quantize_bcd8(val),
         FormatKind::Bcd16 => return fake_quantize_bcd16(val),
         _ => {}
     }
@@ -856,9 +912,9 @@ pub fn fake_quantize_f32(val: f32, fmt: FormatKind) -> f32 {
 
     // Unum variants
     match fmt {
-        FormatKind::UnumI8   => return fake_quantize_unum8(val, 255.0),
-        FormatKind::UnumII8  => return fake_quantize_unum8(val, 64.0),
-        FormatKind::UnumI16  => return fake_quantize_unum16(val, 65504.0),
+        FormatKind::UnumI8 => return fake_quantize_unum8(val, 255.0),
+        FormatKind::UnumII8 => return fake_quantize_unum8(val, 64.0),
+        FormatKind::UnumI16 => return fake_quantize_unum16(val, 65504.0),
         FormatKind::UnumII16 => return fake_quantize_unum16(val, 2.68e8),
         _ => {}
     }
@@ -872,8 +928,8 @@ pub fn fake_quantize_f32(val: f32, fmt: FormatKind) -> f32 {
             return val;
         }
         let levels = match fmt {
-            FormatKind::Int4  => 16.0_f32,
-            FormatKind::Int8  => 256.0,
+            FormatKind::Int4 => 16.0_f32,
+            FormatKind::Int8 => 256.0,
             FormatKind::Int16 => 65536.0,
             FormatKind::Uint8 => 256.0,
             _ => return val,
@@ -957,8 +1013,8 @@ fn fake_quantize_int_tensor(weights: &mut [f32], fmt: FormatKind) {
     }
 
     let (q_min, q_max, levels_minus_one) = match fmt {
-        FormatKind::Int4  => (-8.0_f32, 7.0_f32, 7.0_f32),
-        FormatKind::Int8  => (-128.0, 127.0, 127.0),
+        FormatKind::Int4 => (-8.0_f32, 7.0_f32, 7.0_f32),
+        FormatKind::Int8 => (-128.0, 127.0, 127.0),
         FormatKind::Int16 => (-32768.0, 32767.0, 32767.0),
         FormatKind::Uint8 => (0.0, 255.0, 255.0),
         _ => return,
@@ -985,7 +1041,7 @@ fn fake_quantize_int_tensor(weights: &mut [f32], fmt: FormatKind) {
 
 /// Recursively fake-quantize nested weight structures (embed, lm_head, ffn, etc.)
 pub fn fake_quantize_nested(
-    embed:  &mut [f32],
+    embed: &mut [f32],
     lm_head: &mut [f32],
     ffn_w1: &mut [Vec<f32>],
     ffn_b1: &mut [Vec<f32>],
@@ -995,10 +1051,18 @@ pub fn fake_quantize_nested(
 ) {
     fake_quantize_weights(embed, fmt);
     fake_quantize_weights(lm_head, fmt);
-    for w in ffn_w1.iter_mut() { fake_quantize_weights(w, fmt); }
-    for b in ffn_b1.iter_mut() { fake_quantize_weights(b, fmt); }
-    for w in ffn_w2.iter_mut() { fake_quantize_weights(w, fmt); }
-    for b in ffn_b2.iter_mut() { fake_quantize_weights(b, fmt); }
+    for w in ffn_w1.iter_mut() {
+        fake_quantize_weights(w, fmt);
+    }
+    for b in ffn_b1.iter_mut() {
+        fake_quantize_weights(b, fmt);
+    }
+    for w in ffn_w2.iter_mut() {
+        fake_quantize_weights(w, fmt);
+    }
+    for b in ffn_b2.iter_mut() {
+        fake_quantize_weights(b, fmt);
+    }
 }
 
 // ===========================================================================
@@ -1034,7 +1098,10 @@ mod tests {
         for &variant in FormatKind::all() {
             let name = variant.name();
             let recovered = FormatKind::from_name(name).unwrap_or_else(|| {
-                panic!("from_name({:?}) returned None for variant {:?}", name, variant)
+                panic!(
+                    "from_name({:?}) returned None for variant {:?}",
+                    name, variant
+                )
             });
             assert_eq!(
                 recovered, variant,
@@ -1059,7 +1126,8 @@ mod tests {
         for &fmt in FormatKind::all() {
             let q = fake_quantize_f32(0.0_f32, fmt);
             assert_eq!(
-                q, 0.0_f32,
+                q,
+                0.0_f32,
                 "Format {:?} ({}) did not preserve zero: got {}",
                 fmt,
                 fmt.name(),
@@ -1085,18 +1153,24 @@ mod tests {
                 assert!(
                     q_neg == 0.0 || q_neg == -0.0,
                     "Format {:?} ({}): +val→0 but -val→{} (sign broken)",
-                    fmt, fmt.name(), q_neg
+                    fmt,
+                    fmt.name(),
+                    q_neg
                 );
             } else {
                 assert!(
                     q_pos > 0.0,
                     "Format {:?} ({}): positive input produced negative output {}",
-                    fmt, fmt.name(), q_pos
+                    fmt,
+                    fmt.name(),
+                    q_pos
                 );
                 assert!(
                     q_neg < 0.0 || q_neg == 0.0,
                     "Format {:?} ({}): negative input produced positive output {}",
-                    fmt, fmt.name(), q_neg
+                    fmt,
+                    fmt.name(),
+                    q_neg
                 );
             }
         }
@@ -1221,7 +1295,9 @@ mod tests {
             assert!(
                 (q + q_neg).abs() < 1e-6,
                 "fp16 not symmetric for |v|={}: q={}, q_neg={}",
-                v.abs(), q, q_neg
+                v.abs(),
+                q,
+                q_neg
             );
         }
     }
@@ -1343,7 +1419,10 @@ mod tests {
     #[test]
     fn test_bcd16_rounds_to_integer() {
         let q = fake_quantize_f32(1234.5_f32, FormatKind::Bcd16);
-        assert!((q - 1235.0).abs() < 1e-3, "bcd16(1234.5) should be 1235, got {q}");
+        assert!(
+            (q - 1235.0).abs() < 1e-3,
+            "bcd16(1234.5) should be 1235, got {q}"
+        );
         let q2 = fake_quantize_f32(10000.0_f32, FormatKind::Bcd16);
         assert_eq!(q2, 9999.0, "bcd16 max=9999, got {q2}");
     }
@@ -1452,7 +1531,10 @@ mod tests {
             FormatKind::UnumI8,
             FormatKind::UnumII8,
         ] {
-            assert!(!fmt.is_faithful(), "{fmt:?} should be non-faithful (deferred)");
+            assert!(
+                !fmt.is_faithful(),
+                "{fmt:?} should be non-faithful (deferred)"
+            );
         }
     }
 }
