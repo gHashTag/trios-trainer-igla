@@ -390,12 +390,10 @@ impl FormatKind {
             return Some(fk);
         }
         // Then match canonical names from all()
-        for &variant in FormatKind::all() {
-            if variant.name() == lower.as_str() {
-                return Some(variant);
-            }
-        }
-        None
+        FormatKind::all()
+            .iter()
+            .find(|&&variant| variant.name() == lower.as_str())
+            .copied()
     }
 
     /// `true` iff the round-trip `f32 → format → f32` is provably
@@ -1166,7 +1164,7 @@ mod tests {
                     q_pos
                 );
                 assert!(
-                    q_neg < 0.0 || q_neg == 0.0,
+                    q_neg <= 0.0,
                     "Format {:?} ({}): negative input produced positive output {}",
                     fmt,
                     fmt.name(),
