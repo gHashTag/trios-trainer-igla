@@ -337,7 +337,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet assertions/matrix_samples.jsonl; then
+          # Use `git status --porcelain` so an untracked ledger file (file
+          # absent on main) still triggers the PR. `git diff --quiet` would
+          # exit 0 on untracked paths and skip the PR — see trios#380.
+          if [[ -z "$(git status --porcelain assertions/matrix_samples.jsonl)" ]]; then
             echo "[matrix_ledger] no changes vs main — skipping PR"
             exit 0
           fi
@@ -345,7 +348,7 @@ jobs:
           git config user.name  "trios-matrix-ledger-bot"
           git config user.email "matrix-ledger-bot@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add assertions/matrix_samples.jsonl
+          git add -f assertions/matrix_samples.jsonl
           ROWS=$(wc -l < assertions/matrix_samples.jsonl)
           HITS=$(grep -c '"falsifier_2_hit":true' assertions/matrix_samples.jsonl || true)
           git commit -m "chore(matrix-ledger): refresh assertions/matrix_samples.jsonl
