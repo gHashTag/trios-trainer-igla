@@ -160,7 +160,8 @@ fn arg_value(args: &[String], flag: &str) -> Option<String> {
 
 fn collect(args: &[String]) -> Result<(), String> {
     let artefact_root = arg_value(args, "artefact-root").unwrap_or_else(|| "artefacts".into());
-    let out_path = arg_value(args, "out").unwrap_or_else(|| "assertions/matrix_samples.jsonl".into());
+    let out_path =
+        arg_value(args, "out").unwrap_or_else(|| "assertions/matrix_samples.jsonl".into());
     let commit_sha = arg_value(args, "commit-sha")
         .or_else(|| env::var("GITHUB_SHA").ok())
         .unwrap_or_else(|| "unknown".into());
@@ -216,8 +217,7 @@ fn collect(args: &[String]) -> Result<(), String> {
         if row.parse_error.is_some() {
             errs += 1;
         }
-        let line =
-            serde_json::to_string(row).map_err(|e| format!("serialize row: {e}"))?;
+        let line = serde_json::to_string(row).map_err(|e| format!("serialize row: {e}"))?;
         writeln!(f, "{line}").map_err(|e| format!("write row: {e}"))?;
     }
     eprintln!(
@@ -310,12 +310,7 @@ fn parse_one(path: &Path, commit_sha: &str, run_id: &str) -> LedgerRow {
     }
 }
 
-fn parse_error_row(
-    path: &Path,
-    err: String,
-    commit_sha: &str,
-    run_id: &str,
-) -> LedgerRow {
+fn parse_error_row(path: &Path, err: String, commit_sha: &str, run_id: &str) -> LedgerRow {
     let cell_id = path
         .parent()
         .and_then(|p| p.file_name())
@@ -347,9 +342,7 @@ fn main() -> ExitCode {
     let subcmd = args.get(1).cloned().unwrap_or_default();
     let result = match subcmd.as_str() {
         "collect" => collect(&args[2..]),
-        other => Err(format!(
-            "unknown subcommand: {other:?}; supported: collect"
-        )),
+        other => Err(format!("unknown subcommand: {other:?}; supported: collect")),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
