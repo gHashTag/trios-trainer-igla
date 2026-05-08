@@ -337,11 +337,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Use `git status --porcelain` so an untracked ledger file (file
-          # absent on main) still triggers the PR. `git diff --quiet` would
-          # exit 0 on untracked paths and skip the PR — see trios#380.
-          if [[ -z "$(git status --porcelain assertions/matrix_samples.jsonl)" ]]; then
-            echo "[matrix_ledger] no changes vs main — skipping PR"
+          # The ledger file lives under /assertions/ which is .gitignored,
+          # so `git status --porcelain` returns empty even when the file
+          # is freshly written. We detect changes by hashing the new file
+          # and comparing against the blob hash on HEAD. Empty file or
+          # unchanged content -> skip; everything else -> open PR.
+          if [[ ! -s assertions/matrix_samples.jsonl ]]; then
+            echo "[matrix_ledger] empty ledger file — skipping PR"
+            exit 0
+          fi
+          NEW_HASH=$(git hash-object assertions/matrix_samples.jsonl)
+          OLD_HASH=$(git rev-parse "HEAD:assertions/matrix_samples.jsonl" 2>/dev/null || echo "")
+          if [[ -n "$OLD_HASH" && "$NEW_HASH" == "$OLD_HASH" ]]; then
+            echo "[matrix_ledger] content identical to main — skipping PR"
             exit 0
           fi
           BRANCH="auto/matrix-ledger-${GITHUB_RUN_ID}"
