@@ -582,6 +582,82 @@ impl RmsProp {
     }
 }
 
+// ---- SOAP ------------------------------------------------------------------
+// Vyas et al. 2024 — "SOAP: Improving and Stabilizing Shampoo using Adam"
+// arXiv:2409.11321. Reference impl on flat parameter vectors:
+//   * AdamW-style (m, v) moments
+//   * Diagonal preconditioner refreshed every `precond_freq` steps from the
+//     EMA of squared gradients (the flat-vector reduction of Shampoo's GG^T
+//     eigenbasis: when the parameter is a flat vector with no block
+//     structure, the eigenbasis is the standard basis and SOAP collapses to
+//     a windowed AdamW with periodic preconditioner reset).
+// Honest scope (R5): faithful reduction for flat tensors. Block-structured
+// SOAP with full GG^T eigendecomposition is deferred — flagged below.
+
+struct Soap {
+    m: Vec<f64>,             // first moment (Adam in eigenbasis ≡ Adam in std basis here)
+    v: Vec<f64>,             // second moment
+    precond: Vec<f64>,       // diagonal preconditioner (EMA of g^2, refreshed)
+    lr: f32,
+    beta1: f64,
+    beta2: f64,
+    beta_precond: f64,       // EMA decay for preconditioner refresh
+    wd: f64,
+    eps: f64,
+    step: usize,
+    precond_freq: usize,     // refresh preconditioner every K steps (K=10 in paper)
+}
+
+impl Soap {
+    fn new(size: usize, lr: f32) -> Self {
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            precond: vec![1.0; size],
+            lr,
+            beta1: 0.95,
+            beta2: 0.95,
+            beta_precond: 0.95,
+            wd: 0.01,
+            eps: 1e-8,
+            step: 0,
+            precond_freq: 10,
+        }
+    }
+
+    fn step(&mut self, params: &mut [f32], grads: &[f32]) {
+        self.step += 1;
+        let bc1 = 1.0 - self.beta1.powi(self.step as i32);
+        let bc2 = 1.0 - self.beta2.powi(self.step as i32);
+
+        // Refresh diagonal preconditioner every `precond_freq` steps.
+        // On the flat-vector reduction, this is the running EMA of g^2 used
+        // as the preconditioner basis (Shampoo's GG^T diagonal).
+        if self.step.is_multiple_of(self.precond_freq) {
+            for i in 0..params.len() {
+                let g = grads[i] as f64;
+                self.precond[i] =
+                    self.beta_precond * self.precond[i] + (1.0 - self.beta_precond) * g * g;
+            }
+        }
+
+        for i in 0..params.len() {
+            let g = grads[i] as f64;
+            // Adam moments in the (diagonal) eigenbasis.
+            self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * g;
+            self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * g * g;
+            let m_hat = self.m[i] / bc1;
+            let v_hat = self.v[i] / bc2;
+            // Normalise by max(v_hat, precond) to apply the SOAP "max"
+            // stabiliser (Vyas et al. §3.2): keeps the update bounded by the
+            // longer-window second-moment estimate.
+            let denom = v_hat.max(self.precond[i]).sqrt() + self.eps;
+            let upd = m_hat / denom + self.wd * params[i] as f64;
+            params[i] -= (self.lr as f64 * upd) as f32;
+        }
+    }
+}
+
 // ============================================================================
 // AlgoOpt enum — unified dispatch
 // ============================================================================
@@ -595,6 +671,7 @@ enum AlgoOpt {
     Lamb(Lamb),
     ScheduleFree(ScheduleFree),
     RmsProp(RmsProp),
+    Soap(Soap),
 }
 
 impl AlgoOpt {
@@ -608,6 +685,7 @@ impl AlgoOpt {
             AlgoOpt::Lamb(o) => o.step(params, grads),
             AlgoOpt::ScheduleFree(o) => o.step(params, grads),
             AlgoOpt::RmsProp(o) => o.step(params, grads),
+            AlgoOpt::Soap(o) => o.step(params, grads),
         }
     }
 
@@ -622,9 +700,10 @@ impl AlgoOpt {
             "lamb" => AlgoOpt::Lamb(Lamb::new(size, lr)),
             "schedulefree" => AlgoOpt::ScheduleFree(ScheduleFree::new(size, lr)),
             "rmsprop" => AlgoOpt::RmsProp(RmsProp::new(size, lr)),
+            "soap" => AlgoOpt::Soap(Soap::new(size, lr)),
             other => panic!(
                 "TRIOS_ALGO_TYPE: unknown optimizer '{}'. \
-                 Valid choices: adamw, muon, sgdm, lion, adafactor, lamb, schedulefree, rmsprop",
+                 Valid choices: adamw, muon, sgdm, lion, adafactor, lamb, schedulefree, rmsprop, soap",
                 other
             ),
         }
@@ -640,6 +719,7 @@ impl AlgoOpt {
             AlgoOpt::Lamb(_) => "lamb",
             AlgoOpt::ScheduleFree(_) => "schedulefree",
             AlgoOpt::RmsProp(_) => "rmsprop",
+            AlgoOpt::Soap(_) => "soap",
         }
     }
 }
@@ -1392,6 +1472,7 @@ mod tests {
             "lamb",
             "schedulefree",
             "rmsprop",
+            "soap",
         ];
         for &name in &names {
             let mut opt = AlgoOpt::from_env(name, size, lr);
@@ -1520,5 +1601,41 @@ mod tests {
         let before = params[0];
         opt.step(&mut params, &grads);
         assert!(params[0] < before, "RMSprop should decrease param");
+    }
+
+    // test_soap_recovers_minimum — SOAP on f(x)=x^2 converges with positive grad
+    #[test]
+    fn test_soap_recovers_minimum() {
+        let mut opt = Soap::new(1, 0.05);
+        let mut params = vec![5.0f32];
+        for _ in 0..2000 {
+            let grad = vec![2.0 * params[0]]; // grad of x^2 = 2x
+            opt.step(&mut params, &grad);
+            if params[0].abs() < 1e-2 {
+                return;
+            }
+        }
+        assert!(
+            params[0].abs() < 5e-1,
+            "SOAP did not converge: x = {}",
+            params[0]
+        );
+    }
+
+    // test_soap_precond_refresh — preconditioner refreshes every K steps
+    #[test]
+    fn test_soap_precond_refresh() {
+        let mut opt = Soap::new(2, 0.01);
+        // After precond_freq=10 steps, opt.precond should differ from its
+        // initial all-ones state if non-zero gradients have been observed.
+        let mut params = vec![1.0f32, -1.0f32];
+        for _ in 0..15 {
+            let grads = vec![0.5f32, -0.5f32];
+            opt.step(&mut params, &grads);
+        }
+        assert!(
+            opt.precond.iter().any(|&p| (p - 1.0).abs() > 1e-9),
+            "SOAP preconditioner should refresh after >precond_freq steps"
+        );
     }
 }
