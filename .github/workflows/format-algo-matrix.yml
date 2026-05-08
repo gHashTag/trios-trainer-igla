@@ -282,3 +282,95 @@ jobs:
                 f"(min_steps={min_steps}, advisory={advisory}, "
                 f"any_diverged={any_diverged}).")
           PY
+
+  collect-ledger:
+    name: Collect ledger (L-MATRIX-LEDGER · trios#380)
+    needs: [cell, anti-fake-pass]
+    # Run on schedule + manual dispatch only — PR smoke matrix has too few
+    # cells to be worth a ledger refresh PR (and would spam main).
+    if: ${{ always() && needs.cell.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+
+      - name: Build matrix_ledger collector
+        shell: bash
+        run: cargo build --release --bin matrix_ledger
+
+      - name: Collect per-cell artefacts → assertions/matrix_samples.jsonl
+        shell: bash
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GITHUB_SHA:    ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p assertions
+          ./target/release/matrix_ledger collect \
+            --artefact-root artefacts \
+            --out assertions/matrix_samples.jsonl \
+            --commit-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID"
+          echo "----- ledger first 3 rows -----"
+          head -3 assertions/matrix_samples.jsonl || true
+          echo "----- total -----"
+          wc -l assertions/matrix_samples.jsonl
+
+      - name: Open ledger refresh PR
+        # No-op when there's nothing to commit (matrix re-ran with identical
+        # cells). Branch name is keyed by run_id so concurrent sweeps don't
+        # collide.
+        env:
+          GH_TOKEN:    ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet assertions/matrix_samples.jsonl; then
+            echo "[matrix_ledger] no changes vs main — skipping PR"
+            exit 0
+          fi
+          BRANCH="auto/matrix-ledger-${GITHUB_RUN_ID}"
+          git config user.name  "trios-matrix-ledger-bot"
+          git config user.email "matrix-ledger-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add assertions/matrix_samples.jsonl
+          ROWS=$(wc -l < assertions/matrix_samples.jsonl)
+          HITS=$(grep -c '"falsifier_2_hit":true' assertions/matrix_samples.jsonl || true)
+          git commit -m "chore(matrix-ledger): refresh assertions/matrix_samples.jsonl
+
+          Auto-PR from format-algo-matrix workflow run ${GITHUB_RUN_ID}.
+
+          rows=${ROWS} falsifier_2_hits=${HITS} commit_sha=${GITHUB_SHA}
+
+          R4 trace block: assertions/igla_assertions.json::matrix_ledger
+          R7 witness   : appendix/L-pollen-channel.tex §matrix-ledger
+          refs trios#380 trios#446 trios#536
+
+          [skip ci]"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore(matrix-ledger): refresh assertions/matrix_samples.jsonl (run ${GITHUB_RUN_ID})" \
+            --body  "Auto-PR from L-MATRIX-LEDGER (lane queen-order trios#380).
+          
+          - **rows**: ${ROWS}
+          - **falsifier_2 hits**: ${HITS}
+          - **commit_sha**: ${GITHUB_SHA}
+          - **workflow run**: https://github.com/${{ github.repository }}/actions/runs/${GITHUB_RUN_ID}
+          
+          Anchor: \`phi^2 + phi^-2 = 3\`
+          
+          [skip ci]" \
+            --base main \
+            --head "$BRANCH"
