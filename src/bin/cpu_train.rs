@@ -595,17 +595,17 @@ impl RmsProp {
 // SOAP with full GG^T eigendecomposition is deferred — flagged below.
 
 struct Soap {
-    m: Vec<f64>,             // first moment (Adam in eigenbasis ≡ Adam in std basis here)
-    v: Vec<f64>,             // second moment
-    precond: Vec<f64>,       // diagonal preconditioner (EMA of g^2, refreshed)
+    m: Vec<f64>,       // first moment (Adam in eigenbasis ≡ Adam in std basis here)
+    v: Vec<f64>,       // second moment
+    precond: Vec<f64>, // diagonal preconditioner (EMA of g^2, refreshed)
     lr: f32,
     beta1: f64,
     beta2: f64,
-    beta_precond: f64,       // EMA decay for preconditioner refresh
+    beta_precond: f64, // EMA decay for preconditioner refresh
     wd: f64,
     eps: f64,
     step: usize,
-    precond_freq: usize,     // refresh preconditioner every K steps (K=10 in paper)
+    precond_freq: usize, // refresh preconditioner every K steps (K=10 in paper)
 }
 
 impl Soap {
