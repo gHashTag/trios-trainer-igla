@@ -50,7 +50,7 @@ async fn ledger_seaorm_smoke() {
 
     let canon = "ledger_seaorm_smoke_test";
     let seed: i64 = 47; // BIGINT
-    let step: i32 = 200;
+    let step: i64 = 200; // BIGINT (Wave 24: step lifted from INT to BIGINT)
     let bpb: f64 = 2.19;
 
     // Insert (idempotent: DO NOTHING on conflict).
