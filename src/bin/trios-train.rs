@@ -14,8 +14,8 @@
 use anyhow::Result;
 use clap::Parser;
 use migration::MigratorTrait;
-use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 use trios_trainer::neon_writer::strip_channel_binding;
+use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -132,8 +132,7 @@ fn install_panic_hook() {
 /// Gating: TRINITY_AUTOMIGRATE=0 disables for local CI; default is ON.
 /// Logs: "[migrator] schema up-to-date (N migrations applied)"
 fn run_automigrate() {
-    let automigrate = std::env::var("TRINITY_AUTOMIGRATE")
-        .unwrap_or_else(|_| "1".to_string());
+    let automigrate = std::env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
     if automigrate == "0" {
         eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
         return;

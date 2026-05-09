@@ -176,10 +176,8 @@ END;
 $$ LANGUAGE plpgsql",
         )
         .await?;
-        db.execute_unprepared(
-            "DROP TRIGGER IF EXISTS trg_strategy_new ON public.strategy_queue",
-        )
-        .await?;
+        db.execute_unprepared("DROP TRIGGER IF EXISTS trg_strategy_new ON public.strategy_queue")
+            .await?;
         db.execute_unprepared(
             "CREATE TRIGGER trg_strategy_new
                 AFTER INSERT OR UPDATE OF status ON public.strategy_queue
@@ -194,28 +192,21 @@ $$ LANGUAGE plpgsql",
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         let db = manager.get_connection();
 
-        db.execute_unprepared(
-            "DROP TRIGGER IF EXISTS trg_strategy_new ON public.strategy_queue",
-        )
-        .await?;
-        db.execute_unprepared(
-            "DROP FUNCTION IF EXISTS public.notify_strategy_new()",
-        )
-        .await?;
+        db.execute_unprepared("DROP TRIGGER IF EXISTS trg_strategy_new ON public.strategy_queue")
+            .await?;
+        db.execute_unprepared("DROP FUNCTION IF EXISTS public.notify_strategy_new()")
+            .await?;
         db.execute_unprepared("DROP TABLE IF EXISTS public.strategy_queue")
             .await?;
         db.execute_unprepared("DROP TABLE IF EXISTS public.scarabs")
             .await?;
-        db.execute_unprepared(
-            "DROP TABLE IF EXISTS public.igla_agents_heartbeat",
-        )
-        .await?;
+        db.execute_unprepared("DROP TABLE IF EXISTS public.igla_agents_heartbeat")
+            .await?;
         db.execute_unprepared("DROP TABLE IF EXISTS public.igla_race_trials")
             .await?;
         db.execute_unprepared("DROP TABLE IF EXISTS ssot.bpb_samples")
             .await?;
-        db.execute_unprepared("DROP SCHEMA IF EXISTS ssot")
-            .await?;
+        db.execute_unprepared("DROP SCHEMA IF EXISTS ssot").await?;
         db.execute_unprepared("DROP TABLE IF EXISTS public.bpb_samples")
             .await?;
 

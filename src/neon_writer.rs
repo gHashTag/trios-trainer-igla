@@ -26,14 +26,12 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use sea_orm::{
-    ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait, Database,
-    DatabaseConnection, EntityTrait, QueryFilter, sea_query::OnConflict,
+    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    Database, DatabaseConnection, EntityTrait, QueryFilter,
 };
 use tokio::runtime::Runtime;
 
-use crate::entities::{
-    bpb_samples, igla_agents_heartbeat, igla_race_trials,
-};
+use crate::entities::{bpb_samples, igla_agents_heartbeat, igla_race_trials};
 
 // ── Tokio runtime ─────────────────────────────────────────────────────────────
 
@@ -92,9 +90,7 @@ fn db() -> Option<&'static DatabaseConnection> {
             eprintln!("[ledger] stripped channel_binding from DSN (rustls limitation)");
         }
         eprintln!("[ledger] connecting via SeaORM ...");
-        let result = rt().block_on(async {
-            Database::connect(&dsn).await
-        });
+        let result = rt().block_on(async { Database::connect(&dsn).await });
         match result {
             Ok(conn) => {
                 eprintln!("[ledger] connected OK");
@@ -218,10 +214,7 @@ pub fn heartbeat(trial_id: &str, agent_id: &str, bpb: f32, step: usize) {
     use sea_orm::sea_query::Expr;
     let res = rt().block_on(
         igla_race_trials::Entity::update_many()
-            .col_expr(
-                igla_race_trials::Column::BpbLatest,
-                Expr::value(bpb as f64),
-            )
+            .col_expr(igla_race_trials::Column::BpbLatest, Expr::value(bpb as f64))
             .col_expr(
                 igla_race_trials::Column::StepsDone,
                 Expr::value(step as i64),
@@ -230,7 +223,10 @@ pub fn heartbeat(trial_id: &str, agent_id: &str, bpb: f32, step: usize) {
             .exec(conn),
     );
     match res {
-        Ok(r) => eprintln!("[ledger] heartbeat ok: trial={trial_id} rows={}", r.rows_affected),
+        Ok(r) => eprintln!(
+            "[ledger] heartbeat ok: trial={trial_id} rows={}",
+            r.rows_affected
+        ),
         Err(e) => eprintln!("[ledger] heartbeat (update) failed: {e}"),
     }
 }
@@ -258,10 +254,7 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
     use sea_orm::sea_query::Expr;
     let res = rt().block_on(
         igla_race_trials::Entity::update_many()
-            .col_expr(
-                igla_race_trials::Column::BpbFinal,
-                Expr::value(bpb as f64),
-            )
+            .col_expr(igla_race_trials::Column::BpbFinal, Expr::value(bpb as f64))
             .col_expr(
                 igla_race_trials::Column::Status,
                 Expr::value("complete".to_string()),
@@ -270,7 +263,10 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
             .exec(conn),
     );
     match res {
-        Ok(r) => eprintln!("[ledger] trial_complete ok: trial={trial_id} rows={}", r.rows_affected),
+        Ok(r) => eprintln!(
+            "[ledger] trial_complete ok: trial={trial_id} rows={}",
+            r.rows_affected
+        ),
         Err(e) => eprintln!("[ledger] trial_complete failed: {e}"),
     }
 }

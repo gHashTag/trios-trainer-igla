@@ -34,9 +34,8 @@ async fn ledger_seaorm_smoke() {
     let db_url = strip_channel_binding(&db_url);
 
     use sea_orm::{
-        ActiveModelTrait, ActiveValue::Set, ColumnTrait, Database, EntityTrait,
-        QueryFilter, QuerySelect,
-        sea_query::OnConflict,
+        sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, Database,
+        EntityTrait, QueryFilter, QuerySelect,
     };
     use trios_trainer::entities::bpb_samples;
 
@@ -98,9 +97,15 @@ async fn ledger_seaorm_smoke() {
     assert_eq!(row.canon_name, canon, "canon_name must match");
     assert_eq!(row.seed, seed, "seed must match (i64/BIGINT)");
     assert_eq!(row.step, step, "step must match");
-    assert!((row.bpb - bpb).abs() < 0.001, "bpb must be approximately correct");
+    assert!(
+        (row.bpb - bpb).abs() < 0.001,
+        "bpb must be approximately correct"
+    );
 
-    eprintln!("[ledger_seaorm_smoke] verified row: id={} seed={} bpb={}", row.id, row.seed, row.bpb);
+    eprintln!(
+        "[ledger_seaorm_smoke] verified row: id={} seed={} bpb={}",
+        row.id, row.seed, row.bpb
+    );
 
     db.close().await.expect("close connection");
 }
@@ -108,7 +113,6 @@ async fn ledger_seaorm_smoke() {
 /// Verifies the MigratorTrait is available and migration is idempotent.
 #[tokio::test]
 async fn ledger_seaorm_migration_idempotent() {
-
     let db_url = match std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("NEON_DATABASE_URL"))
         .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
