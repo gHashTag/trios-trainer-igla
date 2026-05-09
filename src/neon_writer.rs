@@ -273,11 +273,11 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
-/// Schema (verified against phd-postgres-ssot 2026-05-09):
-///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step INT,
+/// Schema (verified against phd-postgres-ssot 2026-05-09, updated Wave 24):
+///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT,
 ///   bpb DOUBLE PRECISION, ts TIMESTAMPTZ
 ///
-/// seed is cast from i32 to i64 to match the BIGINT column (#114).
+/// seed and step are cast from i32 to i64 to match the BIGINT columns (#114, Wave 24).
 ///
 /// Old raw-SQL call:
 ///   INSERT INTO public.bpb_samples ... ON CONFLICT (canon_name, seed, step) DO NOTHING
@@ -289,11 +289,11 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
         return;
     };
 
-    // Cast seed to i64 — BIGINT in Postgres (fixes #114 bind-type mismatch).
+    // Cast seed and step to i64 — BIGINT in Postgres (fixes #114, Wave 24 step migration).
     let model = bpb_samples::ActiveModel {
         canon_name: Set(canon_name.to_string()),
         seed: Set(seed as i64),
-        step: Set(step),
+        step: Set(step as i64),
         bpb: Set(bpb as f64),
         ts: Set(chrono::Utc::now().into()),
         ..Default::default()

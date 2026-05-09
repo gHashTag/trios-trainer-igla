@@ -3,7 +3,7 @@
 // SeaORM entity for public.bpb_samples (legacy ledger table).
 //
 // Column types match the DDL in /tmp/full_ddl.sql:
-//   id BIGSERIAL, canon_name TEXT, seed BIGINT, step INT, bpb DOUBLE PRECISION,
+//   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT, bpb DOUBLE PRECISION,
 //   ts TIMESTAMPTZ
 //
 // Note: seed is BIGINT -> i64 in Rust (fixes the i32/INT8 mismatch from #114).
@@ -18,7 +18,7 @@ pub struct Model {
     pub canon_name: String,
     /// BIGINT — must be i64, not i32 (fixes #114).
     pub seed: i64,
-    pub step: i32,
+    pub step: i64,
     pub bpb: f64,
     pub ts: DateTimeWithTimeZone,
 }
