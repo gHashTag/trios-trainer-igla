@@ -14,7 +14,7 @@ pub struct Model {
     pub agent_id: Option<String>,
     pub branch: Option<String>,
     pub final_bpb: Option<f64>,
-    pub final_step: Option<i32>,
+    pub final_step: Option<i64>,
     pub bpb_latest: Option<f64>,
     pub steps_done: Option<i64>,
     pub bpb_final: Option<f64>,
