@@ -1,5 +1,7 @@
 [workspace]
-# Empty workspace to isolate from parent trios workspace
+# Workspace includes the migration subcrate (sea-orm-migration)
+members = [".", "migration"]
+# Empty resolver comment preserved for compatibility
 
 [package]
 name        = "trios-trainer"
@@ -210,6 +212,16 @@ tokio-postgres-rustls = "0.12"
 rustls               = "0.23"
 webpki-roots         = "0.26"
 ureq                  = "2.12"
+sea-orm = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+] }
+sea-orm-migration = "1.1"
+migration = { path = "migration" }
 
 [dev-dependencies]
 tempfile = "3.10"

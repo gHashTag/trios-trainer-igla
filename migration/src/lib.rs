@@ -1,0 +1,18 @@
+// migration/src/lib.rs
+//
+// SeaORM migration crate for trios-trainer-igla.
+//
+// Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877
+
+pub use sea_orm_migration::prelude::*;
+
+pub mod m20260509_000001_init_schema;
+
+pub struct Migrator;
+
+#[async_trait::async_trait]
+impl MigratorTrait for Migrator {
+    fn migrations() -> Vec<Box<dyn MigrationTrait>> {
+        vec![Box::new(m20260509_000001_init_schema::Migration)]
+    }
+}
