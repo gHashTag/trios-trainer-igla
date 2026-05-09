@@ -423,7 +423,16 @@ fn strip_channel_binding(dsn: &str) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let raw_db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    // Resolve Postgres DSN with neutral name first, then fall back to legacy aliases.
+    // Trinity moved off Neon onto Railway Postgres (2026-05). DATABASE_URL is the
+    // canonical neutral name; NEON_DATABASE_URL / TRIOS_DATABASE_URL kept as aliases
+    // for backward compatibility with operator-side scripts that still set them.
+    let raw_db_url = env::var("DATABASE_URL")
+        .or_else(|_| env::var("NEON_DATABASE_URL"))
+        .or_else(|_| env::var("TRIOS_DATABASE_URL"))
+        .map_err(|_| anyhow::anyhow!(
+            "no Postgres DSN found: set DATABASE_URL (preferred) or NEON_DATABASE_URL / TRIOS_DATABASE_URL"
+        ))?;
     let db_url = strip_channel_binding(&raw_db_url);
     if db_url != raw_db_url {
         eprintln!("[scarab] stripped channel_binding from DSN (rustls limitation)");
