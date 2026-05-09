@@ -9,6 +9,7 @@
 pub mod checkpoint;
 pub mod config;
 pub mod data;
+pub mod entities;
 pub mod fake_quant;
 pub mod gf16;
 pub mod igla;

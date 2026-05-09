@@ -17,6 +17,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use migration::MigratorTrait;
 use tokio::process::Command;
 use tokio::time::sleep;
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -443,6 +444,23 @@ async fn main() -> anyhow::Result<()> {
     let svc_id = env::var("RAILWAY_SERVICE_ID").unwrap_or_else(|_| "unknown".into());
     let svc_name = env::var("RAILWAY_SERVICE_NAME").unwrap_or_else(|_| "scarab".into());
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
+
+    // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
+    let automigrate = env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
+    if automigrate != "0" {
+        match sea_orm::Database::connect(&db_url).await {
+            Ok(sea_db) => {
+                match migration::Migrator::up(&sea_db, None).await {
+                    Ok(()) => eprintln!("[migrator] schema up-to-date"),
+                    Err(e) => eprintln!("[migrator] migration failed (non-fatal): {e}"),
+                }
+                let _ = sea_db.close().await;
+            }
+            Err(e) => eprintln!("[migrator] connect failed (non-fatal): {e}"),
+        }
+    } else {
+        eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
+    }
 
     let client = connect_with_retry(&db_url).await?;
 

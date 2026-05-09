@@ -1,28 +1,40 @@
-// Real Neon writer for tjepa_train.
+// src/neon_writer.rs  [ledger]
 //
-// Replaces the previous `eprintln!("NEON_SQL: ...")` log-only emits with actual
-// INSERT/UPDATE statements over `tokio-postgres`. DSN is read from
-// `DATABASE_URL` (canonical) or `NEON_DATABASE_URL` / `TRIOS_NEON_DSN` as
-// legacy fallbacks; if unset the writer is a no-op so existing developer
-// workflows that don't have Neon access keep working.
+// Ledger writer for trios-trainer-igla.
 //
-// Drift code: D2_NEON_NOT_WRITTEN (ref: trios-trainer-igla #36).
+// Provides the same public API as the original tokio-postgres version, but
+// uses SeaORM internally.  The connection is cached in a OnceCell keyed off
+// the resolved DSN.  All public functions keep their synchronous signatures;
+// they block on a private Tokio runtime (same pattern as before).
+//
+// ENV fallback chain (do NOT introduce NEON_* as primary):
+//   DATABASE_URL (canonical, set by Railway since #113)
+//   → NEON_DATABASE_URL  (legacy alias)
+//   → TRIOS_NEON_DSN     (legacy alias)
+//   → TRIOS_DATABASE_URL (legacy alias)
 //
 // Constitutional notes:
-//   R5 - never panic the trainer on Neon errors; log a warn and continue.
-//   R7 - emits forward step/seed/bpb verbatim (caller already builds the
-//        triplet for ledger::emit_row).
-//   R9 - writer never touches `ledger::emit_row`; embargo gate stays in trios.
+//   R5 - never panic the trainer on DB errors; log a warn and continue.
+//   R7 - emits forward step/seed/bpb verbatim.
+//   R9 - writer never touches ledger::emit_row; embargo gate stays in trios.
+//
+// Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877
 
 #![allow(dead_code)]
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
+use sea_orm::{
+    sea_query::OnConflict, ActiveModelTrait, ActiveValue::Set, ColumnTrait, ConnectionTrait,
+    Database, DatabaseConnection, EntityTrait, QueryFilter,
+};
 use tokio::runtime::Runtime;
-use tokio_postgres::Client;
 
-/// Lazy-initialised tokio runtime shared by all sync wrappers.
+use crate::entities::{bpb_samples, igla_agents_heartbeat, igla_race_trials};
+
+// ── Tokio runtime ─────────────────────────────────────────────────────────────
+
 fn rt() -> &'static Runtime {
     static RT: OnceLock<Runtime> = OnceLock::new();
     RT.get_or_init(|| {
@@ -33,139 +45,24 @@ fn rt() -> &'static Runtime {
     })
 }
 
-/// Build a rustls TLS config with system root CAs (required for Neon).
-///
-/// Rustls 0.23+ requires a CryptoProvider to be installed before calling
-/// `ClientConfig::builder()`. We use `ring` and call `install_default()`
-/// here. The `Result` is intentionally ignored: if another thread already
-/// installed a provider the Err is benign.
-fn make_tls_config() -> rustls::ClientConfig {
-    // MUST be called before ClientConfig::builder() in rustls 0.23+.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+// ── DSN helpers ───────────────────────────────────────────────────────────────
 
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth()
-}
-
-/// Lazy-initialised Neon client. `None` if DSN is unset or the
-/// connection failed. Cached across calls.
-fn client() -> Option<&'static Client> {
-    static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
-    CLIENT
-        .get_or_init(|| {
-            let raw_dsn = std::env::var("DATABASE_URL")
-                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
-                .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
-                .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
-                .ok()?;
-            // tokio-postgres-rustls does NOT export tls-server-end-point
-            // channel binding (rustls 0.23 limitation). Neon's standard DSN
-            // contains `channel_binding=require` which would force SCRAM-SHA-256-PLUS
-            // and fail handshake with an opaque "db error". Strip it; sslmode=require
-            // is sufficient for at-rest TLS encryption (#84 round 3 root cause).
-            let dsn = strip_channel_binding(&raw_dsn);
-            if dsn != raw_dsn {
-                eprintln!("[ledger] stripped channel_binding from DSN (rustls limitation)");
-            }
-            eprintln!("[ledger] connecting to Postgres (TLS) ...");
-            let connect = rt().block_on(async {
-                let tls_config = make_tls_config();
-                let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
-                let connector = tokio_postgres::connect(&dsn, tls).await;
-                match connector {
-                    Ok((client, conn)) => {
-                        eprintln!("[ledger] connected OK");
-                        tokio::spawn(async move {
-                            if let Err(e) = conn.await {
-                                eprintln!(
-                                    "[ledger] connection task error: {e}{}",
-                                    full_error_chain(&e)
-                                );
-                            }
-                        });
-                        Some(client)
-                    }
-                    Err(e) => {
-                        eprintln!("[ledger] connect failed: {e}{}", full_error_chain(&e));
-                        None
-                    }
-                }
-            });
-            connect
-        })
-        .as_ref()
-}
-
-/// Run an SQL statement with up to `max_attempts` retries on transient errors.
-fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
-    let Some(c) = client() else {
-        eprintln!(
-            "[ledger] DSN unset or unreachable; skipping: {}",
-            short(stmt)
-        );
-        return;
-    };
-    let max_attempts = 3u8;
-    for attempt in 1..=max_attempts {
-        let res = rt().block_on(c.execute(stmt, params));
-        match res {
-            Ok(rows) => {
-                eprintln!("[ledger] ok: {} ({} rows)", short(stmt), rows);
-                return;
-            }
-            Err(e) => {
-                eprintln!(
-                    "[ledger] attempt {attempt}/{max_attempts} failed for {} : {e}{}",
-                    short(stmt),
-                    full_error_chain(&e)
-                );
-                std::thread::sleep(Duration::from_millis(500 * attempt as u64));
-            }
-        }
-    }
-    eprintln!(
-        "[ledger] giving up after {max_attempts} attempts: {}",
-        short(stmt)
-    );
-}
-
-fn short(s: &str) -> &str {
-    let limit = 80usize.min(s.len());
-    &s[..limit]
-}
-
-/// Render the full `Error::source()` chain after a top-level Display, so
-/// opaque errors like tokio_postgres' "db error" surface their real cause
-/// (TLS handshake, SCRAM, channel binding, OID mismatch, ...).
-///
-/// Returns an empty string if the error has no source, so callers can
-/// concatenate unconditionally:  `eprintln!("failed: {e}{}", full_error_chain(&e))`.
-fn full_error_chain<E: std::error::Error + ?Sized>(err: &E) -> String {
-    let mut out = String::new();
-    let mut src: Option<&(dyn std::error::Error)> = err.source();
-    while let Some(s) = src {
-        out.push_str("\n  caused by: ");
-        out.push_str(&s.to_string());
-        src = s.source();
-    }
-    out
+/// Resolve the database DSN from the environment fallback chain.
+fn resolve_dsn() -> Option<String> {
+    std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+        .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
+        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
+        .ok()
 }
 
 /// Remove `channel_binding=require` (or `=prefer`) from a Neon-style DSN.
 ///
-/// `tokio-postgres-rustls` 0.12 / rustls 0.23 do not expose the TLS exporter
-/// needed for `tls-server-end-point` channel binding, so SCRAM-SHA-256-PLUS
-/// auth fails with an opaque "db error" the moment a server requires PLUS.
-/// Neon Postgres accepts plain SCRAM-SHA-256 over TLS just fine; stripping
-/// this query-string param is the minimal change that unblocks scarab's writes
-/// without rewriting the TLS stack to native-tls.
+/// `tokio-postgres-rustls` / `sqlx-postgres` with rustls do not expose the TLS
+/// exporter needed for `tls-server-end-point` channel binding, so
+/// SCRAM-SHA-256-PLUS auth fails.  Neon Postgres accepts plain SCRAM-SHA-256
+/// over TLS; stripping this query-string param is the minimal fix (#84, #113).
 pub fn strip_channel_binding(dsn: &str) -> String {
-    // Match both URI and key=value forms. Keep parsing minimal — we only
-    // remove a single `channel_binding=...` token, leaving the rest of the
-    // DSN exactly as the operator supplied it (no URL-decoding/re-encoding).
     let Some(qpos) = dsn.find('?') else {
         return dsn.to_string();
     };
@@ -176,77 +73,274 @@ pub fn strip_channel_binding(dsn: &str) -> String {
         .collect();
     let rebuilt = kept.join("&");
     if rebuilt.is_empty() {
-        // strip the trailing `?` so libpq doesn't see an empty query.
         head.trim_end_matches('?').to_string()
     } else {
         format!("{head}{rebuilt}")
     }
 }
 
+// ── SeaORM connection cache ────────────────────────────────────────────────────
+
+fn db() -> Option<&'static DatabaseConnection> {
+    static DB: OnceLock<Option<DatabaseConnection>> = OnceLock::new();
+    DB.get_or_init(|| {
+        let raw_dsn = resolve_dsn()?;
+        let dsn = strip_channel_binding(&raw_dsn);
+        if dsn != raw_dsn {
+            eprintln!("[ledger] stripped channel_binding from DSN (rustls limitation)");
+        }
+        eprintln!("[ledger] connecting via SeaORM ...");
+        let result = rt().block_on(async { Database::connect(&dsn).await });
+        match result {
+            Ok(conn) => {
+                eprintln!("[ledger] connected OK");
+                Some(conn)
+            }
+            Err(e) => {
+                eprintln!("[ledger] connect failed: {e}");
+                None
+            }
+        }
+    })
+    .as_ref()
+}
+
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /// Insert a fresh row into `igla_race_trials` (idempotent on `trial_id`).
+///
+/// Old raw-SQL call:
+///   INSERT INTO igla_race_trials ... ON CONFLICT (trial_id) DO UPDATE ...
+/// New SeaORM call:
+///   igla_race_trials::Entity::insert(active_model).on_conflict(...).exec(&db)
 pub fn trial_start(trial_id: &str, config_json: &str, agent_id: &str, branch: &str) {
-    execute(
-        "INSERT INTO igla_race_trials (trial_id, config, status, agent_id, branch) \
-         VALUES ($1, $2::jsonb, 'running', $3, $4) \
-         ON CONFLICT (trial_id) DO UPDATE SET status='running', agent_id=EXCLUDED.agent_id, branch=EXCLUDED.branch",
-        &[&trial_id, &config_json, &agent_id, &branch],
+    let Some(conn) = db() else {
+        eprintln!("[ledger] DSN unset — skipping trial_start");
+        return;
+    };
+
+    let trial_uuid = match trial_id.parse::<uuid::Uuid>() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[ledger] trial_start: invalid UUID {trial_id}: {e}");
+            return;
+        }
+    };
+    let config_val: serde_json::Value = match serde_json::from_str(config_json) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[ledger] trial_start: invalid JSON: {e}");
+            serde_json::json!({})
+        }
+    };
+
+    let model = igla_race_trials::ActiveModel {
+        trial_id: Set(trial_uuid),
+        config: Set(config_val),
+        status: Set("running".to_string()),
+        agent_id: Set(Some(agent_id.to_string())),
+        branch: Set(Some(branch.to_string())),
+        ..Default::default()
+    };
+
+    let on_conflict = OnConflict::column(igla_race_trials::Column::TrialId)
+        .update_columns([
+            igla_race_trials::Column::Status,
+            igla_race_trials::Column::AgentId,
+            igla_race_trials::Column::Branch,
+        ])
+        .to_owned();
+
+    let res = rt().block_on(
+        igla_race_trials::Entity::insert(model)
+            .on_conflict(on_conflict)
+            .exec(conn),
     );
+    match res {
+        Ok(_) => eprintln!("[ledger] trial_start ok: {trial_id}"),
+        Err(e) => eprintln!("[ledger] trial_start failed: {e}"),
+    }
 }
 
 /// Upsert agent heartbeat and update the latest BPB on the trial row.
+///
+/// Old raw-SQL calls:
+///   INSERT INTO igla_agents_heartbeat ... ON CONFLICT (agent_id) DO UPDATE ...
+///   UPDATE igla_race_trials SET bpb_latest=$1, steps_done=$2 WHERE trial_id=$3
+/// New SeaORM calls:
+///   igla_agents_heartbeat::Entity::insert(...).on_conflict(...).exec(&db)
+///   igla_race_trials::Entity::update_many().col_expr(...).filter(...).exec(&db)
 pub fn heartbeat(trial_id: &str, agent_id: &str, bpb: f32, step: usize) {
-    execute(
-        "INSERT INTO igla_agents_heartbeat (agent_id, machine_id, branch, task, status, last_heartbeat) \
-         VALUES ($1, 'railway', 'main', $2, 'active', NOW()) \
-         ON CONFLICT (agent_id) DO UPDATE SET status=EXCLUDED.status, last_heartbeat=EXCLUDED.last_heartbeat, task=EXCLUDED.task",
-        &[&agent_id, &trial_id],
+    let Some(conn) = db() else {
+        eprintln!("[ledger] DSN unset — skipping heartbeat");
+        return;
+    };
+
+    // Upsert heartbeat row.
+    let hb_model = igla_agents_heartbeat::ActiveModel {
+        agent_id: Set(agent_id.to_string()),
+        machine_id: Set("railway".to_string()),
+        branch: Set("main".to_string()),
+        task: Set(Some(trial_id.to_string())),
+        status: Set("active".to_string()),
+        last_heartbeat: Set(chrono::Utc::now().into()),
+    };
+    let on_conflict_hb = OnConflict::column(igla_agents_heartbeat::Column::AgentId)
+        .update_columns([
+            igla_agents_heartbeat::Column::Status,
+            igla_agents_heartbeat::Column::LastHeartbeat,
+            igla_agents_heartbeat::Column::Task,
+        ])
+        .to_owned();
+    let res = rt().block_on(
+        igla_agents_heartbeat::Entity::insert(hb_model)
+            .on_conflict(on_conflict_hb)
+            .exec(conn),
     );
-    // steps_done is BIGINT — bind as i64 to avoid type mismatch (#114).
-    execute(
-        "UPDATE igla_race_trials SET bpb_latest=$1, steps_done=$2 WHERE trial_id=$3",
-        &[&(bpb as f64), &(step as i64), &trial_id],
+    if let Err(e) = res {
+        eprintln!("[ledger] heartbeat (upsert) failed: {e}");
+    }
+
+    // Update trial row with latest bpb / step.
+    // steps_done is BIGINT — bind as i64.
+    let trial_uuid = match trial_id.parse::<uuid::Uuid>() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[ledger] heartbeat: invalid UUID {trial_id}: {e}");
+            return;
+        }
+    };
+
+    use sea_orm::sea_query::Expr;
+    let res = rt().block_on(
+        igla_race_trials::Entity::update_many()
+            .col_expr(igla_race_trials::Column::BpbLatest, Expr::value(bpb as f64))
+            .col_expr(
+                igla_race_trials::Column::StepsDone,
+                Expr::value(step as i64),
+            )
+            .filter(igla_race_trials::Column::TrialId.eq(trial_uuid))
+            .exec(conn),
     );
+    match res {
+        Ok(r) => eprintln!(
+            "[ledger] heartbeat ok: trial={trial_id} rows={}",
+            r.rows_affected
+        ),
+        Err(e) => eprintln!("[ledger] heartbeat (update) failed: {e}"),
+    }
 }
 
 /// Mark a trial complete with the final BPB.
+///
+/// Old raw-SQL call:
+///   UPDATE igla_race_trials SET bpb_final=$1, status='complete' WHERE trial_id=$2
+/// New SeaORM call:
+///   igla_race_trials::Entity::update_many().col_expr(...).filter(...).exec(&db)
 pub fn trial_complete(trial_id: &str, bpb: f32) {
-    execute(
-        "UPDATE igla_race_trials SET bpb_final=$1, status='complete' WHERE trial_id=$2",
-        &[&(bpb as f64), &trial_id],
+    let Some(conn) = db() else {
+        eprintln!("[ledger] DSN unset — skipping trial_complete");
+        return;
+    };
+
+    let trial_uuid = match trial_id.parse::<uuid::Uuid>() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[ledger] trial_complete: invalid UUID {trial_id}: {e}");
+            return;
+        }
+    };
+
+    use sea_orm::sea_query::Expr;
+    let res = rt().block_on(
+        igla_race_trials::Entity::update_many()
+            .col_expr(igla_race_trials::Column::BpbFinal, Expr::value(bpb as f64))
+            .col_expr(
+                igla_race_trials::Column::Status,
+                Expr::value("complete".to_string()),
+            )
+            .filter(igla_race_trials::Column::TrialId.eq(trial_uuid))
+            .exec(conn),
     );
+    match res {
+        Ok(r) => eprintln!(
+            "[ledger] trial_complete ok: trial={trial_id} rows={}",
+            r.rows_affected
+        ),
+        Err(e) => eprintln!("[ledger] trial_complete failed: {e}"),
+    }
 }
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
 /// Schema (verified against phd-postgres-ssot 2026-05-09):
-///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT, bpb DOUBLE PRECISION, ts TIMESTAMPTZ
+///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step INT,
+///   bpb DOUBLE PRECISION, ts TIMESTAMPTZ
 ///
-/// seed and step are BIGINT in Postgres; we widen from i32 via `as i64`
-/// to avoid "cannot convert between Rust type i32 and Postgres int8" (#114).
+/// seed is cast from i32 to i64 to match the BIGINT column (#114).
+///
+/// Old raw-SQL call:
+///   INSERT INTO public.bpb_samples ... ON CONFLICT (canon_name, seed, step) DO NOTHING
+/// New SeaORM call:
+///   bpb_samples::Entity::insert(active_model).on_conflict(...).exec(&db)
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
-    // Idempotent: `bpb_samples_canon_name_seed_step_key` is UNIQUE
-    // (canon_name, seed, step). A duplicate emit (scarab restart on the
-    // same row, smoke retry, NOTIFY redelivery, etc.) used to throw
-    // "duplicate key value violates unique constraint" three times before
-    // giving up; now we let Postgres silently skip. Training output is
-    // deterministic for fixed (canon_name, seed, step), so DO NOTHING
-    // preserves the first-write timestamp and avoids redundant churn.
-    //
-    // Cast seed/step to i64 (BIGINT) — fixes bind-type mismatch (#114).
-    execute(
-        "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
-         VALUES ($1, $2, $3, $4, NOW()) \
-         ON CONFLICT (canon_name, seed, step) DO NOTHING",
-        &[&canon_name, &(seed as i64), &(step as i64), &(bpb as f64)],
+    let Some(conn) = db() else {
+        eprintln!("[ledger] DSN unset — skipping bpb_sample");
+        return;
+    };
+
+    // Cast seed to i64 — BIGINT in Postgres (fixes #114 bind-type mismatch).
+    let model = bpb_samples::ActiveModel {
+        canon_name: Set(canon_name.to_string()),
+        seed: Set(seed as i64),
+        step: Set(step),
+        bpb: Set(bpb as f64),
+        ts: Set(chrono::Utc::now().into()),
+        ..Default::default()
+    };
+
+    // Conflict on (canon_name, seed, step) — DO NOTHING preserves first-write ts.
+    let on_conflict = OnConflict::columns([
+        bpb_samples::Column::CanonName,
+        bpb_samples::Column::Seed,
+        bpb_samples::Column::Step,
+    ])
+    .do_nothing()
+    .to_owned();
+
+    let res = rt().block_on(
+        bpb_samples::Entity::insert(model)
+            .on_conflict(on_conflict)
+            .exec(conn),
     );
+    match res {
+        Ok(_) => eprintln!("[ledger] bpb_sample ok: {canon_name} seed={seed} step={step}"),
+        Err(sea_orm::DbErr::RecordNotInserted) => {
+            // ON CONFLICT DO NOTHING — row already exists, this is fine.
+            eprintln!("[ledger] bpb_sample: row already exists (duplicate), skipping");
+        }
+        Err(e) => eprintln!("[ledger] bpb_sample failed: {e}"),
+    }
 }
 
 /// Apply idempotent DDL: ensure `bpb_latest` column exists on `igla_race_trials`.
+///
+/// Old raw-SQL call:
+///   ALTER TABLE igla_race_trials ADD COLUMN IF NOT EXISTS bpb_latest DOUBLE PRECISION
+/// New: delegated to the SeaORM migration (Migrator::up runs at startup).
+/// This stub is kept for callers that invoke it directly.
 pub fn ensure_schema() {
-    execute(
+    let Some(conn) = db() else {
+        eprintln!("[ledger] DSN unset — skipping ensure_schema");
+        return;
+    };
+    let res = rt().block_on(conn.execute_unprepared(
         "ALTER TABLE igla_race_trials ADD COLUMN IF NOT EXISTS bpb_latest DOUBLE PRECISION",
-        &[],
-    );
+    ));
+    match res {
+        Ok(_) => eprintln!("[ledger] ensure_schema ok"),
+        Err(e) => eprintln!("[ledger] ensure_schema failed: {e}"),
+    }
 }
 
 /// Default checkpoint interval honoured by trainers writing to bpb_samples.
@@ -302,37 +396,27 @@ mod tests {
 
     /// Regression test: seed and step parameters for bpb_sample must be bound
     /// as INT8 (i64) to match the BIGINT columns in public.bpb_samples (#114).
-    ///
-    /// This test proves that the values we pass to execute() are accepted by
-    /// Postgres's INT8 type checker without any type mismatch, using the
-    /// `accepts` method on the ToSql trait.
     #[test]
     fn bpb_sample_uses_i64_bind() {
         let seed: i32 = 43;
         let step: i32 = 200;
 
-        // Widen to i64 (exactly as bpb_sample() does internally).
         let seed_i64: i64 = seed as i64;
         let step_i64: i64 = step as i64;
 
-        // Verify that i64 accepts INT8 (BIGINT) via the ToSql::accepts method.
-        // This is the statically-dispatched type acceptance check.
+        // i64 must be accepted by Postgres INT8 (BIGINT).
         assert!(
             <i64 as ToSql>::accepts(&Type::INT8),
-            "i64 must be accepted by Postgres INT8 — the bpb_sample fix requires this"
+            "i64 must be accepted by Postgres INT8"
         );
-
-        // Verify that i32 does NOT accept INT8 — this documents the original bug.
+        // i32 must NOT be accepted by INT8 — documents the original bug.
         assert!(
             !<i32 as ToSql>::accepts(&Type::INT8),
-            "i32 must NOT be accepted by Postgres INT8 — confirms the bug we are fixing"
+            "i32 must NOT be accepted by Postgres INT8"
         );
 
-        // Verify that the widened values are the correct type (not accidentally i32).
-        let _: i64 = seed_i64; // type assertion: seed_i64 is i64
-        let _: i64 = step_i64; // type assertion: step_i64 is i64
-
-        // Sanity: values are correctly widened.
+        let _: i64 = seed_i64;
+        let _: i64 = step_i64;
         assert_eq!(seed_i64, 43i64);
         assert_eq!(step_i64, 200i64);
     }

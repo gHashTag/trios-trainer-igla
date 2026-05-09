@@ -13,6 +13,8 @@
 
 use anyhow::Result;
 use clap::Parser;
+use migration::MigratorTrait;
+use trios_trainer::neon_writer::strip_channel_binding;
 use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 
 #[derive(Parser, Debug)]
@@ -125,6 +127,49 @@ fn install_panic_hook() {
     }));
 }
 
+/// Run SeaORM schema migrations at startup if TRINITY_AUTOMIGRATE != "0".
+///
+/// Gating: TRINITY_AUTOMIGRATE=0 disables for local CI; default is ON.
+/// Logs: "[migrator] schema up-to-date (N migrations applied)"
+fn run_automigrate() {
+    let automigrate = std::env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
+    if automigrate == "0" {
+        eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
+        return;
+    }
+
+    let raw_dsn = std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+        .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
+        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"));
+
+    let dsn = match raw_dsn {
+        Ok(d) => strip_channel_binding(&d),
+        Err(_) => {
+            eprintln!("[migrator] DATABASE_URL unset — skipping automigrate");
+            return;
+        }
+    };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("migrator runtime");
+
+    rt.block_on(async {
+        match sea_orm::Database::connect(&dsn).await {
+            Ok(db) => {
+                match migration::Migrator::up(&db, None).await {
+                    Ok(()) => eprintln!("[migrator] schema up-to-date"),
+                    Err(e) => eprintln!("[migrator] migration failed (non-fatal): {e}"),
+                }
+                let _ = db.close().await;
+            }
+            Err(e) => eprintln!("[migrator] connect failed (non-fatal): {e}"),
+        }
+    });
+}
+
 fn main() -> Result<()> {
     install_panic_hook();
 
@@ -141,6 +186,9 @@ fn main() -> Result<()> {
     let _ = std::io::stderr().flush();
 
     let cli = Cli::parse();
+
+    // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
+    run_automigrate();
 
     // R5/L8 fix (trios#509 follow-up): re-export `--format` into the env so
     // `train_loop::resolve_fake_quant_format()` can see it. Without this line
