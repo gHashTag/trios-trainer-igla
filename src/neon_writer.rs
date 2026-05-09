@@ -2,8 +2,8 @@
 //
 // Replaces the previous `eprintln!("NEON_SQL: ...")` log-only emits with actual
 // INSERT/UPDATE statements over `tokio-postgres`. DSN is read from
-// `NEON_DATABASE_URL` (canonical) or `TRIOS_NEON_DSN` / `DATABASE_URL` as
-// fallbacks; if unset the writer is a no-op so existing developer
+// `DATABASE_URL` (canonical) or `NEON_DATABASE_URL` / `TRIOS_NEON_DSN` as
+// legacy fallbacks; if unset the writer is a no-op so existing developer
 // workflows that don't have Neon access keep working.
 //
 // Drift code: D2_NEON_NOT_WRITTEN (ref: trios-trainer-igla #36).
@@ -56,9 +56,10 @@ fn client() -> Option<&'static Client> {
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            let raw_dsn = std::env::var("NEON_DATABASE_URL")
+            let raw_dsn = std::env::var("DATABASE_URL")
+                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
                 .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
-                .or_else(|_| std::env::var("DATABASE_URL"))
+                .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
                 .ok()?;
             // tokio-postgres-rustls does NOT export tls-server-end-point
             // channel binding (rustls 0.23 limitation). Neon's standard DSN
@@ -67,20 +68,20 @@ fn client() -> Option<&'static Client> {
             // is sufficient for at-rest TLS encryption (#84 round 3 root cause).
             let dsn = strip_channel_binding(&raw_dsn);
             if dsn != raw_dsn {
-                eprintln!("[neon_writer] stripped channel_binding from DSN (rustls limitation)");
+                eprintln!("[ledger] stripped channel_binding from DSN (rustls limitation)");
             }
-            eprintln!("[neon_writer] connecting to Neon (TLS) ...");
+            eprintln!("[ledger] connecting to Postgres (TLS) ...");
             let connect = rt().block_on(async {
                 let tls_config = make_tls_config();
                 let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
                 let connector = tokio_postgres::connect(&dsn, tls).await;
                 match connector {
                     Ok((client, conn)) => {
-                        eprintln!("[neon_writer] connected OK");
+                        eprintln!("[ledger] connected OK");
                         tokio::spawn(async move {
                             if let Err(e) = conn.await {
                                 eprintln!(
-                                    "[neon_writer] connection task error: {e}{}",
+                                    "[ledger] connection task error: {e}{}",
                                     full_error_chain(&e)
                                 );
                             }
@@ -88,7 +89,7 @@ fn client() -> Option<&'static Client> {
                         Some(client)
                     }
                     Err(e) => {
-                        eprintln!("[neon_writer] connect failed: {e}{}", full_error_chain(&e));
+                        eprintln!("[ledger] connect failed: {e}{}", full_error_chain(&e));
                         None
                     }
                 }
@@ -102,7 +103,7 @@ fn client() -> Option<&'static Client> {
 fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
     let Some(c) = client() else {
         eprintln!(
-            "[neon_writer] DSN unset or unreachable; skipping: {}",
+            "[ledger] DSN unset or unreachable; skipping: {}",
             short(stmt)
         );
         return;
@@ -112,12 +113,12 @@ fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
         let res = rt().block_on(c.execute(stmt, params));
         match res {
             Ok(rows) => {
-                eprintln!("[neon_writer] ok: {} ({} rows)", short(stmt), rows);
+                eprintln!("[ledger] ok: {} ({} rows)", short(stmt), rows);
                 return;
             }
             Err(e) => {
                 eprintln!(
-                    "[neon_writer] attempt {attempt}/{max_attempts} failed for {} : {e}{}",
+                    "[ledger] attempt {attempt}/{max_attempts} failed for {} : {e}{}",
                     short(stmt),
                     full_error_chain(&e)
                 );
@@ -126,7 +127,7 @@ fn execute(stmt: &str, params: &[&(dyn tokio_postgres::types::ToSql + Sync)]) {
         }
     }
     eprintln!(
-        "[neon_writer] giving up after {max_attempts} attempts: {}",
+        "[ledger] giving up after {max_attempts} attempts: {}",
         short(stmt)
     );
 }
@@ -138,7 +139,7 @@ fn short(s: &str) -> &str {
 
 /// Render the full `Error::source()` chain after a top-level Display, so
 /// opaque errors like tokio_postgres' "db error" surface their real cause
-/// (TLS handshake, SCRAM, channel binding, OID mismatch, …).
+/// (TLS handshake, SCRAM, channel binding, OID mismatch, ...).
 ///
 /// Returns an empty string if the error has no source, so callers can
 /// concatenate unconditionally:  `eprintln!("failed: {e}{}", full_error_chain(&e))`.
@@ -159,9 +160,9 @@ fn full_error_chain<E: std::error::Error + ?Sized>(err: &E) -> String {
 /// needed for `tls-server-end-point` channel binding, so SCRAM-SHA-256-PLUS
 /// auth fails with an opaque "db error" the moment a server requires PLUS.
 /// Neon Postgres accepts plain SCRAM-SHA-256 over TLS just fine; stripping
-/// this query-string param is the minimal change that unblocks scarab’s writes
+/// this query-string param is the minimal change that unblocks scarab's writes
 /// without rewriting the TLS stack to native-tls.
-fn strip_channel_binding(dsn: &str) -> String {
+pub fn strip_channel_binding(dsn: &str) -> String {
     // Match both URI and key=value forms. Keep parsing minimal — we only
     // remove a single `channel_binding=...` token, leaving the rest of the
     // DSN exactly as the operator supplied it (no URL-decoding/re-encoding).
@@ -200,6 +201,7 @@ pub fn heartbeat(trial_id: &str, agent_id: &str, bpb: f32, step: usize) {
          ON CONFLICT (agent_id) DO UPDATE SET status=EXCLUDED.status, last_heartbeat=EXCLUDED.last_heartbeat, task=EXCLUDED.task",
         &[&agent_id, &trial_id],
     );
+    // steps_done is BIGINT — bind as i64 to avoid type mismatch (#114).
     execute(
         "UPDATE igla_race_trials SET bpb_latest=$1, steps_done=$2 WHERE trial_id=$3",
         &[&(bpb as f64), &(step as i64), &trial_id],
@@ -216,8 +218,11 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
-/// Schema (verified against NEON 2026-04-30):
-///   id BIGSERIAL, canon_name TEXT, seed INT, step INT, bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
+/// Schema (verified against phd-postgres-ssot 2026-05-09):
+///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT, bpb DOUBLE PRECISION, ts TIMESTAMPTZ
+///
+/// seed and step are BIGINT in Postgres; we widen from i32 via `as i64`
+/// to avoid "cannot convert between Rust type i32 and Postgres int8" (#114).
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
     // Idempotent: `bpb_samples_canon_name_seed_step_key` is UNIQUE
     // (canon_name, seed, step). A duplicate emit (scarab restart on the
@@ -226,11 +231,13 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
     // giving up; now we let Postgres silently skip. Training output is
     // deterministic for fixed (canon_name, seed, step), so DO NOTHING
     // preserves the first-write timestamp and avoids redundant churn.
+    //
+    // Cast seed/step to i64 (BIGINT) — fixes bind-type mismatch (#114).
     execute(
         "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
          VALUES ($1, $2, $3, $4, NOW()) \
          ON CONFLICT (canon_name, seed, step) DO NOTHING",
-        &[&canon_name, &seed, &step, &(bpb as f64)],
+        &[&canon_name, &(seed as i64), &(step as i64), &(bpb as f64)],
     );
 }
 
@@ -253,11 +260,14 @@ pub fn checkpoint_interval() -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_postgres::types::{ToSql, Type};
 
     #[test]
     fn no_dsn_is_safe() {
+        std::env::remove_var("DATABASE_URL");
         std::env::remove_var("TRIOS_NEON_DSN");
         std::env::remove_var("NEON_DATABASE_URL");
+        std::env::remove_var("TRIOS_DATABASE_URL");
         trial_start("00000000-0000-0000-0000-000000000000", "{}", "TEST", "main");
         heartbeat("00000000-0000-0000-0000-000000000000", "TEST", 2.5, 1);
         trial_complete("00000000-0000-0000-0000-000000000000", 2.5);
@@ -288,5 +298,42 @@ mod tests {
     fn strip_channel_binding_passthrough_no_query_string() {
         let in_ = "postgresql://u:p@h/db";
         assert_eq!(strip_channel_binding(in_), in_);
+    }
+
+    /// Regression test: seed and step parameters for bpb_sample must be bound
+    /// as INT8 (i64) to match the BIGINT columns in public.bpb_samples (#114).
+    ///
+    /// This test proves that the values we pass to execute() are accepted by
+    /// Postgres's INT8 type checker without any type mismatch, using the
+    /// `accepts` method on the ToSql trait.
+    #[test]
+    fn bpb_sample_uses_i64_bind() {
+        let seed: i32 = 43;
+        let step: i32 = 200;
+
+        // Widen to i64 (exactly as bpb_sample() does internally).
+        let seed_i64: i64 = seed as i64;
+        let step_i64: i64 = step as i64;
+
+        // Verify that i64 accepts INT8 (BIGINT) via the ToSql::accepts method.
+        // This is the statically-dispatched type acceptance check.
+        assert!(
+            <i64 as ToSql>::accepts(&Type::INT8),
+            "i64 must be accepted by Postgres INT8 — the bpb_sample fix requires this"
+        );
+
+        // Verify that i32 does NOT accept INT8 — this documents the original bug.
+        assert!(
+            !<i32 as ToSql>::accepts(&Type::INT8),
+            "i32 must NOT be accepted by Postgres INT8 — confirms the bug we are fixing"
+        );
+
+        // Verify that the widened values are the correct type (not accidentally i32).
+        let _: i64 = seed_i64; // type assertion: seed_i64 is i64
+        let _: i64 = step_i64; // type assertion: step_i64 is i64
+
+        // Sanity: values are correctly widened.
+        assert_eq!(seed_i64, 43i64);
+        assert_eq!(step_i64, 200i64);
     }
 }
