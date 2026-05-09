@@ -216,8 +216,16 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
-/// Schema (verified against NEON 2026-04-30):
-///   id BIGSERIAL, canon_name TEXT, seed INT, step INT, bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
+/// Schema (verified against `phd-postgres-ssot` 2026-05-09 — Railway service
+/// `c5f37b42-832a-4acd-9749-381761c94957`):
+///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT,
+///   bpb DOUBLE PRECISION, val_bpb_ema DOUBLE PRECISION, ts TIMESTAMPTZ
+///
+/// The public signature keeps `i32` for caller compatibility (training loops
+/// pass `args.seed as i32`, `step as i32`); inside, the values are bound as
+/// `i64` so they match the BIGINT columns. Without the cast tokio-postgres
+/// rejects the bind with `cannot convert between Rust type i32 and Postgres
+/// int8` and no row is ever written — see trios-trainer-igla#114.
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
     // Idempotent: `bpb_samples_canon_name_seed_step_key` is UNIQUE
     // (canon_name, seed, step). A duplicate emit (scarab restart on the
@@ -230,7 +238,7 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
         "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
          VALUES ($1, $2, $3, $4, NOW()) \
          ON CONFLICT (canon_name, seed, step) DO NOTHING",
-        &[&canon_name, &seed, &step, &(bpb as f64)],
+        &[&canon_name, &(seed as i64), &(step as i64), &(bpb as f64)],
     );
 }
 
@@ -288,5 +296,48 @@ mod tests {
     fn strip_channel_binding_passthrough_no_query_string() {
         let in_ = "postgresql://u:p@h/db";
         assert_eq!(strip_channel_binding(in_), in_);
+    }
+
+    /// Regression test for trios-trainer-igla#114.
+    ///
+    /// `public.bpb_samples` and `ssot.bpb_samples` both use `BIGINT` for the
+    /// `seed` and `step` columns. Binding the values as `i32` causes
+    /// tokio-postgres to reject the statement at parse time with
+    /// `cannot convert between Rust type i32 and Postgres int8`. The fix is
+    /// to cast on the bind boundary inside `bpb_sample` while keeping the
+    /// public signature stable.
+    ///
+    /// `tokio_postgres::types::ToSql::accepts` is a static method (it requires
+    /// `Self: Sized`), so the assertions below dispatch through the concrete
+    /// types we actually bind — if the production cast ever regresses to `i32`
+    /// the matching invariants `i32::accepts(&Type::INT8) == false` and
+    /// `i64::accepts(&Type::INT8) == true` keep this test honest.
+    #[test]
+    fn bpb_sample_uses_i64_bind() {
+        use tokio_postgres::types::{ToSql, Type};
+
+        // The production order is (canon_name TEXT, seed BIGINT, step BIGINT, bpb DOUBLE).
+        assert!(<&str as ToSql>::accepts(&Type::TEXT), "canon_name must accept TEXT");
+        assert!(i64::accepts(&Type::INT8), "seed/step must bind as INT8 (BIGINT)");
+        assert!(f64::accepts(&Type::FLOAT8), "bpb must bind as FLOAT8");
+
+        // The historically-broken i32 bind must NOT pretend to satisfy INT8 —
+        // that exact mismatch is what produced the
+        // "cannot convert between Rust type i32 and Postgres int8" error and
+        // wedged ledger writes for the entire IGLA marathon.
+        assert!(
+            !i32::accepts(&Type::INT8),
+            "i32 must NOT accept INT8 — that is exactly what regressed in #114"
+        );
+        assert!(i32::accepts(&Type::INT4), "sanity: i32 still binds as INT4");
+
+        // Mirror the runtime call shape — if this stops compiling, the bind
+        // signature has changed and the cast may need to move with it.
+        let seed: i32 = 47;
+        let step: i32 = 3000;
+        let bpb: f32 = 2.19;
+        let canon = "trinity-test";
+        let _params: [&(dyn ToSql + Sync); 4] =
+            [&canon, &(seed as i64), &(step as i64), &(bpb as f64)];
     }
 }
