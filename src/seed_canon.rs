@@ -26,33 +26,44 @@ pub fn parse_seed() -> Result<u64, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialize SEED env mutation across parallel cargo test threads.
+    /// Without this, allowed_seed_NNN tests race on the shared env var
+    /// (one set_var("144") races with another test's read of "123").
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn allowed_seed_47() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "47");
         assert_eq!(parse_seed(), Ok(47));
     }
 
     #[test]
     fn allowed_seed_89() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "89");
         assert_eq!(parse_seed(), Ok(89));
     }
 
     #[test]
     fn allowed_seed_123() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "123");
         assert_eq!(parse_seed(), Ok(123));
     }
 
     #[test]
     fn allowed_seed_144() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "144");
         assert_eq!(parse_seed(), Ok(144));
     }
 
     #[test]
     fn forbidden_seed_42() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "42");
         let err = parse_seed().unwrap_err();
         assert!(
@@ -63,6 +74,7 @@ mod tests {
 
     #[test]
     fn forbidden_seed_43() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "43");
         let err = parse_seed().unwrap_err();
         assert!(
@@ -73,6 +85,7 @@ mod tests {
 
     #[test]
     fn forbidden_seed_44() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "44");
         let err = parse_seed().unwrap_err();
         assert!(err.contains("forbidden"));
@@ -80,6 +93,7 @@ mod tests {
 
     #[test]
     fn forbidden_seed_45() {
+        let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var("SEED", "45");
         let err = parse_seed().unwrap_err();
         assert!(err.contains("forbidden"));
