@@ -178,6 +178,10 @@ ci-strict = []
 smoke = []
 # GPU acceleration using Candle with CUDA support
 gpu = ["candle-core", "candle-nn"]
+# GF16 ternary matmul kernel — compile-time gate for Wave 32.
+# Build with: cargo build --features gf16
+# Without this flag, GF16_ENABLED=true at runtime returns an error.
+gf16 = []
 
 
 [dependencies]
