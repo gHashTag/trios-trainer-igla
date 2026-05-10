@@ -8,6 +8,7 @@
 
 pub mod checkpoint;
 pub mod config;
+pub mod seed_canon;
 pub mod data;
 pub mod entities;
 pub mod fake_quant;
