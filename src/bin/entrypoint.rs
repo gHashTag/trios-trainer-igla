@@ -9,17 +9,46 @@
 
 use std::env;
 use std::process::Command;
+use trios_trainer::entrypoint_env::resolve_env_alias;
 
 fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
 fn main() {
-    let seed = env_or("TRIOS_SEED", "43");
-    let steps = env_or("TRIOS_STEPS", "81000");
-    let lr = env_or("TRIOS_LR", "0.003");
-    let hidden = env_or("TRIOS_HIDDEN", "384");
+    // Wave 33 hotfix: accept both `TRIOS_<KEY>` and the un-prefixed alias.
+    // See `trios_trainer::entrypoint_env` for the resolution order and the
+    // root-cause analysis (Wave-29 STEPS=200000 silently dropped).
+    let (seed, seed_src) = resolve_env_alias("TRIOS_SEED", "SEED", "43");
+    let (steps, steps_src) = resolve_env_alias("TRIOS_STEPS", "STEPS", "81000");
+    let (lr, lr_src) = resolve_env_alias("TRIOS_LR", "LR", "0.003");
+    let (hidden, hidden_src) = resolve_env_alias("TRIOS_HIDDEN", "HIDDEN_DIM", "384");
     let optimizer = env_or("TRIOS_OPTIMIZER", "adamw");
+
+    // Wave 33 trace: emit a deterministic startup line with every resolved
+    // knob plus its source (TRIOS_* / alias / default). Operators can
+    // verify with a single `grep entrypoint-trace` that an env-var override
+    // actually reached the trainer. Without this trace, Wave-29
+    // STEPS=200000 silently degraded to default 81000 and 52 trainers
+    // exited two cycles short; no log line told us why.
+    println!(
+        "[entrypoint-trace] seed=({}, src={}) steps=({}, src={}) lr=({}, src={}) hidden=({}, src={}) opt={}",
+        seed, seed_src.as_str(),
+        steps, steps_src.as_str(),
+        lr, lr_src.as_str(),
+        hidden, hidden_src.as_str(),
+        optimizer,
+    );
+    if let Ok(v) = env::var("NUM_ATTN_LAYERS") {
+        println!(
+            "[entrypoint-trace] NUM_ATTN_LAYERS={v} (consumed inside train_loop::run_single)"
+        );
+    }
+    if let Ok(v) = env::var("GF16_ENABLED") {
+        println!(
+            "[entrypoint-trace] GF16_ENABLED={v} (consumed inside train_loop::run_single)"
+        );
+    }
 
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");

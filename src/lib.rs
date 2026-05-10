@@ -8,6 +8,7 @@
 
 pub mod arch_config;
 pub mod checkpoint;
+pub mod entrypoint_env;
 pub mod config;
 pub mod data;
 pub mod entities;
