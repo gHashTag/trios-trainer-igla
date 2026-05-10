@@ -65,9 +65,14 @@ ENV RUST_LOG=info
 # seed at deploy time; absent that, the trainer's CLI default of 47
 # wins. The `parse_seed()` Canon #93 guard in entrypoint+trios-train
 # rejects any forbidden value at process start.
-ENV TRIOS_STEPS=81000
-ENV TRIOS_LR=0.003
-ENV TRIOS_HIDDEN=384
-ENV TRIOS_OPTIMIZER=adamw
+# Wave-33B: defaults moved into the Rust binary (`entrypoint_env::resolve_env_alias`).
+# Baking `ENV TRIOS_STEPS=81000` here meant the canonical key was *always*
+# present at runtime, so an operator-set un-prefixed alias (e.g.
+# `STEPS=200000`) lost the precedence race and the override silently
+# regressed to 81000. Removing the baked ENVs lets the alias actually
+# win when no `TRIOS_<KEY>` is supplied. The binary still defaults to
+# 81000 / 0.003 / 384 / adamw if neither is set, so behavior is
+# unchanged for services that didn't set anything. See PR #130 for the
+# Rust-side resolution logic and `[entrypoint-trace]` line.
 
 ENTRYPOINT ["/usr/local/bin/entrypoint"]
