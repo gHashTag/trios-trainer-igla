@@ -4,9 +4,11 @@
 //
 // Column types match the DDL in /tmp/full_ddl.sql:
 //   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT, bpb DOUBLE PRECISION,
+//   ema_bpb DOUBLE PRECISION (nullable, added Wave 29 PR-A),
 //   ts TIMESTAMPTZ
 //
 // Note: seed is BIGINT -> i64 in Rust (fixes the i32/INT8 mismatch from #114).
+// Note: ema_bpb added Wave 29 PR-A for idempotent ON CONFLICT DO UPDATE.
 
 use sea_orm::entity::prelude::*;
 
@@ -20,6 +22,8 @@ pub struct Model {
     pub seed: i64,
     pub step: i64,
     pub bpb: f64,
+    /// Exponential moving average of BPB. Nullable (NULL for rows written before Wave 29).
+    pub ema_bpb: Option<f64>,
     pub ts: DateTimeWithTimeZone,
 }
 
