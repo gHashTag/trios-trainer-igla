@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::io::Read;
 use std::time::Instant;
 
+use crate::arch_config::{parse_gf16_enabled, parse_hidden_dim, parse_num_attn_layers};
 use crate::fake_quant::{self, FormatKind};
 use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
 use crate::objective::{nca_entropy_loss, NcaObjective};
@@ -37,6 +38,28 @@ fn gf16_enabled() -> bool {
     std::env::var("TRIOS_GF16_DISABLE")
         .map(|v| v != "1")
         .unwrap_or(true)
+}
+
+/// Wave 31 PR-B: resolve GF16 from `GF16_ENABLED` env knob (default false).
+/// If `GF16_ENABLED=true` but feature `gf16` is not compiled in, returns Err.
+/// Falls back to `gf16_enabled()` for legacy `TRIOS_GF16_DISABLE` path.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+fn resolve_gf16_knob() -> Result<bool> {
+    let knob = parse_gf16_enabled().map_err(|e| anyhow::anyhow!("GF16_ENABLED: {e}"))?;
+    if knob {
+        #[cfg(not(feature = "gf16"))]
+        {
+            return Err(anyhow::anyhow!(
+                "GF16_ENABLED=true but feature 'gf16' not compiled in; \
+                 rebuild with: cargo build --features gf16"
+            ));
+        }
+        #[cfg(feature = "gf16")]
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn attn_seq_override() -> usize {
@@ -599,9 +622,31 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
 }
 
 pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
+    // Wave 31 PR-B: apply env-gated arch knobs (HIDDEN_DIM, NUM_ATTN_LAYERS).
+    // Defaults preserve Wave-30 baseline (h=384, 1L).
+    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    let eff_hidden = if std::env::var("HIDDEN_DIM").is_ok() {
+        let h = parse_hidden_dim().map_err(|e| anyhow::anyhow!("HIDDEN_DIM: {e}"))?;
+        eprintln!("[arch-knob] HIDDEN_DIM={h} (override, Wave-31 PR-B)");
+        h
+    } else {
+        args.hidden
+    };
+    let eff_attn_layers: u8 = if std::env::var("NUM_ATTN_LAYERS").is_ok() {
+        let n = parse_num_attn_layers().map_err(|e| anyhow::anyhow!("NUM_ATTN_LAYERS: {e}"))?;
+        eprintln!("[arch-knob] NUM_ATTN_LAYERS={n} (override, Wave-31 PR-B)");
+        n as u8
+    } else {
+        args.attn_layers
+    };
+    // Wave 31 PR-B: validate GF16_ENABLED knob (default false, feature-gated).
+    let _gf16_knob = resolve_gf16_knob()?;
+    if _gf16_knob {
+        eprintln!("[arch-knob] GF16_ENABLED=true (Wave-31 PR-B, feature=gf16)");
+    }
     eprintln!(
         "=== trios-train seed={} steps={} hidden={} lr={:.4} attn_layers={} ===",
-        args.seed, args.steps, args.hidden, args.lr, args.attn_layers
+        args.seed, args.steps, eff_hidden, args.lr, eff_attn_layers
     );
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
@@ -616,7 +661,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
     }
 
-    let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
+    let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
     if let Some(fmt) = fq_fmt {
         fake_quantize_model(&mut model, fmt);
     }
@@ -626,10 +671,10 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let wd = 0.04f32;
     let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
     let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
-    let mut opt_proj = AdamW::new(args.hidden * DIM, wd);
-    let mut opt_attn_down = AdamW::new(d * args.hidden, wd);
-    let mut opt_attn_up = AdamW::new(args.hidden * d, wd);
-    let mut opt_head = AdamW::new(VOCAB * args.hidden, wd);
+    let mut opt_proj = AdamW::new(eff_hidden * DIM, wd);
+    let mut opt_attn_down = AdamW::new(d * eff_hidden, wd);
+    let mut opt_attn_up = AdamW::new(eff_hidden * d, wd);
+    let mut opt_head = AdamW::new(VOCAB * eff_hidden, wd);
     let mut opt_attn_w = AdamW::new(attn_total, wd);
 
     let init_bpb = evaluate(&model, &val);
@@ -648,10 +693,10 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
         let mut ge = vec![0.0f32; VOCAB * DIM];
         let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
-        let mut gp = vec![0.0f32; args.hidden * DIM];
-        let mut gh = vec![0.0f32; VOCAB * args.hidden];
-        let mut g_ad = vec![0.0f32; d * args.hidden];
-        let mut g_au = vec![0.0f32; args.hidden * d];
+        let mut gp = vec![0.0f32; eff_hidden * DIM];
+        let mut gh = vec![0.0f32; VOCAB * eff_hidden];
+        let mut g_ad = vec![0.0f32; d * eff_hidden];
+        let mut g_au = vec![0.0f32; eff_hidden * d];
         let mut g_aw = vec![0.0f32; 8 * dd];
 
         for _ in 0..accum {
@@ -839,10 +884,26 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 }
 
 pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
+    // Wave 31 PR-B: apply env-gated arch knobs.
+    let eff_hidden = if std::env::var("HIDDEN_DIM").is_ok() {
+        let h = parse_hidden_dim().map_err(|e| anyhow::anyhow!("HIDDEN_DIM: {e}"))?;
+        eprintln!("[arch-knob] HIDDEN_DIM={h} (override, Wave-31 PR-B)");
+        h
+    } else {
+        args.hidden
+    };
+    let eff_attn_layers: u8 = if std::env::var("NUM_ATTN_LAYERS").is_ok() {
+        let n = parse_num_attn_layers().map_err(|e| anyhow::anyhow!("NUM_ATTN_LAYERS: {e}"))?;
+        eprintln!("[arch-knob] NUM_ATTN_LAYERS={n} (override, Wave-31 PR-B)");
+        n as u8
+    } else {
+        args.attn_layers
+    };
+    let _gf16_knob = resolve_gf16_knob()?;
     let label = if use_cwd { "MuonCwd" } else { "Muon" };
     eprintln!(
         "=== P1 {} seed={} steps={} hidden={} ===",
-        label, args.seed, args.steps, args.hidden
+        label, args.seed, args.steps, eff_hidden
     );
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
@@ -854,7 +915,7 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
     }
 
-    let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
+    let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
     if let Some(fmt) = fq_fmt {
         fake_quantize_model(&mut model, fmt);
     }
@@ -871,17 +932,17 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         .map(|_| AdamW::new(VOCAB * DIM, adamw_wd))
         .collect();
     let mut opt_proj_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
-        args.hidden * DIM,
-        args.hidden,
+        eff_hidden * DIM,
+        eff_hidden,
         DIM,
         muon_lr,
         muon_mom,
         muon_wd,
     );
     opt_proj_muon.ns_steps = if use_cwd { 3 } else { 1 };
-    let mut opt_attn_down = AdamW::new(d * args.hidden, adamw_wd);
-    let mut opt_attn_up = AdamW::new(args.hidden * d, adamw_wd);
-    let mut opt_head = AdamW::new(VOCAB * args.hidden, adamw_wd);
+    let mut opt_attn_down = AdamW::new(d * eff_hidden, adamw_wd);
+    let mut opt_attn_up = AdamW::new(eff_hidden * d, adamw_wd);
+    let mut opt_head = AdamW::new(VOCAB * eff_hidden, adamw_wd);
     let mut opt_attn_w_muon = AdamW::new(8 * dd, adamw_wd);
     let _cwd_lambda = cwd_lambda;
 
@@ -901,10 +962,10 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
         let mut ge = vec![0.0f32; VOCAB * DIM];
         let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
-        let mut gp = vec![0.0f32; args.hidden * DIM];
-        let mut gh = vec![0.0f32; VOCAB * args.hidden];
-        let mut g_ad = vec![0.0f32; d * args.hidden];
-        let mut g_au = vec![0.0f32; args.hidden * d];
+        let mut gp = vec![0.0f32; eff_hidden * DIM];
+        let mut gh = vec![0.0f32; VOCAB * eff_hidden];
+        let mut g_ad = vec![0.0f32; d * eff_hidden];
+        let mut g_au = vec![0.0f32; eff_hidden * d];
         let mut g_aw = vec![0.0f32; 8 * dd];
 
         for _ in 0..accum {
