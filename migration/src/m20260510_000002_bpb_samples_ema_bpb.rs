@@ -35,9 +35,7 @@ impl MigrationTrait for Migration {
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
             .get_connection()
-            .execute_unprepared(
-                "ALTER TABLE public.bpb_samples DROP COLUMN IF EXISTS ema_bpb",
-            )
+            .execute_unprepared("ALTER TABLE public.bpb_samples DROP COLUMN IF EXISTS ema_bpb")
             .await?;
         Ok(())
     }

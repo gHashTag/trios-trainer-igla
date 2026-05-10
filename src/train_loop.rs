@@ -814,7 +814,13 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 .ok()
                 .or_else(|| std::env::var("CANON_NAME").ok())
                 .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
-            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb, Some(ema_bpb as f32));
+            crate::neon_writer::bpb_sample(
+                &canon,
+                args.seed as i32,
+                step as i32,
+                vbpb,
+                Some(ema_bpb as f32),
+            );
         }
     }
 
@@ -1062,7 +1068,13 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 .ok()
                 .or_else(|| std::env::var("CANON_NAME").ok())
                 .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
-            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb, Some(ema_bpb as f32));
+            crate::neon_writer::bpb_sample(
+                &canon,
+                args.seed as i32,
+                step as i32,
+                vbpb,
+                Some(ema_bpb as f32),
+            );
         }
     }
 

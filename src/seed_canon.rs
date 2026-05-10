@@ -13,9 +13,7 @@
 pub fn parse_seed() -> Result<u64, String> {
     let raw = std::env::var("SEED")
         .map_err(|_| "SEED env var unset (Canon #93 requires explicit seed)".to_string())?;
-    let seed: u64 = raw
-        .parse()
-        .map_err(|e| format!("SEED parse error: {e}"))?;
+    let seed: u64 = raw.parse().map_err(|e| format!("SEED parse error: {e}"))?;
     const FORBIDDEN: &[u64] = &[42, 43, 44, 45];
     if FORBIDDEN.contains(&seed) {
         return Err(format!(

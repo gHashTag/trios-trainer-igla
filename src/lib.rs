@@ -8,7 +8,6 @@
 
 pub mod checkpoint;
 pub mod config;
-pub mod seed_canon;
 pub mod data;
 pub mod entities;
 pub mod fake_quant;
@@ -25,6 +24,7 @@ pub mod objective;
 pub mod optimizer;
 pub mod phi_numbers;
 pub mod race;
+pub mod seed_canon;
 pub mod train_loop;
 
 pub use config::TrainConfig;
