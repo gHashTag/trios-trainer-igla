@@ -25,6 +25,6 @@ fn main() {
 
     eprintln!("[bpb_smoke] writing canon={canon} seed={seed} step={step} bpb={bpb}");
     trios_trainer::neon_writer::ensure_schema();
-    trios_trainer::neon_writer::bpb_sample(&canon, seed, step, bpb);
+    trios_trainer::neon_writer::bpb_sample(&canon, seed, step, bpb, None);
     eprintln!("[bpb_smoke] done — verify with: SELECT * FROM bpb_samples WHERE canon_name='{canon}' ORDER BY ts DESC LIMIT 1;");
 }

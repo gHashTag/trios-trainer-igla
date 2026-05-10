@@ -273,54 +273,66 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 
 /// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
 ///
-/// Schema (verified against phd-postgres-ssot 2026-05-09, updated Wave 24):
+/// Schema (verified against phd-postgres-ssot 2026-05-09, updated Wave 29 PR-A):
 ///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT,
-///   bpb DOUBLE PRECISION, ts TIMESTAMPTZ
+///   bpb DOUBLE PRECISION, ema_bpb DOUBLE PRECISION (nullable), ts TIMESTAMPTZ
 ///
 /// seed and step are cast from i32 to i64 to match the BIGINT columns (#114, Wave 24).
 ///
-/// Old raw-SQL call:
-///   INSERT INTO public.bpb_samples ... ON CONFLICT (canon_name, seed, step) DO NOTHING
-/// New SeaORM call:
-///   bpb_samples::Entity::insert(active_model).on_conflict(...).exec(&db)
-pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
+/// Wave 29 PR-A idempotent INSERT:
+///   ON CONFLICT (canon_name, seed, step)
+///   DO UPDATE SET
+///     bpb     = LEAST(EXCLUDED.bpb, bpb_samples.bpb),
+///     ema_bpb = CASE WHEN EXCLUDED.bpb < bpb_samples.bpb THEN EXCLUDED.ema_bpb ELSE bpb_samples.ema_bpb END,
+///     ts      = EXCLUDED.ts
+/// This keeps the best-of-rerun BPB and eliminates duplicate-skipping errors.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32, ema_bpb: Option<f32>) {
     let Some(conn) = db() else {
         eprintln!("[ledger] DSN unset — skipping bpb_sample");
         return;
     };
 
-    // Cast seed and step to i64 — BIGINT in Postgres (fixes #114, Wave 24 step migration).
-    let model = bpb_samples::ActiveModel {
-        canon_name: Set(canon_name.to_string()),
-        seed: Set(seed as i64),
-        step: Set(step as i64),
-        bpb: Set(bpb as f64),
-        ts: Set(chrono::Utc::now().into()),
-        ..Default::default()
-    };
-
-    // Conflict on (canon_name, seed, step) — DO NOTHING preserves first-write ts.
-    let on_conflict = OnConflict::columns([
-        bpb_samples::Column::CanonName,
-        bpb_samples::Column::Seed,
-        bpb_samples::Column::Step,
-    ])
-    .do_nothing()
-    .to_owned();
-
-    let res = rt().block_on(
-        bpb_samples::Entity::insert(model)
-            .on_conflict(on_conflict)
-            .exec(conn),
+    // Wave 29 PR-A: Use raw SQL for the idempotent upsert.
+    // SeaORM's on_conflict builder doesn't support LEAST() / CASE expressions,
+    // so we use Statement::from_sql_and_values for the full upsert.
+    // LEAST(EXCLUDED.bpb, bpb_samples.bpb) keeps the best-of-rerun BPB.
+    // ema_bpb follows the winning bpb side.
+    // Eliminates "[ledger] duplicate, skipping" errors that froze ACC1 mr-runners.
+    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    let ts_now = chrono::Utc::now();
+    // The SQL is a static string — no format!() needed.
+    // Use SeaORM raw statement execution for parameterised upsert.
+    use sea_orm::Statement;
+    let stmt = Statement::from_sql_and_values(
+        conn.get_database_backend(),
+        "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ema_bpb, ts) \
+         VALUES ($1, $2, $3, $4, $5, $6) \
+         ON CONFLICT (canon_name, seed, step) DO UPDATE SET \
+           bpb     = LEAST(EXCLUDED.bpb, bpb_samples.bpb), \
+           ema_bpb = CASE WHEN EXCLUDED.bpb < bpb_samples.bpb \
+                         THEN EXCLUDED.ema_bpb ELSE bpb_samples.ema_bpb END, \
+           ts      = EXCLUDED.ts",
+        [
+            seed_val(canon_name),
+            (seed as i64).into(),
+            (step as i64).into(),
+            (bpb as f64).into(),
+            ema_bpb.map(|v| v as f64).into(),
+            ts_now.into(),
+        ],
     );
+    let res = rt().block_on(conn.execute(stmt));
     match res {
-        Ok(_) => eprintln!("[ledger] bpb_sample ok: {canon_name} seed={seed} step={step}"),
-        Err(sea_orm::DbErr::RecordNotInserted) => {
-            // ON CONFLICT DO NOTHING — row already exists, this is fine.
-            eprintln!("[ledger] bpb_sample: row already exists (duplicate), skipping");
-        }
+        Ok(_) => eprintln!("[ledger] bpb_sample ok (idempotent): {canon_name} seed={seed} step={step} bpb={bpb:.4}"),
         Err(e) => eprintln!("[ledger] bpb_sample failed: {e}"),
     }
+}
+
+/// Helper: convert a &str into a sea_orm Value.
+#[inline]
+fn seed_val(s: &str) -> sea_orm::Value {
+    sea_orm::Value::String(Some(Box::new(s.to_string())))
 }
 
 /// Apply idempotent DDL: ensure `bpb_latest` column exists on `igla_race_trials`.

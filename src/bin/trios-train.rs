@@ -15,6 +15,7 @@ use anyhow::Result;
 use clap::Parser;
 use migration::MigratorTrait;
 use trios_trainer::neon_writer::strip_channel_binding;
+use trios_trainer::seed_canon::parse_seed;
 use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 
 #[derive(Parser, Debug)]
@@ -27,8 +28,11 @@ struct Cli {
     #[arg(long, env = "TRIOS_CONFIG")]
     config: Option<std::path::PathBuf>,
 
-    /// Override seed. Use 0 to run 3-seed sweep {43,44,45}.
-    #[arg(long, env = "TRIOS_SEED", default_value_t = 43)]
+    /// Override seed. Use 0 to run 3-seed sweep.
+    /// If the `SEED` env var is set, Canon #93 enforcement applies:
+    /// seeds {42, 43, 44, 45} are forbidden; use {47, 89, 123, 144}.
+    /// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    #[arg(long, env = "TRIOS_SEED", default_value_t = 47)]
     seed: u64,
 
     /// Number of training steps.
@@ -186,6 +190,14 @@ fn main() -> Result<()> {
     let _ = std::io::stderr().flush();
 
     let cli = Cli::parse();
+
+    // Canon #93 enforcement: if SEED env var is set, validate against forbidden set.
+    // Seeds {42, 43, 44, 45} are forbidden; Wave-29 allowed canon: {47, 89, 123, 144}.
+    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    if std::env::var("SEED").is_ok() {
+        let canon_seed = parse_seed().map_err(|e| anyhow::anyhow!("Canon #93 violation: {}", e))?;
+        eprintln!("[trios-train] Canon #93 OK: SEED={canon_seed}");
+    }
 
     // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
     run_automigrate();
