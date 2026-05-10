@@ -114,3 +114,56 @@ fn seed_zero_ok() {
     assert_eq!(parse_seed(), Ok(0));
     std::env::remove_var("SEED");
 }
+
+// --- Wave-29 PR-A.1: GATE_FINAL_SEEDS sanity check ----------------------------
+//
+// The --sweep CLI flag in src/bin/trios-train.rs feeds
+// `train_loop::GATE_FINAL_SEEDS` directly into the trainer loop. PR-A.1
+// changed the constant from {43, 44, 45} (entirely forbidden) to the
+// Canon #93 triple {47, 89, 123}. This regression guard prevents anyone
+// from re-introducing a forbidden seed into the sweep set.
+
+/// `GATE_FINAL_SEEDS` must contain ZERO members of the Canon #93
+/// forbidden set {42, 43, 44, 45}.
+#[test]
+fn gate_final_seeds_no_forbidden_canon() {
+    use trios_trainer::train_loop::GATE_FINAL_SEEDS;
+    const FORBIDDEN: &[u64] = &[42, 43, 44, 45];
+    for &s in GATE_FINAL_SEEDS {
+        assert!(
+            !FORBIDDEN.contains(&s),
+            "GATE_FINAL_SEEDS contains forbidden Canon #93 seed {s}; \
+             allowed canon: {{47, 89, 123, 144}}"
+        );
+    }
+}
+
+/// Every member of `GATE_FINAL_SEEDS` must be in the Canon #93 allowed
+/// set `{47, 89, 123, 144}`. This is a stricter guard than the
+/// not-forbidden test above — it forbids any operator-override seed
+/// from sneaking into the sweep set.
+#[test]
+fn gate_final_seeds_only_allowed_canon() {
+    use trios_trainer::train_loop::GATE_FINAL_SEEDS;
+    const ALLOWED: &[u64] = &[47, 89, 123, 144];
+    for &s in GATE_FINAL_SEEDS {
+        assert!(
+            ALLOWED.contains(&s),
+            "GATE_FINAL_SEEDS seed {s} is not in Canon #93 allowed set \
+             {{47, 89, 123, 144}}"
+        );
+    }
+}
+
+/// Sweep cardinality: 3-seed sweep, not 1 or 4. (PR-A.1 chose
+/// {47, 89, 123} because 144 is reserved for the bridge canon.)
+#[test]
+fn gate_final_seeds_cardinality_three() {
+    use trios_trainer::train_loop::GATE_FINAL_SEEDS;
+    assert_eq!(
+        GATE_FINAL_SEEDS.len(),
+        3,
+        "GATE_FINAL_SEEDS is a 3-seed sweep set; got {} entries",
+        GATE_FINAL_SEEDS.len()
+    );
+}
