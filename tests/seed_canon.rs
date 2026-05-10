@@ -8,11 +8,19 @@
 //!
 //! Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
 
+use std::sync::Mutex;
 use trios_trainer::seed_canon::parse_seed;
+
+/// Serialize SEED env mutation across parallel cargo test threads in this
+/// integration-test binary. Without this, allowed_seed_NNN tests race on
+/// the shared SEED env var (one set_var("144") collides with another
+/// test's read of "123"). std-only, no extra deps.
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 /// SEED=47 is in the allowed canon set → Ok(47).
 #[test]
 fn seed_47_ok() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "47");
     assert_eq!(parse_seed(), Ok(47));
     std::env::remove_var("SEED");
@@ -21,6 +29,7 @@ fn seed_47_ok() {
 /// SEED=89 is in the allowed canon set → Ok(89).
 #[test]
 fn seed_89_ok() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "89");
     assert_eq!(parse_seed(), Ok(89));
     std::env::remove_var("SEED");
@@ -29,6 +38,7 @@ fn seed_89_ok() {
 /// SEED=123 is in the allowed canon set → Ok(123).
 #[test]
 fn seed_123_ok() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "123");
     assert_eq!(parse_seed(), Ok(123));
     std::env::remove_var("SEED");
@@ -37,6 +47,7 @@ fn seed_123_ok() {
 /// SEED=144 is in the allowed canon set → Ok(144).
 #[test]
 fn seed_144_ok() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "144");
     assert_eq!(parse_seed(), Ok(144));
     std::env::remove_var("SEED");
@@ -45,6 +56,7 @@ fn seed_144_ok() {
 /// SEED=43 is forbidden under Canon #93 → Err containing "forbidden".
 #[test]
 fn seed_43_forbidden() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "43");
     let err = parse_seed().expect_err("seed 43 should be rejected");
     assert!(
@@ -57,6 +69,7 @@ fn seed_43_forbidden() {
 /// SEED=42 is forbidden under Canon #93 → Err containing "forbidden".
 #[test]
 fn seed_42_forbidden() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "42");
     let err = parse_seed().expect_err("seed 42 should be rejected");
     assert!(
@@ -69,6 +82,7 @@ fn seed_42_forbidden() {
 /// SEED=44 is forbidden under Canon #93 → Err containing "forbidden".
 #[test]
 fn seed_44_forbidden() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "44");
     let err = parse_seed().expect_err("seed 44 should be rejected");
     assert!(err.contains("forbidden"));
@@ -78,6 +92,7 @@ fn seed_44_forbidden() {
 /// SEED=45 is forbidden under Canon #93 → Err containing "forbidden".
 #[test]
 fn seed_45_forbidden() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "45");
     let err = parse_seed().expect_err("seed 45 should be rejected");
     assert!(err.contains("forbidden"));
@@ -87,6 +102,7 @@ fn seed_45_forbidden() {
 /// SEED env var unset → Err containing "unset".
 #[test]
 fn seed_unset_error() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::remove_var("SEED");
     let err = parse_seed().expect_err("unset SEED should return error");
     assert!(
@@ -98,6 +114,7 @@ fn seed_unset_error() {
 /// SEED=foobar (non-numeric) → Err containing "parse".
 #[test]
 fn seed_parse_error() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "foobar");
     let err = parse_seed().expect_err("non-numeric SEED should return error");
     assert!(
@@ -110,6 +127,7 @@ fn seed_parse_error() {
 /// SEED=0 (not in forbidden set) → Ok(0).
 #[test]
 fn seed_zero_ok() {
+    let _g = ENV_LOCK.lock().unwrap();
     std::env::set_var("SEED", "0");
     assert_eq!(parse_seed(), Ok(0));
     std::env::remove_var("SEED");
