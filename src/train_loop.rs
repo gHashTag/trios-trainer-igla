@@ -7,7 +7,14 @@ use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
 use crate::objective::{nca_entropy_loss, NcaObjective};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
-pub const GATE_FINAL_SEEDS: &[u64] = &[43, 44, 45];
+/// Canon #93 sweep seeds — Lucas/Fibonacci aligned.
+/// Forbidden under Canon #93: `{42, 43, 44, 45}`.
+/// Allowed canon (Wave-29):  `{47, 89, 123, 144}`.
+/// Sweep uses the first three; `144` is reserved for the bridge canon.
+/// Wave-29 PR-A.1 replaces the legacy `{43, 44, 45}` (entirely
+/// forbidden) with the Canon #93 triple.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+pub const GATE_FINAL_SEEDS: &[u64] = &[47, 89, 123];
 
 const VOCAB: usize = 128;
 const DIM: usize = 64;

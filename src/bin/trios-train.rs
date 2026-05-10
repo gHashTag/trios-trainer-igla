@@ -2,7 +2,7 @@
 //!
 //! ```bash
 //! # Standalone mode (no config file needed)
-//! trios-train --seed 43 --steps 54000
+//! trios-train --seed 47 --steps 54000   # Canon #93 allowed seed
 //!
 //! # Config mode
 //! trios-train --config configs/champion.toml
@@ -71,7 +71,7 @@ struct Cli {
     )]
     val_data: String,
 
-    /// Run 3-seed sweep {43, 44, 45} instead of single seed.
+    /// Run 3-seed sweep {47, 89, 123} (Canon #93) instead of single seed.
     #[arg(long)]
     sweep: bool,
 
@@ -189,14 +189,43 @@ fn main() -> Result<()> {
     use std::io::Write as _;
     let _ = std::io::stderr().flush();
 
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
 
-    // Canon #93 enforcement: if SEED env var is set, validate against forbidden set.
-    // Seeds {42, 43, 44, 45} are forbidden; Wave-29 allowed canon: {47, 89, 123, 144}.
+    // Canon #93 enforcement.
+    //   * If `SEED` env var is set → validate via `parse_seed()` AND assign
+    //     the validated value to `cli.seed`. SEED env therefore overrides
+    //     `--seed` flag and `TRIOS_SEED`/clap default.
+    //   * Else → directly validate `cli.seed` against the forbidden set
+    //     (which is what `parse_seed()` does internally on its raw input).
+    //     This catches the case where TRIOS_SEED or `--seed=43` slipped
+    //     past clap.
+    // Forbidden canon: {42, 43, 44, 45}; allowed canon: {47, 89, 123, 144}.
+    // Wave-29 PR-A.1: previously `parse_seed()`'s return value was logged
+    // and dropped — `cli.seed` could still be 43 if `--seed=43` was passed
+    // alongside an unrelated `SEED` env. This patch eliminates the
+    // validate-then-discard anti-pattern.
     // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
     if std::env::var("SEED").is_ok() {
-        let canon_seed = parse_seed().map_err(|e| anyhow::anyhow!("Canon #93 violation: {}", e))?;
-        eprintln!("[trios-train] Canon #93 OK: SEED={canon_seed}");
+        let canon_seed =
+            parse_seed().map_err(|e| anyhow::anyhow!("Canon #93 violation (SEED env): {}", e))?;
+        eprintln!(
+            "[trios-train] Canon #93 OK: SEED={canon_seed} (overrides cli.seed={})",
+            cli.seed
+        );
+        cli.seed = canon_seed;
+    } else {
+        const FORBIDDEN: &[u64] = &[42, 43, 44, 45];
+        if FORBIDDEN.contains(&cli.seed) {
+            return Err(anyhow::anyhow!(
+                "Canon #93 violation: cli.seed={} is forbidden (allowed: 47, 89, 123, 144). \
+                 Set SEED or TRIOS_SEED env var to an allowed value, or pass `--seed=<allowed>`.",
+                cli.seed
+            ));
+        }
+        eprintln!(
+            "[trios-train] Canon #93 OK: seed={} (no SEED env, validated cli.seed)",
+            cli.seed
+        );
     }
 
     // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
