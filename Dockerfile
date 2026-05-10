@@ -49,7 +49,14 @@ RUN mkdir -p /work/data && \
     echo "[corpus-split] train=$(stat -c%s /work/data/tiny_shakespeare.txt) bytes  val=$(stat -c%s /work/data/tiny_shakespeare_val.txt) bytes"
 
 ENV RUST_LOG=info
-ENV TRIOS_SEED=43
+# Wave-29 PR-A.1 (Canon #93): no baked-in seed default. The previous
+# `ENV TRIOS_SEED=43` was a *forbidden* canon — any service deployed
+# without an explicit override would inherit it and write rows under
+# seed=43, which Canon #93 rejects (forbidden set: {42, 43, 44, 45};
+# allowed: {47, 89, 123, 144}). Service-level env vars still set the
+# seed at deploy time; absent that, the trainer's CLI default of 47
+# wins. The `parse_seed()` Canon #93 guard in entrypoint+trios-train
+# rejects any forbidden value at process start.
 ENV TRIOS_STEPS=81000
 ENV TRIOS_LR=0.003
 ENV TRIOS_HIDDEN=384
