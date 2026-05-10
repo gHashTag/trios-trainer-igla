@@ -206,8 +206,8 @@ fn main() -> Result<()> {
     // validate-then-discard anti-pattern.
     // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
     if std::env::var("SEED").is_ok() {
-        let canon_seed = parse_seed()
-            .map_err(|e| anyhow::anyhow!("Canon #93 violation (SEED env): {}", e))?;
+        let canon_seed =
+            parse_seed().map_err(|e| anyhow::anyhow!("Canon #93 violation (SEED env): {}", e))?;
         eprintln!(
             "[trios-train] Canon #93 OK: SEED={canon_seed} (overrides cli.seed={})",
             cli.seed
