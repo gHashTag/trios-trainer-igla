@@ -40,14 +40,10 @@ fn main() {
         optimizer,
     );
     if let Ok(v) = env::var("NUM_ATTN_LAYERS") {
-        println!(
-            "[entrypoint-trace] NUM_ATTN_LAYERS={v} (consumed inside train_loop::run_single)"
-        );
+        println!("[entrypoint-trace] NUM_ATTN_LAYERS={v} (consumed inside train_loop::run_single)");
     }
     if let Ok(v) = env::var("GF16_ENABLED") {
-        println!(
-            "[entrypoint-trace] GF16_ENABLED={v} (consumed inside train_loop::run_single)"
-        );
+        println!("[entrypoint-trace] GF16_ENABLED={v} (consumed inside train_loop::run_single)");
     }
 
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
