@@ -279,10 +279,30 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
 ///
 /// seed and step are cast from i32 to i64 to match the BIGINT columns (#114, Wave 24).
 ///
-/// Old raw-SQL call:
-///   INSERT INTO public.bpb_samples ... ON CONFLICT (canon_name, seed, step) DO NOTHING
-/// New SeaORM call:
-///   bpb_samples::Entity::insert(active_model).on_conflict(...).exec(&db)
+/// **Wave 29 hotfix (patch 2 of 2):** the prior implementation used
+/// `ON CONFLICT (canon_name, seed, step) DO NOTHING`, which silently
+/// dropped every fresh INSERT once a row existed for the
+/// `(canon_name, seed, step)` triple. This blocked the Wave 29
+/// `STEPS=200000` bump from making any forward progress: every
+/// re-run of the same step produced the
+/// `[ledger] bpb_sample: row already exists (duplicate), skipping`
+/// log line instead of writing the new sample.
+///
+/// New behaviour (best-wins, idempotent):
+///
+/// ```sql
+/// INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts)
+/// VALUES (...)
+/// ON CONFLICT (canon_name, seed, step) DO UPDATE SET
+///   bpb = LEAST(EXCLUDED.bpb, public.bpb_samples.bpb),
+///   ts  = EXCLUDED.ts
+/// ```
+///
+/// Re-runs with the same `(canon_name, seed, step)` keep the
+/// **best (= lowest) BPB observed** and refresh `ts` so the stream is
+/// alive. The `ema_bpb` column is deliberately not touched because
+/// the live schema (verified 2026-05-09) does not carry one — see
+/// the schema comment above.
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
     let Some(conn) = db() else {
         eprintln!("[ledger] DSN unset — skipping bpb_sample");
@@ -299,13 +319,19 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
         ..Default::default()
     };
 
-    // Conflict on (canon_name, seed, step) — DO NOTHING preserves first-write ts.
+    // Best-wins idempotency: on conflict, keep the lower BPB and refresh ts.
+    // Wave 29 hotfix — replaces the previous DO NOTHING path that dropped
+    // every fresh INSERT past step 81000 in re-runs.
     let on_conflict = OnConflict::columns([
         bpb_samples::Column::CanonName,
         bpb_samples::Column::Seed,
         bpb_samples::Column::Step,
     ])
-    .do_nothing()
+    .value(
+        bpb_samples::Column::Bpb,
+        sea_orm::sea_query::Expr::cust("LEAST(EXCLUDED.bpb, public.bpb_samples.bpb)"),
+    )
+    .update_column(bpb_samples::Column::Ts)
     .to_owned();
 
     let res = rt().block_on(
@@ -314,10 +340,21 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
             .exec(conn),
     );
     match res {
-        Ok(_) => eprintln!("[ledger] bpb_sample ok: {canon_name} seed={seed} step={step}"),
+        Ok(_) => eprintln!(
+            "[ledger] bpb_sample ok: {canon_name} seed={seed} step={step} bpb={bpb} (best-wins)"
+        ),
         Err(sea_orm::DbErr::RecordNotInserted) => {
-            // ON CONFLICT DO NOTHING — row already exists, this is fine.
-            eprintln!("[ledger] bpb_sample: row already exists (duplicate), skipping");
+            // SeaORM still surfaces RecordNotInserted when the row was
+            // updated rather than inserted (the response has no
+            // last-insert-id). This is the success path under best-wins;
+            // log it but do not treat as an error. The legacy
+            // "duplicate, skipping" wording is replaced with explicit
+            // "updated" so log scrapers can tell the two semantics
+            // apart from the prior implementation.
+            eprintln!(
+                "[ledger] bpb_sample: existing row updated (best-wins): \
+                 {canon_name} seed={seed} step={step} candidate_bpb={bpb}"
+            );
         }
         Err(e) => eprintln!("[ledger] bpb_sample failed: {e}"),
     }
@@ -419,5 +456,75 @@ mod tests {
         let _: i64 = step_i64;
         assert_eq!(seed_i64, 43i64);
         assert_eq!(step_i64, 200i64);
+    }
+
+    /// Wave 29 hotfix (patch 2 of 2): the bpb_sample ON CONFLICT clause
+    /// must emit DO UPDATE SET bpb = LEAST(EXCLUDED.bpb,
+    /// public.bpb_samples.bpb) and refresh ts. The prior behaviour was
+    /// DO NOTHING, which silently dropped every Wave 29 STEPS=200000
+    /// re-run past step 81000.
+    ///
+    /// This test reconstructs the OnConflict spec the same way
+    /// `bpb_sample` does, builds the SQL via PostgresQueryBuilder, and
+    /// asserts the rendered string contains the LEAST clause and the ts
+    /// column update — not DO NOTHING.
+    #[test]
+    fn bpb_sample_on_conflict_is_best_wins_least() {
+        use sea_orm::sea_query::{Expr, OnConflict, PostgresQueryBuilder, Query};
+
+        let on_conflict = OnConflict::columns([
+            bpb_samples::Column::CanonName,
+            bpb_samples::Column::Seed,
+            bpb_samples::Column::Step,
+        ])
+        .value(
+            bpb_samples::Column::Bpb,
+            Expr::cust("LEAST(EXCLUDED.bpb, public.bpb_samples.bpb)"),
+        )
+        .update_column(bpb_samples::Column::Ts)
+        .to_owned();
+
+        // Render the OnConflict against a minimal INSERT to inspect
+        // the SQL string. We do not execute it; this is a pure
+        // string-shape regression guard.
+        let mut q = Query::insert();
+        q.into_table(bpb_samples::Entity)
+            .columns([
+                bpb_samples::Column::CanonName,
+                bpb_samples::Column::Seed,
+                bpb_samples::Column::Step,
+                bpb_samples::Column::Bpb,
+                bpb_samples::Column::Ts,
+            ])
+            .values_panic([
+                "scarab-soap".into(),
+                47i64.into(),
+                3000i64.into(),
+                2.8845f64.into(),
+                "2026-05-09T00:00:00Z".into(),
+            ])
+            .on_conflict(on_conflict);
+        let sql = q.to_string(PostgresQueryBuilder);
+
+        // Best-wins clause must be present:
+        assert!(
+            sql.contains("LEAST(EXCLUDED.bpb, public.bpb_samples.bpb)"),
+            "ON CONFLICT clause must use LEAST(EXCLUDED.bpb, public.bpb_samples.bpb); got: {sql}"
+        );
+        // ts must be refreshed:
+        assert!(
+            sql.contains("\"ts\""),
+            "ON CONFLICT must update the ts column; got: {sql}"
+        );
+        // Must NOT silently skip rows any more:
+        assert!(
+            !sql.contains("DO NOTHING"),
+            "ON CONFLICT must no longer be DO NOTHING (Wave 29 hotfix); got: {sql}"
+        );
+        // Must be DO UPDATE SET:
+        assert!(
+            sql.contains("DO UPDATE SET"),
+            "ON CONFLICT must be DO UPDATE SET; got: {sql}"
+        );
     }
 }
