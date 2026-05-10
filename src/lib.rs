@@ -6,6 +6,7 @@
 //! Gate-2 (deadline 2026-04-30 23:59 UTC). Each lint pays down in a dedicated
 //! technical-debt PR after merge. R5-honest: NOT introduced by PR #32.
 
+pub mod arch_config;
 pub mod checkpoint;
 pub mod config;
 pub mod data;
