@@ -1,5 +1,9 @@
 FROM debian:bookworm-slim AS builder
 
+# Optional Cargo feature flags (e.g. gf16). Default empty = baseline build.
+# Pass --build-arg CARGO_FEATURES=gf16 to enable Wave-32-B GF16 kernel.
+ARG CARGO_FEATURES=""
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates pkg-config build-essential git curl \
     && rm -rf /var/lib/apt/lists/*
@@ -10,14 +14,18 @@ RUN rustup default 1.91
 
 WORKDIR /build
 COPY . .
-RUN cargo build --release \
+RUN set -e; \
+    FEATURES_FLAG=""; \
+    if [ -n "${CARGO_FEATURES}" ]; then FEATURES_FLAG="--features ${CARGO_FEATURES}"; fi; \
+    cargo build --release --locked \
         --bin entrypoint \
         --bin trios-train \
         --bin scarab \
         --bin gf16_test \
         --bin ngram_train_gf16 \
         --bin bpb_smoke \
-        -p trios-trainer
+        -p trios-trainer \
+        ${FEATURES_FLAG}
 
 FROM debian:bookworm-slim AS runtime
 
