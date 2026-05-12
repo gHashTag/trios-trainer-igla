@@ -23,7 +23,12 @@ fn main() {
     let (steps, steps_src) = resolve_env_alias("TRIOS_STEPS", "STEPS", "81000");
     let (lr, lr_src) = resolve_env_alias("TRIOS_LR", "LR", "0.003");
     let (hidden, hidden_src) = resolve_env_alias("TRIOS_HIDDEN", "HIDDEN_DIM", "384");
-    let optimizer = env_or("TRIOS_OPTIMIZER", "adamw");
+    // Wave 34 hotfix: `OPTIMIZER` alias was forgotten in PR #130's STEPS/LR/HIDDEN/SEED
+    // alias fan-out. Result: 38-service Wave-34 deploy that set `OPTIMIZER=lion` (etc.)
+    // silently fell back to TRIOS_OPTIMIZER's default "adamw". Combined with the wildcard
+    // dispatch arm in trios-train.rs (also fixed in this PR), 15 nominally-distinct
+    // optimizers converged to bit-identical BPB=2.6814258098602295 on seed=123.
+    let (optimizer, optimizer_src) = resolve_env_alias("TRIOS_OPTIMIZER", "OPTIMIZER", "adamw");
 
     // Wave 33 trace: emit a deterministic startup line with every resolved
     // knob plus its source (TRIOS_* / alias / default). Operators can
@@ -32,12 +37,12 @@ fn main() {
     // STEPS=200000 silently degraded to default 81000 and 52 trainers
     // exited two cycles short; no log line told us why.
     println!(
-        "[entrypoint-trace] seed=({}, src={}) steps=({}, src={}) lr=({}, src={}) hidden=({}, src={}) opt={}",
+        "[entrypoint-trace] seed=({}, src={}) steps=({}, src={}) lr=({}, src={}) hidden=({}, src={}) opt=({}, src={})",
         seed, seed_src.as_str(),
         steps, steps_src.as_str(),
         lr, lr_src.as_str(),
         hidden, hidden_src.as_str(),
-        optimizer,
+        optimizer, optimizer_src.as_str(),
     );
     if let Ok(v) = env::var("NUM_ATTN_LAYERS") {
         println!("[entrypoint-trace] NUM_ATTN_LAYERS={v} (consumed inside train_loop::run_single)");

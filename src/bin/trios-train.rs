@@ -295,10 +295,22 @@ fn main() -> Result<()> {
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
         };
+        // Wave 34 fix: strict optimizer dispatch. Previously the wildcard `_ => run_single`
+        // arm silently routed every unknown optimizer label (lion / lamb / soap / tiger /
+        // sgdm / prodigy / adafactor / shampoo / yogi / ranger / radam / adabelief /
+        // adamax) to plain AdamW. Combined with the missing OPTIMIZER env alias in
+        // entrypoint.rs (also fixed in this PR), Wave-34 burned ~4h of fleet credits on
+        // 38 services that all converged to bit-identical BPB=2.6814258098602295 on
+        // seed=123. Honest probe reproduction: /home/user/workspace/skills/user/
+        // igla-honest-short-run/SKILL.md. RCA: trios#143 comment 4427543239.
         let outcome = match cli.optimizer.as_str() {
+            "adamw" => train_loop::run_single(&args)?,
             "muon" => train_loop::run_single_muon(&args, false)?,
             "muon-cwd" => train_loop::run_single_muon(&args, true)?,
-            _ => train_loop::run_single(&args)?,
+            other => anyhow::bail!(
+                "Unsupported optimizer: {other:?}. Supported: adamw, muon, muon-cwd. \
+                 (Wave-34 RCA: silent wildcard fallback removed; see SKILL igla-honest-short-run.)"
+            ),
         };
         println!(
             "DONE: seed={} bpb={:.4} steps={} opt={}",
