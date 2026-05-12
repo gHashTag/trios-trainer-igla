@@ -295,10 +295,21 @@ fn main() -> Result<()> {
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
         };
+        // R5-honest dispatch: every supported optimizer is named explicitly.
+        // Any unsupported name is a hard error, NOT a silent AdamW fallback.
+        // Pre-Wave-35 bug: 12 optimizer-named canons (lion/soap/tiger/...)
+        // silently ran AdamW, producing byte-identical BPB across the fleet.
         let outcome = match cli.optimizer.as_str() {
+            "adamw" => train_loop::run_single(&args)?,
             "muon" => train_loop::run_single_muon(&args, false)?,
             "muon-cwd" => train_loop::run_single_muon(&args, true)?,
-            _ => train_loop::run_single(&args)?,
+            other => {
+                return Err(anyhow::anyhow!(
+                    "[R5-honesty] unsupported optimizer={:?}: only {{adamw, muon, muon-cwd}} are implemented. \
+                     Refusing silent AdamW fallback. Fix env, redeploy, or implement the optimizer first.",
+                    other
+                ));
+            }
         };
         println!(
             "DONE: seed={} bpb={:.4} steps={} opt={}",
