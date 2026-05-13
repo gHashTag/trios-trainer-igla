@@ -212,9 +212,7 @@ fn main() -> Result<()> {
         if std::env::var(canonical).is_err() {
             if let Ok(v) = std::env::var(alias) {
                 if !v.is_empty() {
-                    eprintln!(
-                        "[trios-train][trios#777] promoting {alias}={v} -> {canonical}"
-                    );
+                    eprintln!("[trios-train][trios#777] promoting {alias}={v} -> {canonical}");
                     std::env::set_var(canonical, v);
                 }
             }
