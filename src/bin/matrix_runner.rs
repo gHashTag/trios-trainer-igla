@@ -58,7 +58,13 @@ use tokio_postgres::{Client, NoTls};
 /// collapse to AdamW and produce byte-identical BPB under fake labels — see
 /// trios#777 / trios-trainer-igla#140. NEVER add a value here without
 /// implementing the optimizer in `train_loop::*` first.
-const ALGO_WHITELIST: &[&str] = &["adamw", "muon", "muon-cwd"];
+/// HOTFIX 2026-05-14: `muon-cwd` removed — cpu_train.rs `AlgoOpt::from_env`
+/// does not implement it yet, so allowing it through caused 3 failing matrix
+/// cells (fp16/fp32/gf16 × muon-cwd seed=1597) in run 25856938977 and would
+/// have silently produced bit-identical bpb to `muon` if from_env had a
+/// fallback. Follow-up: implement true CWD variant in cpu_train.rs, then
+/// re-add. See trios-trainer-igla#146 (to be opened).
+const ALGO_WHITELIST: &[&str] = &["adamw", "muon"];
 
 /// Fibonacci + Lucas seed canon. Skill `leaderboard-snapshot` SEED_CANON.
 /// The legacy default `42` is FORBIDDEN — it appeared in 2554 rows before
@@ -459,10 +465,13 @@ mod tests {
 
     #[test]
     fn algo_whitelist_contains_only_implemented() {
-        assert_eq!(ALGO_WHITELIST.len(), 3);
+        assert_eq!(ALGO_WHITELIST.len(), 2);
         assert!(ALGO_WHITELIST.contains(&"adamw"));
         assert!(ALGO_WHITELIST.contains(&"muon"));
-        assert!(ALGO_WHITELIST.contains(&"muon-cwd"));
+        assert!(
+            !ALGO_WHITELIST.contains(&"muon-cwd"),
+            "muon-cwd must stay out until cpu_train.rs implements it (see follow-up issue)"
+        );
         for &fake in &["lion", "soap", "tiger", "lamb", "prodigy", "adafactor"] {
             assert!(!ALGO_WHITELIST.contains(&fake), "fake algo leaked: {fake}");
         }
@@ -502,9 +511,12 @@ mod tests {
         let canon = build_canon_name("fp16", 128, 0.001, 1597, "adamw");
         assert_eq!(canon, "IGLA-MATRIX-fp16-h128-LR001-rng1597-adamw");
 
-        // Underscores in algo must be converted to dashes in canon_name.
-        let canon_cwd = build_canon_name("gf16", 384, 0.0001, 2584, "muon-cwd");
-        assert_eq!(canon_cwd, "IGLA-MATRIX-gf16-h384-LR0001-rng2584-muon-cwd");
+        // Compound algo names with internal dashes pass through as-is.
+        // (Historical: this used `muon-cwd` before the 2026-05-14 hotfix
+        // removed it from the whitelist; we keep the dash-preservation
+        // contract under a hypothetical name so future re-adds are safe.)
+        let canon_dash = build_canon_name("gf16", 384, 0.0001, 2584, "muon-cwd");
+        assert_eq!(canon_dash, "IGLA-MATRIX-gf16-h384-LR0001-rng2584-muon-cwd");
     }
 
     #[test]
