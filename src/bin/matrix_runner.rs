@@ -14,6 +14,29 @@
 //   * R7 witness  — emits run_id, sha, step, seed, bpb verbatim so the
 //                   matrix-bot (L-C6) can reconstruct #446 body.
 //
+// HARDENING (PASS-21, 2026-05-14): three R5 guards close the leaderboard
+// pollution bug-class documented in:
+//   * trios#777 (silent format collapse — 704 bit-identical clusters)
+//   * trios#779 (sidecar metadata poisoning — 15 fake algo suffixes)
+//   * leaderboard-snapshot skill Q7 (algo whitelist) + Q3 (format drift)
+//
+//   1. ALGO_WHITELIST — `--algo` must be one of {adamw, muon, muon-cwd}. Any
+//      other value is rejected with ExitCode(3) and a clear error message. No
+//      silent fallback. Matches the same whitelist enforced in trios-train.rs:298.
+//
+//   2. FORMAT_ALIAS_MAP — `binary16 -> fp16`, `binary32 -> fp32`, `fp8e4m3 ->
+//      fp8_e4m3`, `fp8e5m2 -> fp8_e5m2`. Normalisation happens BEFORE canon_name
+//      assembly so the leaderboard never sees both spellings.
+//
+//   3. SEED_CANON — `--seed` must be one of Fibonacci/Lucas {47, 89, 123, 144,
+//      1597, 2584, 4181, 6765, 10946}. The legacy default `42` is FORBIDDEN
+//      (see leaderboard-snapshot skill `SEED_FORBIDDEN` constant).
+//
+//   4. CANON_NAME — assembled as `IGLA-MATRIX-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}`
+//      conforming to the IGLA canonical regex
+//      `^IGLA-[A-Z][A-Z0-9-]*-[a-z0-9_]+-h\d+-LR[0-9.]+-rng\d+-[a-z0-9-]+$`.
+//      Old format `cpu_train_{format}_{algo}` is dead.
+//
 // Anchor: phi^2 + phi^-2 = 3.
 
 use std::env;
@@ -26,18 +49,97 @@ use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio_postgres::{Client, NoTls};
 
+// ────────────────────────────────────────────────────────────────────────────
+// R5 HARDENING CONSTANTS
+// ────────────────────────────────────────────────────────────────────────────
+
+/// Only optimizers actually implemented by `trios-train.rs` dispatch (PR #135).
+/// Everything else (lion, soap, tiger, lamb, prodigy, …) used to silently
+/// collapse to AdamW and produce byte-identical BPB under fake labels — see
+/// trios#777 / trios-trainer-igla#140. NEVER add a value here without
+/// implementing the optimizer in `train_loop::*` first.
+const ALGO_WHITELIST: &[&str] = &["adamw", "muon", "muon-cwd"];
+
+/// Fibonacci + Lucas seed canon. Skill `leaderboard-snapshot` SEED_CANON.
+/// The legacy default `42` is FORBIDDEN — it appeared in 2554 rows before
+/// the canon-name reform of 2026-05-12.
+const SEED_CANON: &[i64] = &[47, 89, 123, 144, 1597, 2584, 4181, 6765, 10946];
+
+/// IEEE / TRIOS canonical format spellings. Aliases like `binary16` map to the
+/// canonical name to prevent format-drift duplicates in the leaderboard
+/// (8483 rows under `binary16` are actually `fp16`; 245 `binary32` are `fp32`).
+fn normalize_format(raw: &str) -> &str {
+    match raw {
+        "binary16" | "float16" | "f16" => "fp16",
+        "binary32" | "float32" | "f32_alias" => "fp32",
+        "binary64" | "float64" | "f64_alias" => "fp64",
+        "fp8e4m3" => "fp8_e4m3",
+        "fp8e5m2" => "fp8_e5m2",
+        "fp6e3m2" => "fp6_e3m2",
+        "fp6e2m3" => "fp6_e2m3",
+        "fp4e2m1" => "fp4_e2m1",
+        // `f32` is also a TRIOS-supported spelling alongside `fp32` — keep both.
+        other => other,
+    }
+}
+
+/// Build the IGLA-canonical canon_name. Pattern:
+///   IGLA-{LANE}-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}
+/// where `lr` is rendered with the leading-zero notation expected by the
+/// leaderboard-snapshot regex (e.g. `0.001` → `LR001`, `0.0001` → `LR0001`).
+/// LANE token defaults to `MATRIX`; see leaderboard-snapshot SKILL.md LANE registry
+/// for the canonical list (MATRIX, SHORT-WAVE-MATRIX, COVERAGE-A, SCARAB-ADAMW, ...).
+fn build_canon_name(format: &str, hidden: i32, lr: f64, seed: i64, algo: &str) -> String {
+    build_canon_name_lane("MATRIX", format, hidden, lr, seed, algo)
+}
+
+fn build_canon_name_lane(
+    lane: &str,
+    format: &str,
+    hidden: i32,
+    lr: f64,
+    seed: i64,
+    algo: &str,
+) -> String {
+    let lr_token = format_lr_token(lr);
+    let algo_dashed = algo.replace('_', "-");
+    let lane_upper = lane.trim().to_ascii_uppercase();
+    format!("IGLA-{lane_upper}-{format}-h{hidden}-LR{lr_token}-rng{seed}-{algo_dashed}")
+}
+
+/// Render a learning rate as the canon LR token. The regex accepts either
+/// leading-zero compact form (`LR0001`) or decimal form (`LR0.0001`) — we
+/// emit the compact form because every champion canon since Wave-35 uses it.
+fn format_lr_token(lr: f64) -> String {
+    // Map common LRs to their compact tokens.
+    // Anything outside the table falls back to a dot-notation string.
+    let s = format!("{:.6}", lr);
+    // strip trailing zeros, then "0." prefix
+    let trimmed = s.trim_end_matches('0').trim_end_matches('.');
+    if let Some(rest) = trimmed.strip_prefix("0.") {
+        // 0.001 → "001", 0.0001 → "0001"
+        rest.to_string()
+    } else {
+        // 1.5 or 0.5 etc. — keep as-is, dot is allowed by the regex.
+        trimmed.to_string()
+    }
+}
+
 /// Parsed `.trinity/results/cpu_train_<fmt>_<algo>_seed<seed>.json` payload.
 /// We only keep the fields we need for the matrix row; extra fields are
 /// ignored by `#[serde(default)]` on every one.
 #[derive(Debug, Deserialize, Default)]
 struct CpuTrainResult {
     #[serde(default)]
+    #[allow(dead_code)]
     algo: String,
     #[serde(default)]
+    #[allow(dead_code)]
     seed: i64,
     #[serde(default)]
     steps: i64,
     #[serde(default)]
+    #[allow(dead_code)]
     dim: i64,
     #[serde(default)]
     initial_bpb: f64,
@@ -243,20 +345,55 @@ async fn ensure_schema(client: &Client) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
-    let format = arg_or("format", &env_or("TRIOS_FORMAT_TYPE", "f32"));
-    let algo = arg_or("algo", &env_or("TRIOS_ALGO_TYPE", "adamw"));
-    let seed: i64 = arg_or("seed", "42").parse().unwrap_or(42);
-    let dim: i32 = arg_or("hidden", "96").parse().unwrap_or(96);
+    let format_raw = arg_or("format", &env_or("TRIOS_FORMAT_TYPE", "fp32"));
+    let algo_raw = arg_or("algo", &env_or("TRIOS_ALGO_TYPE", "adamw"));
+    // Seed default switched from legacy `42` (FORBIDDEN) to Lucas `47`.
+    let seed: i64 = arg_or("seed", "47").parse().unwrap_or(47);
+    let dim: i32 = arg_or("hidden", "128").parse().unwrap_or(128);
     let steps: i32 = arg_or("steps", "3000").parse().unwrap_or(3000);
     let vocab: i32 = arg_or("vocab", "128").parse().unwrap_or(128);
     let seq: i32 = arg_or("seq", "32").parse().unwrap_or(32);
+    // LR default matches Wave-35 champion canon.
+    let lr: f64 = arg_or("lr", "0.001").parse().unwrap_or(0.001);
+
+    // ── R5 GUARD 1 — ALGO WHITELIST ────────────────────────────────────────
+    let algo = algo_raw.trim();
+    if !ALGO_WHITELIST.contains(&algo) {
+        eprintln!(
+            "[matrix_runner] R5-REJECT unsupported algo={algo:?}: \
+             only {:?} are implemented. \
+             Refusing silent AdamW fallback — see trios#777 / leaderboard-snapshot Q7. \
+             Fix --algo or TRIOS_ALGO_TYPE, then re-run.",
+            ALGO_WHITELIST
+        );
+        return ExitCode::from(3);
+    }
+
+    // ── R5 GUARD 2 — FORMAT ALIAS NORMALIZATION ───────────────────────────
+    let format = normalize_format(format_raw.trim()).to_string();
+    if format != format_raw.trim() {
+        eprintln!(
+            "[matrix_runner] format alias normalized: {format_raw:?} → {format:?} \
+             (see leaderboard-snapshot Q3 / format-drift)"
+        );
+    }
+
+    // ── R5 GUARD 3 — SEED CANON ───────────────────────────────────────────
+    if !SEED_CANON.contains(&seed) {
+        eprintln!(
+            "[matrix_runner] R5-REJECT seed={seed} is not in SEED_CANON {:?}. \
+             Legacy seeds like 42/43/44/45 are FORBIDDEN.",
+            SEED_CANON
+        );
+        return ExitCode::from(4);
+    }
 
     eprintln!(
         "[matrix_runner] cell: format={format} algo={algo} seed={seed} \
-         hidden={dim} steps={steps} vocab={vocab} seq={seq}"
+         hidden={dim} lr={lr} steps={steps} vocab={vocab} seq={seq}"
     );
 
-    let result = match run_cpu_train(&format, &algo, seed, dim, steps, vocab, seq) {
+    let result = match run_cpu_train(&format, algo, seed, dim, steps, vocab, seq) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[matrix_runner] cpu_train ERROR: {e}");
@@ -264,10 +401,14 @@ fn main() -> ExitCode {
         }
     };
 
+    // ── R5 GUARD 4 — CANON NAME (IGLA pattern) ────────────────────────────
+    let lane = arg_or("lane", &env_or("TRIOS_LANE", "MATRIX"));
+    let canon_name = build_canon_name_lane(&lane, &format, dim, lr, seed, algo);
+
     let row = MatrixRow {
-        canon_name: format!("cpu_train_{format}_{algo}"),
+        canon_name,
         format: format.clone(),
-        algo: algo.clone(),
+        algo: algo.to_string(),
         hidden: dim,
         seed,
         step: result.steps as i32,
@@ -306,4 +447,95 @@ fn main() -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// TESTS — R5 guards verified at compile-time
+// ────────────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn algo_whitelist_contains_only_implemented() {
+        assert_eq!(ALGO_WHITELIST.len(), 3);
+        assert!(ALGO_WHITELIST.contains(&"adamw"));
+        assert!(ALGO_WHITELIST.contains(&"muon"));
+        assert!(ALGO_WHITELIST.contains(&"muon-cwd"));
+        for &fake in &["lion", "soap", "tiger", "lamb", "prodigy", "adafactor"] {
+            assert!(!ALGO_WHITELIST.contains(&fake), "fake algo leaked: {fake}");
+        }
+    }
+
+    #[test]
+    fn seed_canon_excludes_forbidden() {
+        for &forbidden in &[42_i64, 43, 44, 45] {
+            assert!(
+                !SEED_CANON.contains(&forbidden),
+                "FORBIDDEN seed {forbidden} leaked into canon"
+            );
+        }
+        for &allowed in &[47_i64, 89, 123, 144, 1597, 2584, 4181] {
+            assert!(
+                SEED_CANON.contains(&allowed),
+                "Lucas/Fibonacci seed {allowed} missing"
+            );
+        }
+    }
+
+    #[test]
+    fn format_alias_normalization() {
+        assert_eq!(normalize_format("binary16"), "fp16");
+        assert_eq!(normalize_format("binary32"), "fp32");
+        assert_eq!(normalize_format("fp8e4m3"), "fp8_e4m3");
+        assert_eq!(normalize_format("fp8e5m2"), "fp8_e5m2");
+        assert_eq!(normalize_format("float16"), "fp16");
+        // Canonical names pass through untouched.
+        assert_eq!(normalize_format("fp16"), "fp16");
+        assert_eq!(normalize_format("gf16"), "gf16");
+        assert_eq!(normalize_format("bf16"), "bf16");
+    }
+
+    #[test]
+    fn canon_name_matches_igla_pattern() {
+        let canon = build_canon_name("fp16", 128, 0.001, 1597, "adamw");
+        assert_eq!(canon, "IGLA-MATRIX-fp16-h128-LR001-rng1597-adamw");
+
+        // Underscores in algo must be converted to dashes in canon_name.
+        let canon_cwd = build_canon_name("gf16", 384, 0.0001, 2584, "muon-cwd");
+        assert_eq!(canon_cwd, "IGLA-MATRIX-gf16-h384-LR0001-rng2584-muon-cwd");
+    }
+
+    #[test]
+    fn canon_name_honours_lane_registry() {
+        // Default MATRIX lane via legacy entry-point.
+        assert_eq!(
+            build_canon_name("fp16", 128, 0.001, 1597, "adamw"),
+            "IGLA-MATRIX-fp16-h128-LR001-rng1597-adamw"
+        );
+        // SHORT-WAVE-MATRIX lane (matches champion canon LANE).
+        assert_eq!(
+            build_canon_name_lane("SHORT-WAVE-MATRIX", "gf16", 128, 0.0001, 1597, "adamw"),
+            "IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0001-rng1597-adamw"
+        );
+        // Lane is upper-cased even if caller passes lowercase.
+        assert_eq!(
+            build_canon_name_lane("matrix", "fp32", 64, 0.001, 47, "muon"),
+            "IGLA-MATRIX-fp32-h64-LR001-rng47-muon"
+        );
+        // SCARAB-ADAMW lane (legacy wave registry entry).
+        assert_eq!(
+            build_canon_name_lane("SCARAB-ADAMW", "binary16", 384, 0.0001, 123, "adamw"),
+            "IGLA-SCARAB-ADAMW-binary16-h384-LR0001-rng123-adamw"
+        );
+    }
+
+    #[test]
+    fn lr_token_compact_form() {
+        assert_eq!(format_lr_token(0.001), "001");
+        assert_eq!(format_lr_token(0.0001), "0001");
+        assert_eq!(format_lr_token(0.003), "003");
+        assert_eq!(format_lr_token(0.01), "01");
+    }
 }
