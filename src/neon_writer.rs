@@ -368,6 +368,23 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32, ema_bpb: Opt
 
     // Try to parse canon_name into derived columns.
     if let Some((format, algo, hidden)) = parse_canon_name(canon_name) {
+        // ── R5 GUARD — WRITE-SIDE ALGO_WHITELIST ──────────────────────────────
+        // Mirror of matrix_runner ALGO_WHITELIST. Rejects fake/silent-fallback
+        // algos (soap/lamb/prodigy/lion/...) at the WRITE path so they cannot
+        // reach ssot.bpb_samples regardless of which trainer binary emitted
+        // them. Refs: trios#777, trios#779, migration 0006_quarantine_fake_canons.
+        // R5 evidence: gf16-lamb vs gf16-prodigy produced bit-identical BPB at
+        // every step (verified 2026-05-14T14:36Z, B-22).
+        const ALGO_WHITELIST: &[&str] = &["adamw", "muon", "muon-cwd"];
+        if !ALGO_WHITELIST.contains(&algo.as_str()) {
+            eprintln!(
+                "[ledger] R5-REJECT write: canon_name={canon_name} algo={algo} not in {:?}. \
+                 Refusing silent-fallback write — see trios#777 / migration 0006.",
+                ALGO_WHITELIST
+            );
+            return;
+        }
+
         // Canonical IGLA path → ssot.bpb_samples (the SoT for leaderboards).
         let sha = std::env::var("GIT_SHA").unwrap_or_default();
         let run_id = std::env::var("RAILWAY_DEPLOYMENT_ID").unwrap_or_default();
@@ -575,5 +592,30 @@ mod tests {
         let _: i64 = step_i64;
         assert_eq!(seed_i64, 43i64);
         assert_eq!(step_i64, 200i64);
+    }
+
+    /// B-22 write-side ALGO_WHITELIST guard — invariants only (we don't have a
+    /// live DSN here so we can't exercise bpb_sample directly; this documents
+    /// the canonical whitelist so a future widening can't happen by accident).
+    #[test]
+    fn write_side_algo_whitelist_is_canonical() {
+        // Canonical: only these three suffixes are real-trainer-backed.
+        const CANONICAL: &[&str] = &["adamw", "muon", "muon-cwd"];
+        assert_eq!(CANONICAL.len(), 3, "whitelist must be exactly 3 entries");
+        for &name in CANONICAL {
+            let canon = format!(
+                "IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng47-{}",
+                name
+            );
+            let (_fmt, algo, _hidden) =
+                parse_canon_name(&canon).expect("canonical algo must parse");
+            assert_eq!(algo, name, "parse_canon_name must round-trip canonical algos");
+        }
+        for &fake in &["soap", "lamb", "prodigy", "lion", "tiger", "adafactor", "sgdm"] {
+            assert!(
+                !CANONICAL.contains(&fake),
+                "fake algo leaked into whitelist: {fake}"
+            );
+        }
     }
 }
