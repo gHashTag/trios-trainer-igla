@@ -603,15 +603,23 @@ mod tests {
         const CANONICAL: &[&str] = &["adamw", "muon", "muon-cwd"];
         assert_eq!(CANONICAL.len(), 3, "whitelist must be exactly 3 entries");
         for &name in CANONICAL {
-            let canon = format!(
-                "IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng47-{}",
-                name
-            );
+            let canon = format!("IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng47-{}", name);
             let (_fmt, algo, _hidden) =
                 parse_canon_name(&canon).expect("canonical algo must parse");
-            assert_eq!(algo, name, "parse_canon_name must round-trip canonical algos");
+            assert_eq!(
+                algo, name,
+                "parse_canon_name must round-trip canonical algos"
+            );
         }
-        for &fake in &["soap", "lamb", "prodigy", "lion", "tiger", "adafactor", "sgdm"] {
+        for &fake in &[
+            "soap",
+            "lamb",
+            "prodigy",
+            "lion",
+            "tiger",
+            "adafactor",
+            "sgdm",
+        ] {
             assert!(
                 !CANONICAL.contains(&fake),
                 "fake algo leaked into whitelist: {fake}"
