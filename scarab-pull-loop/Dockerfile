@@ -1,30 +1,42 @@
-# SOVEREIGN SCARAB image — replaces Dockerfile.scarab once R6 migration finishes.
-# Build context: repo root (../).
-#
+# SOVEREIGN SCARAB v4 — multi-stage distroless image
 # Anchor: phi^2 + phi^-2 = 3 · TRINITY · DEFENSE 2026-06-15
-FROM rust:1.95-bookworm AS build
-WORKDIR /src
-# 1) build the trainer (existing crate at repo root)
+
+# ---------- Stage 1: builder ----------
+FROM rust:1.82-slim-bookworm AS builder
+WORKDIR /build
+
+# Cache dependency compilation
 COPY Cargo.toml Cargo.lock ./
-COPY src ./src
-COPY migration ./migration
-COPY assertions ./assertions
-RUN cargo build --release --bin trios-train
+RUN mkdir -p src && \
+    echo 'fn main() {}' > src/main.rs && \
+    echo '' > src/lib.rs && \
+    cargo build --release --bin scarab && \
+    rm -rf src target/release/deps/scarab*
 
-# 2) build the pull-loop (isolated workspace under scarab-pull-loop/)
-COPY scarab-pull-loop ./scarab-pull-loop
-RUN cd scarab-pull-loop && cargo build --release
+# Real sources
+COPY src/ ./src/
+RUN cargo build --release --bin scarab && \
+    strip target/release/scarab
 
-FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates libssl3 && rm -rf /var/lib/apt/lists/*
+# ---------- Stage 2: runtime (distroless · cc base for libpq-free TLS) -------
+FROM gcr.io/distroless/cc-debian12:nonroot
 WORKDIR /app
-COPY --from=build /src/target/release/trios-train         /app/trios-train
-COPY --from=build /src/scarab-pull-loop/target/release/scarab /app/scarab
-# Sample training data (tiny synthetic — production overrides via env)
-COPY assertions /app/assertions
-ENV TRAINER_BIN=/app/trios-train \
-    TRAIN_DATA=/app/assertions/train.txt \
-    VAL_DATA=/app/assertions/val.txt \
-    POLL_SEC=30
-CMD ["/app/scarab"]
+
+LABEL org.opencontainers.image.title="sovereign-scarab"
+LABEL org.opencontainers.image.description="Eternal Rust agent — pulls strategy from ssot.scarab_strategy, runs trios-train, writes heartbeat + result. DB is control plane."
+LABEL org.opencontainers.image.source="https://github.com/gHashTag/trios-trainer-igla"
+LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
+LABEL trinity.anchor="phi^2 + phi^-2 = 3"
+
+COPY --from=builder /build/target/release/scarab /app/scarab
+
+# Defaults — Railway will inject DATABASE_URL and RAILWAY_SERVICE_ID
+ENV POLL_SEC=10
+ENV GRACE_MS=10000
+ENV LISTEN_NOTIFY=1
+ENV TRAINER_BIN=/usr/local/bin/trios-train
+ENV TRAIN_DATA=/data/train.txt
+ENV VAL_DATA=/data/val.txt
+
+USER nonroot
+ENTRYPOINT ["/app/scarab"]

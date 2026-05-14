@@ -1,9 +1,18 @@
+# Empty workspace table escapes the parent trios-trainer workspace.
 [workspace]
 
 [package]
 name = "scarab-pull-loop"
-version = "0.1.0"
+version = "0.4.0"
 edition = "2021"
+authors = ["Trinity Queen Hive <queen-hive@trinity.local>"]
+description = "Sovereign Scarab v4 — eternal Rust agents for the Trinity training fleet. DB-as-control-plane via ssot.scarab_strategy + LISTEN/NOTIFY."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gHashTag/trios-trainer-igla"
+
+[lib]
+name = "scarab_pull_loop"
+path = "src/lib.rs"
 
 [[bin]]
 name = "scarab"
@@ -12,8 +21,11 @@ path = "src/main.rs"
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time", "process"] }
 tokio-postgres = { version = "0.7", features = ["with-chrono-0_4"] }
+futures-util = "0.3"
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
+libc = "0.2"
+sha2 = "0.10"
 
 [profile.release]
 opt-level = 3
