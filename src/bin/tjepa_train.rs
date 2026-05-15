@@ -24,6 +24,7 @@ use trios_trainer::{
         predictor::{JepaPredictor, PredictorConfig},
         EmaConfig, EmaTarget,
     },
+    neon_writer,
     objective::{
         compute_combined_loss, nca_entropy_loss, ComponentLosses, NcaObjective, ObjectiveConfig,
     },
@@ -877,6 +878,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 st.best_val_bpb,
                 elapsed
             );
+            // R5-honest ledger write to ssot.bpb_samples (ARCH writer hook).
+            // No-op if TRIOS_CANON_NAME unset; safe to call every eval.
+            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
+                if !canon.is_empty() {
+                    neon_writer::bpb_sample(
+                        &canon,
+                        cfg.seed as i32,
+                        step as i32,
+                        val_bpb,
+                        Some(st.best_val_bpb),
+                    );
+                }
+            }
         }
 
         neon_heartbeat(&cfg, step, st.best_val_bpb, &mut st.last_heartbeat);
