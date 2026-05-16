@@ -5,8 +5,10 @@
 FROM rust:1.85-slim-bookworm AS builder
 WORKDIR /build
 
-# Cache dependency compilation
-COPY Cargo.toml Cargo.lock ./
+# Cache dependency compilation. Cargo.lock is generated on first build if
+# absent (the crate's parent workspace ignores it), so we COPY it best-effort.
+COPY Cargo.toml ./
+COPY Cargo.lock* ./
 RUN mkdir -p src && \
     echo 'fn main() {}' > src/main.rs && \
     echo '' > src/lib.rs && \
