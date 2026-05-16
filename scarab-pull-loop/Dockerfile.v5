@@ -10,7 +10,7 @@
 # Build context MUST be the repo root (not scarab-pull-loop/).
 
 # ---------- Stage 1a: scarab pull-loop builder ----------
-FROM rust:1.85-slim-bookworm AS scarab-builder
+FROM rust:1.90-slim-bookworm AS scarab-builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config libssl-dev ca-certificates \
@@ -20,7 +20,7 @@ RUN cargo build --release --bin scarab && \
     strip target/release/scarab
 
 # ---------- Stage 1b: trios-train builder ----------
-FROM rust:1.85-slim-bookworm AS trainer-builder
+FROM rust:1.90-slim-bookworm AS trainer-builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y --no-install-recommends \
         pkg-config libssl-dev ca-certificates build-essential \
