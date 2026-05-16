@@ -218,9 +218,17 @@ async fn main() -> Result<()> {
                 eprintln!("[scarab {}] previous trainer stopped gracefully", cfg.service_id);
             }
             if !cfg.dry_run {
+                // L-SS6 (#157, closes #83): build canon identity once and propagate
+                // to trainer subprocess so logs + ssot.bpb_samples attribution carry
+                // the canon name. Uses canon_name(&strategy, "RAILWAY") to match the
+                // value already written on DONE in scarab_result (see lib.rs:134).
+                let canon = canon_name(&strategy, "RAILWAY");
                 let mut cmd = Command::new(&cfg.trainer_bin);
                 cmd.env("TRIOS_FORMAT_TYPE", &strategy.format)
                     .env("TRIOS_DISABLE_NEON", "1")
+                    .env("CANON_NAME", &canon)
+                    .env("TRIOS_CANON_NAME", &canon)
+                    .env("WORKER_SEED", strategy.seed.to_string())
                     .env_remove("DATABASE_URL")
                     .env_remove("TRIOS_DATABASE_URL")
                     .args([
