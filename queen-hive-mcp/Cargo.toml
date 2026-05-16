@@ -1,0 +1,35 @@
+# Empty workspace table escapes the parent trios-trainer workspace,
+# mirroring the scarab-pull-loop layout.
+[workspace]
+
+[package]
+name        = "queen-hive-mcp"
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["Trinity Queen Hive <queen-hive@trinity.local>"]
+description = "Queen-Hive MCP writer — single sovereign control plane for the Sovereign Scarab v4 fleet. Writes to ssot.scarab_strategy via 7 MCP tools. NO Railway API, NO PAT tokens, NO variableUpsert."
+license     = "MIT OR Apache-2.0"
+repository  = "https://github.com/gHashTag/trios-trainer-igla"
+
+[[bin]]
+name = "queen-hive-mcp"
+path = "src/main.rs"
+
+[lib]
+name = "queen_hive_mcp"
+path = "src/lib.rs"
+
+[dependencies]
+tokio          = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-serde_json-1"] }
+anyhow         = "1"
+serde          = { version = "1", features = ["derive"] }
+serde_json     = "1"
+chrono         = { version = "0.4", features = ["serde"] }
+tracing        = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto         = "thin"
+codegen-units = 1
+strip       = "symbols"
