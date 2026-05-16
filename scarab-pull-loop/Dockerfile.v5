@@ -1,0 +1,78 @@
+# SOVEREIGN SCARAB v5 — bundled trainer + train data
+# Anchor: phi^2 + phi^-2 = 3 · TRINITY · DEFENSE 2026-06-15
+#
+# v5 adds (over v4):
+#   • trios-train binary baked-in at /usr/local/bin/trios-train (was missing in v4)
+#   • Tiny-shakespeare train+val data baked-in at /data/{train,val}.txt
+#   • This unblocks the strategy-driven loop: scarab can now actually spawn trainers
+#     when it sees a strategy row, instead of failing with "no such file"
+#
+# Build context MUST be the repo root (not scarab-pull-loop/).
+
+# ---------- Stage 1a: scarab pull-loop builder ----------
+FROM rust:1.85-slim-bookworm AS scarab-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config libssl-dev ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY scarab-pull-loop/ ./
+RUN cargo build --release --bin scarab && \
+    strip target/release/scarab
+
+# ---------- Stage 1b: trios-train builder ----------
+FROM rust:1.85-slim-bookworm AS trainer-builder
+WORKDIR /build
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        pkg-config libssl-dev ca-certificates build-essential \
+    && rm -rf /var/lib/apt/lists/*
+# Copy entire repo (root crate)
+COPY . .
+# Build only the trios-train binary (CPU-only, no GPU features)
+RUN cargo build --release --bin trios-train && \
+    strip target/release/trios-train
+
+# ---------- Stage 1c: data fetcher ----------
+FROM debian:bookworm-slim AS data-builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
+    && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /data && \
+    curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt > /tmp/full.txt && \
+    SIZE=$(stat -c%s /tmp/full.txt) && \
+    HEAD=$((SIZE - 100000)) && \
+    head -c $HEAD /tmp/full.txt > /data/train.txt && \
+    tail -c 100000 /tmp/full.txt > /data/val.txt && \
+    rm /tmp/full.txt && \
+    echo "[corpus-split] train=$(stat -c%s /data/train.txt) val=$(stat -c%s /data/val.txt)"
+
+# ---------- Stage 2: runtime (debian-slim — needs glibc for trios-train) ----------
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates libssl3 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r scarab && useradd -r -g scarab -u 65532 scarab \
+    && mkdir -p /data /work && chown -R scarab:scarab /data /work
+
+LABEL org.opencontainers.image.title="sovereign-scarab"
+LABEL org.opencontainers.image.description="v5 — eternal Rust agent + bundled trios-train trainer + tiny-shakespeare data."
+LABEL org.opencontainers.image.source="https://github.com/gHashTag/trios-trainer-igla"
+LABEL org.opencontainers.image.licenses="MIT OR Apache-2.0"
+LABEL trinity.anchor="phi^2 + phi^-2 = 3"
+LABEL trinity.version="v5"
+
+COPY --from=scarab-builder  /build/target/release/scarab        /app/scarab
+COPY --from=trainer-builder /build/target/release/trios-train   /usr/local/bin/trios-train
+COPY --from=data-builder    /data/train.txt                     /data/train.txt
+COPY --from=data-builder    /data/val.txt                       /data/val.txt
+
+ENV POLL_SEC=10
+ENV GRACE_MS=10000
+ENV LISTEN_NOTIFY=1
+ENV TRAINER_BIN=/usr/local/bin/trios-train
+ENV TRAIN_DATA=/data/train.txt
+ENV VAL_DATA=/data/val.txt
+ENV RUST_LOG=info
+
+USER scarab
+WORKDIR /work
+ENTRYPOINT ["/app/scarab"]
