@@ -2,7 +2,7 @@
 # Anchor: phi^2 + phi^-2 = 3 · TRINITY · DEFENSE 2026-06-15
 
 # ---------- Stage 1: builder ----------
-FROM rust:1.82-slim-bookworm AS builder
+FROM rust:1.85-slim-bookworm AS builder
 WORKDIR /build
 
 # Cache dependency compilation
