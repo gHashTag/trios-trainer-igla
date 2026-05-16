@@ -11,12 +11,19 @@ COPY Cargo.toml ./
 COPY Cargo.lock* ./
 RUN mkdir -p src && \
     echo 'fn main() {}' > src/main.rs && \
-    echo '' > src/lib.rs && \
+    echo '// dummy' > src/lib.rs && \
     cargo build --release --bin scarab && \
-    rm -rf src target/release/deps/scarab*
+    rm -rf src \
+           target/release/deps/scarab* \
+           target/release/deps/libscarab_pull_loop* \
+           target/release/deps/scarab_pull_loop* \
+           target/release/libscarab_pull_loop* \
+           target/release/scarab \
+           target/release/.fingerprint/scarab-pull-loop-*
 
 # Real sources
 COPY src/ ./src/
+# Force Cargo to detect changed sources (mtime is newer than cached fingerprint).
 RUN cargo build --release --bin scarab && \
     strip target/release/scarab
 
