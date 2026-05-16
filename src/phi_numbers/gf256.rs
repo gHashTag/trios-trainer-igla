@@ -24,7 +24,9 @@ impl GF256 {
     ///   bits 30..0    : top 31 mantissa bits
     /// limbs[2..0]    : remaining 192 mantissa bits, MSB at limbs[2]
     pub fn from_f64(value: f64) -> Self {
-        if value == 0.0 { return Self { limbs: [0; 4] }; }
+        if value == 0.0 {
+            return Self { limbs: [0; 4] };
+        }
         let sign = if value < 0.0 { 1u64 } else { 0u64 };
         let abs_val = value.abs();
 
@@ -41,13 +43,21 @@ impl GF256 {
         let f64_mant: u64 = f64_bits & 0x000F_FFFF_FFFF_FFFF; // 52 bits
 
         let mut g_exp = f64_exp + Self::EXP_BIAS;
-        if g_exp < 0 { return Self { limbs: [0, 0, 0, sign << 63] }; }
+        if g_exp < 0 {
+            return Self {
+                limbs: [0, 0, 0, sign << 63],
+            };
+        }
         let exp_max: i64 = (1i64 << Self::EXP_BITS) - 1;
         if g_exp >= exp_max {
             let mant_top_mask: u64 = (1u64 << 31) - 1;
             return Self {
-                limbs: [u64::MAX, u64::MAX, u64::MAX,
-                        (sign << 63) | (((exp_max - 1) as u64) << 31) | mant_top_mask],
+                limbs: [
+                    u64::MAX,
+                    u64::MAX,
+                    u64::MAX,
+                    (sign << 63) | (((exp_max - 1) as u64) << 31) | mant_top_mask,
+                ],
             };
         }
 
@@ -55,17 +65,25 @@ impl GF256 {
         // Top mantissa slot is 31 bits in limbs[3]; the next limbs[2] starts immediately below.
         // We left-align: top 31 bits → limbs[3] low 31, next 21 bits → limbs[2] high 21.
         let top31 = (f64_mant >> (52 - 31)) as u64; // upper 31 bits
-        let rem21 = f64_mant & ((1u64 << 21) - 1);  // remaining 21 bits
+        let rem21 = f64_mant & ((1u64 << 21) - 1); // remaining 21 bits
         let limb2 = rem21 << (64 - 21); // place at top of limbs[2]
 
         let limb3 = (sign << 63) | ((g_exp as u64) << 31) | (top31 & ((1u64 << 31) - 1));
-        Self { limbs: [0, 0, limb2, limb3] }
+        Self {
+            limbs: [0, 0, limb2, limb3],
+        }
     }
 
     pub fn to_f64(self) -> f64 {
-        if self.limbs == [0; 4] { return 0.0; }
+        if self.limbs == [0; 4] {
+            return 0.0;
+        }
         let l3 = self.limbs[3];
-        let sign = if (l3 & Self::SIGN_BIT) != 0 { -1.0f64 } else { 1.0f64 };
+        let sign = if (l3 & Self::SIGN_BIT) != 0 {
+            -1.0f64
+        } else {
+            1.0f64
+        };
         let exp_mask: u64 = ((1u64 << Self::EXP_BITS) - 1) << 31;
         let exp = ((l3 & exp_mask) >> 31) as i64;
         let exp_max: i64 = (1i64 << Self::EXP_BITS) - 1;
@@ -88,22 +106,41 @@ impl GF256 {
         sign * exp_val * mant_val
     }
 
-    pub fn limbs(self) -> [u64; 4] { self.limbs }
-    pub fn from_limbs(limbs: [u64; 4]) -> Self { Self { limbs } }
+    pub fn limbs(self) -> [u64; 4] {
+        self.limbs
+    }
+    pub fn from_limbs(limbs: [u64; 4]) -> Self {
+        Self { limbs }
+    }
 
-    pub fn quant_error_f64(self, original: f64) -> f64 { (self.to_f64() - original).abs() }
+    pub fn quant_error_f64(self, original: f64) -> f64 {
+        (self.to_f64() - original).abs()
+    }
     pub fn relative_error_f64(self, original: f64) -> f64 {
-        if original.abs() < f64::MIN_POSITIVE { return self.quant_error_f64(original); }
+        if original.abs() < f64::MIN_POSITIVE {
+            return self.quant_error_f64(original);
+        }
         self.quant_error_f64(original) / original.abs()
     }
 }
 
-impl Clone for GF256 { fn clone(&self) -> Self { Self { limbs: self.limbs } } }
+impl Clone for GF256 {
+    fn clone(&self) -> Self {
+        Self { limbs: self.limbs }
+    }
+}
 impl Copy for GF256 {}
 impl std::fmt::Debug for GF256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GF256({:016x}{:016x}{:016x}{:016x} -> {})",
-               self.limbs[3], self.limbs[2], self.limbs[1], self.limbs[0], self.to_f64())
+        write!(
+            f,
+            "GF256({:016x}{:016x}{:016x}{:016x} -> {})",
+            self.limbs[3],
+            self.limbs[2],
+            self.limbs[1],
+            self.limbs[0],
+            self.to_f64()
+        )
     }
 }
 
@@ -111,7 +148,10 @@ impl std::fmt::Debug for GF256 {
 mod tests {
     use super::*;
 
-    #[test] fn test_zero() { assert_eq!(GF256::from_f64(0.0).to_f64(), 0.0); }
+    #[test]
+    fn test_zero() {
+        assert_eq!(GF256::from_f64(0.0).to_f64(), 0.0);
+    }
 
     #[test]
     fn test_phi() {
@@ -121,8 +161,8 @@ mod tests {
 
     #[test]
     fn test_trinity_identity() {
-        let s = GF256::from_f64(PHI_SQUARED).to_f64()
-              + GF256::from_f64(PHI_INVERSE_SQUARED).to_f64();
+        let s =
+            GF256::from_f64(PHI_SQUARED).to_f64() + GF256::from_f64(PHI_INVERSE_SQUARED).to_f64();
         assert!((s - 3.0).abs() < 1e-14, "trinity={}", s);
     }
 
@@ -145,7 +185,12 @@ mod tests {
     fn test_round_trip() {
         for v in [0.5_f64, 1.0, PHI, PHI_SQUARED, 16.0, 1024.0, 1e6] {
             let g = GF256::from_f64(v);
-            assert!(g.relative_error_f64(v) < 1e-14, "v={} err={}", v, g.relative_error_f64(v));
+            assert!(
+                g.relative_error_f64(v) < 1e-14,
+                "v={} err={}",
+                v,
+                g.relative_error_f64(v)
+            );
         }
     }
 }

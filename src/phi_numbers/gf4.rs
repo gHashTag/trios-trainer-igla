@@ -35,9 +35,7 @@ impl GF4 {
 
         let mut gf4_exp = f32_exp + Self::EXP_BIAS as i32;
         if gf4_exp < 0 {
-            return Self {
-                bits: sign << 3,
-            };
+            return Self { bits: sign << 3 };
         }
         if gf4_exp > 1 {
             // Saturate at max representable
@@ -67,7 +65,11 @@ impl GF4 {
         if self.bits & 0x07 == 0 {
             return 0.0;
         }
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0 } else { 1.0 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0
+        } else {
+            1.0
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> 2) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 
@@ -76,14 +78,22 @@ impl GF4 {
         sign * exp_val * mant_val
     }
 
-    pub fn bits(self) -> u8 { self.bits }
-    pub fn from_bits(bits: u8) -> Self { Self { bits: bits & 0x0F } }
+    pub fn bits(self) -> u8 {
+        self.bits
+    }
+    pub fn from_bits(bits: u8) -> Self {
+        Self { bits: bits & 0x0F }
+    }
     pub fn quant_error_f32(self, original: f32) -> f32 {
         (self.to_f32() - original).abs()
     }
 }
 
-impl Clone for GF4 { fn clone(&self) -> Self { *self } }
+impl Clone for GF4 {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 impl Copy for GF4 {}
 impl std::fmt::Debug for GF4 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

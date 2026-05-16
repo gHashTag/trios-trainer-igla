@@ -72,12 +72,20 @@ impl GF12 {
         if self.bits == 0 {
             return 0.0;
         }
-        let sign = if (self.bits & Self::SIGN_BIT) != 0 { -1.0 } else { 1.0 };
+        let sign = if (self.bits & Self::SIGN_BIT) != 0 {
+            -1.0
+        } else {
+            1.0
+        };
         let exp = ((self.bits & Self::EXP_MASK) >> 7) as i32;
         let mant = (self.bits & Self::MANT_MASK) as u32;
 
         if exp == 0x0F {
-            return if mant == 0 { sign * f32::INFINITY } else { f32::NAN };
+            return if mant == 0 {
+                sign * f32::INFINITY
+            } else {
+                f32::NAN
+            };
         }
 
         let exp_val = 2.0_f32.powi(exp - Self::EXP_BIAS as i32);
@@ -85,8 +93,14 @@ impl GF12 {
         sign * exp_val * mant_val
     }
 
-    pub fn bits(self) -> u16 { self.bits }
-    pub fn from_bits(bits: u16) -> Self { Self { bits: bits & 0x0FFF } }
+    pub fn bits(self) -> u16 {
+        self.bits
+    }
+    pub fn from_bits(bits: u16) -> Self {
+        Self {
+            bits: bits & 0x0FFF,
+        }
+    }
     pub fn quant_error_f32(self, original: f32) -> f32 {
         (self.to_f32() - original).abs()
     }
@@ -98,7 +112,11 @@ impl GF12 {
     }
 }
 
-impl Clone for GF12 { fn clone(&self) -> Self { *self } }
+impl Clone for GF12 {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 impl Copy for GF12 {}
 impl std::fmt::Debug for GF12 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -111,7 +129,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_zero() { assert_eq!(GF12::from_f32(0.0).to_f32(), 0.0); }
+    fn test_zero() {
+        assert_eq!(GF12::from_f32(0.0).to_f32(), 0.0);
+    }
 
     #[test]
     fn test_one() {
@@ -128,21 +148,26 @@ mod tests {
     #[test]
     fn test_trinity_identity() {
         let s = GF12::from_f32(PHI_SQUARED as f32).to_f32() as f64
-              + GF12::from_f32(PHI_INVERSE_SQUARED as f32).to_f32() as f64;
+            + GF12::from_f32(PHI_INVERSE_SQUARED as f32).to_f32() as f64;
         assert!((s - 3.0).abs() < 0.05, "trinity={}", s);
     }
 
     #[test]
     fn test_split_ratio() {
         let r = GF12::EXP_BITS as f64 / GF12::MANT_BITS as f64;
-        assert!((r - 4.0/7.0).abs() < 1e-10);
+        assert!((r - 4.0 / 7.0).abs() < 1e-10);
     }
 
     #[test]
     fn test_round_trip() {
         for v in [0.5_f32, 1.0, PHI as f32, 2.0, 8.0, 100.0] {
             let g = GF12::from_f32(v);
-            assert!(g.relative_error_f32(v) < 0.02, "v={} err={}", v, g.relative_error_f32(v));
+            assert!(
+                g.relative_error_f32(v) < 0.02,
+                "v={} err={}",
+                v,
+                g.relative_error_f32(v)
+            );
         }
     }
 }

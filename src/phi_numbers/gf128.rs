@@ -25,7 +25,9 @@ impl GF128 {
 
     /// Encode an f64 value (we don't have f128 natively; f64 is the highest-precision source).
     pub fn from_f64(value: f64) -> Self {
-        if value == 0.0 { return Self { hi: 0, lo: 0 }; }
+        if value == 0.0 {
+            return Self { hi: 0, lo: 0 };
+        }
         let sign = if value < 0.0 { 1u64 } else { 0u64 };
         let abs_val = value.abs();
 
@@ -43,7 +45,12 @@ impl GF128 {
         let f64_mant = f64_bits & 0x000F_FFFF_FFFF_FFFF; // 52 bits
 
         let mut g_exp = f64_exp + Self::EXP_BIAS;
-        if g_exp < 0 { return Self { hi: sign << 63, lo: 0 }; }
+        if g_exp < 0 {
+            return Self {
+                hi: sign << 63,
+                lo: 0,
+            };
+        }
         let exp_max: i64 = (1i64 << Self::EXP_BITS) - 1;
         if g_exp >= exp_max {
             return Self {
@@ -54,9 +61,9 @@ impl GF128 {
 
         // 99 mantissa bits, source = 52 → left-shift by 47.
         // Top 35 bits go in hi, bottom 64 in lo.
-        let mant128_lo: u64 = f64_mant << 47;     // bits 47..98 occupied → bottom 64 of mant
+        let mant128_lo: u64 = f64_mant << 47; // bits 47..98 occupied → bottom 64 of mant
         let mant128_hi: u64 = f64_mant >> (64 - 47); // bits 99-64=35 top bits → top 35 of mant
-        // mantissa-high mask = 35 bits
+                                                     // mantissa-high mask = 35 bits
         let mant_hi_mask: u64 = (1u64 << 35) - 1;
         let mant_hi = mant128_hi & mant_hi_mask;
 
@@ -65,8 +72,14 @@ impl GF128 {
     }
 
     pub fn to_f64(self) -> f64 {
-        if self.hi == 0 && self.lo == 0 { return 0.0; }
-        let sign = if (self.hi & Self::SIGN_BIT) != 0 { -1.0f64 } else { 1.0f64 };
+        if self.hi == 0 && self.lo == 0 {
+            return 0.0;
+        }
+        let sign = if (self.hi & Self::SIGN_BIT) != 0 {
+            -1.0f64
+        } else {
+            1.0f64
+        };
         let exp_mask: u64 = ((1u64 << Self::EXP_BITS) - 1) << 35;
         let exp = ((self.hi & exp_mask) >> 35) as i64;
         let exp_max: i64 = (1i64 << Self::EXP_BITS) - 1;
@@ -89,22 +102,42 @@ impl GF128 {
         sign * exp_val * mant_val
     }
 
-    pub fn hi(self) -> u64 { self.hi }
-    pub fn lo(self) -> u64 { self.lo }
-    pub fn from_parts(hi: u64, lo: u64) -> Self { Self { hi, lo } }
+    pub fn hi(self) -> u64 {
+        self.hi
+    }
+    pub fn lo(self) -> u64 {
+        self.lo
+    }
+    pub fn from_parts(hi: u64, lo: u64) -> Self {
+        Self { hi, lo }
+    }
 
-    pub fn quant_error_f64(self, original: f64) -> f64 { (self.to_f64() - original).abs() }
+    pub fn quant_error_f64(self, original: f64) -> f64 {
+        (self.to_f64() - original).abs()
+    }
     pub fn relative_error_f64(self, original: f64) -> f64 {
-        if original.abs() < f64::MIN_POSITIVE { return self.quant_error_f64(original); }
+        if original.abs() < f64::MIN_POSITIVE {
+            return self.quant_error_f64(original);
+        }
         self.quant_error_f64(original) / original.abs()
     }
 }
 
-impl Clone for GF128 { fn clone(&self) -> Self { *self } }
+impl Clone for GF128 {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 impl Copy for GF128 {}
 impl std::fmt::Debug for GF128 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "GF128(hi={:016x} lo={:016x} -> {})", self.hi, self.lo, self.to_f64())
+        write!(
+            f,
+            "GF128(hi={:016x} lo={:016x} -> {})",
+            self.hi,
+            self.lo,
+            self.to_f64()
+        )
     }
 }
 
@@ -112,7 +145,10 @@ impl std::fmt::Debug for GF128 {
 mod tests {
     use super::*;
 
-    #[test] fn test_zero() { assert_eq!(GF128::from_f64(0.0).to_f64(), 0.0); }
+    #[test]
+    fn test_zero() {
+        assert_eq!(GF128::from_f64(0.0).to_f64(), 0.0);
+    }
 
     #[test]
     fn test_one() {
@@ -129,8 +165,8 @@ mod tests {
 
     #[test]
     fn test_trinity_identity_exact() {
-        let s = GF128::from_f64(PHI_SQUARED).to_f64()
-              + GF128::from_f64(PHI_INVERSE_SQUARED).to_f64();
+        let s =
+            GF128::from_f64(PHI_SQUARED).to_f64() + GF128::from_f64(PHI_INVERSE_SQUARED).to_f64();
         assert!((s - 3.0).abs() < 1e-14, "trinity={}", s);
     }
 

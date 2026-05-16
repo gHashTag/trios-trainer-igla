@@ -5,28 +5,28 @@
 //! GF32 · GF64 · GF128 · GF256. PhD Glava 06 / 09 / 23.
 
 pub mod fibonacci_dims;
-pub mod gf4;
-pub mod gf8;
 pub mod gf12;
+pub mod gf128;
 pub mod gf20;
 pub mod gf24;
-pub mod gf32;
-pub mod gf64;
-pub mod gf128;
 pub mod gf256;
+pub mod gf32;
+pub mod gf4;
+pub mod gf64;
+pub mod gf8;
 pub mod gfternary;
 pub mod phi_constants;
 
 pub use fibonacci_dims::*;
-pub use gf4::GF4;
-pub use gf8::GF8;
 pub use gf12::GF12;
+pub use gf128::GF128;
 pub use gf20::GF20;
 pub use gf24::GF24;
-pub use gf32::GF32;
-pub use gf64::GF64;
-pub use gf128::GF128;
 pub use gf256::GF256;
+pub use gf32::GF32;
+pub use gf4::GF4;
+pub use gf64::GF64;
+pub use gf8::GF8;
 pub use gfternary::GFTernary;
 pub use phi_constants::*;
 
