@@ -253,11 +253,13 @@ mod tests {
 
     #[test]
     fn no_railway_api_constants_anywhere() {
-        // Compile-time guard: this file must not mention RAILWAY_TOKEN /
-        // variableUpsert. Asserted at runtime as a sentinel.
+        // Sentinel: scan only the *production* portion of this file (before the
+        // #[cfg(test)] marker) so the test assertions themselves don't trigger
+        // the checks they are testing.
         let src = include_str!("lib.rs");
-        assert!(!src.contains("RAILWAY_TOKEN"), "R-SI-1: no RAILWAY_TOKEN");
-        assert!(!src.contains("variableUpsert"), "L-SS7: no variableUpsert");
-        assert!(!src.contains("railway.app/graphql"), "no Railway GraphQL");
+        let prod = src.split("#[cfg(test)]").next().unwrap_or(src);
+        assert!(!prod.contains("RAILWAY_TOKEN"), "R-SI-1: no RAILWAY_TOKEN in prod code");
+        assert!(!prod.contains("variableUpsert"), "L-SS7: no variableUpsert in prod code");
+        assert!(!prod.contains("railway.app/graphql"), "no Railway GraphQL in prod code");
     }
 }
