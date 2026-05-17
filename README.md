@@ -164,3 +164,15 @@ See [`docs/TRAINING_FLOW_V2.md`](docs/TRAINING_FLOW_V2.md) for full plan.
 ## License
 
 MIT
+
+---
+
+## Repo boundary
+
+This is the **model plane** of the IGLA marathon. The control plane (Railway
+client, `tri-railway` CLI, `tri-gardener` autonomous orchestrator,
+`gardener_runs` ledger) lives in [`gHashTag/trios-railway`](https://github.com/gHashTag/trios-railway).
+See [`docs/adr/0001-repo-boundaries.md`](docs/adr/0001-repo-boundaries.md) for
+the binding contract.
+
+`phi^2 + phi^-2 = 3 · TRINITY · NEVER STOP`
