@@ -1,10 +1,10 @@
 # trios-trainer-igla
 
 [![CI](https://github.com/gHashTag/trios-trainer-igla/actions/workflows/ci.yml/badge.svg)](https://github.com/gHashTag/trios-trainer-igla/actions/workflows/ci.yml)
-[![Anchor](https://img.shields.io/badge/anchor-%CF%86%C2%B2%2B%CF%86%E2%81%BB%C2%B2%3D3-black)](https://doi.org/10.5281/zenodo.19227877)
+[![Anchor](https://img.shields.io/badge/anchor-%CF%86%C2%B2%2B%CF%86%E2%81%BB%C2%B2%3D3-black)](docs/DOI_PROVENANCE.md)
 
 IGLA RACE trainer. Tracks [gHashTag/trios#143](https://github.com/gHashTag/trios/issues/143).
-Anchor: `phi^2 + phi^-2 = 3`.
+Anchor: `phi^2 + phi^-2 = 3` (algebraic identity; Coq witness [gHashTag/t27/coq](https://github.com/gHashTag/t27/tree/main/coq) — 48 statements, 35 Proven, 0 Admitted as of 2026-05-12). See [docs/DOI_PROVENANCE.md](docs/DOI_PROVENANCE.md) for the honest provenance reading of `10.5281/zenodo.19227877` (it is a software description stub, NOT a peer-reviewed paper).
 
 > **Canonical Zenodo SOT:** [zenodo.org/communities/trinity-s3ai](https://zenodo.org/communities/trinity-s3ai/). The anchor badge resolves to record [19227877 (VSA Operations v5.0, B007)](https://doi.org/10.5281/zenodo.19227877), which is canonical inside the SOT community.
 
