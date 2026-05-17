@@ -161,6 +161,41 @@ cargo test --release -- --ignored  # champion reproduction (long)
 
 See [`docs/TRAINING_FLOW_V2.md`](docs/TRAINING_FLOW_V2.md) for full plan.
 
+## Railway Deployment Status (2026-04-27)
+
+3-seed cloud fleet **deployed and live** in Railway project `IGLA`
+([`e4fe33bb-3b09-4842-9782-7d2dea1abc9b`](https://railway.com/project/e4fe33bb-3b09-4842-9782-7d2dea1abc9b)),
+env `production` (`54e293b9-00a9-4102-814d-db151636d96e`):
+
+| Service | serviceId | Image | Deploy |
+|---|---|---|---|
+| `trios-train-seed-100` | `0f0a948f-c457-4f4c-b5c7-a5ef96fcf9e9` | `ghcr.io/ghashtag/trios-trainer-igla:latest` | SUCCESS |
+| `trios-train-seed-101` | `8e1c7858-5c38-43bc-8015-23c46aaa1ee2` | `ghcr.io/ghashtag/trios-trainer-igla:latest` | SUCCESS |
+| `trios-train-seed-102` | `20b0fcef-b6da-4853-94b7-b1cc27cbd406` | `ghcr.io/ghashtag/trios-trainer-igla:latest` | SUCCESS |
+
+E2E test of `tri` + `trios-igla` against [`ee7771f`](https://github.com/gHashTag/trios-trainer-igla/commit/ee7771f7) is recorded in [gHashTag/trios#143](https://github.com/gHashTag/trios/issues/143#issuecomment-4324652513).
+
+### R5 honesty — Gate-2 status: **NOT DONE**
+
+Containers **start and train**, but the training corpus is missing from `ghcr.io/ghashtag/trios-trainer-igla:latest`:
+
+```
+Failed to load data/tiny_shakespeare.txt: No such file or directory (os error 2). Using fallback.
+step=4000 ntp=0.0001 ... val_bpb=0.0001
+step=7000 ntp=0.0000 ... val_bpb=0.0000
+```
+
+`val_bpb=0.0000` is degenerate output of the synthetic fallback in `train_loop.rs:57`, **not** a Gate-2 win. No valid R7 ledger row will be emitted from these services until the corpus is baked into the image (or a Railway volume is mounted). Same root cause on legacy seed-43/44/45 (`val_bpb=3.4e38` = `f32::MAX` overflow).
+
+### Open follow-up issues
+
+- **P0 — bake corpus into Docker image**: add `COPY data/tinyshakespeare.txt /app/data/` (or `ADD <url>`) to the `Dockerfile`; flip `train_loop.rs` from silent fallback to `bail!` on missing data file.
+- **P1 — `tri.rs` infra mismatch**:
+  - `RAILWAY_PROJECT_ID = "abdf752c-..."` -> `e4fe33bb-3b09-4842-9782-7d2dea1abc9b` (live IGLA project)
+  - `service_name(seed) = "trainer-seed-{}"` -> `"trios-train-seed-{}"` (live convention)
+  - `GATE_SEEDS = &[42, 43, 44]` -> `&[100, 101, 102]` (or env-driven)
+- **P2 — clean stale fleet**: legacy `trios-train-seed-43/44/45` show `f32::MAX` overflow; remove or diagnose.
+
 ## License
 
 MIT
