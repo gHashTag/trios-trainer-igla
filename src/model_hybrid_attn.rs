@@ -264,6 +264,10 @@ pub struct ForwardCache {
     pub normed1: Vec<f32>,
     /// Layer 2 output before residual + norm
     pub layer2_out: Vec<f32>,
+    /// Pre-WO attention output for layer 1 (seq_len × d_model)
+    pub attn_pre_wo1: Vec<f32>,
+    /// Pre-WO attention output for layer 2 (seq_len × d_model)
+    pub attn_pre_wo2: Vec<f32>,
 }
 
 impl ForwardCache {
@@ -282,6 +286,8 @@ impl ForwardCache {
             layer1_out: vec![0.0; seq_len * d_model],
             normed1: vec![0.0; seq_len * d_model],
             layer2_out: vec![0.0; seq_len * d_model],
+            attn_pre_wo1: vec![0.0; seq_len * d_model],
+            attn_pre_wo2: vec![0.0; seq_len * d_model],
         }
     }
 }
@@ -561,6 +567,7 @@ impl HybridAttn {
         cache.k1 = cache1.k;
         cache.v1 = cache1.v;
         cache.attn_weights1 = cache1.attn_weights;
+        cache.attn_pre_wo1 = cache1.attn_out;
         cache.layer1_out = layer1_out.clone();
 
         let residual1 = add_residual(tokens, &layer1_out);
@@ -581,6 +588,7 @@ impl HybridAttn {
         cache.k2 = cache2.k;
         cache.v2 = cache2.v;
         cache.attn_weights2 = cache2.attn_weights;
+        cache.attn_pre_wo2 = cache2.attn_out;
         cache.layer2_out = layer2_out.clone();
 
         let residual2 = add_residual(&normed1, &layer2_out);
@@ -653,6 +661,7 @@ impl HybridAttn {
             k,
             v,
             attn_weights,
+            attn_out: attn_out.clone(),
             layer_idx,
         };
 
@@ -688,8 +697,6 @@ impl HybridAttn {
         let d_head = d / h;
         let eps = 1e-5_f32;
 
-        gradients.clear();
-
         // Start from output gradient
         let mut d_current = d_output.to_vec();
 
@@ -707,7 +714,7 @@ impl HybridAttn {
 
             // Backward through output projection WO2
             let (d_attn_out, d_wo2) =
-                matmul_backward(&cache.layer2_out, &d_layer2_out, &self.wo2, seq_len, d, d);
+                matmul_backward(&cache.attn_pre_wo2, &d_layer2_out, &self.wo2, seq_len, d, d);
             gradients.d_wo2 = d_wo2;
 
             // Backward through attention mechanism (layer 2)
@@ -755,7 +762,7 @@ impl HybridAttn {
 
         // Backward through output projection WO1
         let (d_attn_out, d_wo) =
-            matmul_backward(&cache.layer1_out, &d_layer1_out, &self.wo, seq_len, d, d);
+            matmul_backward(&cache.attn_pre_wo1, &d_layer1_out, &self.wo, seq_len, d, d);
         gradients.d_wo = d_wo;
 
         // Backward through attention mechanism (layer 1)
@@ -798,6 +805,7 @@ struct LayerCache {
     pub k: Vec<f32>,
     pub v: Vec<f32>,
     pub attn_weights: Vec<Vec<f32>>,
+    pub attn_out: Vec<f32>,
     pub layer_idx: usize,
 }
 
@@ -903,7 +911,7 @@ fn attention_backward_cached(
     for head in 0..num_heads {
         let head_offset = head * d_head;
 
-        // First, compute d_v: accumulate from all attended positions
+        // Compute d_v: accumulate from all attended positions
         for i in 0..seq_len {
             let idx_base = i * (i + 1) / 2;
             for j in 0..=i {
@@ -916,64 +924,40 @@ fn attention_backward_cached(
             }
         }
 
-        // Compute d_attn_weights and backprop to d_q, d_k
+        // Compute d_attn_weights and backprop through softmax to d_q, d_k
         for i in 0..seq_len {
             let idx_base = i * (i + 1) / 2;
 
             // d_attn_weight for each j
+            let mut d_aw = vec![0.0_f32; i + 1];
             for j in 0..=i {
-                let mut d_attn_w = 0.0_f32;
                 for k_idx in 0..d_head {
                     let out_idx = i * d_model + head_offset + k_idx;
                     let v_idx = j * d_model + head_offset + k_idx;
-                    d_attn_w += d_attn_out[out_idx] * v[v_idx];
+                    d_aw[j] += d_attn_out[out_idx] * v[v_idx];
                 }
+            }
 
-                // Backprop through softmax
-                let softmax_grad =
-                    softmax_backward_single(idx_base + j, &attn_weights[head], d_attn_w, i + 1);
+            // Backprop through softmax: d_scores[j] = w[j] * (d_aw[j] - sum_k(w[k] * d_aw[k]))
+            let sum_wdaw: f32 = (0..=i)
+                .map(|jj| attn_weights[head][idx_base + jj] * d_aw[jj])
+                .sum();
 
-                // Backprop to Q (at position i)
+            for j in 0..=i {
+                let w = attn_weights[head][idx_base + j];
+                let d_score = w * (d_aw[j] - sum_wdaw) * qk_gain_f;
+
                 for k_idx in 0..d_head {
                     let q_idx = i * d_model + head_offset + k_idx;
-                    d_q[q_idx] += softmax_grad * k[j * d_model + head_offset + k_idx] * qk_gain_f;
-                }
-
-                // Backprop to K (at position j)
-                for k_idx in 0..d_head {
                     let k_idx2 = j * d_model + head_offset + k_idx;
-                    d_k[k_idx2] += softmax_grad * q[i * d_model + head_offset + k_idx] * qk_gain_f;
+                    d_q[q_idx] += d_score * k[k_idx2];
+                    d_k[k_idx2] += d_score * q[q_idx];
                 }
             }
         }
     }
 
     (d_q, d_k, d_v)
-}
-
-/// Softmax backward for a single element.
-///
-/// d_softmax[i] = dL/dsoftmax[i] - sum_j(dL/dsoftmax[j] * softmax[j]) * softmax[i]
-fn softmax_backward_single(target_idx: usize, softmax: &[f32], d_loss: f32, n: usize) -> f32 {
-    let target = softmax[target_idx];
-    let sum: f32 = softmax
-        .iter()
-        .zip(0..n)
-        .map(|(&s, j)| {
-            if j < softmax.len() {
-                let idx = j * (j + 1) / 2 + (target_idx - j);
-                if idx < softmax.len() {
-                    // This is a simplification - in practice, we'd need the full softmax vector
-                }
-            }
-            s
-        })
-        .sum();
-
-    // For causal attention, we use a simplified gradient
-    // The full implementation would require storing the full score vector
-    let sum_dloss_times_softmax: f32 = softmax.iter().take(n).map(|&s| d_loss * s).sum();
-    d_loss * target - sum_dloss_times_softmax * target
 }
 
 impl HybridAttn {
@@ -1778,5 +1762,99 @@ mod falsifiers {
         assert_eq!(cache.v1.len(), seq_len * d_model);
         assert_eq!(cache.attn_weights1.len(), num_heads);
         assert_eq!(cache.attn_weights1[0].len(), seq_len * (seq_len + 1) / 2);
+    }
+
+    /// INV-9 — Backward pass produces non-zero gradients for attention weights.
+    #[test]
+    fn attention_backward_produces_nonzero_gradients() {
+        let mut block = HybridAttn::new().expect("defaults are valid");
+        let seq_len = 4;
+        let d = block.config().d_model;
+
+        // Initialise weights with non-zero random values.
+        // Scale down so attention weights stay soft (not one-hot),
+        // which ensures d_wq and d_wk are non-zero.
+        let attn_lim = (2.0f32 / d as f32).sqrt() * 0.1;
+        let mut seed = 42u64;
+        let mut rng = || {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            ((seed >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
+        };
+        for w in block.wq_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wk_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wv_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wo_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wq2_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wk2_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wv2_mut() {
+            *w = rng() * attn_lim;
+        }
+        for w in block.wo2_mut() {
+            *w = rng() * attn_lim;
+        }
+
+        // Non-trivial input
+        let tokens: Vec<f32> = (0..seq_len * d).map(|i| (i as f32 + 1.0) * 0.01).collect();
+        let (_out, cache) = block
+            .forward_cached(&tokens, seq_len)
+            .expect("forward should succeed");
+
+        // Upstream gradient (non-uniform so layer-norm backward is non-zero)
+        let d_output: Vec<f32> = (0..seq_len * d)
+            .map(|i| (i as f32) * 0.1 + 0.5)
+            .collect();
+
+        let mut grads = AttentionGradients::new(d);
+        block.backward_v2(&d_output, &cache, &mut grads);
+
+        // Verify gradients are non-zero for all weight matrices
+        assert!(
+            grads.d_wq.iter().any(|&x| x.abs() > 1e-9),
+            "d_wq should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wk.iter().any(|&x| x.abs() > 1e-9),
+            "d_wk should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wv.iter().any(|&x| x.abs() > 1e-9),
+            "d_wv should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wo.iter().any(|&x| x.abs() > 1e-9),
+            "d_wo should contain non-zero gradients"
+        );
+
+        // For 2-layer default, layer-2 gradients should also be non-zero
+        assert!(
+            grads.d_wq2.iter().any(|&x| x.abs() > 1e-9),
+            "d_wq2 should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wk2.iter().any(|&x| x.abs() > 1e-9),
+            "d_wk2 should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wv2.iter().any(|&x| x.abs() > 1e-9),
+            "d_wv2 should contain non-zero gradients"
+        );
+        assert!(
+            grads.d_wo2.iter().any(|&x| x.abs() > 1e-9),
+            "d_wo2 should contain non-zero gradients"
+        );
     }
 }

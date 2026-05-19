@@ -200,7 +200,7 @@ struct ForwardCache {
     attn_out: Vec<f32>,
     hidden: Vec<f32>,
     logits: Vec<f32>,
-    attn_cache: Option<AttentionCache>,
+    attn_v2_cache: Option<crate::model_hybrid_attn::ForwardCache>,
     attn_seq: usize,
     combined_seq: Vec<f32>,
     ln_seq: Vec<f32>,
@@ -299,10 +299,17 @@ impl HybridModel {
             attn_input[si * DIM..(si + 1) * DIM].copy_from_slice(&ln);
         }
 
-        let (attn_output, attn_cache) = self
+        let d_model = self.attn.config().d_model;
+        let num_heads = self.attn.config().num_heads;
+        let (attn_output, attn_v2_cache) = self
             .attn
-            .forward_with_cache(&attn_input, attn_seq)
-            .unwrap_or_else(|_| (vec![0.0f32; attn_seq * d], AttentionCache::default()));
+            .forward_cached(&attn_input, attn_seq)
+            .unwrap_or_else(|_| {
+                (
+                    vec![0.0f32; attn_seq * d_model],
+                    crate::model_hybrid_attn::ForwardCache::new(attn_seq, d_model, num_heads),
+                )
+            });
 
         let attn_out = attn_output[(attn_seq - 1) * d..attn_seq * d].to_vec();
 
@@ -359,7 +366,7 @@ impl HybridModel {
             attn_out,
             hidden,
             logits,
-            attn_cache: Some(attn_cache),
+            attn_v2_cache: Some(attn_v2_cache),
             attn_seq,
             combined_seq,
             ln_seq,
@@ -409,7 +416,7 @@ fn compute_grads(
             attn_out,
             hidden,
             mut logits,
-            attn_cache,
+            attn_v2_cache,
             attn_seq,
             combined_seq,
             ln_seq,
@@ -436,39 +443,39 @@ fn compute_grads(
             }
         }
 
-        if let Some(cache) = attn_cache {
+        if let Some(cache) = attn_v2_cache {
             let seq = attn_seq;
             let mut d_output = vec![0.0f32; seq * d];
             d_output[(seq - 1) * d..seq * d].copy_from_slice(&d_attn_out_last);
 
-            let grads = model.attn.backward(&cache, &d_output);
+            let mut grads = crate::model_hybrid_attn::AttentionGradients::new(d);
+            let d_ai = model.attn.backward_v2(&d_output, &cache, &mut grads);
 
             for i in 0..dd {
-                g_attn_weights[i] += grads.gwq[i];
+                g_attn_weights[i] += grads.d_wq[i];
             }
             for i in 0..dd {
-                g_attn_weights[dd + i] += grads.gwk[i];
+                g_attn_weights[dd + i] += grads.d_wk[i];
             }
             for i in 0..dd {
-                g_attn_weights[2 * dd + i] += grads.gwv[i];
+                g_attn_weights[2 * dd + i] += grads.d_wv[i];
             }
             for i in 0..dd {
-                g_attn_weights[3 * dd + i] += grads.gwo[i];
+                g_attn_weights[3 * dd + i] += grads.d_wo[i];
             }
             for i in 0..dd {
-                g_attn_weights[4 * dd + i] += grads.gwq2[i];
+                g_attn_weights[4 * dd + i] += grads.d_wq2[i];
             }
             for i in 0..dd {
-                g_attn_weights[5 * dd + i] += grads.gwk2[i];
+                g_attn_weights[5 * dd + i] += grads.d_wk2[i];
             }
             for i in 0..dd {
-                g_attn_weights[6 * dd + i] += grads.gwv2[i];
+                g_attn_weights[6 * dd + i] += grads.d_wv2[i];
             }
             for i in 0..dd {
-                g_attn_weights[7 * dd + i] += grads.gwo2[i];
+                g_attn_weights[7 * dd + i] += grads.d_wo2[i];
             }
 
-            let d_ai = grads.d_input;
             for si in 0..seq {
                 let p = pos + 1 - attn_seq + si;
                 let d_ln_si = &d_ai[si * DIM..(si + 1) * DIM];
