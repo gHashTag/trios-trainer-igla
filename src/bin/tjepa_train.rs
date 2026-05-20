@@ -884,7 +884,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let val_data = load_data(&cfg.val_data, cfg.vocab);
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let max_val_len = cfg.steps * (SEQ + 1) * 2;
+    let max_val_len = 50_000;
     let val = if val_data.len() > 100 {
         &val_data[..val_data.len().min(max_val_len)]
     } else {
