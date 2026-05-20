@@ -67,7 +67,6 @@ struct StrategySpec {
 struct Strategy {
     id: i64,
     canon_name: String,
-    steps_budget: i32,
     spec: StrategySpec,
 }
 
@@ -90,7 +89,7 @@ struct Experiment {
 /// `FOR UPDATE SKIP LOCKED` ensures two scarabs never race on the same row.
 async fn claim_any_pending(
     client: &tokio_postgres::Client,
-    worker_host: &str,
+    worker_id: &str,
 ) -> anyhow::Result<Option<Strategy>> {
     let row = client
         .query_opt(
@@ -106,9 +105,9 @@ async fn claim_any_pending(
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, canon_name, steps_budget, config_json
+            RETURNING id, canon_name, config::text
             "#,
-            &[&worker_host],
+            &[&worker_id],
         )
         .await?;
 
@@ -134,7 +133,6 @@ async fn claim_any_pending(
     Ok(Some(Strategy {
         id: row.get(0),
         canon_name: row.get(1),
-        steps_budget: row.get(2),
         spec,
     }))
 }
@@ -144,7 +142,7 @@ async fn claim_any_pending(
 /// Claim the next pending experiment from experiment_queue.
 async fn claim_experiment(
     client: &tokio_postgres::Client,
-    worker_host: &str,
+    worker_id: &uuid::Uuid,
 ) -> anyhow::Result<Option<Experiment>> {
     let row = client
         .query_opt(
@@ -161,9 +159,9 @@ async fn claim_experiment(
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
-            RETURNING id, canon_name, config_json, steps_budget, seed
+            RETURNING id, canon_name, config_json::text, steps_budget, seed
             "#,
-            &[&worker_host],
+            &[worker_id],
         )
         .await?;
 
@@ -190,7 +188,7 @@ async fn run_strategy(
     let t = &strat.spec.trainer;
     let hidden = t.hidden.unwrap_or(828).to_string();
     let lr = t.lr.unwrap_or(0.0004).to_string();
-    let steps = t.steps.unwrap_or(strat.steps_budget as u32).to_string();
+    let steps = t.steps.unwrap_or(0).to_string();
     let ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
@@ -398,22 +396,22 @@ async fn register_scarab(
     svc_id: &str,
     svc_name: &str,
     host: &str,
-) -> String {
+) -> uuid::Uuid {
     client
         .query_one(
             "INSERT INTO scarabs (railway_acc, railway_svc_id, railway_svc_name, host, last_heartbeat, registered_at) \
-             VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id::text",
+             VALUES ($1, $2, $3, $4, NOW(), NOW()) RETURNING id",
             &[&acc, &svc_id, &svc_name, &host],
         )
         .await
-        .map(|r| r.get::<_, String>(0))
+        .map(|r| r.get::<_, uuid::Uuid>(0))
         .unwrap_or_else(|e| {
             eprintln!("[scarab] register failed (check scarabs schema): {e}");
-            "unknown".into()
+            uuid::Uuid::from_bytes([0; 16])
         })
 }
 
-async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id: Option<i64>) {
+async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &uuid::Uuid, current_id: Option<i64>) {
     let _ = client
         .execute(
             "UPDATE scarabs \
@@ -428,11 +426,57 @@ async fn heartbeat(client: &tokio_postgres::Client, scarab_id: &str, current_id:
 
 /// Opens a dedicated connection for NOTIFY and forwards wakeups via mpsc.
 /// Falls back to 30-second polling if the notify connection drops.
+#[derive(Debug)]
+struct NoVerifier;
+
+impl rustls::client::danger::ServerCertVerifier for NoVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &rustls::pki_types::CertificateDer<'_>,
+        _intermediates: &[rustls::pki_types::CertificateDer<'_>],
+        _server_name: &rustls::pki_types::ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: rustls::pki_types::UnixTime,
+    ) -> Result<rustls::client::danger::ServerCertVerified, rustls::Error> {
+        Ok(rustls::client::danger::ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &rustls::pki_types::CertificateDer<'_>,
+        _dss: &rustls::DigitallySignedStruct,
+    ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+        Ok(rustls::client::danger::HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+        vec![
+            rustls::SignatureScheme::ECDSA_NISTP256_SHA256,
+            rustls::SignatureScheme::ECDSA_NISTP384_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA256,
+            rustls::SignatureScheme::RSA_PSS_SHA384,
+            rustls::SignatureScheme::RSA_PSS_SHA512,
+            rustls::SignatureScheme::RSA_PKCS1_SHA256,
+            rustls::SignatureScheme::RSA_PKCS1_SHA384,
+            rustls::SignatureScheme::RSA_PKCS1_SHA512,
+        ]
+    }
+}
+
 fn make_tls_config() -> rustls::ClientConfig {
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
     rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
+        .dangerous()
+        .with_custom_certificate_verifier(Arc::new(NoVerifier))
         .with_no_client_auth()
 }
 
@@ -498,6 +542,7 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
     // RAILWAY_ACC identifies which account this scarab runs on (cosmetic, NOT a routing key).
     let acc = env::var("RAILWAY_ACC")
@@ -517,7 +562,7 @@ async fn main() -> anyhow::Result<()> {
     loop {
         // Drain all pending experiments first, then strategies.
         loop {
-            match claim_experiment(&client, &host).await {
+            match claim_experiment(&client, &scarab_id).await {
                 Ok(Some(exp)) => {
                     let eid = exp.id;
                     heartbeat(&client, &scarab_id, Some(eid)).await;
@@ -532,7 +577,7 @@ async fn main() -> anyhow::Result<()> {
                     eprintln!("[{acc}] experiment claim error: {e}");
                 }
             }
-            match claim_any_pending(&client, &host).await {
+            match claim_any_pending(&client, &scarab_id.to_string()).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
                     heartbeat(&client, &scarab_id, Some(sid)).await;
@@ -543,7 +588,7 @@ async fn main() -> anyhow::Result<()> {
                 }
                 Ok(None) => break, // both queues empty
                 Err(e) => {
-                    eprintln!("[{acc}] strategy claim error: {e}");
+                    eprintln!("[{acc}] strategy claim error: {e:?}");
                     break;
                 }
             }
