@@ -765,11 +765,11 @@ fn main() {
             Box::new(LocalAdamW::new(size, wd))
         }
     }
-    let mut opt_embed: Box<dyn Optimizer> = make_opt(ps, wd, use_muon);
+    let mut opt_embed: Box<dyn Optimizer> = make_opt(ps, wd, false);
     let mut opt_ctx: Vec<Box<dyn Optimizer>> =
-        (0..num_ctx).map(|_| make_opt(ps, wd, use_muon)).collect();
+        (0..num_ctx).map(|_| make_opt(ps, wd, false)).collect();
     let mut opt_proj: Box<dyn Optimizer> = make_opt(hidden * DIM, wd, use_muon);
-    let mut opt_head: Box<dyn Optimizer> = make_opt(VOCAB * hidden, wd, use_muon);
+    let mut opt_head: Box<dyn Optimizer> = make_opt(VOCAB * hidden, wd, false);
     let ad = hidden / 4;
     let mut opt_aq: Box<dyn Optimizer> = make_opt(if use_attention { ad } else { 1 }, wd, use_muon);
     let mut opt_ak: Box<dyn Optimizer> =
