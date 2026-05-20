@@ -43,11 +43,15 @@ fn main() {
     if trainer.as_str() == "scarab" {
         println!("[entrypoint] scarab mode — env-driven, no CLI args");
     } else if trainer.as_str() == "tjepa_train" {
-        println!("[entrypoint] tjepa_train mode — multi-objective training");
+        let vocab = env_or("TRIOS_VOCAB", "128");
+        println!("[entrypoint] tjepa_train mode — multi-objective training vocab={vocab}");
         cmd.arg(format!("--seed={seed}"))
             .arg(format!("--steps={steps}"))
             .arg(format!("--lr={lr}"))
             .arg(format!("--optimizer={optimizer}"))
+            .arg(format!("--vocab={vocab}"))
+            .arg(format!("--train-data={train_data}"))
+            .arg(format!("--val-data={val_data}"))
             .arg(format!("--trial-id=entrypoint-{seed}"))
             .arg(format!("--agent-id=container"));
     } else {
