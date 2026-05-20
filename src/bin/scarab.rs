@@ -317,8 +317,8 @@ async fn run_experiment(
     let format = cfg.get("format").and_then(|v| v.as_str()).unwrap_or("bf16").to_string();
     let optimizer = cfg.get("optimizer").and_then(|v| v.as_str()).unwrap_or("adamw").to_string();
     let seed = cfg.get("seed").and_then(|v| v.as_u64()).unwrap_or(exp.seed as u64).to_string();
-    let train_path = "/work/data/tiny_shakespeare.txt".to_string();
-    let val_path = "/work/data/tiny_shakespeare_val.txt".to_string();
+    let train_path = env::var("TRIOS_TRAIN_DATA").unwrap_or_else(|_| "/work/data/tiny_shakespeare.txt".to_string());
+    let val_path = env::var("TRIOS_VAL_DATA").unwrap_or_else(|_| "/work/data/tiny_shakespeare_val.txt".to_string());
     let neon = env::var("DATABASE_URL").unwrap_or_default();
     let max_secs = 900u64;
 
