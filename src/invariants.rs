@@ -46,7 +46,13 @@ pub const SG4_B_C_RATIO: f64 = 127.0 * PHI / 120.0 + 30.0 / 19.0; // ≈ 4.1809
 
 /// SG #5 — m_H/m_W ratio = φ·11/20 + 20/30.
 /// Maps to adaptive LR schedule mixing coefficient.
-pub const SG5_H_W_RATIO: f64 = PHI * 11.0 / 20.0 + 20.0 / 30.0; // ≈ 0.9565
+/// NOTE: computed value ≈ 1.556 (matches real m_H/m_W ≈ 125.1/80.4).
+/// For LR floor we use cos θ_W (≈ 0.8819) instead to avoid exceeding base_lr.
+pub const SG5_H_W_RATIO: f64 = PHI * 11.0 / 20.0 + 20.0 / 30.0; // ≈ 1.556
+
+/// Weak mixing angle: cos θ_W = m_W/m_Z ≈ 80.379/91.188.
+/// Conservative LR floor multiplier (< 1, prevents divergence).
+pub const SG_COS_THETA_W: f64 = 80.379 / 91.188; // ≈ 0.8819
 
 /// SG #6 — neutrino mass-squared ratio = π/(40φ²).
 /// Maps to NCA objective weight.

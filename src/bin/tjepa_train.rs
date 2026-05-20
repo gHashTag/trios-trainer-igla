@@ -97,18 +97,18 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
 
 /// SG #5 adaptive LR schedule.
 /// Warmup: linear 0 → base_lr.
-/// Stable+decay: cosine decay from base_lr * SG5_H_W_RATIO down to base_lr * 0.1.
-/// The SG5 mixing coefficient (m_H/m_W ≈ 0.9565) sets the stable-phase LR floor.
+/// Stable+decay: cosine decay from base_lr * SG_COS_THETA_W down to base_lr * 0.1.
+/// Uses cos θ_W (≈ 0.8819) as the conservative LR floor (< base_lr).
 fn sg5_adaptive_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
-    use trios_trainer::invariants::SG5_H_W_RATIO;
+    use trios_trainer::invariants::SG_COS_THETA_W;
     assert!(max_steps > 0, "sg5_lr: max_steps=0");
     if step < warmup {
         return base_lr * step as f32 / warmup.max(1) as f32;
     }
     let p = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
     let decay = 0.5 * (1.0 + (std::f32::consts::PI * p).cos());
-    let sg5 = SG5_H_W_RATIO as f32;
-    base_lr * (sg5 * decay + 0.1 * (1.0 - decay))
+    let floor = SG_COS_THETA_W as f32;
+    base_lr * (floor * decay + 0.1 * (1.0 - decay))
 }
 
 // ── local AdamW ──
@@ -177,8 +177,8 @@ impl OptWrapper {
         OptWrapper::LocalAdamW(AdamW::new(size, wd))
     }
 
-    fn muon(size: usize, lr: f64, wd: f32) -> Self {
-        OptWrapper::CrateMuon(MuonOptimizer::new(size, lr, 0.95, wd as f64))
+    fn muon(size: usize, rows: usize, cols: usize, lr: f64, wd: f32) -> Self {
+        OptWrapper::CrateMuon(MuonOptimizer::with_matrix_shape(size, rows, cols, lr, 0.95, wd as f64))
     }
 
     fn step(&mut self, params: &mut [f32], grads: &[f32], lr: f32) {
@@ -781,20 +781,20 @@ struct TrainingState {
 }
 
 fn init_training(cfg: &Config) -> TrainingState {
-    let make_opt = |size: usize, wd: f32| -> OptWrapper {
+    let make_opt = |size: usize, rows: usize, cols: usize, wd: f32| -> OptWrapper {
         match cfg.opt_kind {
             OptKind::AdamW => OptWrapper::adamw(size, wd),
-            OptKind::Muon => OptWrapper::muon(size, cfg.encoder_lr as f64, wd),
+            OptKind::Muon => OptWrapper::muon(size, rows, cols, cfg.encoder_lr as f64, wd),
         }
     };
     let wd = cfg.weight_decay;
     TrainingState {
         model: NgramModel::new(cfg.seed, cfg.vocab),
         target_model: NgramModel::new(cfg.seed, cfg.vocab),
-        opt_embed: make_opt(cfg.vocab * DIM, wd),
-        opt_ctx: (0..NUM_CTX).map(|_| make_opt(cfg.vocab * DIM, wd)).collect(),
-        opt_proj: make_opt(HIDDEN * DIM, wd),
-        opt_head: make_opt(cfg.vocab * HIDDEN, wd),
+        opt_embed: make_opt(cfg.vocab * DIM, cfg.vocab, DIM, wd),
+        opt_ctx: (0..NUM_CTX).map(|_| make_opt(cfg.vocab * DIM, cfg.vocab, DIM, wd)).collect(),
+        opt_proj: make_opt(HIDDEN * DIM, HIDDEN, DIM, wd),
+        opt_head: make_opt(cfg.vocab * HIDDEN, cfg.vocab, HIDDEN, wd),
         predictor: if cfg.use_jepa {
             Some(JepaPredictor::new(PredictorConfig::with_d_model(HIDDEN)))
         } else {
