@@ -27,29 +27,35 @@ fn main() {
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     if !matches!(
         trainer.as_str(),
-        "trios-train" | "gf16_test" | "ngram_train_gf16"
+        "trios-train" | "gf16_test" | "ngram_train_gf16" | "scarab"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, gf16_test, ngram_train_gf16}}"
+             {{trios-train, gf16_test, ngram_train_gf16, scarab}}"
         );
         std::process::exit(2);
     }
     let trainer_path = format!("/usr/local/bin/{trainer}");
 
-    println!(
-        "[entrypoint] {trainer} seed={seed} steps={steps} lr={lr} hidden={hidden} opt={optimizer}"
-    );
-    println!("[entrypoint] train={train_data} val={val_data}");
-
     let mut cmd = Command::new(&trainer_path);
-    cmd.arg(format!("--seed={seed}"))
-        .arg(format!("--steps={steps}"))
-        .arg(format!("--lr={lr}"))
-        .arg(format!("--hidden={hidden}"))
-        .arg(format!("--optimizer={optimizer}"))
-        .arg(format!("--train-data={train_data}"))
-        .arg(format!("--val-data={val_data}"));
+
+    // scarab is env-driven (NEON_DATABASE_URL, RAILWAY_*), not CLI args
+    if trainer.as_str() == "scarab" {
+        println!("[entrypoint] scarab mode — env-driven, no CLI args");
+    } else {
+        println!(
+            "[entrypoint] {trainer} seed={seed} steps={steps} lr={lr} hidden={hidden} opt={optimizer}"
+        );
+        println!("[entrypoint] train={train_data} val={val_data}");
+
+        cmd.arg(format!("--seed={seed}"))
+            .arg(format!("--steps={steps}"))
+            .arg(format!("--lr={lr}"))
+            .arg(format!("--hidden={hidden}"))
+            .arg(format!("--optimizer={optimizer}"))
+            .arg(format!("--train-data={train_data}"))
+            .arg(format!("--val-data={val_data}"));
+    }
 
     #[cfg(unix)]
     {

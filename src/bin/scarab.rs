@@ -71,6 +71,16 @@ struct Strategy {
     spec: StrategySpec,
 }
 
+// ── Experiment (experiment_queue consumer) ────────────────────────────────────
+
+struct Experiment {
+    id: i64,
+    canon_name: String,
+    config: serde_json::Value,
+    steps_budget: i32,
+    seed: i64,
+}
+
 // ── claim_any_pending ────────────────────────────────────────────────────────
 
 /// Claim the next pending strategy from the global pool.
@@ -129,6 +139,47 @@ async fn claim_any_pending(
     }))
 }
 
+// ── claim_experiment ─────────────────────────────────────────────────────────
+
+/// Claim the next pending experiment from experiment_queue.
+async fn claim_experiment(
+    client: &tokio_postgres::Client,
+    worker_host: &str,
+) -> anyhow::Result<Option<Experiment>> {
+    let row = client
+        .query_opt(
+            r#"
+            UPDATE experiment_queue
+            SET status     = 'running',
+                started_at = NOW(),
+                worker_id  = $1::uuid,
+                claimed_at = NOW()
+            WHERE id = (
+                SELECT id FROM experiment_queue
+                WHERE status = 'pending'
+                ORDER BY priority DESC, id ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id, canon_name, config_json, steps_budget, seed
+            "#,
+            &[&worker_host],
+        )
+        .await?;
+
+    let Some(row) = row else { return Ok(None) };
+    let cfg_str: String = row.get(2);
+    let config: serde_json::Value = serde_json::from_str(&cfg_str)?;
+
+    Ok(Some(Experiment {
+        id: row.get(0),
+        canon_name: row.get(1),
+        config,
+        steps_budget: row.get(3),
+        seed: row.get::<_, i32>(4) as i64,
+    }))
+}
+
 // ── run_strategy ─────────────────────────────────────────────────────────────
 
 async fn run_strategy(
@@ -143,6 +194,10 @@ async fn run_strategy(
     let ctx = t.ctx.unwrap_or(12).to_string();
     let format = t.format.clone().unwrap_or_else(|| "fp32".into());
     let seed = t.seed.unwrap_or(1597).to_string();
+    let optimizer = t
+        .format
+        .clone()
+        .unwrap_or_else(|| "adamw".into()); // fallback, but see below for actual optimizer
     // Bug C fix: Read corpus paths from config_json.data.{train_path,val_path}
     // This respects explicit corpus tags in strategy_queue entries.
     // Falls back to tiny_shakespeare defaults for backward compatibility.
@@ -180,13 +235,16 @@ async fn run_strategy(
         &train_path,
         "--val-data",
         &val_path,
-    ])
-    .env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
-    .env("TRIOS_CANON_NAME", &strat.canon_name)
-    // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
-    .env("NEON_DATABASE_URL", &neon)
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+    ]);
+    // Pass optimizer if available in config (not present in legacy StrategySpec)
+    // StrategySpec doesn't currently have optimizer — this is a known gap.
+    // experiment_queue fills this gap.
+    cmd.env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
+        .env("TRIOS_CANON_NAME", &strat.canon_name)
+        // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
+        .env("NEON_DATABASE_URL", &neon)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     let (status_str, err_msg): (&str, Option<String>) =
         match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
@@ -243,6 +301,92 @@ async fn run_strategy(
         .await?;
 
     println!("[{label}] DONE id={} status={status_str}", strat.id);
+    Ok(())
+}
+
+// ── run_experiment ───────────────────────────────────────────────────────────
+
+async fn run_experiment(
+    client: &tokio_postgres::Client,
+    exp: Experiment,
+    label: &str,
+) -> anyhow::Result<()> {
+    let cfg = &exp.config;
+    let hidden = cfg.get("hidden").and_then(|v| v.as_u64()).unwrap_or(384).to_string();
+    let lr = cfg.get("lr").and_then(|v| v.as_f64()).unwrap_or(0.0001).to_string();
+    let steps = cfg.get("steps").and_then(|v| v.as_u64()).unwrap_or(exp.steps_budget as u64).to_string();
+    let ctx = cfg.get("ctx").and_then(|v| v.as_u64()).unwrap_or(12).to_string();
+    let format = cfg.get("format").and_then(|v| v.as_str()).unwrap_or("bf16").to_string();
+    let optimizer = cfg.get("optimizer").and_then(|v| v.as_str()).unwrap_or("adamw").to_string();
+    let seed = cfg.get("seed").and_then(|v| v.as_u64()).unwrap_or(exp.seed as u64).to_string();
+    let train_path = "/work/data/tiny_shakespeare.txt".to_string();
+    let val_path = "/work/data/tiny_shakespeare_val.txt".to_string();
+    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let max_secs = 900u64;
+
+    println!(
+        "[{label}] EXP-START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} opt={optimizer} seed={seed}",
+        exp.id, exp.canon_name
+    );
+
+    let mut cmd = Command::new("trios-train");
+    cmd.args([
+        "--hidden", &hidden,
+        "--lr", &lr,
+        "--steps", &steps,
+        "--ctx", &ctx,
+        "--format", &format,
+        "--optimizer", &optimizer,
+        "--seed", &seed,
+        "--train-data", &train_path,
+        "--val-data", &val_path,
+    ])
+    .env("TRIOS_EXPERIMENT_ID", exp.id.to_string())
+    .env("TRIOS_CANON_NAME", &exp.canon_name)
+    .env("NEON_DATABASE_URL", &neon)
+    .stdout(Stdio::inherit())
+    .stderr(Stdio::inherit());
+
+    let (status_str, err_msg): (&str, Option<String>) =
+        match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {
+            Ok(Ok(s)) if s.success() => ("done", None),
+            Ok(Ok(s)) => ("failed", Some(format!("exit: {s}"))),
+            Ok(Err(e)) => ("failed", Some(format!("spawn error: {e}"))),
+            Err(_) => ("failed", Some(format!("timeout after {max_secs}s"))),
+        };
+
+    let mut final_bpb: Option<f64> = None;
+    let mut final_step: Option<i32> = None;
+    if status_str == "done" {
+        match client
+            .query_opt(
+                "SELECT step, bpb FROM bpb_samples WHERE canon_name = $1 ORDER BY ts DESC LIMIT 1",
+                &[&exp.canon_name],
+            )
+            .await
+        {
+            Ok(Some(row)) => {
+                final_step = Some(row.get::<_, i32>(0));
+                final_bpb = Some(row.get::<_, f64>(1));
+                println!("[{label}] final_bpb={:.4} final_step={} for id={}", final_bpb.unwrap(), final_step.unwrap(), exp.id);
+            }
+            Ok(None) => {
+                eprintln!("[{label}] WARNING: trainer exited clean but 0 bpb_samples rows for canon={}", exp.canon_name);
+            }
+            Err(e) => {
+                eprintln!("[{label}] bpb_samples query error: {e}");
+            }
+        }
+    }
+
+    client
+        .execute(
+            "UPDATE experiment_queue SET status = $1, finished_at = NOW(), prune_reason = $2, final_bpb = $3, final_step = $4 WHERE id = $5",
+            &[&status_str, &err_msg, &final_bpb, &final_step, &exp.id],
+        )
+        .await?;
+
+    println!("[{label}] EXP-DONE id={} status={status_str}", exp.id);
     Ok(())
 }
 
@@ -371,8 +515,23 @@ async fn main() -> anyhow::Result<()> {
     let mut notify_rx = setup_notify_listener(&db_url).await;
 
     loop {
-        // Drain all pending strategies before sleeping.
+        // Drain all pending experiments first, then strategies.
         loop {
+            match claim_experiment(&client, &host).await {
+                Ok(Some(exp)) => {
+                    let eid = exp.id;
+                    heartbeat(&client, &scarab_id, Some(eid)).await;
+                    run_experiment(&client, exp, &acc)
+                        .await
+                        .unwrap_or_else(|e| eprintln!("[{acc}] run error: {e}"));
+                    heartbeat(&client, &scarab_id, None).await;
+                    continue;
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("[{acc}] experiment claim error: {e}");
+                }
+            }
             match claim_any_pending(&client, &host).await {
                 Ok(Some(strat)) => {
                     let sid = strat.id;
@@ -382,9 +541,9 @@ async fn main() -> anyhow::Result<()> {
                         .unwrap_or_else(|e| eprintln!("[{acc}] run error: {e}"));
                     heartbeat(&client, &scarab_id, None).await;
                 }
-                Ok(None) => break, // queue empty
+                Ok(None) => break, // both queues empty
                 Err(e) => {
-                    eprintln!("[{acc}] claim error: {e}");
+                    eprintln!("[{acc}] strategy claim error: {e}");
                     break;
                 }
             }
