@@ -47,18 +47,22 @@
 use serde::{Deserialize, Serialize};
 
 /// Schema version locked to `assertions/hive_automaton.json::schema_version`.
-pub const SCHEMA_VERSION: &str = "1.0";
+pub const SCHEMA_VERSION: &str = "1.1";
 
 /// Number of distinct seeds below `BPB_VICTORY_TARGET` required for global
-/// SUCCESS. From `halt_predicates.global_success`.
+/// SUCCESS (IGLA RACE mode). From `halt_predicates.global_success_igla`.
 pub const VICTORY_SEED_TARGET: u32 = 3;
+
+/// Number of SM parameters that must be covered by SG-class formulas for
+/// global SUCCESS (Formula Search mode). From `halt_predicates.global_success_formula`.
+pub const FORMULA_COVERAGE_TARGET: u32 = 25;
 
 /// BPB threshold the race targets — must match `crate::IGLA_TARGET_BPB`.
 pub const BPB_VICTORY_TARGET: f64 = 1.5;
 
 /// Number of lanes covered by the ownership map. Must equal
-/// `assertions/hive_automaton.json::lane_ownership` entries (L0..L13).
-pub const LANE_COUNT: usize = 14;
+/// `assertions/hive_automaton.json::lane_ownership` entries (L0..L23).
+pub const LANE_COUNT: usize = 24;
 
 // Compile-time L-R14 mirror: forces a build error if these constants drift
 // away from the JSON anchors. `const _: ()` is the canonical Rust idiom for
@@ -69,8 +73,12 @@ const _: () = {
         "JSON requires 3 distinct victory seeds"
     );
     assert!(
-        LANE_COUNT == 14,
-        "lane_ownership in JSON has 14 entries (L0..L13)"
+        LANE_COUNT == 24,
+        "lane_ownership in JSON has 24 entries (L0..L23)"
+    );
+    assert!(
+        FORMULA_COVERAGE_TARGET == 25,
+        "JSON requires 25/25 SM parameter coverage"
     );
     // BPB_VICTORY_TARGET cannot be checked with `const fn` float compare on
     // stable, but the runtime test `test_bpb_target_matches_lib` enforces it.

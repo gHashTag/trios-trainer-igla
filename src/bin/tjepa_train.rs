@@ -812,6 +812,7 @@ fn print_results(cfg: &Config, best_bpb: f32, elapsed: f64) {
 // ── main ──
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let args: Vec<String> = std::env::args().collect();
     let cfg = parse_config(&args);
 

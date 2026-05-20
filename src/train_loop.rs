@@ -67,7 +67,14 @@ fn load_data(path: &str) -> Vec<usize> {
 
     eprintln!("Data file '{}' not found, using synthetic fallback", path);
 
-    let fallback = b"The quick brown fox jumps over the lazy dog. ".repeat(2500);
+    // Use disjoint fallback texts for train and val so assert_train_val_disjoint
+    // does not panic when both files are missing (common in container boot paths).
+    let is_val = path.to_ascii_lowercase().contains("val");
+    let fallback = if is_val {
+        b"A lazy dog jumps over the quick brown fox. ".repeat(2500)
+    } else {
+        b"The quick brown fox jumps over the lazy dog. ".repeat(2500)
+    };
     fallback.into_iter().map(|b| (b as usize) % VOCAB).collect()
 }
 

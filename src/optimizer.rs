@@ -70,6 +70,26 @@ impl AdamWCpu {
         Self::new(param_count, lr)
     }
 
+    /// Create a new AdamW optimizer with SG-class formula defaults.
+    ///
+    /// Uses physical constants derived from the Standard Model parameter sweep:
+    /// - beta1 = 1/φ (mixing-angle derived, same as phi-defaults)
+    /// - weight_decay = λ = √φ/π² ≈ 0.129 (Higgs self-coupling)
+    pub fn with_sg_defaults(param_count: usize, lr: f64) -> Self {
+        use crate::invariants::SG_HIGGS_LAMBDA;
+        let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
+        Self {
+            lr,
+            beta1: 1.0 / phi,
+            beta2: 0.999,
+            weight_decay: SG_HIGGS_LAMBDA,
+            eps: 1e-8,
+            step: 0,
+            m: vec![0.0; param_count],
+            v: vec![0.0; param_count],
+        }
+    }
+
     /// Create a new AdamW optimizer with custom hyperparameters
     pub fn with_params(
         param_count: usize,

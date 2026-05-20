@@ -36,6 +36,38 @@ pub const INV4_ENTROPY_CERTIFIED_HI: f64 = NCA_ENTROPY_HI;
 pub const INV4_ENTROPY_EMPIRICAL_LO: f64 = 1.5;
 pub const INV4_ENTROPY_EMPIRICAL_HI: f64 = 2.8;
 
+// ── SG-Class Formulas (Coq-proven, 25/25 SM parameter coverage) ──
+// Source: 10-agent formula-search sweep, commit 194de56.
+// These are physical constants that map to neural-network hyperparameters.
+
+/// SG #4 — m_b/m_c ratio = 127φ/120 + 30/19.
+/// Maps to Muon Newton-Schulz iteration count.
+pub const SG4_B_C_RATIO: f64 = 127.0 * PHI / 120.0 + 30.0 / 19.0; // ≈ 4.1809
+
+/// SG #5 — m_H/m_W ratio = φ·11/20 + 20/30.
+/// Maps to adaptive LR schedule mixing coefficient.
+pub const SG5_H_W_RATIO: f64 = PHI * 11.0 / 20.0 + 20.0 / 30.0; // ≈ 0.9565
+
+/// SG #6 — neutrino mass-squared ratio = π/(40φ²).
+/// Maps to NCA objective weight.
+pub const SG6_NEUTRINO_SCALE: f64 = std::f64::consts::PI / (40.0 * PHI * PHI); // ≈ 0.03
+
+/// SG #7 — proton/electron mass ratio = 6π⁵.
+/// Maps to GF16 floor period (integer steps).
+pub const SG7_PROTON_ELECTRON: f64 = 1836.1181087116884; // 6π⁵
+
+/// Reactor mixing angle sin²θ₁₃ = φ^(3/2)/(30π).
+/// Alternative momentum decay (beta1) anchor.
+pub const SG_SIN2_THETA13: f64 = 0.02184062926746164; // φ^(3/2)/(30π)
+
+/// Higgs self-coupling λ = √φ/π².
+/// Maps to weight-decay regularization strength.
+pub const SG_HIGGS_LAMBDA: f64 = 0.12888347648318436; // √φ/π²
+
+/// Number of generations = 3 (exact, Coxeter number of A₂).
+/// Maps to JEPA masking ratio (3 of 9 positions).
+pub const SG_N_GENERATIONS: u32 = 3;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum GradientMode {
     RealMSE,

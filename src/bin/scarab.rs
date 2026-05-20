@@ -322,28 +322,54 @@ async fn run_experiment(
     let neon = env::var("DATABASE_URL").unwrap_or_default();
     let max_secs = 900u64;
 
+    let trainer = cfg.get("trainer").and_then(|v| v.as_str()).unwrap_or("trios-train");
+
     println!(
-        "[{label}] EXP-START id={} name={} hidden={hidden} lr={lr} steps={steps} fmt={format} opt={optimizer} seed={seed}",
+        "[{label}] EXP-START id={} name={} trainer={trainer} hidden={hidden} lr={lr} steps={steps} fmt={format} opt={optimizer} seed={seed}",
         exp.id, exp.canon_name
     );
 
-    let mut cmd = Command::new("trios-train");
-    cmd.args([
-        "--hidden", &hidden,
-        "--lr", &lr,
-        "--steps", &steps,
-        "--ctx", &ctx,
-        "--format", &format,
-        "--optimizer", &optimizer,
-        "--seed", &seed,
-        "--train-data", &train_path,
-        "--val-data", &val_path,
-    ])
-    .env("TRIOS_EXPERIMENT_ID", exp.id.to_string())
-    .env("TRIOS_CANON_NAME", &exp.canon_name)
-    .env("DATABASE_URL", &neon)
-    .stdout(Stdio::inherit())
-    .stderr(Stdio::inherit());
+    let mut cmd = Command::new(trainer);
+    if trainer == "tjepa_train" {
+        let ntp_weight = cfg.get("ntp_weight").and_then(|v| v.as_f64()).unwrap_or(1.0).to_string();
+        let jepa_weight = cfg.get("jepa_weight").and_then(|v| v.as_f64()).unwrap_or(1.0).to_string();
+        let nca_weight = cfg.get("nca_weight").and_then(|v| v.as_f64()).unwrap_or(0.25).to_string();
+        let ntp_lr = cfg.get("ntp_lr").and_then(|v| v.as_f64()).unwrap_or(0.001).to_string();
+        let jepa_warmup = cfg.get("jepa_warmup").and_then(|v| v.as_u64()).unwrap_or(1500).to_string();
+        let weight_decay = cfg.get("weight_decay").and_then(|v| v.as_f64()).unwrap_or(0.01).to_string();
+        // tjepa_train uses a hand-rolled arg parser that only accepts --key=value form.
+        cmd.args([
+            format!("--lr={lr}").as_str(),
+            format!("--steps={steps}").as_str(),
+            format!("--seed={seed}").as_str(),
+            format!("--ntp-lr={ntp_lr}").as_str(),
+            format!("--ntp-weight={ntp_weight}").as_str(),
+            format!("--jepa-weight={jepa_weight}").as_str(),
+            format!("--nca-weight={nca_weight}").as_str(),
+            format!("--jepa-warmup={jepa_warmup}").as_str(),
+            format!("--weight-decay={weight_decay}").as_str(),
+            format!("--optimizer={optimizer}").as_str(),
+            format!("--trial-id={}", exp.canon_name).as_str(),
+            format!("--agent-id={label}").as_str(),
+        ]);
+    } else {
+        cmd.args([
+            "--hidden", &hidden,
+            "--lr", &lr,
+            "--steps", &steps,
+            "--ctx", &ctx,
+            "--format", &format,
+            "--optimizer", &optimizer,
+            "--seed", &seed,
+            "--train-data", &train_path,
+            "--val-data", &val_path,
+        ]);
+    }
+    cmd.env("TRIOS_EXPERIMENT_ID", exp.id.to_string())
+        .env("TRIOS_CANON_NAME", &exp.canon_name)
+        .env("DATABASE_URL", &neon)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
 
     let (status_str, err_msg): (&str, Option<String>) =
         match tokio::time::timeout(Duration::from_secs(max_secs), cmd.status()).await {

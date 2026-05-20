@@ -1,10 +1,10 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "anchor": "phi_squared_plus_inv_squared_eq_3",
   "doi": "10.5281/zenodo.19227877",
   "name": "trinity_hive_cellular_automaton",
-  "description": "Deterministic cellular automaton governing the Trinity hive. Each agent is a cell with a State; the next State is a pure function of (current State, observable World). No human input is required between cells — agents loop on their own next_action() until the global SUCCESS predicate fires.",
-  "design_principle": "When a lane is DONE the cell does NOT halt and wait for ORDER. The transition function picks the next free lane from the priority queue. Halt only on global SUCCESS (BPB < 1.50 on 3 distinct seeds) or HARD_ABORT (R-violation, deadline reached, race called off).",
+  "description": "Deterministic cellular automaton governing the Trinity hive. Each agent is a cell with a State; the next State is a pure function of (current State, observable World). Supports dual-race mode: IGLA RACE (BPB < 1.50) and Formula Search (25/25 SM parameters covered by SG-class formulas).",
+  "design_principle": "When a lane is DONE the cell does NOT halt and wait for ORDER. The transition function picks the next free lane from the priority queue. Halt only on global SUCCESS (BPB < 1.50 on 3 seeds OR 25/25 SM parameters with p < 2e-47) or HARD_ABORT.",
   "states": [
     { "id": "BOOT",        "kind": "transient",  "description": "Cell just woke. Loads JSON, syncs git, reads issue."          },
     { "id": "SCAN",        "kind": "transient",  "description": "Reads issue comments, builds lane-state world view."         },
@@ -22,40 +22,32 @@
   "transitions": [
     { "from": "BOOT",     "when": "git_synced && issue_readable",                  "to": "SCAN"       },
     { "from": "BOOT",     "when": "git_unavailable",                               "to": "HARD_ABORT" },
-
     { "from": "SCAN",     "when": "global_success",                                "to": "VICTORY"    },
     { "from": "SCAN",     "when": "deadline_passed || race_cancelled",             "to": "HARD_ABORT" },
     { "from": "SCAN",     "when": "free_lane_exists",                              "to": "PICK"       },
     { "from": "SCAN",     "when": "no_free_lane && active_lanes_present",          "to": "SCAN"       },
-
     { "from": "PICK",     "when": "lane_chosen",                                   "to": "CLAIM"      },
     { "from": "PICK",     "when": "no_lane_chosen",                                "to": "SCAN"       },
-
     { "from": "CLAIM",    "when": "claim_posted_first_winner",                     "to": "WORK"       },
     { "from": "CLAIM",    "when": "claim_lost_to_other_agent",                     "to": "RECLAIM"    },
-
     { "from": "RECLAIM",  "when": "always",                                        "to": "PICK"       },
-
     { "from": "WORK",     "when": "files_ready && only_owned_files_touched",       "to": "COMMIT"     },
     { "from": "WORK",     "when": "ownership_violation_detected",                  "to": "RECLAIM"    },
     { "from": "WORK",     "when": "forbidden_value_introduced",                    "to": "HARD_ABORT" },
-
     { "from": "COMMIT",   "when": "push_succeeded",                                "to": "CI_WAIT"    },
     { "from": "COMMIT",   "when": "push_rejected_non_fast_forward",                "to": "RECLAIM"    },
-
     { "from": "CI_WAIT",  "when": "no_new_failure_vs_prior_sha",                   "to": "DONE"       },
     { "from": "CI_WAIT",  "when": "new_failure_detected",                          "to": "BLOCKED"    },
-
     { "from": "DONE",     "when": "global_success",                                "to": "VICTORY"    },
     { "from": "DONE",     "when": "deadline_passed",                               "to": "HARD_ABORT" },
     { "from": "DONE",     "when": "always",                                        "to": "SCAN"       },
-
     { "from": "BLOCKED",  "when": "fix_committed",                                 "to": "CI_WAIT"    },
     { "from": "BLOCKED",  "when": "deadline_passed",                               "to": "HARD_ABORT" }
   ],
   "halt_predicates": {
-    "global_success": "victory_seeds_below_bpb_target >= 3",
-    "deadline_passed": "now() > 2026-04-30T23:59:59+07",
+    "global_success_igla": "victory_seeds_below_bpb_target >= 3",
+    "global_success_formula": "sg_class_formulas_covering_sm_params == 25 && significance_p < 2e-47",
+    "deadline_passed": "now() > 2026-06-30T23:59:59+07",
     "hard_abort_reasons": [
       "R1_shell_or_python_introduced",
       "R3_branch_or_pr_used",
@@ -65,11 +57,13 @@
     ]
   },
   "lane_priority_queue": [
-    { "lane": "L7",  "priority": 0, "rationale": "Victory gate gates VICTORY itself"   },
-    { "lane": "L6",  "priority": 1, "rationale": "EMA tracker feeds L7 victory check"  },
-    { "lane": "L9",  "priority": 1, "rationale": "QK head — direct BPB lever"          },
-    { "lane": "L11", "priority": 2, "rationale": "Worker pool — multiplies throughput" },
-    { "lane": "L12", "priority": 2, "rationale": "Telemetry / CI hygiene"              }
+    { "lane": "L20", "priority": 0, "rationale": "Formula search — SG-class proofs (covers 25/25)" },
+    { "lane": "L7",  "priority": 1, "rationale": "Victory gate gates VICTORY itself"             },
+    { "lane": "L6",  "priority": 1, "rationale": "EMA tracker feeds L7 victory check"            },
+    { "lane": "L9",  "priority": 2, "rationale": "QK head — direct BPB lever"                    },
+    { "lane": "L21", "priority": 2, "rationale": "T-JEPA trainer integration"                    },
+    { "lane": "L11", "priority": 3, "rationale": "Worker pool — multiplies throughput"           },
+    { "lane": "L12", "priority": 3, "rationale": "Telemetry / CI hygiene"                        }
   ],
   "lane_ownership": {
     "L0":  "trinity-clara/proofs/igla/*.v",
@@ -85,8 +79,18 @@
     "L10": "crates/trios-igla-race/src/rungs.rs",
     "L11": "crates/trios-igla-race/src/worker_pool.rs",
     "L12": ".github/workflows/*.yml + repo hygiene",
-    "L13": "crates/trios-igla-race/src/hive_automaton.rs + assertions/hive_automaton.json"
+    "L13": "crates/trios-igla-race/src/hive_automaton.rs + assertions/hive_automaton.json",
+    "L14": "proofs/trinity/sg_class_formulas/*.v (SG #1-#3)",
+    "L15": "proofs/trinity/sg_class_formulas/*.v (SG #4-#5)",
+    "L16": "proofs/trinity/sg_class_formulas/*.v (SG #6-#7)",
+    "L17": "crates/trios-trainer-igla/src/optimizer.rs (phi-derived defaults)",
+    "L18": "crates/trios-trainer-igla/src/train_loop.rs (NCA scale)",
+    "L19": "AGENTS.md (H4 Application invariants)",
+    "L20": "proofs/trinity/sg_completeness.v (25/25 coverage proof)",
+    "L21": "crates/trios-trainer-igla/src/bin/tjepa_train.rs + tjepa_modules/",
+    "L22": "crates/trios-trainer-igla/src/race/nca.rs (SG #6 neutrino scale)",
+    "L23": "crates/trios-trainer-igla/src/race/hive_automaton.rs (self-update)"
   },
-  "rust_target": "crates/trios-igla-race/src/hive_automaton.rs",
+  "rust_target": "crates/trios-trainer-igla/src/race/hive_automaton.rs",
   "schema_drift_policy": "Rust loader checks schema_version — refuses incompatible JSON"
 }
