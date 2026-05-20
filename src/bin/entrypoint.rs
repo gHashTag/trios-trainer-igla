@@ -39,7 +39,7 @@ fn main() {
 
     let mut cmd = Command::new(&trainer_path);
 
-    // scarab is env-driven (NEON_DATABASE_URL, RAILWAY_*), not CLI args
+    // scarab is env-driven (DATABASE_URL, RAILWAY_*), not CLI args
     if trainer.as_str() == "scarab" {
         println!("[entrypoint] scarab mode — env-driven, no CLI args");
     } else {

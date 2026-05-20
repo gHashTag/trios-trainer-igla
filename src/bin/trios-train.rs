@@ -135,11 +135,11 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Set NEON_DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
-    // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first
-    if std::env::var("NEON_DATABASE_URL").is_err() {
+    // Set DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
+    // scarab passes DATABASE_URL via ENV inheritance, so check that first
+    if std::env::var("DATABASE_URL").is_err() {
         if let Some(neon_url) = &cli.neon {
-            std::env::set_var("NEON_DATABASE_URL", neon_url);
+            std::env::set_var("DATABASE_URL", neon_url);
         }
     }
 

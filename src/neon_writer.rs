@@ -48,7 +48,7 @@ fn client() -> Option<&'static Client> {
     CLIENT
         .get_or_init(|| {
             let dsn = std::env::var("TRIOS_NEON_DSN")
-                .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+                .or_else(|_| std::env::var("DATABASE_URL"))
                 .or_else(|_| std::env::var("DATABASE_URL"))
                 .ok()?;
             eprintln!("[neon_writer] connecting to Neon (TLS) …");

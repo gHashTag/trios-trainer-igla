@@ -5,7 +5,7 @@
 //! Rule 3: No account affinity. Any scarab takes any task.
 //!
 //! ENV:
-//!   NEON_DATABASE_URL  — Neon Postgres connection string (required)
+//!   DATABASE_URL  — Neon Postgres connection string (required)
 //!   SCARAB_ACCOUNT     — identity tag for logs only (optional)
 //!                        NOT a routing key. Does not filter claim.
 //!
@@ -207,7 +207,7 @@ async fn run_strategy(
         .val_path
         .clone()
         .unwrap_or_else(|| "/work/data/tiny_shakespeare_val.txt".into());
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let neon = env::var("DATABASE_URL").unwrap_or_default();
     let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
     println!(
@@ -240,7 +240,7 @@ async fn run_strategy(
     cmd.env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
         .env("TRIOS_CANON_NAME", &strat.canon_name)
         // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
-        .env("NEON_DATABASE_URL", &neon)
+        .env("DATABASE_URL", &neon)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
@@ -319,7 +319,7 @@ async fn run_experiment(
     let seed = cfg.get("seed").and_then(|v| v.as_u64()).unwrap_or(exp.seed as u64).to_string();
     let train_path = "/work/data/tiny_shakespeare.txt".to_string();
     let val_path = "/work/data/tiny_shakespeare_val.txt".to_string();
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    let neon = env::var("DATABASE_URL").unwrap_or_default();
     let max_secs = 900u64;
 
     println!(
@@ -341,7 +341,7 @@ async fn run_experiment(
     ])
     .env("TRIOS_EXPERIMENT_ID", exp.id.to_string())
     .env("TRIOS_CANON_NAME", &exp.canon_name)
-    .env("NEON_DATABASE_URL", &neon)
+    .env("DATABASE_URL", &neon)
     .stdout(Stdio::inherit())
     .stderr(Stdio::inherit());
 
@@ -543,7 +543,7 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     // RAILWAY_ACC identifies which account this scarab runs on (cosmetic, NOT a routing key).
     let acc = env::var("RAILWAY_ACC")
         .unwrap_or_else(|_| env::var("SCARAB_ACCOUNT").unwrap_or_else(|_| "scarab".into()));

@@ -1,6 +1,6 @@
 //! `bpb_smoke` — minimum reproducible NEON-write probe for trios#444.
 //!
-//! Reads `NEON_DATABASE_URL` (or `TRIOS_NEON_DSN` / `DATABASE_URL` alias),
+//! Reads `DATABASE_URL` (or `TRIOS_NEON_DSN` / `DATABASE_URL` alias),
 //! writes one row to `public.bpb_samples`, prints success/failure, exits.
 //!
 //! Acceptance for trios#444: this binary, given a working DSN, MUST produce

@@ -69,7 +69,7 @@ fn main() {
     // Write to bpb_samples if a Neon DSN is configured. Silent no-op otherwise
     // (R5: never panic on Neon errors; CI runs without Neon).
     if std::env::var("TRIOS_NEON_DSN").is_ok()
-        || std::env::var("NEON_DATABASE_URL").is_ok()
+        || std::env::var("DATABASE_URL").is_ok()
         || std::env::var("DATABASE_URL").is_ok()
     {
         trios_trainer::neon_writer::ensure_schema();
