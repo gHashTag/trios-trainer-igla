@@ -30,7 +30,7 @@ use trios_trainer::{
     optimizer::MuonOptimizer,
 };
 
-const VOCAB: usize = 128;
+const DEFAULT_VOCAB: usize = 128;
 const DIM: usize = 64;
 const HIDDEN: usize = 384;
 const NUM_CTX: usize = 4;
@@ -38,6 +38,28 @@ const NGRAM: usize = NUM_CTX + 2;
 const SEQ: usize = 64;
 const LN_2: f32 = std::f32::consts::LN_2;
 const HEARTBEAT_INTERVAL_SECS: u64 = 60;
+
+fn load_fineweb_bin(path: &str) -> Vec<u16> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).expect(&format!("open {}", path));
+    let mut header = [0u8; 1024];
+    file.read_exact(&mut header).expect("read header");
+    let magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
+    let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    let num_tokens = u64::from_le_bytes([
+        header[8], header[9], header[10], header[11],
+        header[12], header[13], header[14], header[15],
+    ]);
+    eprintln!("FineWeb bin: magic={} version={} num_tokens={}", magic, version, num_tokens);
+    assert_eq!(magic, 20240520, "FineWeb magic mismatch");
+    let mut tokens = vec![0u16; num_tokens as usize];
+    let mut buf = vec![0u8; num_tokens as usize * 2];
+    file.read_exact(&mut buf).expect("read tokens");
+    for i in 0..tokens.len() {
+        tokens[i] = u16::from_le_bytes([buf[i * 2], buf[i * 2 + 1]]);
+    }
+    tokens
+}
 
 // ── primitives ──
 
@@ -173,6 +195,7 @@ impl OptWrapper {
 // ── model ──
 
 struct NgramModel {
+    vocab: usize,
     embed: Vec<f32>,
     ctx: Vec<Vec<f32>>,
     ctx_weights: Vec<f32>,
@@ -181,7 +204,7 @@ struct NgramModel {
 }
 
 impl NgramModel {
-    fn new(seed: u64) -> Self {
+    fn new(seed: u64, vocab: usize) -> Self {
         let mut s = seed;
         let mut rng = || {
             s = s
@@ -191,27 +214,28 @@ impl NgramModel {
         };
         let lim = (6.0f32 / (3 * DIM) as f32).sqrt();
         let lim_h = (6.0f32 / (DIM + HIDDEN) as f32).sqrt();
-        let lim_o = (6.0f32 / (HIDDEN + VOCAB) as f32).sqrt();
+        let lim_o = (6.0f32 / (HIDDEN + vocab) as f32).sqrt();
         let ctx_weights: Vec<f32> = vec![0.7, 0.3, 0.2, 0.15];
         assert_eq!(ctx_weights.len(), NUM_CTX, "ctx_weights count mismatch");
         Self {
-            embed: (0..VOCAB * DIM).map(|_| rng() * lim).collect(),
+            vocab,
+            embed: (0..vocab * DIM).map(|_| rng() * lim).collect(),
             ctx: (0..NUM_CTX)
-                .map(|_| (0..VOCAB * DIM).map(|_| rng() * lim).collect())
+                .map(|_| (0..vocab * DIM).map(|_| rng() * lim).collect())
                 .collect(),
             ctx_weights,
             proj: (0..HIDDEN * DIM).map(|_| rng() * lim_h).collect(),
-            lm_head: (0..VOCAB * HIDDEN).map(|_| rng() * lim_o).collect(),
+            lm_head: (0..vocab * HIDDEN).map(|_| rng() * lim_o).collect(),
         }
     }
 
     fn compute_hidden(&self, context: &[usize]) -> Vec<f32> {
         assert!(context.len() >= 2, "context too short for hidden");
-        let t0 = context[context.len() - 1].min(VOCAB - 1);
+        let t0 = context[context.len() - 1].min(self.vocab - 1);
         let mut combined = self.embed[t0 * DIM..(t0 + 1) * DIM].to_vec();
         for (ci, cw) in self.ctx_weights.iter().enumerate() {
             let ctx_idx = context.len() - 2 - ci;
-            let t = context[ctx_idx].min(VOCAB - 1);
+            let t = context[ctx_idx].min(self.vocab - 1);
             let cv = &self.ctx[ci][t * DIM..(t + 1) * DIM];
             for j in 0..DIM {
                 combined[j] += cv[j] * cw;
@@ -230,7 +254,7 @@ impl NgramModel {
 
     fn predict(&self, hidden: &[f32]) -> Vec<f32> {
         assert_eq!(hidden.len(), HIDDEN, "hidden dim mismatch");
-        let mut logits = vec![0.0f32; VOCAB];
+        let mut logits = vec![0.0f32; self.vocab];
         for (vi, logit) in logits.iter_mut().enumerate() {
             for (hi, hn) in hidden.iter().enumerate() {
                 *logit += self.lm_head[vi * HIDDEN + hi] * hn;
@@ -248,7 +272,7 @@ impl NgramModel {
         let mut total = 0.0f32;
         for i in 0..count {
             let context = &tokens[i..i + NGRAM];
-            let target = tokens[i + NGRAM].min(VOCAB - 1);
+            let target = tokens[i + NGRAM].min(self.vocab - 1);
             let mut logits = self.predict(&self.compute_hidden(context));
             softmax(&mut logits);
             total -= logits[target].max(1e-10).ln();
@@ -270,10 +294,10 @@ fn compute_grads(model: &NgramModel, tokens: &[usize]) -> (TrainGrads, Vec<Vec<f
     let count = tokens.len().saturating_sub(NGRAM);
     assert!(count > 0, "sequence too short for gradient computation");
 
-    let mut g_embed = vec![0.0f32; VOCAB * DIM];
-    let mut g_ctx: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
+    let mut g_embed = vec![0.0f32; model.vocab * DIM];
+    let mut g_ctx: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; model.vocab * DIM]).collect();
     let mut g_proj = vec![0.0f32; HIDDEN * DIM];
-    let mut g_head = vec![0.0f32; VOCAB * HIDDEN];
+    let mut g_head = vec![0.0f32; model.vocab * HIDDEN];
 
     let (all_hidden, all_ln, all_contexts) = forward_pass(model, tokens, count);
     let total_loss = backward_pass(
@@ -326,11 +350,11 @@ fn forward_pass(
 
     for i in 0..count {
         let context: Vec<usize> = tokens[i..i + NGRAM].to_vec();
-        let t0 = context[NGRAM - 1].min(VOCAB - 1);
+        let t0 = context[NGRAM - 1].min(model.vocab - 1);
         let mut combined = model.embed[t0 * DIM..(t0 + 1) * DIM].to_vec();
         for (ci, cw) in model.ctx_weights.iter().enumerate() {
             let ctx_idx = NGRAM - 2 - ci;
-            let t = context[ctx_idx].min(VOCAB - 1);
+            let t = context[ctx_idx].min(model.vocab - 1);
             let cv = &model.ctx[ci][t * DIM..(t + 1) * DIM];
             for j in 0..DIM {
                 combined[j] += cv[j] * cw;
@@ -377,7 +401,7 @@ fn backward_pass(
     let mut total_loss = 0.0f32;
 
     for i in 0..count {
-        let target = tokens[i + NGRAM].min(VOCAB - 1);
+        let target = tokens[i + NGRAM].min(model.vocab - 1);
         let hidden = &all_hidden[i];
         let mut d_hidden = vec![0.0f32; HIDDEN];
         let mut logits = model.predict(hidden);
@@ -423,7 +447,7 @@ fn accumulate_input_grads(
     g_ctx: &mut [Vec<f32>],
 ) {
     assert!(context.len() >= NGRAM, "context too short");
-    let t0 = context[NGRAM - 1].min(VOCAB - 1);
+    let t0 = context[NGRAM - 1].min(model.vocab - 1);
     for di in 0..DIM {
         let mut grad_sum = 0.0f32;
         for hi in 0..HIDDEN {
@@ -434,7 +458,7 @@ fn accumulate_input_grads(
         g_embed[t0 * DIM + di] += grad_sum;
         for (ci, cw) in model.ctx_weights.iter().enumerate() {
             let ctx_idx = NGRAM - 2 - ci;
-            let t = context[ctx_idx].min(VOCAB - 1);
+            let t = context[ctx_idx].min(model.vocab - 1);
             g_ctx[ci][t * DIM + di] += cw * grad_sum;
         }
     }
@@ -463,11 +487,16 @@ fn evaluate(model: &NgramModel, tokens: &[usize]) -> f32 {
     total / n as f32
 }
 
-fn load_data(path: &str) -> Vec<usize> {
+fn load_data(path: &str, vocab: usize) -> Vec<usize> {
+    if path.ends_with(".bin") {
+        let tokens = load_fineweb_bin(path);
+        eprintln!("Loaded {} FineWeb tokens from {}", tokens.len(), path);
+        return tokens.into_iter().map(|t| (t as usize).min(vocab - 1)).collect();
+    }
     if let Ok(raw) = fs::read(path) {
         if !raw.is_empty() {
             eprintln!("Loaded {} bytes from {}", raw.len(), path);
-            return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
+            return raw.into_iter().map(|b| (b as usize) % vocab).collect();
         }
     }
 
@@ -495,7 +524,7 @@ fn load_data(path: &str) -> Vec<usize> {
                 let _ = fs::create_dir_all(parent);
             }
             let _ = fs::write(path, data);
-            data.iter().map(|&b| (b as usize) % VOCAB).collect()
+            data.iter().map(|&b| (b as usize) % vocab).collect()
         }
         Err(e) => {
             panic!("Failed to load {} and download failed: {}", path, e);
@@ -521,6 +550,9 @@ struct Config {
     use_sg5_lr: bool,
     trial_id: String,
     agent_id: String,
+    vocab: usize,
+    train_data: String,
+    val_data: String,
 }
 
 fn find_arg<T: std::str::FromStr>(args: &[String], prefix: &str, default: T) -> T {
@@ -558,6 +590,9 @@ fn parse_config(args: &[String]) -> Config {
     };
     let trial_id: String = find_arg(args, "--trial-id=", "hybrid-001".to_string());
     let agent_id: String = find_arg(args, "--agent-id=", "ALFA".to_string());
+    let vocab: usize = find_arg(args, "--vocab=", DEFAULT_VOCAB);
+    let train_data: String = find_arg(args, "--train-data=", "data/tiny_shakespeare.txt".to_string());
+    let val_data: String = find_arg(args, "--val-data=", "data/tiny_shakespeare_val.txt".to_string());
 
     assert!(encoder_lr > 0.0, "encoder_lr must be positive");
     assert!(ntp_lr > 0.0, "ntp_lr must be positive");
@@ -565,6 +600,7 @@ fn parse_config(args: &[String]) -> Config {
     assert!(ntp_weight >= 0.0, "ntp_weight must be >= 0");
     assert!(jepa_weight >= 0.0, "jepa_weight must be >= 0");
     assert!(nca_weight >= 0.0, "nca_weight must be >= 0");
+    assert!(vocab > 0, "vocab must be positive");
 
     assert!(weight_decay >= 0.0, "weight_decay must be >= 0");
 
@@ -584,6 +620,9 @@ fn parse_config(args: &[String]) -> Config {
         use_sg5_lr,
         trial_id,
         agent_id,
+        vocab,
+        train_data,
+        val_data,
     }
 }
 
@@ -750,12 +789,12 @@ fn init_training(cfg: &Config) -> TrainingState {
     };
     let wd = cfg.weight_decay;
     TrainingState {
-        model: NgramModel::new(cfg.seed),
-        target_model: NgramModel::new(cfg.seed),
-        opt_embed: make_opt(VOCAB * DIM, wd),
-        opt_ctx: (0..NUM_CTX).map(|_| make_opt(VOCAB * DIM, wd)).collect(),
+        model: NgramModel::new(cfg.seed, cfg.vocab),
+        target_model: NgramModel::new(cfg.seed, cfg.vocab),
+        opt_embed: make_opt(cfg.vocab * DIM, wd),
+        opt_ctx: (0..NUM_CTX).map(|_| make_opt(cfg.vocab * DIM, wd)).collect(),
         opt_proj: make_opt(HIDDEN * DIM, wd),
-        opt_head: make_opt(VOCAB * HIDDEN, wd),
+        opt_head: make_opt(cfg.vocab * HIDDEN, wd),
         predictor: if cfg.use_jepa {
             Some(JepaPredictor::new(PredictorConfig::with_d_model(HIDDEN)))
         } else {
@@ -791,8 +830,8 @@ fn print_banner(cfg: &Config) {
     };
     eprintln!("=== T-JEPA Hybrid Training ===");
     eprintln!(
-        "dim={} hidden={} enc_lr={} ntp_lr={} seed={} steps={}",
-        DIM, HIDDEN, cfg.encoder_lr, cfg.ntp_lr, cfg.seed, cfg.steps
+        "dim={} hidden={} vocab={} enc_lr={} ntp_lr={} seed={} steps={}",
+        DIM, HIDDEN, cfg.vocab, cfg.encoder_lr, cfg.ntp_lr, cfg.seed, cfg.steps
     );
     eprintln!(
         "optimizer={} jepa={} nca={} jepa_warmup={}",
@@ -841,12 +880,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_banner(&cfg);
     neon_trial_start(&cfg);
 
-    let train_data = load_data("data/tiny_shakespeare.txt");
-    let val_data = load_data("data/tiny_shakespeare_val.txt");
+    let train_data = load_data(&cfg.train_data, cfg.vocab);
+    let val_data = load_data(&cfg.val_data, cfg.vocab);
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
+    let max_val_len = cfg.steps * (SEQ + 1) * 2;
     let val = if val_data.len() > 100 {
-        &val_data
+        &val_data[..val_data.len().min(max_val_len)]
     } else {
         &train_data[train_end..]
     };

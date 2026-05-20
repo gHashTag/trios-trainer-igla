@@ -337,6 +337,9 @@ async fn run_experiment(
         let ntp_lr = cfg.get("ntp_lr").and_then(|v| v.as_f64()).unwrap_or(0.001).to_string();
         let jepa_warmup = cfg.get("jepa_warmup").and_then(|v| v.as_u64()).unwrap_or(1500).to_string();
         let weight_decay = cfg.get("weight_decay").and_then(|v| v.as_f64()).unwrap_or(0.01).to_string();
+        let vocab = cfg.get("vocab").and_then(|v| v.as_u64()).unwrap_or(128).to_string();
+        let train_path = cfg.get("train_path").and_then(|v| v.as_str()).unwrap_or("data/tiny_shakespeare.txt").to_string();
+        let val_path = cfg.get("val_path").and_then(|v| v.as_str()).unwrap_or("data/tiny_shakespeare_val.txt").to_string();
         // tjepa_train uses a hand-rolled arg parser that only accepts --key=value form.
         cmd.args([
             format!("--lr={lr}").as_str(),
@@ -349,6 +352,9 @@ async fn run_experiment(
             format!("--jepa-warmup={jepa_warmup}").as_str(),
             format!("--weight-decay={weight_decay}").as_str(),
             format!("--optimizer={optimizer}").as_str(),
+            format!("--vocab={vocab}").as_str(),
+            format!("--train-data={train_path}").as_str(),
+            format!("--val-data={val_path}").as_str(),
             format!("--trial-id={}", exp.canon_name).as_str(),
             format!("--agent-id={label}").as_str(),
         ]);
