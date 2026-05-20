@@ -32,33 +32,26 @@ fn rt() -> &'static Runtime {
     })
 }
 
-/// Build a rustls TLS config with system root CAs (required for Neon).
-fn make_tls_config() -> rustls::ClientConfig {
-    let mut roots = rustls::RootCertStore::empty();
-    roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-    rustls::ClientConfig::builder()
-        .with_root_certificates(roots)
-        .with_no_client_auth()
-}
-
 /// Lazy-initialised Neon client. `None` if `TRIOS_NEON_DSN` is unset or the
 /// connection failed. Cached across calls.
+/// Uses `NoTls` (sslmode=disable) because Railway proxy self-signed certs
+/// break rustls handshake. `psql` confirmed sslmode=disable works.
 fn client() -> Option<&'static Client> {
     static CLIENT: OnceLock<Option<Client>> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            let dsn = std::env::var("TRIOS_NEON_DSN")
-                .or_else(|_| std::env::var("DATABASE_URL"))
+            let mut dsn = std::env::var("TRIOS_NEON_DSN")
                 .or_else(|_| std::env::var("DATABASE_URL"))
                 .ok()?;
-            eprintln!("[neon_writer] connecting to Neon (TLS) …");
+            // Force sslmode=disable so tokio-postgres uses NoTls.
+            if !dsn.contains("sslmode=") {
+                dsn.push_str("?sslmode=disable");
+            }
+            eprintln!("[neon_writer] connecting (NoTls) …");
             let connect = rt().block_on(async {
-                let tls_config = make_tls_config();
-                let tls = tokio_postgres_rustls::MakeRustlsConnect::new(tls_config);
-                let connector = tokio_postgres::connect(&dsn, tls).await;
+                let connector = tokio_postgres::connect(&dsn, tokio_postgres::NoTls).await;
                 match connector {
                     Ok((client, conn)) => {
-                        // Drive the connection task in the background.
                         tokio::spawn(async move {
                             if let Err(e) = conn.await {
                                 eprintln!("[neon_writer] connection task error: {e}");
@@ -158,7 +151,7 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32) {
     execute(
         "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ts) \
          VALUES ($1, $2, $3, $4, NOW())",
-        &[&canon_name, &seed, &step, &(bpb as f64)],
+        &[&canon_name, &(seed as i64), &(step as i64), &(bpb as f64)],
     );
 }
 

@@ -568,7 +568,7 @@ async fn setup_notify_listener(db_url: &str) -> tokio::sync::mpsc::Receiver<()> 
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let db_url = env::var("DATABASE_URL").expect("DATABASE_URL not set");
     // RAILWAY_ACC identifies which account this scarab runs on (cosmetic, NOT a routing key).
     let acc = env::var("RAILWAY_ACC")

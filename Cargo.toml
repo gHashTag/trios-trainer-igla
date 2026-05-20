@@ -95,8 +95,9 @@ path = "src/bin/scarab.rs"
 
 # TODO: fix imports - requires trinity_3k module
 # [[bin]]
-# name = "trinity_3k_fineweb_train"
-# path = "src/bin/trinity_3k_fineweb_train.rs"
+[[bin]]
+name = "trinity_3k_fineweb_train"
+path = "src/bin/trinity_3k_fineweb_train.rs"
 
 # TODO: fix imports - requires trinity_3k module
 # [[bin]]

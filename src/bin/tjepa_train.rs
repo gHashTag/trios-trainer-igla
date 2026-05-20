@@ -73,6 +73,22 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
 }
 
+/// SG #5 adaptive LR schedule.
+/// Warmup: linear 0 → base_lr.
+/// Stable+decay: cosine decay from base_lr * SG5_H_W_RATIO down to base_lr * 0.1.
+/// The SG5 mixing coefficient (m_H/m_W ≈ 0.9565) sets the stable-phase LR floor.
+fn sg5_adaptive_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
+    use trios_trainer::invariants::SG5_H_W_RATIO;
+    assert!(max_steps > 0, "sg5_lr: max_steps=0");
+    if step < warmup {
+        return base_lr * step as f32 / warmup.max(1) as f32;
+    }
+    let p = (step - warmup) as f32 / (max_steps - warmup).max(1) as f32;
+    let decay = 0.5 * (1.0 + (std::f32::consts::PI * p).cos());
+    let sg5 = SG5_H_W_RATIO as f32;
+    base_lr * (sg5 * decay + 0.1 * (1.0 - decay))
+}
+
 // ── local AdamW ──
 
 struct AdamW {
@@ -502,6 +518,7 @@ struct Config {
     opt_kind: OptKind,
     jepa_warmup: usize,
     weight_decay: f32,
+    use_sg5_lr: bool,
     trial_id: String,
     agent_id: String,
 }
@@ -526,10 +543,14 @@ fn parse_config(args: &[String]) -> Config {
     let ntp_weight: f64 = find_arg(args, "--ntp-weight=", 1.0);
     let jepa_weight: f64 = find_arg(args, "--jepa-weight=", 1.0);
     let nca_weight: f64 = find_arg(args, "--nca-weight=", 0.25);
-    let jepa_warmup: usize = find_arg(args, "--jepa-warmup=", 1500);
+    let mut jepa_warmup: usize = find_arg(args, "--jepa-warmup=", 1500);
+    if jepa_warmup > steps / 10 {
+        jepa_warmup = steps / 10;
+    }
     let weight_decay: f32 = find_arg(args, "--weight-decay=", 0.01);
     let use_jepa = !args.iter().any(|a| a == "--no-jepa");
     let use_nca = !args.iter().any(|a| a == "--no-nca");
+    let use_sg5_lr = args.iter().any(|a| a == "--sg5-lr");
     let opt_kind = if args.iter().any(|a| a == "--optimizer=muon") {
         OptKind::Muon
     } else {
@@ -560,6 +581,7 @@ fn parse_config(args: &[String]) -> Config {
         opt_kind,
         jepa_warmup,
         weight_decay,
+        use_sg5_lr,
         trial_id,
         agent_id,
     }
@@ -812,7 +834,7 @@ fn print_results(cfg: &Config, best_bpb: f32, elapsed: f64) {
 // ── main ──
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let args: Vec<String> = std::env::args().collect();
     let cfg = parse_config(&args);
 
@@ -851,8 +873,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             st.obj_config,
         );
 
-        let enc_lr = cosine_lr(step, cfg.steps, cfg.encoder_lr, warmup);
-        let head_lr = cosine_lr(step, cfg.steps, cfg.ntp_lr, warmup);
+        let (enc_lr, head_lr) = if cfg.use_sg5_lr {
+            (
+                sg5_adaptive_lr(step, cfg.steps, cfg.encoder_lr, warmup),
+                sg5_adaptive_lr(step, cfg.steps, cfg.ntp_lr, warmup),
+            )
+        } else {
+            (
+                cosine_lr(step, cfg.steps, cfg.encoder_lr, warmup),
+                cosine_lr(step, cfg.steps, cfg.ntp_lr, warmup),
+            )
+        };
         st.opt_embed
             .step(&mut st.model.embed, &grads.g_embed, enc_lr);
         for (ci, oc) in st.opt_ctx.iter_mut().enumerate() {

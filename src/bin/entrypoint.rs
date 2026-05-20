@@ -27,11 +27,11 @@ fn main() {
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     if !matches!(
         trainer.as_str(),
-        "trios-train" | "gf16_test" | "ngram_train_gf16" | "scarab"
+        "trios-train" | "gf16_test" | "ngram_train_gf16" | "scarab" | "tjepa_train"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, gf16_test, ngram_train_gf16, scarab}}"
+             {{trios-train, gf16_test, ngram_train_gf16, scarab, tjepa_train}}"
         );
         std::process::exit(2);
     }
@@ -42,6 +42,14 @@ fn main() {
     // scarab is env-driven (DATABASE_URL, RAILWAY_*), not CLI args
     if trainer.as_str() == "scarab" {
         println!("[entrypoint] scarab mode — env-driven, no CLI args");
+    } else if trainer.as_str() == "tjepa_train" {
+        println!("[entrypoint] tjepa_train mode — multi-objective training");
+        cmd.arg(format!("--seed={seed}"))
+            .arg(format!("--steps={steps}"))
+            .arg(format!("--lr={lr}"))
+            .arg(format!("--optimizer={optimizer}"))
+            .arg(format!("--trial-id=entrypoint-{seed}"))
+            .arg(format!("--agent-id=container"));
     } else {
         println!(
             "[entrypoint] {trainer} seed={seed} steps={steps} lr={lr} hidden={hidden} opt={optimizer}"
