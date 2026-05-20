@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::io::Read;
 use std::time::Instant;
 
-use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
+use crate::model_hybrid_attn::{AttentionCache, HybridAttn, H4TTT};
 use crate::objective::{nca_entropy_loss, NcaObjective};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
@@ -717,6 +717,19 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
         }
 
+        // H4_TTT: optional test-time training via Coxeter projection defect.
+        // Enabled via TRIOS_H4_TTT=1. Updates only ~1/240 of weights per chunk.
+        // Refs: H4Derivations.v (17/17), INV6_H4_Constraint.v
+        if std::env::var("TRIOS_H4_TTT").unwrap_or_default() == "1" {
+            let ttt_lr = lr * PHI_INV * PHI_INV * PHI_INV; // lr × φ⁻³
+            let h4_ttt = H4TTT::new(model.embed.len(), ttt_lr, args.seed);
+            h4_ttt.update(&mut model.embed, &ge);
+            let h4_ttt_proj = H4TTT::new(model.proj.len(), ttt_lr, args.seed.wrapping_add(1));
+            h4_ttt_proj.update(&mut model.proj, &gp);
+            let h4_ttt_head = H4TTT::new(model.lm_head.len(), ttt_lr, args.seed.wrapping_add(2));
+            h4_ttt_head.update(&mut model.lm_head, &gh);
+        }
+
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
             gf16_floor(&mut model.proj);
@@ -944,6 +957,19 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             model.attn.wk2.copy_from_slice(&attn_flat[5 * dd..6 * dd]);
             model.attn.wv2.copy_from_slice(&attn_flat[6 * dd..7 * dd]);
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
+        }
+
+        // H4_TTT: optional test-time training via Coxeter projection defect.
+        // Enabled via TRIOS_H4_TTT=1. Updates only ~1/240 of weights per chunk.
+        // Refs: H4Derivations.v (17/17), INV6_H4_Constraint.v
+        if std::env::var("TRIOS_H4_TTT").unwrap_or_default() == "1" {
+            let ttt_lr = lr * PHI_INV * PHI_INV * PHI_INV; // lr × φ⁻³
+            let h4_ttt = H4TTT::new(model.embed.len(), ttt_lr, args.seed);
+            h4_ttt.update(&mut model.embed, &ge);
+            let h4_ttt_proj = H4TTT::new(model.proj.len(), ttt_lr, args.seed.wrapping_add(1));
+            h4_ttt_proj.update(&mut model.proj, &gp);
+            let h4_ttt_head = H4TTT::new(model.lm_head.len(), ttt_lr, args.seed.wrapping_add(2));
+            h4_ttt_head.update(&mut model.lm_head, &gh);
         }
 
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
