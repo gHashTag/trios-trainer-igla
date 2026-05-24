@@ -95,9 +95,8 @@ path = "src/bin/scarab.rs"
 
 # TODO: fix imports - requires trinity_3k module
 # [[bin]]
-[[bin]]
-name = "trinity_3k_fineweb_train"
-path = "src/bin/trinity_3k_fineweb_train.rs"
+# name = "trinity_3k_fineweb_train"
+# path = "src/bin/trinity_3k_fineweb_train.rs"
 
 # TODO: fix imports - requires trinity_3k module
 # [[bin]]
@@ -262,3 +261,11 @@ useless_vec = "allow"
 [[bin]]
 name = "bpb_smoke"
 path = "src/bin/bpb_smoke.rs"
+
+[[bin]]
+name = "cpu_train_fineweb"
+path = "src/bin/cpu_train_fineweb.rs"
+
+[[bin]]
+name = "cpu_train_deep"
+path = "src/bin/cpu_train_deep.rs"

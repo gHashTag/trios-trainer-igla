@@ -705,7 +705,7 @@ mod tests {
 
     #[test]
     fn test_schema_version_pinned() {
-        assert_eq!(SCHEMA_VERSION, "1.0");
+        assert_eq!(SCHEMA_VERSION, "1.1");
     }
 
     #[test]
