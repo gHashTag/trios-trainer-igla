@@ -1,9 +1,9 @@
 //! GoldenFloat16 (GF16) - φ-optimized 16-bit floating point format
 //!
 //! Format: 1 sign | 6 exponent | 9 mantissa
-//! Bias: 15 (to allow representing 1.0, 2.0, etc.)
+//! Bias: 31 (DLFloat16 compatible — to allow representing 1.0, 2.0, etc.)
 //! No subnormals
-//! Range: 4.66×10⁻⁵ to 6.55×10⁴
+//! Range: ~9.31×10⁻¹⁰ to ~4.29×10⁹
 //!
 //! Based on: https://github.com/gHashTag/zig-golden-float
 
@@ -18,7 +18,7 @@ impl GF16 {
     const SIGN_MASK: u16 = 0x8000;
     const EXP_MASK: u16 = 0x7E00; // bits 14-9 for 6-bit exponent
     const MANTISSA_MASK: u16 = 0x01FF; // bits 8-0 for 9-bit mantissa
-    const EXP_BIAS: i32 = 15;
+    const EXP_BIAS: i32 = 31;
 
     /// Zero (positive)
     pub const ZERO: GF16 = GF16(0x0000);
@@ -57,7 +57,7 @@ impl GF16 {
         let f32_exp = ((bits >> 23) & 0xFF) as i32 - 127;
         let f32_mant = bits & 0x007F_FFFF;
 
-        if f32_exp <= -15 {
+        if f32_exp <= -Self::EXP_BIAS {
             return GF16((f32_sign as u16) << 15);
         }
 
