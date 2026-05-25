@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
 use crate::objective::{nca_entropy_loss, NcaObjective};
+use crate::fake_quant::{self, FormatKind};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
 pub const GATE_FINAL_SEEDS: &[u64] = &[43, 44, 45];
@@ -48,6 +49,7 @@ pub struct TrainArgs {
     pub eval_every: usize,
     pub train_path: String,
     pub val_path: String,
+    pub format: Option<String>,
 }
 
 #[derive(Debug)]
@@ -179,6 +181,32 @@ fn gf16_floor(weights: &mut [f32]) {
     for w in weights.iter_mut() {
         *w = (*w * scale).round() / scale;
     }
+}
+
+/// Apply FakeQuant + STE to all learnable weights in the model.
+/// Called after each optimizer step when --format is set (trios#509).
+fn apply_fake_quant(model: &mut HybridModel, format: &Option<String>) {
+    let Some(fmt_str) = format else { return };
+    let Some(kind) = FormatKind::from_env(fmt_str) else { return };
+    if kind == FormatKind::F32 {
+        return;
+    }
+    fake_quant::fake_quantize_weights(&mut model.embed, kind);
+    fake_quant::fake_quantize_weights(&mut model.proj, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn_down, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn_up, kind);
+    fake_quant::fake_quantize_weights(&mut model.lm_head, kind);
+    for c in &mut model.ctx {
+        fake_quant::fake_quantize_weights(c, kind);
+    }
+    fake_quant::fake_quantize_weights(&mut model.attn.wq, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wk, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wv, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wo, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wq2, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wk2, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wv2, kind);
+    fake_quant::fake_quantize_weights(&mut model.attn.wo2, kind);
 }
 
 struct HybridModel {
@@ -724,6 +752,8 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
         }
 
+        apply_fake_quant(&mut model, &args.format);
+
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
             gf16_floor(&mut model.proj);
@@ -957,6 +987,8 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
         }
 
+        apply_fake_quant(&mut model, &args.format);
+
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
             gf16_floor(&mut model.proj);
@@ -1018,6 +1050,7 @@ pub fn run_sweep(
     train_path: &str,
     val_path: &str,
 ) -> Result<Vec<RunOutcome>> {
+    let format = std::env::var("TRIOS_FORMAT_TYPE").ok();
     let mut results = Vec::new();
     for &seed in GATE_FINAL_SEEDS {
         results.push(run_single(&TrainArgs {
@@ -1029,6 +1062,7 @@ pub fn run_sweep(
             eval_every,
             train_path: train_path.to_string(),
             val_path: val_path.to_string(),
+            format: format.clone(),
         })?);
     }
     Ok(results)
@@ -1044,6 +1078,7 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
         eval_every: 1000,
         train_path: cfg.data.train_path.clone(),
         val_path: cfg.data.val_path.clone(),
+        format: std::env::var("TRIOS_FORMAT_TYPE").ok(),
     };
     let outcome = run_single(&args)?;
     if !cfg.ledger.jsonl_path.is_empty() {

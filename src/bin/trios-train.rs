@@ -82,10 +82,9 @@ struct Cli {
     #[allow(dead_code)]
     ctx: Option<usize>,
 
-    /// Format type pass-through (accepted for seed-agent compat; honoured via
-    /// `TRIOS_FORMAT_TYPE` env). gf16 is the default in production.
+    /// Format type pass-through (honoured via FakeQuant + STE in train_loop).
+    /// gf16 is the default in production. See fake_quant.rs for supported kinds.
     #[arg(long, env = "TRIOS_FORMAT_TYPE")]
-    #[allow(dead_code)]
     format: Option<String>,
 
     /// Neon database URL for bpb_samples writes (used by scarab worker).
@@ -188,6 +187,7 @@ fn main() -> Result<()> {
             eval_every: cli.eval_every,
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
+            format: cli.format.clone(),
         };
         let outcome = match cli.optimizer.as_str() {
             "muon" => train_loop::run_single_muon(&args, false)?,
