@@ -28,6 +28,10 @@ name = "trios-train"
 path = "src/bin/trios-train.rs"
 
 [[bin]]
+name = "railway-sweep"
+path = "src/bin/railway_sweep.rs"
+
+[[bin]]
 name = "trios-igla"
 path = "src/bin/trios-igla.rs"
 
@@ -107,6 +111,8 @@ path = "src/bin/scarab.rs"
 # [[bin]]
 # name = "trinity_3k_tinyshakespeare"
 # path = "src/bin/trinity_3k_tinyshakespeare.rs"
+
+# Temporary test bins removed after run
 
 [[bin]]
 name = "trinity_pr1722"

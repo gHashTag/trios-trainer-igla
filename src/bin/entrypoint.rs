@@ -28,11 +28,11 @@ fn main() {
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     if !matches!(
         trainer.as_str(),
-        "trios-train" | "scarab" | "gf16_test" | "ngram_train_gf16"
+        "trios-train" | "scarab" | "gf16_test" | "ngram_train_gf16" | "railway-sweep"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, gf16_test, ngram_train_gf16}}"
+             {{trios-train, scarab, gf16_test, ngram_train_gf16, railway-sweep}}"
         );
         std::process::exit(2);
     }
