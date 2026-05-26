@@ -20,6 +20,7 @@ fn main() {
     let lr = env_or("TRIOS_LR", "0.003");
     let hidden = env_or("TRIOS_HIDDEN", "384");
     let optimizer = env_or("TRIOS_OPTIMIZER", "adamw");
+    let format = env_or("TRIOS_FORMAT", "");
 
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");
@@ -50,6 +51,9 @@ fn main() {
         .arg(format!("--optimizer={optimizer}"))
         .arg(format!("--train-data={train_data}"))
         .arg(format!("--val-data={val_data}"));
+    if !format.is_empty() {
+        cmd.arg(format!("--format={format}"));
+    }
 
     #[cfg(unix)]
     {
