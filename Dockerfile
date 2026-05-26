@@ -9,6 +9,7 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 RUN rustup default 1.91
 
 WORKDIR /build
+ARG CACHE_BUST=1
 COPY . .
 RUN cargo build --release \
         --bin entrypoint \
