@@ -152,3 +152,11 @@
 [scarab-adamw-rng123] gf16 h=256 lr=0.001 seed=72 step=20k val_bpb=6.7011
 [phase1-rng89] gf16 h=256 lr=0.001 seed=71 step=19k val_bpb=6.7171
 [scarab-shampoo-rng89] gf16 h=256 lr=0.003 seed=71 step=30k val_bpb=6.9657
+
+=== HARVEST PROGRESS | 2026-05-28 ===
+[phase1-gf16-h512-seed82] gf16 seed=82 step=364k val_bpb=2.7960 best=2.5830 (improved!)
+[scarab-fp16-seed77] fp16 seed=77 step=448k val_bpb=2.8484 best=2.5659
+[scarab-muon-rng144] gf16 Muon h=256 lr=0.001 seed=71 step=27k val_bpb=3.1921
+[TEST-LEADER-v2] gf16 Muon h=384 lr=0.001 seed=1597 step=45k val_bpb=4.1715
+[scarab-adamw-rng123] gf16 h=256 lr=0.001 seed=72 step=21k val_bpb=6.6411
+[phase1-rng89] gf16 h=256 lr=0.001 seed=71 step=19k val_bpb=6.7171
