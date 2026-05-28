@@ -1,0 +1,16 @@
+/target
+**/*.rs.bk
+Cargo.lock.bak
+.DS_Store
+.idea/
+.vscode/
+*.swp
+/assertions/
+/checkpoints/
+/data/
+*.jsonl.tmp
+.trinity/
+.cargo/
+*.pdf
+trinity_constitution/
+.git/

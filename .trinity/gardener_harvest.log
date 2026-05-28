@@ -1,0 +1,21 @@
+=== HARVEST | 2026-05-28 ===
+[phase1-f32-seed74] f32 seed=74 step=156000 val_bpb=2.6636 best=2.6248
+[scarab-gf12-seed78] gf12 seed=78 step=149000 val_bpb=2.7036 best=2.6863
+[scarab-fp8-seed86] fp8 seed=86 step=138000 val_bpb=2.6178 best=2.6204
+[scarab-gf20-seed78] gf20 seed=78 step=129000 val_bpb=2.6977 best=2.6863
+[phase1-gf16-seed74] gf16 seed=74 step=133000 val_bpb=2.6534 best=2.6248
+[scarab-gf16-muon-seed80] gf16 Muon seed=80 step=97000 val_bpb=2.5999 best=2.6065
+[scarab-mxfp8-seed79] mxfp8 seed=79 step=121000 val_bpb=2.6997 best=2.6886
+[phase1-gf16-seed76] gf16 seed=76 step=134000 val_bpb=2.7309 best=2.7126
+[phase1-gf16-seed77] gf16 seed=77 step=117000 val_bpb=2.6100 best=2.6179
+[scarab-bfloat16-seed87] bf16 seed=87 step=108000 val_bpb=2.6543 best=2.6651
+[scarab-posit8-seed79] posit8 seed=79 step=102000 val_bpb=2.6983 best=2.6994
+[phase1-f32-seed76] f32 seed=76 step=121000 val_bpb=2.7111 best=2.7159
+[phase1-f32-h512-seed82] f32 h512 seed=82 step=106000 val_bpb=2.6227 best=2.6279
+[scarab-int8-seed80] int8 seed=80 step=92000 val_bpb=2.7459 best=2.7557
+[scarab-gf16-seed75] gf16 seed=75 step=103000 val_bpb=2.6623 best=2.6577
+[phase1-gf16-h128-seed83] gf16 h128 seed=83 step=107000 val_bpb=2.7284 best=2.7213
+[phase1-bf16-h256-lr0005-seed84] bf16 h256 lr=0.005 seed=84 step=92000 val_bpb=2.7942 best=2.8031
+[phase1-bf16-seed74] bf16 seed=74 step=97000 val_bpb=2.6423 best=2.6511
+[phase1-bf16-seed76] bf16 seed=76 step=86000 val_bpb=2.7516 best=2.7488
+[phase1-gf16-lr0002-seed85] gf16 lr=0.002 seed=85 step=151000 val_bpb=2.7657 best=2.7712
