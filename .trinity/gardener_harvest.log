@@ -42,3 +42,59 @@
 [phase1-gf16-seed76] gf16 seed=76 step=220k val_bpb=2.7841 best=2.7126
 [scarab-fp8-seed86] fp8 seed=86 step=251k val_bpb=2.7846 best=2.5795
 [phase1-f32-seed76] f32 seed=76 step=201k val_bpb=2.7964 best=2.7126
+
+=== HARVEST GRID SWEEP | 2026-05-28 ===
+## Grid services running with new configs
+[TEST-LEADER-v2] Muon gf16 h=384 lr=0.001 seed=44 step=15k val_bpb=4.0521
+[phase1-f32-h512-seed82] Muon gf16 h=384 lr=0.003 seed=44 step=booting
+[phase1-bf16-seed76] Muon gf16 h=512 lr=0.001 seed=42 step=booting
+[phase1-gf16-seed74] adamw gf16 h=512 lr=0.001 seed=42 step=booting
+[phase1-gf16-seed76] adamw gf16 h=512 lr=0.001 seed=43 step=booting
+[phase1-gf16-seed77] adamw gf16 h=512 lr=0.001 seed=44 step=booting
+[phase1-bf16-seed74] Muon gf16 h=384 lr=0.003 seed=42 step=booting
+[phase1-f32-seed76] Muon gf16 h=384 lr=0.003 seed=43 step=booting
+[phase1-gf16-h128-seed83] Muon gf16 h=512 lr=0.001 seed=43 step=booting
+[phase1-bf16-h256-lr0005-seed84] Muon gf16 h=512 lr=0.001 seed=44 step=booting
+[phase1-gf16-lr0002-seed85] adamw gf16 h=512 lr=0.003 seed=42 step=booting
+
+## Scarab pool (early eval, still warming up)
+[scarab-muon-rng144] Muon gf16 h=256 lr=0.001 seed=71 step=11k val_bpb=3.4432
+[scarab-adamw-rng123] gf16 h=256 lr=0.001 seed=72 step=8k val_bpb=6.9846
+[phase1-rng89] gf16 h=256 lr=0.001 seed=71 step=8k val_bpb=6.9893
+[scarab-shampoo-rng89] gf16 h=256 lr=0.003 seed=71 step=12k val_bpb=7.0069
+[phase1-rng47] gf16 h=256 lr=0.001 seed=71 step=10k val_bpb=7.0117
+[scarab-signum-rng144] gf16 h=384 lr=0.001 seed=71 step=12k val_bpb=6.9890
+[scarab-lion-m1-rng144] gf16 h=384 lr=0.001 seed=71 step=14k val_bpb=7.0058
+[scarab-sf-lite-rng123] gf16 h=384 lr=0.001 seed=71 step=12k val_bpb=7.0069
+[scarab-lamb-rng144] gf16 h=256 lr=0.003 seed=71 step=10k val_bpb=7.0083
+[scarab-sgdm-rng144] gf16 h=256 lr=0.003 seed=71 step=10k val_bpb=7.0083
+[scarab-signum] gf16 h=384 lr=0.001 seed=71 step=10k val_bpb=7.0083
+[scarab-lamb] gf16 h=256 lr=0.003 seed=71 step=9k val_bpb=7.0092
+[scarab-lion-rng123] gf16 h=256 lr=0.003 seed=71 step=9k val_bpb=7.0092
+[scarab-prodigy-rng144] gf16 h=256 lr=0.003 seed=71 step=9k val_bpb=7.0092
+[scarab-ranger-rng144] gf16 h=256 lr=0.003 seed=71 step=9k val_bpb=7.0092
+[scarab-soap-rng144] gf16 h=256 lr=0.001 seed=71 step=9k val_bpb=7.0092
+[scarab-soap] gf16 h=256 lr=0.001 seed=71 step=9k val_bpb=7.0092
+
+## Pre-grid sweep services (deep convergence, 100M+ steps)
+[phase1-f32-h512-seed82] f32 h512 seed=82 step=172k val_bpb=2.6147 best=2.5830
+[phase1-bf16-h256-lr0005-seed84] bf16 h256 lr=0.005 seed=84 step=167k val_bpb=2.6176
+[phase1-gf16-seed77] gf16 seed=77 step=194k val_bpb=2.6390 best=2.5659
+[scarab-gf16-muon-seed80] gf16 Muon seed=80 step=175k val_bpb=2.6533 best=2.5901
+[scarab-bfloat16-seed87] bf16 seed=87 step=196k val_bpb=2.6593
+[scarab-gf20-seed75] gf20 seed=75 step=151k val_bpb=2.6640
+[phase1-gf16-lr0002-seed85] gf16 lr=0.002 seed=85 step=259k val_bpb=2.6699
+[phase1-bf16-seed74] bf16 seed=74 step=172k val_bpb=2.6801
+[phase1-gf16-seed74] gf16 seed=74 step=221k val_bpb=2.6969
+[scarab-gf16-seed75] gf16 seed=75 step=191k val_bpb=2.7024
+[scarab-posit8-seed79] posit8 seed=79 step=184k val_bpb=2.7053
+[phase1-bf16-seed76] bf16 seed=76 step=155k val_bpb=2.7232
+[scarab-int8-seed80] int8 seed=80 step=160k val_bpb=2.7391
+[scarab-mxfp8-seed79] mxfp8 seed=79 step=209k val_bpb=2.7444
+[scarab-gf20-seed78] gf20 seed=78 step=236k val_bpb=2.7515
+[phase1-gf16-h128-seed83] gf16 h128 seed=83 step=193k val_bpb=2.7584
+[scarab-gf12-seed78] gf12 seed=78 step=261k val_bpb=2.7611
+[phase1-f32-seed74] f32 seed=74 step=266k val_bpb=2.7722
+[phase1-gf16-seed76] gf16 seed=76 step=220k val_bpb=2.7841
+[scarab-fp8-seed86] fp8 seed=86 step=251k val_bpb=2.7846
+[phase1-f32-seed76] f32 seed=76 step=201k val_bpb=2.7964
