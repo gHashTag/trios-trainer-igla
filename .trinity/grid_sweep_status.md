@@ -80,3 +80,14 @@ Focus: 6 formats × 3 hidden × 2 lr × 2 optimizers × 3 seeds
 ### Still timed out (6 services — need manual retry via Railway dashboard)
 - trios, phase1-bf16-seed74, phase1-f32-seed76
 - phase1-gf16-h128-seed83, phase1-bf16-h256-lr0005-seed84, phase1-gf16-lr0002-seed85
+
+## Critical Finding: Canon #93 Seed Restriction
+Some services enforce seed whitelist: allowed seeds = {47, 89, 123, 144}
+Services crashed with seed=42/43/44:
+- phase1-gf16-seed74 (was seed=42)
+- phase1-f32-seed76 (was seed=43)
+- phase1-f32-h512-seed82 (was seed=44)
+- phase1-bf16-seed74 (was seed=42)
+- phase1-bf16-seed76 (was seed=42)
+
+Fixed to seed=47 and redeployed.
