@@ -168,3 +168,11 @@
 [TEST-LEADER-v2] gf16 Muon h=384 lr=0.001 seed=1597 step=50k val_bpb=4.1506
 [scarab-adamw-rng123] gf16 h=256 lr=0.001 seed=72 step=21k val_bpb=6.6411
 [phase1-rng89] gf16 h=256 lr=0.001 seed=71 step=20k val_bpb=6.6482
+
+=== HARVEST CONTINUOUS | 2026-05-28 ===
+[phase1-gf16-h512-seed82] gf16 seed=82 step=373k val_bpb=2.8515 best=2.5830
+[scarab-fp16-seed77] fp16 seed=77 step=458k val_bpb=2.8884 best=2.5659
+[scarab-muon-rng144] gf16 Muon h=256 lr=0.001 seed=71 step=29k val_bpb=3.1758
+[TEST-LEADER-v2] gf16 Muon h=384 lr=0.001 seed=1597 step=50k val_bpb=4.1506
+[scarab-adamw-rng123] gf16 h=256 lr=0.001 seed=72 step=22k val_bpb=6.5839
+[phase1-rng89] gf16 h=256 lr=0.001 seed=71 step=21k val_bpb=6.5802
