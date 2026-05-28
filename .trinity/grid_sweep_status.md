@@ -67,3 +67,16 @@ Focus: 6 formats × 3 hidden × 2 lr × 2 optimizers × 3 seeds
 - Tomorrow: retry failed variable sets, create new services for remaining 174 configs
 - Inject grid configs into strategy_queue for scarab pool
 - Add GF32/GF64 formats to grid once Rust codegen is ready
+
+## Grid Deployment Progress (live)
+### Confirmed running with new configs (verified via logs)
+- TEST-LEADER-v2: gf16 h=384 lr=0.001 muon seed=44 steps=100M
+- phase1-f32-h512-seed82: gf16 h=384 lr=0.003 muon seed=44 steps=100M
+- phase1-bf16-seed76: gf16 h=512 lr=0.001 muon seed=42 steps=100M
+- phase1-gf16-seed74: gf16 h=512 lr=0.001 adamw seed=42 steps=100M
+- phase1-gf16-seed76: gf16 h=512 lr=0.001 adamw seed=43 steps=100M
+- phase1-gf16-seed77: gf16 h=512 lr=0.001 adamw seed=44 steps=100M
+
+### Still timed out (6 services — need manual retry via Railway dashboard)
+- trios, phase1-bf16-seed74, phase1-f32-seed76
+- phase1-gf16-h128-seed83, phase1-bf16-h256-lr0005-seed84, phase1-gf16-lr0002-seed85
