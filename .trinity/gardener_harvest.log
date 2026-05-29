@@ -591,3 +591,18 @@
 [scarab-gf16-lion-seed81] seed=71 step=51000 val_bpb=7.0067 ema_bpb=7.0069 best=7.0069 nca_h=1.174 t=7805.6s
 [scarab-gf16-soap-seed81] seed=71 step=41000 val_bpb=7.0084 ema_bpb=7.0088 best=7.0088 nca_h=1.162 t=8090.3s
 
+=== PARALLEL HARVEST v6 | 2026-05-29_17:07:35 ===
+[TEST-LEADER-v2] Muon seed=1597 step=530000 val_bpb=3.2931 ema_bpb=3.2992 best=3.2977 nca_h=0.042 t=79718.4s
+[TEST-TRAINER-SEED-43] seed=42 step=45000 val_bpb=5.7798 ema_bpb=6.1323 best=6.1323 nca_h=1.343 t=8297.1s
+[phase1-bf16-seed74] Muon seed=47 step=1710000 val_bpb=2.9176 ema_bpb=2.9509 best=2.5724 nca_h=0.467 t=79900.4s
+[phase1-bf16-seed76] Muon seed=47 step=1855000 val_bpb=2.7869 ema_bpb=2.7832 best=2.5459 nca_h=0.199 t=79729.8s
+[phase1-f32-h512-seed82] Muon seed=47 step=1910000 val_bpb=2.9166 ema_bpb=2.8763 best=2.5724 nca_h=0.343 t=79167.5s
+[phase1-f32-seed76] Muon seed=47 step=1790000 val_bpb=2.9768 ema_bpb=2.9678 best=2.5724 nca_h=0.064 t=79552.8s
+[phase1-gf16-seed74] seed=47 step=2475000 val_bpb=2.7437 ema_bpb=2.7322 best=2.5739 nca_h=0.162 t=79884.3s
+[phase1-rng123] seed=44 step=55000 val_bpb=4.6843 ema_bpb=5.2975 best=5.2975 nca_h=1.209 t=8611.9s
+[phase1-rng144] seed=72 step=42000 val_bpb=7.0012 ema_bpb=7.0016 best=7.0016 nca_h=1.261 t=8856.1s
+[scarab-fp16-seed77] seed=77 step=3117000 val_bpb=2.8031 ema_bpb=2.8248 best=2.4872 nca_h=0.823 t=79738.1s
+[scarab-gf16-lion-seed81] seed=71 step=56000 val_bpb=7.0063 ema_bpb=7.0064 best=7.0064 nca_h=1.236 t=8550.4s
+[scarab-gf16-soap-seed81] seed=71 step=45000 val_bpb=7.0075 ema_bpb=7.0078 best=7.0078 nca_h=1.270 t=8878.8s
+[trios] seed=71 step=40000 val_bpb=6.9635 ema_bpb=6.9721 best=6.9721 nca_h=1.047 t=7999.9s
+
