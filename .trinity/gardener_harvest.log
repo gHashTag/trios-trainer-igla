@@ -753,3 +753,11 @@ seed=71 step=54000 val_bpb=7.0065 ema_bpb=7.0066 best=7.0066 nca_h=1.129 t=10651
 [scarab-posit8-seed79] Initial val_bpb=7.0022
 [scarab-fp8-seed86] Muon seed=47 step=5000 val_bpb=3.4981 ema_bpb=5.6625 best=5.6625 nca_h=0.846 t=135.9s
 [scarab-gf12-seed78] Initial val_bpb=7.0003
+=== PROGRESS CHECK 17:44:22 ===
+[scarab-fp8-seed86] Muon seed=47 step=15000 val_bpb=3.1836 ema_bpb=4.1470 best=4.1470 nca_h=0.855 t=408.4s
+[scarab-int8-seed80] Muon seed=47 step=10000 val_bpb=3.0789 ema_bpb=4.6192 best=4.6192 nca_h=0.671 t=348.0s
+[scarab-gf16-seed75] seed=47 step=15000 val_bpb=5.2576 ema_bpb=6.2402 best=6.2402 nca_h=1.461 t=341.2s
+[scarab-fp16-seed77] seed=77 step=3195000 val_bpb=2.7954 ema_bpb=2.7826 best=2.4872 nca_h=0.859 t=81933.2s
+[phase1-gf16-h512-seed82] seed=82 step=2508000 val_bpb=2.6360 ema_bpb=2.6456 best=2.5681 nca_h=0.862 t=82001.7s
+[phase1-gf16-seed74] seed=47 step=2535000 val_bpb=2.7081 ema_bpb=2.6922 best=2.5739 nca_h=0.577 t=81947.8s
+[phase1-bf16-seed76] Muon seed=47 step=1890000 val_bpb=2.7550 ema_bpb=2.7717 best=2.5459 nca_h=0.884 t=81947.6s
