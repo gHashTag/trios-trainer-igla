@@ -414,3 +414,29 @@
 [phase1-rng144] FIXED: redeployed with trios-train, seed=72 bf16 h256 lr=0.001
 [TEST-TRAINER-SEED-43] FIXED: scarab → trios-train, seed=42 gf16 h384 lr=0.003
 
+=== PARALLEL HARVEST v11 | 2026-05-29_14:49:40 ===
+[TEST-LEADER-v2] Muon seed=1597 step=490000 val_bpb=3.2913 ema_bpb=3.3064 best=3.3064 nca_h=0.085 t=71642.7s
+[phase1-bf16-seed74] Muon seed=47 step=1635000 val_bpb=2.9411 ema_bpb=2.9682 best=2.5724 nca_h=0.315 t=71514.3s
+[phase1-f32-h512-seed82] Muon seed=47 step=1820000 val_bpb=2.8515 ema_bpb=2.8909 best=2.5724 nca_h=0.191 t=70961.4s
+[phase1-f32-seed76] Muon seed=47 step=1705000 val_bpb=2.9450 ema_bpb=2.9714 best=2.5724 nca_h=0.874 t=71030.8s
+[phase1-gf16-h512-seed82] seed=82 step=2196000 val_bpb=2.7732 ema_bpb=2.7767 best=2.5681 nca_h=0.669 t=71497.8s
+[phase1-gf16-seed74] seed=47 step=2220000 val_bpb=2.8793 ema_bpb=2.8907 best=2.5739 nca_h=0.676 t=71490.6s
+[phase1-rng123] Initial val_bpb=6.9935
+[scarab-fp16-seed77] seed=77 step=2821000 val_bpb=2.6484 ema_bpb=2.6560 best=2.4872 nca_h=0.884 t=71420.6s
+[scarab-gf16-lion-seed81] seed=71 step=1000 val_bpb=7.0121 ema_bpb=7.0121 best=7.0120 nca_h=1.162 t=158.3s
+[scarab-gf16-soap-seed81] seed=71 step=2000 val_bpb=7.0121 ema_bpb=7.0121 best=7.0120 nca_h=1.306 t=396.3s
+[trios] Initial val_bpb=6.9975
+
+=== PARALLEL HARVEST v11 | 2026-05-29_14:49:59 ===
+[phase1-rng123] Initial val_bpb=6.9935
+[trios] Initial val_bpb=6.9975
+[scarab-fp16-seed77] seed=77 step=2821000 val_bpb=2.6484 ema_bpb=2.6560 best=2.4872 nca_h=0.884 t=71420.6s
+[phase1-gf16-h512-seed82] seed=82 step=2196000 val_bpb=2.7732 ema_bpb=2.7767 best=2.5681 nca_h=0.669 t=71497.8s
+[phase1-gf16-seed74] seed=47 step=2220000 val_bpb=2.8793 ema_bpb=2.8907 best=2.5739 nca_h=0.676 t=71490.6s
+[phase1-f32-h512-seed82] Muon seed=47 step=1820000 val_bpb=2.8515 ema_bpb=2.8909 best=2.5724 nca_h=0.191 t=70961.4s
+[phase1-bf16-seed74] Muon seed=47 step=1635000 val_bpb=2.9411 ema_bpb=2.9682 best=2.5724 nca_h=0.315 t=71514.3s
+[phase1-f32-seed76] Muon seed=47 step=1705000 val_bpb=2.9450 ema_bpb=2.9714 best=2.5724 nca_h=0.874 t=71030.8s
+[TEST-LEADER-v2] Muon seed=1597 step=490000 val_bpb=3.2913 ema_bpb=3.3064 best=3.3064 nca_h=0.085 t=71642.7s
+[scarab-gf16-lion-seed81] seed=71 step=1000 val_bpb=7.0121 ema_bpb=7.0121 best=7.0120 nca_h=1.162 t=158.3s
+[scarab-gf16-soap-seed81] seed=71 step=2000 val_bpb=7.0121 ema_bpb=7.0121 best=7.0120 nca_h=1.306 t=396.3s
+
