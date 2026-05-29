@@ -606,3 +606,10 @@
 [scarab-gf16-soap-seed81] seed=71 step=45000 val_bpb=7.0075 ema_bpb=7.0078 best=7.0078 nca_h=1.270 t=8878.8s
 [trios] seed=71 step=40000 val_bpb=6.9635 ema_bpb=6.9721 best=6.9721 nca_h=1.047 t=7999.9s
 
+=== TOP PERFORMERS SNAPSHOT ===
+[scarab-fp16-seed77] seed=77 step=3128000 val_bpb=2.8174 ema_bpb=2.8202 best=2.4872 nca_h=0.415 t=80048.1s
+[phase1-gf16-h512-seed82] seed=82 step=2454000 val_bpb=2.6759 ema_bpb=2.6920 best=2.5681 nca_h=0.938 t=80161.5s
+[phase1-gf16-seed74] seed=47 step=2480000 val_bpb=2.7095 ema_bpb=2.7236 best=2.5739 nca_h=0.644 t=80052.1s
+[phase1-bf16-seed76] Muon seed=47 step=1860000 val_bpb=2.7729 ema_bpb=2.7793 best=2.5459 nca_h=0.139 t=80044.8s
+[phase1-f32-h512-seed82] Muon seed=47 step=1915000 val_bpb=2.9148 ema_bpb=2.8910 best=2.5724 nca_h=0.340 t=79622.9s
+=== END SNAPSHOT ===
