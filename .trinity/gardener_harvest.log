@@ -233,3 +233,23 @@
 [phase1-gf16-seed74] seed=47 step=1705000 val_bpb=2.7259 ema_bpb=2.7213 best=2.5739 nca_h=0.785 t=54610.0s
 [scarab-fp16-seed77] seed=77 step=2175000 val_bpb=2.5117 ema_bpb=2.5104 best=2.4872 nca_h=1.049 t=54555.7s
 
+=== PARALLEL HARVEST v6 | 2026-05-29_10:26:57 ===
+[TEST-LEADER-v2] Muon seed=1597 step=410000 val_bpb=3.3306 ema_bpb=3.3360 best=3.3360 nca_h=0.093 t=55555.4s
+[phase1-bf16-seed74] Muon seed=47 step=1475000 val_bpb=3.0209 ema_bpb=2.9953 best=2.5724 nca_h=0.785 t=55623.9s
+[phase1-bf16-seed76] Muon seed=47 step=1410000 val_bpb=2.7213 ema_bpb=2.7280 best=2.5459 nca_h=0.078 t=55515.4s
+[phase1-f32-h512-seed82] Muon seed=47 step=1630000 val_bpb=2.9180 ema_bpb=2.9850 best=2.5724 nca_h=0.309 t=55219.6s
+[phase1-f32-seed76] Muon seed=47 step=1530000 val_bpb=3.0551 ema_bpb=3.0673 best=2.5724 nca_h=0.235 t=55273.1s
+[phase1-gf16-h512-seed82] seed=82 step=1720000 val_bpb=2.7871 ema_bpb=2.7909 best=2.5681 nca_h=0.938 t=55782.2s
+[phase1-gf16-seed74] seed=47 step=1740000 val_bpb=2.7212 ema_bpb=2.7281 best=2.5739 nca_h=0.584 t=55733.2s
+[scarab-fp16-seed77] seed=77 step=2219000 val_bpb=2.6219 ema_bpb=2.6214 best=2.4872 nca_h=0.429 t=55690.2s
+
+=== PARALLEL HARVEST v6 | 2026-05-29_10:29:34 ===
+[TEST-LEADER-v2] Muon seed=1597 step=410000 val_bpb=3.3306 ema_bpb=3.3360 best=3.3360 nca_h=0.093 t=55555.4s
+[phase1-bf16-seed74] Muon seed=47 step=1475000 val_bpb=3.0209 ema_bpb=2.9953 best=2.5724 nca_h=0.785 t=55623.9s
+[phase1-bf16-seed76] Muon seed=47 step=1410000 val_bpb=2.7213 ema_bpb=2.7280 best=2.5459 nca_h=0.078 t=55515.4s
+[phase1-f32-h512-seed82] Muon seed=47 step=1630000 val_bpb=2.9180 ema_bpb=2.9850 best=2.5724 nca_h=0.309 t=55219.6s
+[phase1-f32-seed76] Muon seed=47 step=1530000 val_bpb=3.0551 ema_bpb=3.0673 best=2.5724 nca_h=0.235 t=55273.1s
+[phase1-gf16-h512-seed82] seed=82 step=1720000 val_bpb=2.7871 ema_bpb=2.7909 best=2.5681 nca_h=0.938 t=55782.2s
+[phase1-gf16-seed74] seed=47 step=1740000 val_bpb=2.7212 ema_bpb=2.7281 best=2.5739 nca_h=0.584 t=55733.2s
+[scarab-fp16-seed77] seed=77 step=2219000 val_bpb=2.6219 ema_bpb=2.6214 best=2.4872 nca_h=0.429 t=55690.2s
+
