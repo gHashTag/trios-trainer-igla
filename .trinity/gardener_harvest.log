@@ -398,3 +398,19 @@
 [phase1-bf16-seed74] Muon seed=47 step=1620000 val_bpb=3.0186 ema_bpb=3.0524 best=2.5724 nca_h=0.465 t=69925.2s
 [TEST-LEADER-v2] Muon seed=1597 step=480000 val_bpb=3.2929 ema_bpb=3.3136 best=3.3136 nca_h=0.167 t=69663.4s
 
+=== PARALLEL HARVEST v6 | 2026-05-29_14:33:51 ===
+[phase1-bf16-seed76] Muon seed=47 step=1705000 val_bpb=2.8045 ema_bpb=2.7758 best=2.5459 nca_h=0.477 t=70303.1s
+[phase1-f32-h512-seed82] Muon seed=47 step=1810000 val_bpb=2.9194 ema_bpb=2.9589 best=2.5724 nca_h=0.300 t=70010.3s
+[phase1-f32-seed76] Muon seed=47 step=1695000 val_bpb=2.9919 ema_bpb=2.9974 best=2.5724 nca_h=0.370 t=70045.7s
+[phase1-gf16-h512-seed82] seed=82 step=2169000 val_bpb=2.7751 ema_bpb=2.7899 best=2.5681 nca_h=0.060 t=70604.1s
+[phase1-gf16-seed74] seed=47 step=2190000 val_bpb=2.8752 ema_bpb=2.8734 best=2.5739 nca_h=0.276 t=70518.7s
+[scarab-fp16-seed77] seed=77 step=2787000 val_bpb=2.5488 ema_bpb=2.5469 best=2.4872 nca_h=0.730 t=70506.9s
+
+=== FIXED SERVICES | 2026-05-29_14:48:08 ===
+[trios] FIXED: redeployed with trios-train, seed=71 h384 lr=0.003
+[scarab-gf16-lion-seed81] FIXED: optimizer=lion → adamw, redeployed as railway-sweep
+[scarab-gf16-soap-seed81] FIXED: optimizer=soap → adamw, redeployed
+[phase1-rng123] FIXED: redeployed with trios-train, seed=44 h384 lr=0.003
+[phase1-rng144] FIXED: redeployed with trios-train, seed=72 bf16 h256 lr=0.001
+[TEST-TRAINER-SEED-43] FIXED: scarab → trios-train, seed=42 gf16 h384 lr=0.003
+
