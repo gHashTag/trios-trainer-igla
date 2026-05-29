@@ -310,3 +310,41 @@
 [phase1-f32-seed76] Muon seed=47 step=1615000 val_bpb=3.0669 ema_bpb=3.0733 best=2.5724 nca_h=0.417 t=62638.5s
 [TEST-LEADER-v2] Muon seed=1597 step=445000 val_bpb=3.3127 ema_bpb=3.3257 best=3.3257 nca_h=0.102 t=62672.6s
 
+=== PARALLEL HARVEST v6 | 2026-05-29_12:30:30 ===
+[TEST-LEADER-v2] Muon seed=1597 step=445000 val_bpb=3.3127 ema_bpb=3.3257 best=3.3257 nca_h=0.102 t=62672.6s
+[phase1-bf16-seed74] Muon seed=47 step=1555000 val_bpb=3.0231 ema_bpb=3.0377 best=2.5724 nca_h=0.142 t=63276.0s
+[phase1-bf16-seed76] Muon seed=47 step=1570000 val_bpb=2.7518 ema_bpb=2.7389 best=2.5459 nca_h=0.561 t=62996.0s
+[phase1-f32-h512-seed82] Muon seed=47 step=1725000 val_bpb=2.9558 ema_bpb=2.9649 best=2.5724 nca_h=0.282 t=62550.7s
+[phase1-f32-seed76] Muon seed=47 step=1620000 val_bpb=3.0186 ema_bpb=3.0524 best=2.5724 nca_h=0.465 t=63078.2s
+[phase1-gf16-seed74] seed=47 step=1965000 val_bpb=2.6495 ema_bpb=2.6535 best=2.5739 nca_h=0.854 t=63203.8s
+[scarab-fp16-seed77] seed=77 step=2506000 val_bpb=2.5660 ema_bpb=2.5592 best=2.4872 nca_h=0.628 t=63123.4s
+
+=== PARALLEL HARVEST v9 | 2026-05-29_12:41:20 ===
+[TEST-LEADER-v2] Muon seed=1597 step=450000 val_bpb=3.3164 ema_bpb=3.3221 best=3.3221 nca_h=0.163 t=63699.4s
+[phase1-bf16-seed74] Muon seed=47 step=1560000 val_bpb=3.0218 ema_bpb=3.0316 best=2.5724 nca_h=0.846 t=63771.5s
+[phase1-bf16-seed76] Muon seed=47 step=1585000 val_bpb=2.7133 ema_bpb=2.7285 best=2.5459 nca_h=0.370 t=63693.3s
+[phase1-f32-h512-seed82] Muon seed=47 step=1735000 val_bpb=2.8640 ema_bpb=2.9165 best=2.5724 nca_h=0.342 t=63344.1s
+[phase1-f32-seed76] Muon seed=47 step=1625000 val_bpb=2.9843 ema_bpb=3.0264 best=2.5724 nca_h=0.751 t=63519.0s
+[phase1-gf16-h512-seed82] seed=82 step=1965000 val_bpb=2.9732 ema_bpb=2.9734 best=2.5681 nca_h=0.897 t=63797.5s
+[phase1-gf16-seed74] seed=47 step=1980000 val_bpb=2.6432 ema_bpb=2.6399 best=2.5739 nca_h=0.285 t=63707.4s
+[scarab-fp16-seed77] seed=77 step=2529000 val_bpb=2.5468 ema_bpb=2.5410 best=2.4872 nca_h=0.774 t=63712.1s
+
+=== MISSING SERVICES DIAGNOSIS ===
+[Postgres] Database service, no training
+[TEST-TRAINER-SEED-43] BROKEN: trios-train binary missing
+[phase1-rng123] BROKEN: trios-train binary missing
+[phase1-rng144] BROKEN: trios-train binary missing
+[scarab-gf16-lion-seed81] BROKEN: unsupported optimizer='lion'
+[scarab-gf16-soap-seed81] BROKEN: unsupported optimizer='soap'
+[trios] BROKEN: trios-train binary missing
+
+=== PARALLEL HARVEST v9 | 2026-05-29_12:41:50 ===
+[scarab-fp16-seed77] seed=77 step=2529000 val_bpb=2.5468 ema_bpb=2.5410 best=2.4872 nca_h=0.774 t=63712.1s
+[phase1-gf16-seed74] seed=47 step=1980000 val_bpb=2.6432 ema_bpb=2.6399 best=2.5739 nca_h=0.285 t=63707.4s
+[phase1-bf16-seed76] Muon seed=47 step=1585000 val_bpb=2.7133 ema_bpb=2.7285 best=2.5459 nca_h=0.370 t=63693.3s
+[phase1-f32-h512-seed82] Muon seed=47 step=1735000 val_bpb=2.8640 ema_bpb=2.9165 best=2.5724 nca_h=0.342 t=63344.1s
+[phase1-gf16-h512-seed82] seed=82 step=1965000 val_bpb=2.9732 ema_bpb=2.9734 best=2.5681 nca_h=0.897 t=63797.5s
+[phase1-f32-seed76] Muon seed=47 step=1625000 val_bpb=2.9843 ema_bpb=3.0264 best=2.5724 nca_h=0.751 t=63519.0s
+[phase1-bf16-seed74] Muon seed=47 step=1560000 val_bpb=3.0218 ema_bpb=3.0316 best=2.5724 nca_h=0.846 t=63771.5s
+[TEST-LEADER-v2] Muon seed=1597 step=450000 val_bpb=3.3164 ema_bpb=3.3221 best=3.3221 nca_h=0.163 t=63699.4s
+
