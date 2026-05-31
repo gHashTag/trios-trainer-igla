@@ -14,5 +14,30 @@ Cargo.lock.bak
 /data/
 *.jsonl.tmp
 
+# Training logs (thousands of files choke git)
+.trinity/results/
+.trinity/auto_launch.log
+.trinity/gardener.log
+
 # Build cache
 .cargo/
+
+# PDF pipeline artifacts
+pdf-build/
+pdf-output/
+templates/
+filters/
+
+# Logs
+LOG
+$LOG
+*.log
+
+# History / eval artifacts
+.trinity/history/
+
+# Brochure outputs
+trinity-brochure.pdf
+
+# Constitution (generated)
+trinity_constitution/

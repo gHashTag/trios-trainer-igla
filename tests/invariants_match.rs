@@ -41,16 +41,21 @@ fn phi_constants_computed_match_stored() {
         "PHI_INV6 mismatch"
     );
     assert!(
-        (inv::ALPHA_PHI - phi.powi(-3) / 2.0).abs() < 1e-10,
-        "ALPHA_PHI mismatch"
+        (inv::PHI_INV3_HALF - phi.powi(-3) / 2.0).abs() < 1e-10,
+        "PHI_INV3_HALF mismatch"
+    );
+    assert!(
+        (inv::PHI_INV3 - phi.powi(-3)).abs() < 1e-10,
+        "PHI_INV3 mismatch: expected φ⁻³ ≈ 0.236068, got {}",
+        inv::PHI_INV3
     );
 }
 
 #[test]
 #[cfg(not(feature = "trios-integration"))]
-fn lr_champion_is_alpha_phi_over_phi_cube() {
+fn lr_champion_is_phi_inv3_over_phi_cube() {
     let phi: f64 = (1.0 + 5.0_f64.sqrt()) / 2.0;
-    let alpha_phi = phi.powi(-3) / 2.0;
+    let phi_inv3_half = phi.powi(-3) / 2.0;
     // Champion LR = 0.004 is in the INV-1 safe range
     assert!(
         inv::LR_CHAMPION >= inv::LR_SAFE_MIN && inv::LR_CHAMPION <= inv::LR_SAFE_MAX,
@@ -59,10 +64,10 @@ fn lr_champion_is_alpha_phi_over_phi_cube() {
         inv::LR_SAFE_MIN,
         inv::LR_SAFE_MAX
     );
-    // alpha_phi ≈ 0.118 matches strong coupling constant to 4 decimal places
+    // phi_inv3_half ≈ 0.118 is half of φ⁻³ (legacy name was ALPHA_PHI)
     assert!(
-        (alpha_phi - 0.1180).abs() < 0.001,
-        "α_φ = {alpha_phi:.6} diverges from αs(mZ) = 0.1180"
+        (phi_inv3_half - 0.1180).abs() < 0.001,
+        "φ⁻³/2 = {phi_inv3_half:.6} diverges from 0.1180"
     );
 }
 

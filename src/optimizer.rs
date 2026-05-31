@@ -6,7 +6,7 @@
 ///
 /// Uses golden ratio-derived constants:
 /// - beta1 = φ^(-1) ≈ 0.618
-/// - weight_decay = α_φ ≈ 0.11803
+/// - weight_decay = φ⁻³ ≈ 0.23607 (NOT 0.11803; old comment was φ⁻³/2)
 #[derive(Debug, Clone)]
 pub struct AdamWCpu {
     /// Learning rate
@@ -18,7 +18,7 @@ pub struct AdamWCpu {
     /// Second moment decay rate (typically 0.999)
     pub beta2: f64,
 
-    /// Weight decay coefficient (α_φ ≈ 0.11803)
+    /// Weight decay coefficient (φ⁻³ ≈ 0.23607)
     pub weight_decay: f64,
 
     /// Numerical stability constant
@@ -40,7 +40,7 @@ impl AdamWCpu {
     /// # Arguments
     ///
     /// * `param_count` - Number of parameters to optimize
-    /// * `lr` - Learning rate (default: α_φ ≈ 0.11803)
+    /// * `lr` - Learning rate (default: φ⁻³ ≈ 0.23607)
     ///
     /// # Returns
     ///
@@ -49,7 +49,7 @@ impl AdamWCpu {
         // Phi-based constants
         let phi = (1.0 + 5.0_f64.sqrt()) / 2.0; // φ ≈ 1.618
         let beta1 = 1.0 / phi; // φ^(-1) ≈ 0.618
-        let weight_decay = 1.0 / (phi * phi * phi); // α_φ ≈ 0.11803
+        let weight_decay = 1.0 / (phi * phi * phi); // φ⁻³ ≈ 0.23607 (honest value, not 0.11803)
 
         Self {
             lr,
@@ -66,7 +66,7 @@ impl AdamWCpu {
     /// Create a new AdamW optimizer with default learning rate (α_φ)
     pub fn with_phi_defaults(param_count: usize) -> Self {
         let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
-        let lr = 1.0 / (phi * phi * phi); // α_φ ≈ 0.11803
+        let lr = 1.0 / (phi * phi * phi); // φ⁻³ ≈ 0.23607 (honest value, not 0.11803)
         Self::new(param_count, lr)
     }
 

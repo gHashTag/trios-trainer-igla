@@ -6,7 +6,11 @@ pub const PHI_CUBE: f64 = 4.23606797749979;
 pub const PHI_INV6: f64 = 0.05572809000085359;
 pub const INV3_ERROR_BOUND: f64 = PHI_INV6;
 pub const TRINITY_IDENTITY: f64 = 3.0;
-pub const ALPHA_PHI: f64 = 0.11803398874989485;
+/// φ⁻³/2 ≈ 0.11803.  Used only as an algebraic trace in ema.rs.
+/// For the real φ⁻³ ≈ 0.236068 use `PHI_INV3`.
+pub const PHI_INV3_HALF: f64 = 0.11803398874989485;
+/// φ⁻³ = 1/φ³ ≈ 0.2360679774997897 — the honest weight-decay anchor.
+pub const PHI_INV3: f64 = 0.2360679774997897;
 pub const LR_CHAMPION: f64 = 0.004;
 pub const LR_SAFE_MIN: f64 = 0.002;
 pub const LR_SAFE_MAX: f64 = 0.007;
@@ -226,8 +230,18 @@ mod tests {
         assert!((phi_inv6 - PHI_INV6).abs() < 1e-8);
     }
     #[test]
-    fn test_alpha_phi_matches_strong_coupling() {
-        assert!((ALPHA_PHI - 0.1180_f64).abs() < 0.001);
+    fn test_phi_inv3_half_is_half_of_phi_inv3() {
+        assert!((PHI_INV3_HALF - PHI_INV3 / 2.0).abs() < 1e-12,
+            "PHI_INV3_HALF must be exactly PHI_INV3/2");
+    }
+    #[test]
+    fn test_phi_inv3_matches_anchor() {
+        let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
+        let derived = 1.0 / (phi * phi * phi);
+        assert!((PHI_INV3 - derived).abs() < 1e-12,
+            "PHI_INV3 drifted from 1/φ³");
+        assert!((PHI_INV3 - 0.23607_f64).abs() < 0.001,
+            "PHI_INV3 must be ≈0.23607 (was ~0.118 in old buggy comment)");
     }
     #[test]
     fn test_validate_config_champion() {

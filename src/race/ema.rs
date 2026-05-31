@@ -18,8 +18,8 @@
 //!
 //! The decay parameter `α ∈ (0, 1]` controls smoothing; smaller α =
 //! stronger smoothing.  The default `α = φ⁻³ ≈ 0.2360679775` is taken
-//! from `crate::invariants::ALPHA_PHI / PHI_SQ` so callers do not have to
-//! pick a magic number.  Concretely: `α_φ⁻³ = ALPHA_PHI · PHI_SQ /
+//! from `crate::invariants::PHI_INV3_HALF / PHI_SQ` so callers do not have to
+//! pick a magic number.  Concretely: `α_φ⁻³ = PHI_INV3_HALF · PHI_SQ /
 //! PHI_SQ²`, but we expose the pre-computed `ALPHA_PHI_INV_3` so callers
 //! can verify the trace at one glance.
 //!
@@ -40,15 +40,15 @@
 //!
 //! Refs: trios#143 lane L6 · INV-1 (consumer) · L-R14 · R8.
 
-use crate::invariants::{ALPHA_PHI, PHI_SQ};
+use crate::invariants::{PHI_INV3_HALF, PHI_SQ};
 
 // ----------------------------------------------------------------------
 // Anchors (L-R14)
 // ----------------------------------------------------------------------
 
-/// φ-band decay anchor: α_φ⁻³ ≈ 0.2360679775 = `ALPHA_PHI / PHI_SQ` ·
+/// φ-band decay anchor: α_φ⁻³ ≈ 0.2360679775 = `PHI_INV3_HALF / PHI_SQ` ·
 /// `PHI_INV` (algebraically `φ⁻³` after the champion-lr base of
-/// `α · φ⁻³`).  We compute it as `1.0 / PHI_SQ - ALPHA_PHI / PHI_SQ²`
+/// `α · φ⁻³`).  We compute it as `1.0 / PHI_SQ - PHI_INV3_HALF / PHI_SQ²`
 /// expanded analytically: `α_φ⁻³ = φ⁻³ = 1/φ³ = 1/(2φ + 1)` since
 /// `φ³ = φ·φ² = φ(φ+1) = 2φ+1`.  We expose the closed-form derivation
 /// `1.0 / (PHI_SQ + 1.0 / (1.0 / PHI_SQ + 1.0))` would be silly — use
@@ -127,8 +127,8 @@ impl EmaTracker {
             (ALPHA_PHI_INV_3 - 1.0 / (2.0 * crate::invariants::PHI + 1.0)).abs() < 1e-12,
             "ALPHA_PHI_INV_3 anchor drifted from PHI"
         );
-        // Reference ALPHA_PHI / PHI_SQ to make the L-R14 trace explicit.
-        let _trace = ALPHA_PHI / PHI_SQ;
+        // Reference PHI_INV3_HALF / PHI_SQ to make the L-R14 trace explicit.
+        let _trace = PHI_INV3_HALF / PHI_SQ;
         Self {
             alpha: ALPHA_PHI_INV_3,
             raw_ema: 0.0,
