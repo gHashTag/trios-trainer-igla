@@ -505,7 +505,7 @@ emit a verdict.
 reproduce any number in §5 should perform the following:
 
 1. `git checkout 5367bde` (or whatever descendant of `f2-methodology` the paper cites).
-2. `cargo test --lib` exits 0 with 632 passing tests.
+2. `cargo test --lib` exits 0 with 710 passing tests (Loop 69 verified).
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
    of that input file against the value in the paper's appendix
@@ -835,6 +835,12 @@ honestly as a result about the framework's *internal* structural
 predictions confirmed empirically, not as a general claim about
 training-recipe interactions.
 
+**Figure 6** visualizes the full 5 × 3 landscape. The top row
+(M_2 = warmup) is marked with a thick outline indicating all three
+estimates are byte-identical; every other row shows
+canonical = wd0 to two decimals but a visibly different warmup0
+cell, exactly the structural pattern predicted by no-XM-interaction.
+
 ### 5.4 Sensitivity envelope
 
 Per §3.3, we report tipping-point `Γ_tip(Λ=1.0)` and the
@@ -1062,8 +1068,8 @@ completeness in the binaries index.
 ### 8.2 Tests
 
 The auto-generated Appendix D inventory (regenerable via
-`papers/scripts/generate_appendix_d.sh`) lists 727 tests grouped by
-source: 632 in `src/lib.rs`, the remainder distributed across
+`papers/scripts/generate_appendix_d.sh`) lists 805 tests grouped by
+source: 710 in `src/lib.rs`, the remainder distributed across
 per-binary unit tests and seven integration suites under `tests/`. Two
 regression locks deserve a direct mention because they back load-
 bearing claims in §3:
@@ -1339,7 +1345,7 @@ committed to `data/loop49/` and verified with MD5 checksums in
 ```bash
 git clone <repo-url> && cd trios-trainer-igla
 git checkout 5367bde     # or descendant on f2-methodology
-cargo test --lib         # exits 0 with 632 passing tests (§8.2)
+cargo test --lib         # exits 0 with 710 passing tests (§8.2)
 ```
 
 **A.2 Regenerate the raw sweep CSVs (§5.1, §5.2):**

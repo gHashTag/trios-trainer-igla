@@ -47,33 +47,37 @@ target/release/f2_to_jsonl \
 target/release/f2_to_jsonl \
     data/loop49_swap/3stratum_swap.csv --out "$TMP/3strat_swap.jsonl"
 
-echo "# (1/6) Figure 1 — RmsNorm NDE sign flip across strata"
+echo "# (1/7) Figure 1 — RmsNorm NDE sign flip across strata"
 python3 papers/figures/fig1_rms_nde_signflip.py \
     --input "$TMP/loop49_3stratum.jsonl" \
     --out papers/figures/fig1_rms_nde_signflip.png
 
-echo "# (2/6) Figure 2 — Stratum × ModeKind architecture diagram"
+echo "# (2/7) Figure 2 — Stratum × ModeKind architecture diagram"
 python3 papers/figures/fig2_stratum_registry.py \
     --out papers/figures/fig2_stratum_registry.png
 
-echo "# (3/6) Figure 3 — canonical 5x4 PSE heatmap"
+echo "# (3/7) Figure 3 — canonical 5x4 PSE heatmap"
 python3 papers/figures/fig3_canonical_pse_heatmap.py \
     --input "$TMP/loop36_dual.jsonl"
 
-echo "# (4/6) Figure 4 — Γ_tip(Λ) hyperbolae"
+echo "# (4/7) Figure 4 — Γ_tip(Λ) hyperbolae"
 python3 papers/figures/fig4_tipping_curves.py \
     --input "$TMP/lambda_sweep.jsonl" \
     --out papers/figures/fig4_tipping_curves.png
 
-echo "# (5/6) Figure 5 — Phase 0 swap NIE_M1 heatmap (Loop 64)"
+echo "# (5/7) Figure 5 — Phase 0 swap NIE_M1 heatmap (Loop 64)"
 python3 papers/figures/fig5_swap_nie_m1_heatmap.py \
     --input "$TMP/3strat_swap.jsonl" \
     --out papers/figures/fig5_swap_nie_m1_heatmap.png
 
-echo "# (6/6) verify all 5 PNGs landed"
+echo "# (6/7) Figure 6 — Full M_2 robustness grid (Loop 68)"
+python3 papers/figures/fig6_m2_robustness_grid.py \
+    --out papers/figures/fig6_m2_robustness_grid.png
+
+echo "# (7/7) verify all 6 PNGs landed"
 for fig in fig1_rms_nde_signflip fig2_stratum_registry \
            fig3_canonical_pse_heatmap fig4_tipping_curves \
-           fig5_swap_nie_m1_heatmap; do
+           fig5_swap_nie_m1_heatmap fig6_m2_robustness_grid; do
     if [[ ! -f "papers/figures/${fig}.png" ]]; then
         echo "# ERROR: papers/figures/${fig}.png missing" >&2
         exit 1
@@ -82,4 +86,4 @@ for fig in fig1_rms_nde_signflip fig2_stratum_registry \
     echo "  $fig: $bytes bytes"
 done
 
-echo "# Done. All 5 figures regenerated from data/loop49/ + data/loop49_swap/ + binaries."
+echo "# Done. All 6 figures regenerated from data/loop49/ + data/loop49_swap/ + binaries."
