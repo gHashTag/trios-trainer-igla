@@ -266,7 +266,7 @@ three strata, encoded as the enum `race::ablation::Stratum`:
 Each stratum carries a CSV mode-column prefix via `Stratum::prefix()`
 (empty for `Canonical`, `"wd0_"` for `Wd0`, `"warmup0_"` for `Warmup0`).
 The cross-product with `ModeKind ∈ {Loco, Pairwise, Triplet}` yields the
-nine mode strings that tag every emitted row. Figure 2 visualizes the flow.
+nine mode strings that tag every emitted row. Figure 1 visualizes the flow.
 
 Adding a fourth stratum is a single-variant code change in
 `src/race/ablation.rs`; the mode-string registry then auto-extends every
@@ -275,7 +275,7 @@ indirect effect in a prior mediation analysis, plus the Pearl CDE at the
 disabled value being the natural next analytical question) is documented
 in the enum doc-comment.
 
-**Figure 2**: Stratum enum + registry flow.
+**Figure 1**: Stratum enum + registry flow.
 
 ### 3.2 Four-path decomposition for two ordered mediators
 
@@ -437,7 +437,7 @@ consensus.
 
 The Λ-sweep emits a per-PSE × per-Λ table in either long-form (CMAverse
 convention, one row per PSE × Λ tuple) or wide-form (one row per PSE,
-columns indexed by Λ). Figure 4 visualizes the hyperbolae for rms PSEs.
+columns indexed by Λ). Figure 2 visualizes the hyperbolae for rms PSEs.
 
 **Implementation**: `src/bin/f2_mediation_sensitivity.rs`. The lock test
 `tipping_point_matches_closer_endpoint_over_lambda` validates the
@@ -782,7 +782,7 @@ canonical NDE is "the real answer". Three observations push back:
    designed to surface; it would not appear if wd0 were merely a
    degenerate state.
 
-This is the headline finding of the paper. **Figure 1** visualizes the
+This is the headline finding of the paper. **Figure 4** visualizes the
 three NDE values for rms (canonical, wd0, warmup0) with error bars.
 We frame this finding as a *unit-test demonstration on a synthetic
 task* that the framework can detect a sign flip when one is
@@ -790,6 +790,16 @@ constructed — not as a final ML finding about RmsNorm's intrinsic
 behavior at champion scale. See §1.2 and §10.1 for venue calibration.
 
 ### 5.3 Cross-stratum stability flag
+
+**Caveat upfront.** The `f2_stratum_compare` comparator is a
+mechanical bookkeeping device, not a substantive empirical finding
+in itself. Its 20-row output for the M_1=wd, M_2=warmup
+parameterization fires `stable_across_strata = true` for 4 rows
+and `false` for 16 rows, but on inspection **both verdicts are
+explained by structural artifacts**, not by substantive cross-
+stratum comparison. The interesting result of §5 is the swap row
+discussed under §5.3's "Swap parameterization" subhead below;
+the bare 16/4 split should not be read as a finding.
 
 `f2_stratum_compare` joins per-fix PSEs across the three strata and
 flags each row with `stable_across_strata = true` iff every pair of
@@ -803,18 +813,21 @@ present 95% CIs has non-empty intersection. The committed output at
   indirect effect at wd=0 is exactly zero. The stability flag
   correctly fires on this *structural* disagreement; the flag is
   faithfully reporting that an apples-to-apples comparison is not
-  possible when the mediator is pinned.
+  possible when the mediator is pinned. This is a tautology of the
+  Pearl CDE definition, not an empirical finding.
 - **4 PSEs flagged `true`** (gradclip and dropout NIE_M2 and
   NIE_chain). These are the small-effect rows whose CIs all bracket
-  zero in every stratum, so the overlap test trivially succeeds.
+  zero in every stratum, so the overlap test trivially succeeds —
+  another structural artifact (this time of small-effect-with-wide-CI
+  rows), not a substantive cross-stratum invariance.
 
-What this empirically demonstrates is the *framework's mechanics*:
-the comparator surfaces stratum-induced disagreement loudly, and the
-analyst reads the flag with knowledge of why each disagreement
-exists (mediator-pinning structural; small-effect bracketing-zero
-trivial; or — the interesting case — a substantive
-sign-flip-or-magnitude disagreement that *isn't* explained by either
-of those mechanisms).
+What this empirically demonstrates is the comparator's *plumbing*,
+not a substantive finding: the comparator surfaces stratum-induced
+disagreement loudly, and the analyst reads the flag with knowledge
+of why each disagreement exists. The substantive cross-stratum
+result emerges from the swap parameterization below, where one row
+(`wd × NIE_M1` via rms) survives identical across all three strata
+for non-trivial reasons.
 
 **Swap parameterization — Phase 0 result .** A natural
 follow-up analysis re-runs the four-PSE decomposition with
@@ -871,6 +884,20 @@ invariance does not.
 
 ### 5.4 Sensitivity envelope
 
+**On the choice of Λ.** §3.3 introduces Λ as a free parameter of
+the bridge-score envelope (it specifies the maximum BPB shift an
+unmeasured confounder could induce on the outcome residual). We
+report headline estimates at **Λ = 1.0 BPB** because that is the
+unit-scale of the BPB axis itself: an unmeasured confounder whose
+outcome-residual envelope is 1.0 BPB represents a confounder
+comparable in magnitude to a *full bit per byte* of explanatory
+power — i.e., on the scale of the empirical effects in §5.1—§5.3.
+Smaller Λ (e.g., 0.1) treats only sub-decibit confounders; larger
+Λ (e.g., 5.0) treats confounders larger than the entire effect of
+typical ablations. The Λ = 1.0 baseline is a calibration choice,
+not a derived quantity; we show the full Λ ∈ [0.1, 5.0] sweep in
+Figure 2 so a reviewer can re-classify at any Λ they prefer.
+
 Per §3.3, we report tipping-point `Γ_tip(Λ=1.0)` and the
 VanderWeele-Ding classification for each headline estimate:
 
@@ -880,7 +907,7 @@ VanderWeele-Ding classification for each headline estimate:
 | Canonical NIE_M1 via WD (+4.99) | 5.42 | robust |
 | wd0 CDE for rms (+0.43) | 1.43 | moderate |
 
-**Figure 4** plots the full `Γ_tip(Λ)` hyperbolae for rms's four PSEs
+**Figure 2** plots the full `Γ_tip(Λ)` hyperbolae for rms's four PSEs
 over `Λ ∈ [0.1, 5.0]` BPB. The crossover at `Λ ≈ 1.5` is where the
 NIE_M2 and NIE_chain estimates leave the moderate range and become
 fragile.
@@ -1458,7 +1485,7 @@ cargo run --release --bin f2_dual_mediation -- \
   --out data/loop49/loop49_wd0_dual.csv
 ```
 
-**A.4 Cross-stratum comparison (§5.3, Figure 1 source):**
+**A.4 Cross-stratum comparison (§5.3, Figure 4 source):**
 ```bash
 cargo run --release --bin f2_stratum_compare -- \
   --canonical data/loop49/loop36_dual.csv \
@@ -1467,12 +1494,12 @@ cargo run --release --bin f2_stratum_compare -- \
   --out data/loop49/loop49_3stratum.csv
 ```
 
-**A.5 Render Figure 1 (RmsNorm sign-flip bar chart):**
+**A.5 Render Figure 4 (RmsNorm sign-flip bar chart):**
 ```bash
 cargo run --release --bin f2_to_jsonl -- \
   data/loop49/loop49_3stratum.csv --out /tmp/3strat.jsonl
-python3 papers/figures/fig1_rms_nde_signflip.py \
-  --input /tmp/3strat.jsonl --output papers/figures/fig1_rms_nde_signflip.png
+python3 papers/figures/fig4_rms_nde_signflip.py \
+  --input /tmp/3strat.jsonl --output papers/figures/fig4_rms_nde_signflip.png
 ```
 
 Figures 2-4 follow the same `f2_to_jsonl → python fig*.py` pattern;

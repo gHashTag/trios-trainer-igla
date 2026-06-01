@@ -1,0 +1,356 @@
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+ restricted \write18 enabled.
+entering extended mode
+(./test_compile_anon.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/size11.clo))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3backend/l3backend-xetex.de
+f)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/fontenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amssymb.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amsfonts.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amscls/amsthm.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/booktabs/booktabs.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphicx.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/keyval.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphics.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/trig.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/graphics.cfg)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-def/xetex.def)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hyperref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/iftex/iftex.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/kvdefinekeys/kvdefinekeys.
+sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdfescape/pdfescape.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/infwarerr/infwarerr.sty)))
+ (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hycolor/hycolor.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/nameref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/refcount/refcount.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/gettitlestring/gettitlestr
+ing.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvoptions/kvoptions.sty)))
+(/Users/playra/Library/texmf/tex/latex/etoolbox/etoolbox.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/stringenc/stringenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/pd1enc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/intcalc/intcalc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/puenc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/url/url.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bitset/bitset.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty)
+)) (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hxetex.def
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/rerunfilecheck/rerunfilechec
+k.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/uniquecounter/uniquecounte
+r.sty))) (/Users/playra/Library/texmf/tex/latex/cleveref/cleveref.sty)
+==> First Aid for cleveref.sty applied!
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/natbib/natbib.sty)
+(./test_compile_anon.aux)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/color.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/color.cfg)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/mathcolor.ltx))
+(./test_compile_anon.out) (./test_compile_anon.out)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsa.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd)
+(./f2_methodology_anonymized_body.tex [1]
+Overfull \hbox (11.85884pt too wide) in paragraph at lines 43--47
+[]\TU/lmr/m/n/10.95 The framework is open-source in Rust with 10 binaries, 805 
+unit/integration
+
+Overfull \hbox (13.0086pt too wide) in paragraph at lines 68--88
+[]\TU/lmr/m/n/10.95 When such a dependency exists, a seed-mean ablation reports
+ the \TU/lmr/bx/n/10.95 marginal
+[2]
+Overfull \hbox (8.38786pt too wide) in paragraph at lines 102--103
+[]\TU/lmr/bx/n/10.95 Stratification framework\TU/lmr/m/n/10.95 . The ‘Stratum::
+Canonical, Wd0, Warmup0‘
+
+Overfull \hbox (1.17108pt too wide) in paragraph at lines 104--105
+[]\TU/lmr/bx/n/10.95 Bridge-score sensitivity envelope\TU/lmr/m/n/10.95 . We ad
+opt the Ohnishi-Li (2026)
+
+Overfull \hbox (50.3622pt too wide) in paragraph at lines 105--106
+\TU/lmr/m/n/10.95 tion [][]3.4[][]) takes the three single-stratum CSVs and emi
+ts a \TU/lmtt/m/n/10.95 stable_across_strata
+[3]
+Overfull \hbox (1.111pt too wide) in paragraph at lines 128--134
+[]\TU/lmr/bx/n/10.95 Note on figures. \TU/lmr/m/n/10.95 Figures 1–6 are committ
+ed at \TU/lmtt/m/n/10.95 papers/figures/*.png
+
+Overfull \hbox (2.91583pt too wide) in paragraph at lines 128--134
+\TU/lmr/m/n/10.95 and bundled in the supplementary zip; we reference them by nu
+mber through-
+[4] [5]
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[6]
+Overfull \hbox (46.92952pt too wide) in paragraph at lines 265--271
+[]\TU/lmr/m/n/10.95 Adding a fourth stratum is a single-variant code change in 
+\TU/lmtt/m/n/10.95 src/race/ablation.rs\TU/lmr/m/n/10.95 ;
+[7] [8]
+Overfull \hbox (7.83244pt too wide) in paragraph at lines 367--370
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 src/b
+in/f2_dual_mediation.rs\TU/lmr/m/n/10.95 . The no-interaction
+[9]
+Overfull \hbox (22.86427pt too wide) in paragraph at lines 422--431
+ [][] 
+
+Overfull \hbox (0.58354pt too wide) in paragraph at lines 438--441
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 src/b
+in/f2_mediation_sensitivity.rs\TU/lmr/m/n/10.95 . The lock
+
+Overfull \hbox (3.61656pt too wide) in paragraph at lines 438--441
+\TU/lmr/m/n/10.95 test \TU/lmtt/m/n/10.95 tipping_point_matches_closer_endpoint
+_over_lambda \TU/lmr/m/n/10.95 validates the
+[10]
+Overfull \hbox (43.54031pt too wide) in paragraph at lines 476--477
+[]\TU/lmr/bx/n/10.95 Silent provenance loss \TU/lmr/m/n/10.95 . CSVs produced b
+y older runs of \TU/lmtt/m/n/10.95 f2_ablation_sweep
+
+Overfull \hbox (65.40741pt too wide) in paragraph at lines 496--496
+[]\TU/lmtt/m/n/10.95 # prov:wasGeneratedBy = f2_ablation_sweep --mode wd_strati
+fied --steps 200[] 
+
+Overfull \hbox (13.66864pt too wide) in paragraph at lines 496--496
+[]\TU/lmtt/m/n/10.95 # prov:trainer_internals_schema = trainer_internals_v1_202
+6_06_01[] 
+[11]
+Overfull \hbox (44.4601pt too wide) in paragraph at lines 507--511
+\TU/lmr/m/n/10.95 string constant in \TU/lmtt/m/n/10.95 src/race/multi_seed.rs 
+\TU/lmr/m/n/10.95 that is mixed into \TU/lmtt/m/n/10.95 config_fingerprint\TU/l
+mr/m/n/10.95 .
+
+Overfull \hbox (41.69414pt too wide) in paragraph at lines 512--517
+[]\TU/lmr/m/n/10.95 > Bump \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA \TU/lmr/
+m/n/10.95 (e.g. \TU/lmtt/m/n/10.95 v1_2026_06_01 -> v2_2026_06_15\TU/lmr/m/n/10
+.95 )
+
+Overfull \hbox (7.17097pt too wide) in paragraph at lines 518--524
+[]\TU/lmr/m/n/10.95 A lib test (\TU/lmtt/m/n/10.95 trainer_internals_schema_is_
+load_bearing\TU/lmr/m/n/10.95 , (internal ref))
+
+Overfull \hbox (134.3924pt too wide) in paragraph at lines 538--538
+[]\TU/lmtt/m/n/10.95 sweep CSV --> f2_dual_mediation --> dual CSV --> f2_mediat
+ion_sensitivity --> sens CSV[] 
+[12]
+Overfull \hbox (46.93484pt too wide) in paragraph at lines 561--562
+\TU/lmr/m/n/10.95 of that input file against the value in the paper’s appendix 
+(\TU/lmtt/m/n/10.95 docs/F2_RMS_CDE.md
+
+Overfull \hbox (28.6484pt too wide) in paragraph at lines 571--584
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : provenance preamble in \
+TU/lmtt/m/n/10.95 src/bin/f2_ablation_sweep.rs\TU/lmr/m/n/10.95 ;
+
+Overfull \hbox (15.2455pt too wide) in paragraph at lines 571--584
+\TU/lmr/m/n/10.95 fingerprint mixin in \TU/lmtt/m/n/10.95 src/race/multi_seed.r
+s \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 config_fingerprint\TU/lmr/m/n/10.95 ); 
+checker
+
+Overfull \hbox (77.99991pt too wide) in paragraph at lines 571--584
+\TU/lmr/m/n/10.95 in \TU/lmtt/m/n/10.95 src/bin/f2_provenance_check.rs\TU/lmr/m
+/n/10.95 ; stratum banner in \TU/lmtt/m/n/10.95 src/bin/f2_dual_mediation.rs
+
+Overfull \hbox (116.18257pt too wide) in paragraph at lines 571--584
+\TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 detect_input_stratum\TU/lmr/m/n/10.95 ) a
+nd \TU/lmtt/m/n/10.95 src/bin/f2_mediation_sensitivity.rs \TU/lmr/m/n/10.95 (\T
+U/lmtt/m/n/10.95 write_stratum_banner\TU/lmr/m/n/10.95 ).
+[13]
+Overfull \hbox (44.37009pt too wide) in paragraph at lines 603--626
+ [][] 
+
+Overfull \hbox (27.90927pt too wide) in paragraph at lines 629--630
+[]\TU/lmr/bx/n/10.95 Seven canonical fixes ablated \TU/lmr/m/n/10.95 (\TU/lmtt/
+m/n/10.95 race::ablation::CANONICAL_FIX_NAMES\TU/lmr/m/n/10.95 ): 
+[14]
+Overfull \hbox (10.7669pt too wide) in paragraph at lines 674--675
+[]\TU/lmr/bx/n/10.95 Mediation arithmetic is scale-invariant under the no-inter
+action
+[15] [16]
+Overfull \hbox (240.76328pt too wide) in paragraph at lines 748--759
+ [][] 
+[17]
+Overfull \hbox (53.24422pt too wide) in paragraph at lines 804--812
+\TU/lmr/m/n/10.95 output for the M_1=wd, M_2=warmup parameterization fires \TU/
+lmtt/m/n/10.95 stable_across_strata
+[18]
+Overfull \hbox (92.9686pt too wide) in paragraph at lines 813--818
+\TU/lmr/m/n/10.95 CIs has non-empty intersection. The committed output at \TU/l
+mtt/m/n/10.95 data/loop49/loop49_3stratum.csv
+
+Overfull \hbox (6.71545pt too wide) in paragraph at lines 821--822
+[]\TU/lmr/bx/n/10.95 4 PSEs flagged \TU/lmtt/b/n/10.95 true \TU/lmr/m/n/10.95 (
+gradclip and dropout NIE_M2 and NIE_chain).
+
+Overfull \hbox (26.39476pt too wide) in paragraph at lines 832--842
+\TU/lmtt/m/n/10.95 data/loop49_swap/3stratum_swap.csv\TU/lmr/m/n/10.95 , \TU/lm
+r/bx/n/10.95 5 are flagged \TU/lmtt/b/n/10.95 stable_across_strata
+[19]
+Overfull \hbox (14.03003pt too wide) in paragraph at lines 857--869
+\TU/lmr/m/n/10.95 way. The \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_res
+idual_lock \TU/lmr/m/n/10.95 test (section [][]8.2[][])
+[20]
+Overfull \hbox (17.67328pt too wide) in paragraph at lines 906--908
+[]\TU/lmr/m/n/10.95 Per section [][]3.3[][], we report tipping-point \TU/lmtt/m
+/n/10.95 Γ_tip(Λ=1.0) \TU/lmr/m/n/10.95 and the VanderWeele-
+[21] [22]
+Overfull \hbox (39.12752pt too wide) in paragraph at lines 997--1002
+\TU/lmr/m/n/10.95 We chose \TU/lmtt/m/n/10.95 Wd0 \TU/lmr/m/n/10.95 and \TU/lmt
+t/m/n/10.95 Warmup0 \TU/lmr/m/n/10.95 based on prior mediation analyses (\TU/lm
+tt/m/n/10.95 docs/F2_RMS_CDE.md\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (215.20338pt too wide) in paragraph at lines 1027--1036
+\TU/lmtt/m/n/10.95 dropout} \TU/lmr/m/n/10.95 across all three strata; outputs 
+committed at \TU/lmtt/m/n/10.95 data/loop49_swap/{canonical,wd0,warmup0}_swap_m
+2{m}.csv
+[23]
+Overfull \hbox (210.92719pt too wide) in paragraph at lines 1039--1050
+ [][] 
+
+Overfull \hbox (5.88686pt too wide) in paragraph at lines 1058--1059
+[]\TU/lmr/bx/n/10.95 warmup0 diverges from canonical/wd0 unless M_2 = warmup.
+[24] [25] [26]
+Overfull \hbox (136.48267pt too wide) in paragraph at lines 1200--1206
+\TU/lmr/m/n/10.95 The auto-generated Appendix D inventory (regenerable via \TU/
+lmtt/m/n/10.95 papers/scripts/generate_appendix_d.sh\TU/lmr/m/n/10.95 )
+[27]
+Overfull \hbox (4.81013pt too wide) in paragraph at lines 1208--1209
+[]\TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock \TU/lmr/m/n/10
+.95 — locks the Daniel
+
+Overfull \hbox (94.65486pt too wide) in paragraph at lines 1209--1210
+[]\TU/lmtt/m/n/10.95 trainer_internals_schema_is_load_bearing \TU/lmr/m/n/10.95
+ — locks the \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
+[28]
+Overfull \hbox (14.30287pt too wide) in paragraph at lines 1250--1258
+[]\TU/lmr/bx/n/10.95 AblationBench \TU/lmr/m/n/10.95 (Abramovich & Chechik, 202
+5, ([][]Abramovich and Chechik[][],
+
+Overfull \hbox (10.49147pt too wide) in paragraph at lines 1266--1279
+[]\TU/lmr/bx/n/10.95 Applicability survey \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95
+ papers/case_study_published_ablations.md\TU/lmr/m/n/10.95 ).
+[29]
+Overfull \hbox (175.36615pt too wide) in paragraph at lines 1295--1304
+\TU/lmr/m/n/10.95 do not claim algebraic equality with their EIF — the lock tes
+t \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
+
+Overfull \hbox (28.15558pt too wide) in paragraph at lines 1317--1325
+\TU/lmr/m/n/10.95 Value”) motivates the \TU/lmtt/m/n/10.95 Γ_tip \TU/lmr/m/n/10
+.95 classification scheme we adopt for fragility/robustness
+[30]
+Overfull \hbox (0.44115pt too wide) in paragraph at lines 1355--1362
+\TU/lmr/m/n/10.95 The original research question that motivated this framework 
+(\TU/lmtt/m/n/10.95 Issue #1021\TU/lmr/m/n/10.95 )
+[31] [32]
+Overfull \hbox (23.84128pt too wide) in paragraph at lines 1411--1412
+\TU/lmr/m/n/10.95 (section [][]3.5.4[][]). The paper’s load-bearing contributio
+n is the reproducibility-
+
+Overfull \hbox (9.5844pt too wide) in paragraph at lines 1414--1415
+\TU/lmr/m/n/10.95 Requires a stat-grade simulation study or domain co-author; t
+he method-
+
+Overfull \hbox (18.28963pt too wide) in paragraph at lines 1434--1439
+\TU/lmr/m/n/10.95 to \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 and veri
+fied with MD5 checksums in \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/
+10.95 . 
+[33]
+Overfull \hbox (7.9199pt too wide) in paragraph at lines 1473--1473
+[]  \TU/lmtt/m/n/10.95 --m1 wd --m2 warmup data/loop49/loop47_warmup_stratified
+.csv \[] 
+
+Overfull \hbox (82.65364pt too wide) in paragraph at lines 1490--1490
+[]  \TU/lmtt/m/n/10.95 --input /tmp/3strat.jsonl --output papers/figures/fig4_r
+ms_nde_signflip.png[] 
+
+Overfull \hbox (86.22345pt too wide) in paragraph at lines 1492--1495
+\TU/lmr/m/n/10.95 their command sequences are inlined as docstrings at the top 
+of each \TU/lmtt/m/n/10.95 papers/figures/fig*.py
+[34]
+Overfull \hbox (64.84904pt too wide) in paragraph at lines 1496--1501
+\TU/lmr/m/n/10.95 commit should produce CSVs byte-identical to the checksums in
+ \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/10.95 .
+
+Overfull \hbox (70.73894pt too wide) in paragraph at lines 1496--1501
+\TU/lmr/m/n/10.95 A mismatch indicates either an uncommitted local change or a 
+\TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
+
+Overfull \hbox (50.82205pt too wide) in paragraph at lines 1496--1501
+\TU/lmr/m/n/10.95 drift (section [][]3.5.2[][]). Verify with \TU/lmtt/m/n/10.95
+ cargo run --release --bin f2_provenance_check
+
+Overfull \hbox (584.38988pt too wide) in paragraph at lines 1514--1526
+ [][] 
+
+Overfull \hbox (118.59941pt too wide) in paragraph at lines 1531--1534
+[]\TU/lmr/m/n/10.95 When the producing binary is stratum-aware (\TU/lmtt/m/n/10
+.95 f2_dual_mediation\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 f2_mediation_sensit
+ivity\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (13.66866pt too wide) in paragraph at lines 1540--1540
+[]\TU/lmtt/m/n/10.95 # INPUT STRATUM = warmup0 (Pearl CDE on warmup_steps_unqua
+ntized)[] 
+[35]
+Overfull \hbox (33.94806pt too wide) in paragraph at lines 1566--1567
+[]\TU/lmr/m/n/10.95 section [][]3.2[][] — \TU/lmtt/m/n/10.95 src/bin/f2_dual_me
+diation.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 compute_dual_mediation\TU/lmr/
+m/n/10.95 ). 
+
+Overfull \hbox (46.93477pt too wide) in paragraph at lines 1567--1568
+[]\TU/lmr/m/n/10.95 section [][]3.3[][] — \TU/lmtt/m/n/10.95 src/bin/f2_mediati
+on_sensitivity.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 envelope_expansion\TU/l
+mr/m/n/10.95 ,
+
+Overfull \hbox (0.94478pt too wide) in paragraph at lines 1568--1569
+[]\TU/lmr/m/n/10.95 section [][]3.4[][] — \TU/lmtt/m/n/10.95 src/bin/f2_stratum
+_compare.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 build_comparison\TU/lmr/m/n/1
+0.95 ,
+
+Overfull \hbox (38.18573pt too wide) in paragraph at lines 1575--1581
+\TU/lmr/m/n/10.95 integration suites) is auto-generated by \TU/lmtt/m/n/10.95 p
+apers/scripts/generate_appendix_d.sh
+[36]
+Overfull \hbox (204.77914pt too wide) in paragraph at lines 1587--1593
+[]\TU/lmr/m/n/10.95 Two load-bearing regression locks are highlighted in sectio
+n [][]8.2[][]: \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
+[37]
+Overfull \hbox (15.17981pt too wide) in paragraph at lines 1620--1621
+\TU/lmr/m/n/10.95 CSVs from \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 a
+nd \TU/lmtt/m/n/10.95 data/loop49_swap/ \TU/lmr/m/n/10.95 through \TU/lmtt/m/n/
+10.95 f2_to_jsonl
+
+Overfull \hbox (10.17569pt too wide) in paragraph at lines 1620--1621
+\TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
+.95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
+
+Overfull \hbox (64.04846pt too wide) in paragraph at lines 1621--1622
+\TU/lmr/m/n/10.95 — single-shot CI gate chaining all seven scripts above plus \
+TU/lmtt/m/n/10.95 pack_supplementary.sh\TU/lmr/m/n/10.95 ;
+)
+Overfull \hbox (139.8292pt too wide) in paragraph at lines 1624--31
+[]\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
+/n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
+(./test_compile_anon.bbl [38] [39]
+Underfull \hbox (badness 2564) in paragraph at lines 92--98
+[]\TU/lmr/m/n/10.95 Microsoft.  BitNet b1.58 2B4T technical report.  \TU/lmr/m/
+it/10.95 arXiv preprint
+) [40] (./test_compile_anon.aux) )
+(see the transcript file for additional information)
+Output written on test_compile_anon.pdf (40 pages).
+Transcript written on test_compile_anon.log.

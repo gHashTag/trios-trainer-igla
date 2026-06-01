@@ -1,0 +1,174 @@
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+ restricted \write18 enabled.
+entering extended mode
+(./test_compile_tmlr.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/size10.clo))
+(./tmlr.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/eso-pic/eso-pic.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/keyval.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/xcolor/xcolor.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/color.cfg)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-def/xetex.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/mathcolor.ltx)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fancyhdr/fancyhdr.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/natbib/natbib.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/fontenc.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/t1lmr.fd))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/lmodern.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3backend/l3backend-xetex.de
+f)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/fontenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amssymb.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amsfonts.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amscls/amsthm.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/booktabs/booktabs.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphicx.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphics.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/trig.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/graphics.cfg)))
+ (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hyperref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/iftex/iftex.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/kvdefinekeys/kvdefinekeys.
+sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdfescape/pdfescape.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/infwarerr/infwarerr.sty)))
+ (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hycolor/hycolor.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/nameref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/refcount/refcount.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/gettitlestring/gettitlestr
+ing.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvoptions/kvoptions.sty)))
+(/Users/playra/Library/texmf/tex/latex/etoolbox/etoolbox.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/stringenc/stringenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/pd1enc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/intcalc/intcalc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/puenc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/url/url.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bitset/bitset.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty)
+)) (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hxetex.def
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/rerunfilecheck/rerunfilechec
+k.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/uniquecounter/uniquecounte
+r.sty))) (/Users/playra/Library/texmf/tex/latex/cleveref/cleveref.sty)
+==> First Aid for cleveref.sty applied!
+(./test_compile_tmlr.aux) (./test_compile_tmlr.out) (./test_compile_tmlr.out)
+(./f2_methodology_anonymized_body.tex
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/ot1lmr.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/omllmm.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/omslmsy.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/lm/omxlmex.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsa.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd) [1]
+[2] [3] [4] [5]
+Underfull \hbox (badness 10000) in paragraph at lines 438--441
+[]\TU/lmr/bx/n/10 Implementation\TU/lmr/m/n/10 : \TU/lmtt/m/n/10 src/bin/f2_med
+iation_sensitivity.rs\TU/lmr/m/n/10 . The lock test
+
+Underfull \hbox (badness 1331) in paragraph at lines 438--441
+\TU/lmtt/m/n/10 tipping_point_matches_closer_endpoint_over_lambda \TU/lmr/m/n/1
+0 validates the closed-form against a worked
+[6] [7]
+Underfull \hbox (badness 3884) in paragraph at lines 528--534
+\TU/lmtt/m/n/10 wd0\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 warmup0\TU/lmr/m/n/10 , or 
+\TU/lmtt/m/n/10 mixed\TU/lmr/m/n/10 ) and emits a single-line stratum banner be
+fore its column header.
+
+Underfull \hbox (badness 1852) in paragraph at lines 571--584
+[]\TU/lmr/bx/n/10 Implementation\TU/lmr/m/n/10 : provenance preamble in \TU/lmt
+t/m/n/10 src/bin/f2_ablation_sweep.rs\TU/lmr/m/n/10 ; fingerprint mixin in
+
+Underfull \hbox (badness 10000) in paragraph at lines 571--584
+\TU/lmtt/m/n/10 src/race/multi_seed.rs \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 config_f
+ingerprint\TU/lmr/m/n/10 ); checker in \TU/lmtt/m/n/10 src/bin/f2_provenance_ch
+eck.rs\TU/lmr/m/n/10 ;
+
+Underfull \hbox (badness 10000) in paragraph at lines 571--584
+\TU/lmr/m/n/10 stratum banner in \TU/lmtt/m/n/10 src/bin/f2_dual_mediation.rs \
+TU/lmr/m/n/10 (\TU/lmtt/m/n/10 detect_input_stratum\TU/lmr/m/n/10 ) and
+[8] [9]
+Underfull \hbox (badness 1789) in paragraph at lines 674--675
+\TU/lmr/m/n/10 Daniel et al. identification result depends on the conditional e
+xpectations being linear
+
+Underfull \hbox (badness 1377) in paragraph at lines 674--675
+\TU/lmr/m/n/10 in the mediator and exposure structure; if it holds at sandbox s
+cale, the same decom-
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[10]
+Overfull \hbox (84.09294pt too wide) in paragraph at lines 748--759
+ [][] 
+[11]
+Underfull \hbox (badness 7777) in paragraph at lines 813--818
+[]\TU/lmtt/m/n/10 f2_stratum_compare \TU/lmr/m/n/10 joins per-fix PSEs across t
+he three strata and flags each row with
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[12] [13] [14]
+Overfull \hbox (56.84535pt too wide) in paragraph at lines 1039--1050
+ [][] 
+[15] [16]
+Underfull \hbox (badness 10000) in paragraph at lines 1185--1186
+[]\TU/lmtt/b/n/10 f2_mediation_sensitivity \TU/lmr/m/n/10 — compute the bridge-
+score envelope (section []3.3[]) with
+[17]
+Underfull \hbox (badness 3250) in paragraph at lines 1266--1279
+[]\TU/lmr/bx/n/10 Applicability survey \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 papers/c
+ase_study_published_ablations.md\TU/lmr/m/n/10 ). We survey nine recent
+[18] [19] [20] [21]
+Overfull \hbox (395.82509pt too wide) in paragraph at lines 1514--1526
+ [][] 
+
+Underfull \hbox (badness 3815) in paragraph at lines 1531--1534
+[]\TU/lmr/m/n/10 When the producing binary is stratum-aware (\TU/lmtt/m/n/10 f2
+_dual_mediation\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 f2_mediation_sensitivity\TU/lmr
+/m/n/10 ,
+
+Underfull \hbox (badness 10000) in paragraph at lines 1548--1549
+[]\TU/lmr/bx/n/10 Exit 0 — PASS. \TU/lmr/m/n/10 All required keys present, sche
+ma string matches current
+[22]
+Underfull \hbox (badness 10000) in paragraph at lines 1567--1568
+[]\TU/lmr/m/n/10 section []3.3[] — \TU/lmtt/m/n/10 src/bin/f2_mediation_sensiti
+vity.rs \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 envelope_expansion\TU/lmr/m/n/10 ,
+
+Underfull \hbox (badness 6526) in paragraph at lines 1575--1581
+\TU/lmr/m/n/10 The full test inventory (805 tests across \TU/lmtt/m/n/10 src/li
+b.rs\TU/lmr/m/n/10 , 10 F2 binaries, and 7 integration
+
+Underfull \hbox (badness 10000) in paragraph at lines 1575--1581
+\TU/lmr/m/n/10 suites) is auto-generated by \TU/lmtt/m/n/10 papers/scripts/gene
+rate_appendix_d.sh \TU/lmr/m/n/10 and committed at
+
+Overfull \hbox (30.50005pt too wide) in paragraph at lines 1587--1593
+[]\TU/lmr/m/n/10 Two load-bearing regression locks are highlighted in section [
+]8.2[]: \TU/lmtt/m/n/10 dual_mediation_no_interaction_residual_lock
+[23])
+Underfull \hbox (badness 2970) in paragraph at lines 1624--33
+[]\TU/lmtt/m/n/10 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m/n/
+10 chains \TU/lmtt/m/n/10 papers/scripts/figure_regen.sh \TU/lmr/m/n/10 +
+(./test_compile_tmlr.bbl [24] [25]) [26] (./test_compile_tmlr.aux) )
+(see the transcript file for additional information)
+Output written on test_compile_tmlr.pdf (26 pages).
+Transcript written on test_compile_tmlr.log.

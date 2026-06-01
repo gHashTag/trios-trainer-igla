@@ -413,11 +413,104 @@ adopts as its reporting baseline). Any cell whose `Γ_tip(Λ=1.0)
 
 ---
 
-## DRAFT notes (Loops 98–100)
+## 4. Pre-registered hypotheses
 
-§1 (Loop 98), §2 (Loop 99), §3 (Loop 100) drafted. Sections to
-write in subsequent loops:
-- §4 — Pre-registered hypotheses with falsification tests
+The protocol locks three nested hypotheses with explicit
+falsification criteria. Each hypothesis is tested at both strata
+(canonical and wd0) separately. Reporting will be **symmetric**:
+results that falsify a hypothesis appear in the paper with the
+same prominence as results that confirm one.
+
+### 4.1 H0 — null (equivalence)
+
+**Statement**: For every (phi-config, zoo-config) pair, the mean
+held-out validation BPB difference is within ±0.05 BPB
+(equivalence margin = roughly one wall-clock-noise standard
+deviation per the F2 sandbox-scale per-seed CV measurement at
+§3.5.4 of the companion paper).
+
+**Falsified by**: any (phi-config, zoo-config) pair whose
+two-sided exact paired-permutation test rejects equivalence at
+$p < 0.05$ (BH-corrected over 4 comparisons per phi-config) — i.e.,
+the 95% CI on the BPB difference falls entirely outside
+$[-0.05, +0.05]$.
+
+**Action if H0 cannot be rejected**: report the equivalence as the
+finding. The paper's contribution becomes the *demonstration of
+equivalence*, plus the protocol itself, plus the bridge-score
+envelope on the equivalence verdict.
+
+### 4.2 H1 — phi superior on at least one zoo competitor
+
+**Statement**: For at least one (phi-config, zoo-config) pair,
+mean BPB is $\geq 0.10$ BPB lower for the phi-config than for the
+zoo-config (twice the H0 equivalence margin), with the difference
+statistically significant at $p < 0.05$ after BH correction.
+
+**Falsified by**: every (phi-config, zoo-config) pair either
+(a) has paper-config $\geq$ zoo-config mean BPB, or
+(b) has a CI on the difference that includes zero, or
+(c) has $|{\rm diff}| < 0.10$ BPB even with $p < 0.05$.
+If all 16 pairs (4 phi × 4 zoo) satisfy at least one of (a)/(b)/(c)
+in both strata, H1 is falsified.
+
+**Action if H1 holds**: report the specific pair(s) at which
+phi-ladder is superior, with the bridge-score envelope. Make no
+claim about superiority on the pairs where H1 does not hold.
+
+### 4.3 H2 — phi-config dominant across the zoo
+
+**Statement**: At least one phi-config has mean BPB $\geq 0.10$
+BPB lower than **every** zoo-config (BitNet-1.58, INT4-W4A8, FP8,
+bf16), with all 4 pairwise differences significant at $p < 0.05$
+after BH correction over the 4 comparisons.
+
+**Falsified by**: every phi-config fails H2 against at least one
+zoo-config. This is the strongest hypothesis; falsification of H2
+while H1 holds is the most likely outcome.
+
+**Action if H2 holds**: this is the headline positive result. The
+paper reports the specific phi-config that dominates, with full
+bridge-score envelope and cross-stratum stability flag.
+
+### 4.4 Confounder-controlled variant (joint with H1/H2)
+
+Both H1 and H2 are tested at the **wd0 stratum** separately. If
+H1 or H2 holds at wd0 but fails at canonical, the result is
+reported as "phi-ladder is superior when weight decay is controlled
+to zero, but the marginal-recipe canonical comparison is
+inconclusive." The companion paper's RmsNorm sign-flip at the wd0
+stratum establishes that the canonical/wd0 comparison can be
+substantive; H1/H2 at wd0 alone is therefore a meaningful finding.
+
+If H1 or H2 holds at canonical but fails at wd0, the result is
+reported as "phi-ladder is superior in the marginal-recipe
+canonical regime, but the wd-controlled comparison is
+inconclusive — the marginal effect may be confounded by WD's
+interaction with the format choice."
+
+### 4.5 What this paper does not test
+
+- **No claim about other hyperparameter axes**. The protocol fixes
+  one training recipe across all eight configs. We do not test
+  whether the result changes under (e.g.) a different learning-rate
+  schedule.
+- **No claim about scale-extrapolation**. The 1B-parameter, 50B-
+  token finding is a point estimate at the protocol's locked
+  scale. The companion F2 paper's §10.1 venue calibration applies
+  unchanged: scale extrapolation is a separate paper.
+- **No claim about wall-clock or memory parity**. We report
+  wall-clock and peak-memory as **secondary** outcomes; we do not
+  pre-register hypotheses on them. A phi-config that wins on BPB
+  but loses on wall-clock will be reported as winning on BPB
+  with a wall-clock footnote, not as "overall winning".
+
+---
+
+## DRAFT notes (Loops 98–101)
+
+§1 (Loop 98), §2 (Loop 99), §3 (Loop 100), §4 (Loop 101) drafted.
+Remaining sections:
 - §5 — Reproducibility artifacts
 - §6 — Scope/limitations
 - §7 — EOI
