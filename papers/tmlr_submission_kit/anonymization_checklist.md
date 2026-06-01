@@ -10,7 +10,7 @@ are rejected without review. Walk this checklist before uploading.
       entirely for submission; restore at camera-ready
 - [ ] **GitHub URL / repo name**: replace any reference to
       `gHashTag/trios-trainer-igla` with `[anonymous-repo]`
-- [ ] **Git SHAs**: the anchor commit `5367bde` is identifying if
+- [ ] **Git SHAs**: the anchor commit `583b417` is identifying if
       checked against the public repo. Two options:
   - Option A (preferred): keep the SHA — it's load-bearing for
     reproducibility, and TMLR explicitly allows code/data links if

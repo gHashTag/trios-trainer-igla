@@ -15,27 +15,28 @@ We introduce a Pearl-style controlled-direct-effect (CDE) framework
 operationalized through three contributions: (1) a stratification mechanism
 (`Stratum::Wd0`, `Stratum::Warmup0`) that pins a candidate mediator to its
 disabled value while sweeping the remaining ablation space; (2) a four-path
-Zhao-Luo decomposition with multivariate delta-method standard errors,
+Daniel et al. decomposition with multivariate delta-method standard errors,
 yielding per-path 95% CIs valid at N=5 seeds; (3) an additive bridge-score
 sensitivity envelope (Ohnishi & Li 2026, Thm 2) that translates CI bounds
 into VanderWeele-Ding tipping points across an outcome-residual grid.
 
 Applied to a sandbox-scale (~8K params, 200 steps, 5 seeds) ablation matrix,
 the framework reveals a **sign flip**: under canonical mediation the RmsNorm
-NDE is −4.12 BPB (apparently harmful), but under wd=0 Pearl CDE the same
-estimand is **+0.43 BPB [+0.01, +0.84]** (intrinsically helpful, CI excludes
-zero). We frame this as a unit-test demonstration on a synthetic task
-that the framework detects a sign flip when one is constructed —
-the magnitudes are sandbox-specific and we do not claim the
-qualitative finding transfers to champion-scale models without
-additional evidence; champion-scale validation is pre-registered in
-`docs/F2_PRE_REG.md`. A swap-parameterization Phase 0 run
-(committed at `data/loop49_swap/`) confirms a narrower secondary
-finding: under (`M_1 = rms, M_2 = warmup`), the rms-mediated
-indirect effect of weight decay is **byte-identical −0.751
-[−1.325, −0.177] BPB across all three strata** — the only PSE row
-in our matrix that survives intact across canonical, wd0, and
-warmup0 reference points.
+Natural Direct Effect (NDE) is −4.12 BPB (apparently harmful), but under
+wd=0 Pearl CDE the same estimand is **+0.43 BPB [+0.01, +0.84]**
+(intrinsically helpful, CI excludes zero). We frame this as a unit-test
+demonstration on a synthetic task that the framework detects a sign
+flip when one is constructed — the magnitudes are sandbox-specific
+and we do not claim the qualitative finding transfers to
+champion-scale models without additional evidence; champion-scale
+validation is pre-registered in `docs/F2_PRE_REG.md`. A
+swap-parameterization Phase 0 run (committed at `data/loop49_swap/`)
+confirms a narrower secondary finding: under (`M_1 = rms, M_2 =
+warmup`), the rms-mediated Natural Indirect Effect (NIE) of weight
+decay is **byte-identical −0.751 [−1.325, −0.177] BPB across all
+three strata** — the only path-specific effect (PSE) row in our
+matrix that survives intact across canonical, wd0, and warmup0
+reference points.
 
 The framework is open-source in Rust with 10 binaries, 805
 unit/integration tests, and W3C-PROV-tagged CSV provenance
@@ -88,7 +89,7 @@ one verified instance as proof-of-concept.
    marginal stratum and two Pearl-CDE strata, deriving the mode-string
    matrix from `Stratum × ModeKind` automatically so that adding a new
    stratum is a single-variant code change.
-2. **Zhao-Luo 4-PSE decomposition with finite-sample CIs**. We
+2. **Daniel et al. 4-PSE decomposition with finite-sample CIs**. We
    implement the four-path decomposition (§3.2, Gao-Li-Luo 2020) with
    delta-method standard errors that reduce to the Miles-Shpitser
    (2017) efficient influence function under no-interaction, and we
@@ -538,7 +539,7 @@ mechanically:
 | `papers/scripts/compile_tmlr_test.sh` | Regenerate the LaTeX body from the Markdown source, run xelatex + BibTeX 3-pass to verify the paper compiles cleanly to PDF. | ~10 s |
 | `papers/scripts/figure_regen.sh` | Stage committed CSVs from `data/loop49/` and `data/loop49_swap/` through `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all 6 paper figures. | ~10 s |
 | `papers/scripts/verify_paper_metadata.py` | CI-style drift gate: title parity (paper H1 = EOI Title), test-count parity (paper claims = inventory counts), BibTeX completeness (every cite has an entry), figure files exist for every "Figure N" reference. | < 1 s |
-| `papers/scripts/run_all_checks.sh` | Single-shot CI gate chaining all five scripts above plus `pack_supplementary.sh`; exits 0 only if every stage passes. | ~30 s |
+| `papers/scripts/run_all_checks.sh` | Single-shot CI gate chaining all five scripts above plus `papers/tmlr_submission_kit/pack_supplementary.sh`; exits 0 only if every stage passes. | ~30 s |
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +
@@ -629,7 +630,7 @@ Three reasons we deliberately chose the small configuration:
    licensing, eliminating most reviewers.
 
 2. **Mediation arithmetic is scale-invariant under the no-interaction
-   assumption.** Zhao-Luo's identification depends on the conditional
+   assumption.** Daniel et al.'s identification depends on the conditional
    expectations being linear in the mediator and exposure structure;
    if it holds at sandbox scale, the same decomposition formulas apply
    at champion scale (only the numerical magnitudes change). The
@@ -717,16 +718,16 @@ the model in this regime is not in a useful operating point and the
 canonical NDE is "the real answer". Three observations push back:
 
 1. **Published recipes operate at WD ≈ 0.** The pre-AdamW transformer
-   literature (Vaswani et al. 2017 *Attention is All You Need*; many
-   2017–2018 fairseq defaults) treated WD as an optional knob and
-   shipped with WD ∈ {0, 0.01}. Decoupled-WD (Loshchilov & Hutter
-   2017, the AdamW paper) explicitly argues that prior practice
-   under-used WD because of the Adam-coupling pitfall. Many
-   low-precision-training ablation tables (notably BitNet b1.58,
-   arXiv:2402.17764, supplementary §C) hold WD at zero or very low
-   values to isolate quantization effects from regularization
-   effects. Pinning WD=0 reproduces a real published configuration,
-   not a degenerate one.
+   literature (Vaswani et al. 2017, *Attention is All You Need*;
+   many 2017–2018 fairseq defaults) treated WD as an optional knob
+   and shipped with WD ∈ {0, 0.01}. Decoupled-WD (Loshchilov &
+   Hutter 2019, "Decoupled Weight Decay Regularization", ICLR;
+   originally arXiv:1711.05101 in 2017) explicitly argues that
+   prior practice under-used WD because of the Adam-coupling
+   pitfall. Low-precision-training ablation work routinely holds
+   WD at zero or very low values to isolate quantization effects
+   from regularization effects. Pinning WD=0 therefore reproduces
+   a real published configuration, not a degenerate one.
 2. **The trainer remains stable at WD=0** in our sandbox: every wd0
    seed produces a finite, non-NaN final BPB, and per-seed BPB CVs
    are within the §3.5.4 stability tolerance. There is no
@@ -876,14 +877,13 @@ mediator, and the question becomes "what fraction of each
 non-mediator fix's effect runs through RmsNorm?" Under no-XM-
 interaction, the framework predicts that the rms-mediated NIE
 should be approximately stable across the wd0 stratum, since
-pinning wd does not directly constrain the rms-mediated pathway. A
-three-stratum swap-parameterization CSV is not committed in
-`data/loop49/`; we have run individual swap calculations on
-canonical-stratum data during framework development 
-which produce a small negative NIE_M1 via rms for every non-
-mediator fix X, but the three-stratum CDE re-run is pre-registered
-as a Phase-1 deliverable (`docs/F2_PRE_REG.md`) and not asserted
-in this paper as committed empirical evidence.
+pinning wd does not directly constrain the rms-mediated pathway.
+The three-stratum swap-parameterization run is committed at
+`data/loop49_swap/` (Phase 0 deliverable, completed (internal ref)); see
+§5.3 for the wd × NIE_M1 byte-identical result and §6.4 for the
+full M_2 robustness landscape. The swap parameterization is
+therefore not a hypothetical sensitivity check but an
+empirically-anchored result reported in this paper.
 
 ### 6.2 Statistic family
 
@@ -1017,7 +1017,7 @@ applied within its valid scope.
    yield tighter CIs and might or might not preserve the sign-flip
    verdict.
 
-3. **No exposure-mediator interaction is assumed.** The Zhao-Luo
+3. **No exposure-mediator interaction is assumed.** The Daniel et al.
    identification result (§3.2) requires both sequential ignorability
    and a no-interaction assumption between the exposure `X` and the
    mediators `(M_1, M_2)`. The latter is testable: we report empirically
@@ -1044,12 +1044,12 @@ applied within its valid scope.
    evidence of structural effects. A formal three-mediator extension
    is left as future work.
 
-6. **No post-treatment / intermediate confounders.** The Zhao-Luo
+6. **No post-treatment / intermediate confounders.** The Daniel et al.
    identification (§3.2) assumes that any confounder of the mediators
    `(M_1, M_2)` is *pre-treatment* — measured before the intervention
    `X` is applied. If a mediator is itself caused by `X` and also
    confounds the second mediator (a *treatment-induced confounder*,
-   per Rudolph & Díaz 2023, arXiv:2205.04408), the standard Zhao-Luo
+   per Rudolph & Díaz 2023, arXiv:2205.04408), the standard Daniel et al.
    identification fails and the four-PSE decomposition is not
    point-identifiable. In our setting `X` is a discrete intervention
    on training-recipe knobs and the candidate mediators
@@ -1086,7 +1086,7 @@ the binaries cited in §5 are:
 | Binary | Role |
 |--------|------|
 | `f2_ablation_sweep` | Run a single ablation sweep at one stratum, write long-form CSV with ModeKind × Stratum tagged rows. |
-| `f2_dual_mediation` | Apply the Zhao-Luo 4-PSE decomposition (§3.2) to a sweep CSV, emit per-PSE estimates + `t`-CIs. |
+| `f2_dual_mediation` | Apply the Daniel et al. 4-PSE decomposition (§3.2) to a sweep CSV, emit per-PSE estimates + `t`-CIs. |
 | `f2_mediation_sensitivity` | Compute the bridge-score envelope (§3.3) with `--lambda-grid` / `--tipping-point` / `--wide-form` modes. |
 | `f2_stratum_compare` | Take the canonical, wd0, and warmup0 CSVs and emit the cross-stratum comparison with `stable_across_strata` flags (§3.4). |
 | `f2_to_jsonl` | Stream-convert a CSV to JSON Lines for matplotlib + downstream tooling. |
@@ -1181,12 +1181,16 @@ catalogues the methodological gap F2 is designed to close.
 
 ### 9.2 Causal mediation
 
-The four-path decomposition we use in §3.2 is from **Gao, Li & Luo**
-(2020, arXiv:2007.16031, "Decomposition of the Total Effect for Two
-Mediators: A Natural Counterfactual Interaction Effect Framework"). We
-deliberately attribute the result to its actual authors after a
-validation pass in (internal ref); an earlier draft of this paper conflated
-their result with a different Zhao-Luo work.
+The four-path decomposition we use in §3.2 is primarily attributed
+to **Daniel, De Stavola, Cousens & Vansteelandt** (2015, *Biometrics*
+71:1-14, doi:10.1111/biom.12248) as the foundational two-mediator
+nested-counterfactual identification, with the no-interaction
+reduction supplied by **Gao, Li & Luo** (2020, arXiv:2007.16031,
+"Decomposition of the Total Effect for Two Mediators: A Natural
+Counterfactual Interaction Effect Framework"). Earlier drafts of this
+paper mis-attributed the decomposition to "Zhao-Luo"; that attribution
+was corrected to Daniel et al. (primary) + Gao-Li-Luo (no-interaction
+collapse) in a (internal ref) validation pass.
 
 The delta-method linearization we use to derive per-PSE SEs reduces to
 the **efficient influence function** treatment of Miles & Shpitser
@@ -1274,7 +1278,7 @@ ablation matrix — that the standard seed-mean ablation practice in ML
 systematically misattributes effects when one intervention mediates
 another. The (internal ref) RmsNorm sign flip (canonical NDE −4.12 BPB → wd0
 CDE +0.43 BPB) is a single concrete instance; the framework that
-produced it (Pearl-style stratified CDE + Zhao-Luo four-path
+produced it (Pearl-style stratified CDE + Daniel et al. four-path
 decomposition + delta-method SE + bridge-score sensitivity envelope +
 cross-stratum stability flag) is generic and ready for re-use on any
 ablation question where a suppression-mediator may be present.
@@ -1316,7 +1320,7 @@ call schedule.
 - **NeurIPS 2026 Causal-ML Workshop.** Strong secondary fit, retained
   as a fall-back. The audience cares more about identification theory
   than reproducibility infrastructure; a re-balanced submission would
-  lead with §3.2 (Zhao-Luo) and §3.3 (bridge-score) and de-emphasize
+  lead with §3.2 (Daniel et al.) and §3.3 (bridge-score) and de-emphasize
   §3.5 (provenance). The workshop application deadline for organizers
   is 2026-06-06 AOE; the call-for-papers deadline historically lands in
   late September / early October per the NeurIPS workshop cycle.

@@ -10,6 +10,36 @@
 % the auto-converter's `\citep{arxiv:NNNN.NNNNN}` output). Journal/PMC-
 % only entries use first-author-year keys.
 
+% ── Pre-AdamW weight-decay history (§5.2 wd=0 defense) ────────────
+@inproceedings{vaswani2017attention,
+  author    = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki
+               and Uszkoreit, Jakob and Jones, Llion and
+               Gomez, Aidan N. and Kaiser, {\L}ukasz and
+               Polosukhin, Illia},
+  title     = {Attention is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems 30 (NIPS 2017)},
+  year      = {2017},
+  note      = {Pre-AdamW transformer recipe; ships with WD = 0 in
+               many fairseq-derived configurations.},
+}
+
+@inproceedings{loshchilov2019adamw,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  booktitle = {International Conference on Learning Representations (ICLR 2019)},
+  year      = {2019},
+  note      = {AdamW; diagnoses prior under-use of WD as a coupling-
+               with-Adam pitfall. Conference version of arxiv:1711.05101.},
+}
+
+@article{arxiv:1711.05101,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  journal   = {arXiv preprint arXiv:1711.05101},
+  year      = {2017},
+  note      = {Pre-ICLR preprint of loshchilov2019adamw.},
+}
+
 % ── Two-mediator causal mediation (foundational) ─────────────────────
 @article{daniel2015biom,
   author    = {Daniel, R. M. and De Stavola, B. L. and Cousens, S. N. and Vansteelandt, S.},

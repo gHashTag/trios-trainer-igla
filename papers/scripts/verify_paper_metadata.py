@@ -65,8 +65,10 @@ def check_title_parity() -> list[str]:
 def check_test_count_parity() -> list[str]:
     errs: list[str] = []
     paper = PAPER.read_text()
-    # Find "NNN passing tests" in §3.5.4 + Appendix A patterns.
-    paper_counts = set(re.findall(r"(\d{3,5}) passing tests", paper))
+    eoi = EOI.read_text() if EOI.exists() else ""
+    # Find "NNN passing tests" in §3.5.4 + Appendix A patterns. EOI
+    # parity is checked too — Loop 76 audit caught a 632/727 EOI drift.
+    paper_counts = set(re.findall(r"(\d{3,5}) passing tests", paper + "\n" + eoi))
     paper_lib_counts = set(re.findall(r"(\d{3,5}) in `src/lib\.rs`", paper))
     # Appendix D total: counts table rows in the inventory.
     inventory = APPX_D.read_text()
@@ -96,13 +98,15 @@ def check_test_count_parity() -> list[str]:
                     f"lib test count drift (in `src/lib.rs` claim): "
                     f"paper says {claim}, inventory says {actual_lib}"
                 )
-    # Also check the total inventory count claim.
-    total_claims = re.findall(r"lists (\d{3,5}) tests", paper)
+    # Also check the total inventory count claim (paper + EOI).
+    total_claims = re.findall(r"lists (\d{3,5}) tests", paper + "\n" + eoi)
+    # EOI line like "MIT (NNN tests, 10 binaries"
+    total_claims += re.findall(r"MIT \((\d{3,5}) tests", eoi)
     for claim in total_claims:
         if int(claim) != actual_count:
             errs.append(
-                f"total inventory drift: paper says {claim} tests in "
-                f"the auto-generated inventory, actual is {actual_count}"
+                f"total inventory drift: paper or EOI says {claim} tests, "
+                f"actual is {actual_count}"
             )
     return errs
 

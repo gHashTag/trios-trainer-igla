@@ -51,7 +51,7 @@ BitNet b1.58, Peri-LN, nanoGPT) and find that the
 multi-seed-with-data-release norm is not yet established in this
 literature: seven of nine publish single-run tables, zero release
 per-seed CSVs — illustrating the methodological gap F2 is designed
-to close. The framework is open-source under MIT (727 tests, 10
+to close. The framework is open-source under MIT (805 tests, 10
 binaries sharing a long-form CSV contract); the empirical CSVs
 backing all findings are committed in-repo with MD5 checksums.
 
@@ -77,7 +77,7 @@ Conference track (per MLRC 2026 dual-submission policy).
 
 > A reviewer wishing to reproduce any number in §5 should:
 > 1. `git checkout 583b417` (or any descendant on `f2-methodology`).
-> 2. `cargo test --lib` exits 0 with 632 passing tests.
+> 2. `cargo test --lib` exits 0 with 710 passing tests.
 > 3. Run any figure script in `papers/figures/`; no flags needed.
 > 4. Verify the input file's checksum against `data/loop49/README.md`.
 > 5. The generated PNG should be visually identical to the figure in

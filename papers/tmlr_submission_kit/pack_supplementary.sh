@@ -108,7 +108,7 @@ ablation methodology with Λ-sweep envelope". It contains:
 Every file is self-contained. No git checkout needed to reproduce
 Figure 1 from the data; see `reproducibility/appendix_a_commands.md`.
 
-Anchor commit: `5367bde` (descendant on `f2-methodology` branch).
+Anchor commit: `583b417` (descendant on `f2-methodology` branch).
 README
 
 # Reproducibility section

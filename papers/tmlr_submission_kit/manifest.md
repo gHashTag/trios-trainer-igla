@@ -48,7 +48,7 @@ f2_methodology_supp.zip
 
 ## Anonymization note
 
-The git SHA `5367bde` is the empirical anchor commit and is not itself
+The git SHA `583b417` is the empirical anchor commit and is not itself
 identifying. The CSV `prov:agent_git_sha` field reveals contributor
 history if checked against the repo — see
 `anonymization_checklist.md` for the strip-or-not decision.
