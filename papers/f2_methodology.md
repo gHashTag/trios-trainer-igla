@@ -85,30 +85,169 @@ reproducibility artifact for ML methodology research.
 ## 3. The F2 framework
 
 ### 3.1 Stratification mechanism
-- `Stratum::ALL = &[Canonical, Wd0, Warmup0]`
-- Mode-string registry: `mode_string(kind, stratum) → "wd0_loco"` etc.
-- Implementation: `src/race/ablation.rs`
-- **Figure 2**: Stratum enum + registry flow diagram
 
-### 3.2 Zhao-Luo decomposition
-- NDE = Δ_{X,M1,M2}
-- NIE_chain = (Δ_X − Δ_{X,M1}) − (Δ_{X,M2} − Δ_{X,M1,M2})
-- NIE_M1 = Δ_{X,M2} − Δ_{X,M1,M2}; NIE_M2 = Δ_{X,M1} − Δ_{X,M1,M2}
-- Per-seed point estimates → sample covariance → delta-method SE
-- t_{0.975, N-1} CIs (preferred over BCa at N=5 per arXiv:2508.10083)
-- Implementation: `src/bin/f2_dual_mediation.rs`
+Let `X` denote a training-recipe intervention (one of the seven canonical
+fixes: rms, warmup, gradclip, clamp, smooth, wd, dropout). Let `M ⊆ {X}^c`
+denote a candidate mediator subset. Let `Y` denote validation BPB.
 
-### 3.3 Sensitivity envelope
-- Additive bound: expansion(Γ, Λ) = Λ · (Γ − 1) / Γ
-- Tipping point: Γ_tip(Λ) = 1 + closer_endpoint / Λ
-- Lambda-sweep: per-PSE × per-Λ table; long-form (CMAverse convention) or
-  wide-form pivot
-- Implementation: `src/bin/f2_mediation_sensitivity.rs`
+We define a **stratum** as a setting of one or more mediators to a fixed
+reference value (typically "disabled"). The framework currently supports
+three strata, encoded as the enum `race::ablation::Stratum`:
+
+| Stratum         | Reference levels held fixed              |
+|-----------------|------------------------------------------|
+| `Canonical`     | None (free baseline, default WD=0.1)     |
+| `Wd0`           | weight_decay = 0.0 (Pearl CDE on WD)     |
+| `Warmup0`       | warmup_steps_unquantized = 0             |
+
+Each stratum carries a CSV mode-column prefix via `Stratum::prefix()`
+(empty for `Canonical`, `"wd0_"` for `Wd0`, `"warmup0_"` for `Warmup0`).
+The cross-product with `ModeKind ∈ {Loco, Pairwise, Triplet}` yields the
+nine mode strings that tag every emitted row. Figure 2 visualizes the flow.
+
+Adding a fourth stratum is a single-variant code change in
+`src/race/ablation.rs`; the mode-string registry then auto-extends every
+downstream lookup. The policy for when a new stratum is warranted (≥50%
+indirect effect in a prior mediation analysis, plus the Pearl CDE at the
+disabled value being the natural next analytical question) is documented
+in the enum doc-comment.
+
+**Figure 2**: Stratum enum + registry flow.
+
+### 3.2 Zhao-Luo four-path decomposition
+
+Following Zhao & Luo (2020, arXiv:2007.16031), the total effect of `X` on
+`Y` in the presence of two ordered mediators `M_1` and `M_2` decomposes
+additively into four path-specific effects (PSEs):
+
+$$
+\text{TE}(X) \;=\; \text{NDE}(X) \;+\; \text{NIE}_{M_1}(X) \;+\; \text{NIE}_{M_2}(X) \;+\; \text{NIE}_{\text{chain}}(X)
+$$
+
+Under sequential ignorability and no exposure-mediator interaction, each
+PSE is identified by the **counterfactual difference**
+
+$$
+\Delta_S \;\equiv\; \mathbb{E}\!\left[Y(\text{remove } S)\right] - \mathbb{E}\!\left[Y(\text{full stack})\right]
+$$
+
+for every `S ⊆ {X, M_1, M_2}`. The closed-form Zhao-Luo decomposition is:
+
+$$
+\begin{aligned}
+\text{NDE} &= \Delta_{X, M_1, M_2} \\
+\text{NIE}_{\text{chain}} &= (\Delta_X - \Delta_{X, M_1}) - (\Delta_{X, M_2} - \Delta_{X, M_1, M_2}) \\
+\text{NIE}_{M_1} &= \Delta_{X, M_2} - \Delta_{X, M_1, M_2} \\
+\text{NIE}_{M_2} &= \Delta_{X, M_1} - \Delta_{X, M_1, M_2}
+\end{aligned}
+$$
+
+In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
+within-seed difference `Y_i(\text{remove } S) − Y_i(\text{full stack})`. Each
+PSE then has a per-seed estimator that is a **linear combination** of these
+seed-level differences. Linearity is the crucial property: the multivariate
+delta-method reduces (Miles & Shpitser 2017, arXiv:1710.02011 §3) to the
+**sample variance of per-seed PSE values**:
+
+$$
+\widehat{\text{Var}}(\widehat{\text{PSE}}) \;=\; \tfrac{1}{N(N-1)} \sum_{i=1}^N \left(\text{PSE}_i - \overline{\text{PSE}}\right)^2
+$$
+
+We report `SE = sqrt(\widehat{\text{Var}})` for each PSE.
+
+For confidence intervals at small `N`, we use the Student-t critical value
+`t_{0.975, N-1}`:
+
+$$
+\text{CI}_{95\%}(\widehat{\text{PSE}}) \;=\; \widehat{\text{PSE}} \;\pm\; t_{0.975, N-1} \cdot \text{SE}
+$$
+
+At `N = 5`, `t_{0.975, 4} ≈ 2.776`. We deliberately avoid BCa bootstrap:
+Owen (2025, arXiv:2508.10083) shows BCa severely under-covers at `N ≤ 5`,
+while the Student-t adjustment correctly accounts for both the sample-size
+penalty and the unknown population variance.
+
+**Implementation**: `src/bin/f2_dual_mediation.rs`. The `Loop 34 lock test`
+`dual_mediation_no_interaction_residual_lock` verifies the residual
+`Δ_X − (\text{NDE} + \text{NIE}_{M_1} + \text{NIE}_{M_2} + \text{NIE}_{\text{chain}})`
+is below `1×10⁻⁶` in our regime, empirically confirming the no-interaction
+assumption holds.
+
+### 3.3 Bridge-score sensitivity envelope
+
+Sequential ignorability is the identifying assumption; it may fail in the
+presence of unmeasured mediator-outcome confounding. The **additive
+bridge-score envelope** (Ohnishi & Li 2026, arXiv:2605.18724 Thm 2)
+provides a sharp bound parameterized by two interpretable quantities:
+
+- **Γ ≥ 1**: residual selection ratio. `Γ = 1` corresponds to no
+  unmeasured confounding; `Γ = 2` to a doubling of the selection odds.
+  This is the VanderWeele-Ding E-value scale.
+- **Λ ≥ 0**: outcome scale residual (units of BPB in our setting). It
+  bounds the maximum gap in `Y` that an unobserved confounder can induce
+  between mediator strata.
+
+The envelope **additively expands** the PSE confidence interval by
+
+$$
+\text{expansion}(\Gamma, \Lambda) \;=\; \Lambda \cdot \frac{\Gamma - 1}{\Gamma}
+$$
+
+(equivalent to Ohnishi-Li Theorem 2 under the BPB additive scale). The
+worst-case envelope is
+
+$$
+[\text{CI}_{\text{lo}} - \text{expansion}, \;\; \text{CI}_{\text{hi}} + \text{expansion}]
+$$
+
+A PSE **survives at zero** iff this envelope still excludes zero.
+
+**Tipping point.** Inverting the envelope equation yields the minimum `Γ`
+at which the envelope first reaches zero from the closer-to-zero CI
+endpoint:
+
+$$
+\Gamma_{\text{tip}}(\Lambda) \;=\; 1 \;+\; \frac{\min(|\text{CI}_{\text{lo}}|, |\text{CI}_{\text{hi}}|)}{\Lambda}
+$$
+
+`Γ_tip(Λ) → ∞` as `Λ → 0` and `Γ_tip(Λ) → 1` as `Λ → ∞`. We adopt
+VanderWeele-Ding's E-value convention:
+
+| `Γ_tip` range  | Interpretation |
+|----------------|----------------|
+| `< 1.25`       | **fragile**: any plausible unmeasured confounding flips the verdict |
+| `1.25 ≤ x < 2` | **moderate** |
+| `≥ 2.0`        | **robust**: comparable to the smoking-cancer benchmark E-value |
+
+The Λ-sweep emits a per-PSE × per-Λ table in either long-form (CMAverse
+convention, one row per PSE × Λ tuple) or wide-form (one row per PSE,
+columns indexed by Λ). Figure 4 visualizes the hyperbolae for rms PSEs.
+
+**Implementation**: `src/bin/f2_mediation_sensitivity.rs`. The lock test
+`tipping_point_matches_closer_endpoint_over_lambda` validates the
+closed-form against a worked example.
 
 ### 3.4 Cross-stratum comparator
-- Join by (fix_x, pse_name); NaN for missing strata (no silent drops)
-- `stable_across_strata = true` iff every pair of present CIs overlaps
-- Implementation: `src/bin/f2_stratum_compare.rs`
+
+Given dual_mediation CSVs from two or more strata, the comparator joins
+rows by `(fix_x, pse_name)` and emits a side-by-side table with one
+column triple per stratum (`estimate`, `ci95_lo`, `ci95_hi`). Missing
+strata produce `NaN` in their slots — explicitly, not silently — so the
+analyst sees the coverage at a glance.
+
+The `stable_across_strata` flag is `true` iff every pair of present 95%
+CIs has non-empty intersection:
+
+$$
+\text{stable} \;\iff\; \forall \, i \neq j \,:\, \text{CI}^{(i)}_{\text{lo}} \le \text{CI}^{(j)}_{\text{hi}} \;\wedge\; \text{CI}^{(j)}_{\text{lo}} \le \text{CI}^{(i)}_{\text{hi}}
+$$
+
+A `false` verdict for a PSE that the analyst expected to be stratum-invariant
+is a flag for further investigation: either the PSE truly differs across
+strata (the sign-flip case in §5.2), or one stratum's CSV is corrupted
+(provenance check catches the latter).
+
+**Implementation**: `src/bin/f2_stratum_compare.rs`.
 
 ### 3.5 Provenance and reproducibility
 - W3C-PROV / Workflow Run RO-Crate preamble (arXiv:2312.07852)
