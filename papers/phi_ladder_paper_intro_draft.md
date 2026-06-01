@@ -166,10 +166,134 @@ contradict §4's predictions — will be reported as a null.
 
 ---
 
-## DRAFT notes (Loop 98)
+## 2. Related work
 
-This is a §1-only draft. Sections to write in subsequent loops:
-- §2 — Related work (3 sub-sections, one per format family)
+We organize the quantization-format literature by the base
+representation each family uses, since the head-to-head BPB
+comparison we pre-register only makes sense across format families,
+not within one. We do **not** survey post-training-quantization or
+QAT-on-pretrained-model literature; our protocol holds at
+quantization-aware training from scratch at 1B parameters, so the
+comparable prior work is pre-training quantization specifically.
+
+### 2.1 Integer-base zoo (INT8, INT4-W4A8, BitNet-1.58)
+
+The 8-bit integer family has been the production default since
+GPTQ (Frantar, Ashkboos, Hoefler & Alistarh 2023,
+arXiv:2210.17323) and SmoothQuant (Xiao et al. 2023,
+arXiv:2211.10438) demonstrated post-training INT8 with sub-percent
+accuracy loss on bf16-trained models; native INT8 *training*, by
+contrast, is rarer and largely confined to weight-only schemes.
+The contemporary integer-quantization-during-training reference
+is **BitNet b1.58** (Ma, Wang, Ma et al. 2024, arXiv:2402.17764),
+which restricts weights to $\{-1, 0, +1\}$ (the "1.58 bits" name
+is from $\log_2 3$). BitNet's headline finding is that ternary
+weight training matches bf16 BPB at $\geq$ 700M parameters when
+combined with an 8-bit activation path; the authors do not
+isolate the contribution of the ternary path from the activation
+quantization.
+
+The INT4-W4A8 schemes (Xi et al. 2024, arXiv:2310.16836 for
+*Jetfire*; Zhao et al. 2024 for *AffineQuant*) collapse weights
+to 4-bit integers while keeping activations at 8-bit. Their BPB
+deltas vs bf16 at $\sim$1B parameters are reported as $\leq 0.05$
+BPB in the original papers, but the comparisons are usually
+against post-training rather than from-scratch training, so the
+parsing into our protocol (from-scratch, FineWeb 50B tokens) is
+not direct. We include INT4-W4A8 in the zoo as the strongest
+integer-quantization-during-training competitor at our target
+scale.
+
+The integer family's strength is its alignment with existing
+hardware INT4/INT8 matmul kernels; its weakness is the
+quantization noise floor at low weight precision, which scales
+with the activation range. BitNet-1.58's contribution is in
+ameliorating the latter via ternarization of the weight path
+plus 8-bit activation calibration.
+
+### 2.2 Floating-point-base zoo (FP8, bf16, MXFP8)
+
+The floating-point family includes both 16-bit and 8-bit
+variants. **bf16** (Wang & Kanwar 2019, "BFloat16: The Secret to
+High Performance on Cloud TPUs") is the production baseline; its
+combination of 8 exponent bits and 7 mantissa bits matches FP32's
+dynamic range with $\sim$$\epsilon = 2^{-7}$ precision. Modern
+training recipes default to bf16 for both weights and
+activations. **FP8** (Micikevicius et al. 2022, arXiv:2209.05433,
+*FP8 Formats for Deep Learning*) defines two 8-bit floating-point
+formats — E4M3 (4 exponent bits, 3 mantissa, no infinities) for
+forward weights/activations and E5M2 (5 exponent, 2 mantissa) for
+gradients — and demonstrates BPB parity with bf16 on 175B-parameter
+models when tensor-scaling is calibrated per layer.
+
+The **MXFP8** standard (OCP 2024, "Microscaling Formats for Deep
+Learning") extends FP8 with a shared 8-bit exponent per 32-element
+block (mixed-precision *microscaling*), which lowers the effective
+mantissa requirement and reduces the calibration burden. The
+NVIDIA MXFP8 production implementation (cited in the Hopper H100
++ Blackwell B100 hardware documentation; we treat
+*arXiv:2509.22536* as the contemporary academic reference, with
+the caveat that it has been **withdrawn** by its authors per our
+companion paper's §9.4) reports BPB parity with bf16 at 1B
+parameters and 50B+ FineWeb tokens. Our zoo entry **FP8** in §1
+refers specifically to E4M3 weights + E5M2 gradients per
+Micikevicius et al.'s recipe, with per-tensor scaling; we do
+**not** include the more aggressive MXFP8 microscaling path
+because our protocol is a from-scratch comparison without runtime
+calibration.
+
+The floating-point family's strength is the dynamic-range
+flexibility of the exponent; its weakness is the 8–16 bit storage
+overhead relative to integer or ternary schemes. The MXFP8 path
+trades calibration complexity for storage parity with INT8.
+
+### 2.3 Golden-ratio-base (phi-ladder, Fibbinary)
+
+The phi-ladder family is anchored at $\phi^2 + \phi^{-2} = 3$
+(where $\phi = (1 + \sqrt{5})/2$); this identity yields a
+Fibonacci-style recurrence for quantizing reals onto a
+golden-ratio basis. The closest published precedent is
+**Fibbinary** (Fiandaca & Gomony 2025, arXiv:2511.01921,
+*Fibbinary-Based Compression and Quantization for Efficient
+Neural Radio Receivers*), which uses the Fibonacci representation
+for radio-receiver weight encoding; the authors demonstrate
+$\sim$30% memory savings at iso-accuracy on a per-domain task,
+but do not evaluate against transformer LLMs at any scale. Our
+phi-ladder differs from Fibbinary in two ways: (i) we use the
+*multiplicative* phi basis (powers of $\phi$) rather than the
+*additive* Fibonacci basis (sums of $F_k$); (ii) we ladder
+through four precisions (GFTernary → GF8 → GF16 → GF32) sharing
+the same basis, so the ladder can be mixed within a single
+training pass.
+
+We are not aware of a prior published evaluation of the phi-ladder
+at $\geq$ 1B-parameter transformer LM scale. The companion F2
+methodology paper documents the phi-ladder representation as the
+*substrate* on which our sandbox-scale RmsNorm sign-flip finding
+sits, but does not isolate the phi-ladder's contribution to BPB.
+This paper's pre-registered sweep against the integer- and
+floating-point-zoo entries provides the first such evaluation.
+
+### 2.4 Pre-registration practice in format-comparison literature
+
+Of the nine format-comparison studies we surveyed (see Appendix C
+once written), only two pre-registered their analysis plan
+before data acquisition: the BitNet b1.58 paper's appendix
+specifies hyperparameter sweeps and seed counts in a pre-locked
+manner, and MXFP8's OCP technical report names its calibration
+protocol up-front. The remaining seven describe their analysis as
+a single after-the-fact narrative. Our protocol locks the
+configuration set, stratification, seed counts, hypothesis tests,
+and correction procedure before any FineWeb token is consumed;
+the locked plan is in `docs/F2_PRE_REG.md` of the companion
+codebase.
+
+---
+
+## DRAFT notes (Loops 98–99)
+
+§1 (Loop 98) and §2 (Loop 99) drafted. Sections to write in
+subsequent loops:
 - §3 — Protocol (sources from `docs/F2_PRE_REG.md` §3-§4, expanded
   with the F2-companion connection points)
 - §4 — Pre-registered hypotheses with falsification tests
@@ -177,11 +301,11 @@ This is a §1-only draft. Sections to write in subsequent loops:
 - §6 — Scope/limitations
 - §7 — EOI
 
-Citation hygiene: all citations above already appear in the F2
-methodology paper's bib at
-`papers/tmlr_submission_kit/f2_methodology.bib`; the future
-follow-up paper will share that bib + add Issue #1021 setup-
-specific entries.
+Citation hygiene: §2 introduces new citations (Frantar/GPTQ,
+Xiao/SmoothQuant, BitNet-1.58, Xi/Jetfire, Wang/Kanwar bf16,
+Micikevicius/FP8, OCP MXFP8) that are NOT yet in the F2 methodology
+bib. When this paper splits off, those bib entries need to be added
+and verified via the same Loop 97 semantic-attribution discipline.
 
 Anonymization: branch / SHA / "playra" appear in this draft and
 must be stripped before submission via the same

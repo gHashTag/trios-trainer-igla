@@ -70,12 +70,21 @@ practitioners actually consume — "should I turn this on by default?" —
 but it is silent on a more dangerous failure mode: **suppression
 mediation**, where one intervention's effect is dominated by its
 correlated mediator, and the apparent sign of the effect flips when the
-mediator is held at a non-default reference value. The empirical
-demonstration in §5 is one such case: replacing RmsNorm with LayerNorm
-has marginal NDE −4.12 BPB (helpful) at canonical training, but +0.43
-BPB (harmful) under the Pearl Controlled Direct Effect (CDE) with
-weight decay pinned to zero. Both CIs exclude zero. The sign is not a
-seed artifact.
+mediator is held at a non-default reference value. Our empirical
+demonstration in §5 documents this failure mode in two layers. **First,
+the suppression structure is uniform across our entire ablation column**:
+all five non-mediator fixes (rms, dropout, gradclip, clamp, smooth) show
+canonical NDE ≈ −4.5 to −4.9 BPB with NIE_M1 ≈ +4.5 to +5.0 BPB nearly
+cancelling — a textbook signature of dominant mediator structure.
+**Second, RmsNorm is the only fix whose wd0 Pearl CDE crosses zero**:
+under wd=0, every fix's NDE attenuates by roughly 10–15× (the wd0
+stratum is a structural attenuator on the entire NDE column), but only
+RmsNorm overshoots into positive territory — marginal NDE −4.12 BPB at
+canonical training becomes Pearl CDE +0.43 BPB [+0.01, +0.84] under
+wd=0. Both CIs exclude zero. The sign is not a seed artifact. The
+uniformity of the suppression structure is, in our view, the more
+robust methodological finding; the RmsNorm sign flip is the sharpest
+single instance of it.
 
 If suppression mediation is more common than the current ablation
 literature acknowledges, then a meaningful fraction of "ablation shows
