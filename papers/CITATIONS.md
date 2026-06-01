@@ -81,8 +81,8 @@ verification status reviewable on its own line.
 
 ## Summary statistics
 
-- Total entries: **25**
-- VERIFIED: **24** (96%)
+- Total entries: **27**
+- VERIFIED: **26** (96%)
 - VERIFIED-WITHDRAWN: **1** (4%) — arXiv:2509.22536 (InfiR2)
 - CONFIRMED-VENUE: **0** (0%)
 - UNVERIFIED: **0** (0%)
@@ -99,6 +99,8 @@ verification status reviewable on its own line.
 | Loop 79 | Verified Ohnishi-Li bridge-score paper. **Caught and fixed AblationBench mis-description**: paper is about LM-agent ablation *planning*, not about wide-form/Welch/Cohen's-d analysis. §2.3 and §9.1 rewritten. Authors corrected "Abramovich et al." → "Abramovich & Chechik". |
 | Loop 80 | Verified the remaining 6 CONFIRMED-VENUE entries (RO-Crate, DoWhy, ABLATOR, QuEST, MXFP8, Fibbinary). Caught FOUR additional issues: (1) RO-Crate first-author "Sefton" was fabricated — actually Leo + Soiland-Reyes lead an 18-author group; (2) **arXiv:2509.22536 (InfiR2 FP8) has been WITHDRAWN** by authors 2025-10-17 due to data-processing bug — §9.4 explicitly flags this; (3) Fibbinary paper attribution "Schmidt-Mengin et al." was fabricated — actually Fiandaca & Gomony, and the paper is about neural radio receivers (not transformer LLMs); (4) QuEST description "scaling laws" was incorrect — actual title is "Stable Training of LLMs with 1-Bit Weights and Activations". §9.4 narrative rewritten; CITATIONS.md ledger updated 19/6 → 24/0 VERIFIED/CONFIRMED-VENUE, with 1 VERIFIED-WITHDRAWN. |
 | Loop 85 | First PDF visual inspection across 80+ loops surfaced TWO SEV-5 rendering bugs that no citation/derivation/cross-ref audit could have caught: (1) HTML anonymizer banner `<!-- ANONYMIZED VARIANT -->` rendering as prose at top of abstract; (2) math symbols `Γ`/`Λ`/`Δ` rendering as literal `\{}Gamma`/`\{}Lambda` text inside `\texttt{}` blocks. Root cause: `unicode_to_latex` ran BEFORE backtick capture, so `Γ` → `$\Gamma$` then texttt-escape turned `\` into `\textbackslash{}`. Fixed by reordering (carve backticks first → unicode after) and adding `BT_UNICODE_FALLBACK` ASCII map for typewriter-font-missing chars (≥→>=, ×→x, →→->, etc.). |
+| Loop 90 | 15th adversarial pass on the compiled PDF caught 4 SEV-5/SEV-4 blockers — incl. **7 body cites had NO rendered bibliography entry** (Daniel et al. 2015 the primary attribution!, VanderWeele-Ding cited 8+ times, Vaswani, Loshchilov, Haneuse, Guo, Fostiropoulos). Body uses inline "(Author Year)" text instead of `\cite{}`. Fixed via `\nocite{}` directive in test_compile_tmlr.tex + 2 new bib entries (`meng2022rome`, `wang2023activation`) for §2.3 interpretability mentions. |
+| Loop 93 | Verified Loop 90's two new bib additions via WebFetch. `meng2022rome` confirmed exactly (Meng, Bau, Andonian, Belinkov; NeurIPS 2022). `wang2023activation` author corrected: "Kevin Ro Wang" → "Kevin Wang" (the "Ro" middle name was speculative; arXiv:2211.00593 lists Kevin Wang as first author). |
 
 Next audit due if more citations are added or if the paper is
 revised post-acceptance.
