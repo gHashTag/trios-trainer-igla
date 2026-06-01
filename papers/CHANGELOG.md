@@ -144,6 +144,40 @@ caught before reviewers saw them. **Eleven** independent passes:
   in the converter; `compile_tmlr_test.sh` extended with a
   pdftotext-grep stage to catch this class permanently (Loop 86).
 
+### 7.5 Aesthetic finalization arc (Loops 84–89)
+
+The Loop 84-89 cycle was an intensive 6-loop PDF rendering /
+aesthetic / structural cleanup phase. Each loop ran adversarial
+review subagents on the COMPILED PDF (not just the markdown
+source) and acted on the findings. Catches by loop:
+
+- **Loop 84** — pre-PDF: tightened EOI flow + added action editor
+  candidates + SUBMISSION_CHECKLIST decision-tree fix.
+- **Loop 85** — first PDF visual catch (SEV 5): HTML banner +
+  math literal text. Root-caused as `unicode_to_latex` running
+  before backtick capture; fixed by reordering.
+- **Loop 86** — second PDF visual sweep (SEV 5×2): multi-line
+  bold leaking, bibtex never run for non-anon variants. Plus
+  SEV-4 issues: `\widehat{}` inside backticks, unicode `∈`/`γ`/`η`
+  rendering as U+FFFD. Added pdftotext-grep stage with 11
+  patterns; added BT_UNICODE_FALLBACK with 40+ entries.
+- **Loop 87** — PDF aesthetic catch (SEV 4): §3.5.5 + §8.1 tables
+  truncating at right margin. Converted both to bulleted prose.
+  Added `lint_paper_md.py` upstream lint (~170 LoC, 6 checks).
+- **Loop 88** — §7 cluster lead-ins (SEV 2 cleanup): 6 flat
+  limitations grouped into 4 cluster subsections. lint_paper_md
+  wired into GH Actions workflow.
+- **Loop 89** — Loop 88 regression catch (SEV 4): §7 renumbering
+  caused intro/rendering mismatch. Converted to bold paragraph
+  leads (no list numbering). §10.2 venue calibration cleaned —
+  rewrote 4 long bullets (URLs, dates, city/date strings) as a
+  4-row table + 2 sentences.
+
+Net effect: 7-stage CI gate → 8-stage CI gate (added markdown
+lint). pdftotext-grep added to xelatex stage with ~20 patterns.
+PDF renders cleanly with math symbols, multi-line bold, tables
+without truncation, four-cluster §7. From 14 adversarial reviews.
+
 ### 8. Case study survey (Loops 63–64)
 
 - Loop 63: 3-paper applicability survey (NormFormer, BitNet b1.58,
