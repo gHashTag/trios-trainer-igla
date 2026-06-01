@@ -2,9 +2,10 @@
 //!
 //! Provides closed-form Student's t-distribution upper-tail CDF and the inverse
 //! (two-sided critical value) used by both the iLOCO scorer and the dual-mediation
-//! SE → CI translation. Previously duplicated across
+//! SE -> CI translation. Previously duplicated across
 //!   - src/bin/f2_iloco_score.rs
 //!   - src/bin/f2_ablation_aggregate.rs
+//!
 //! Centralizing eliminates the drift risk surfaced in Loop 35.
 //!
 //! Algorithms:

@@ -93,7 +93,7 @@ fn sweep_arm(
         lr: 0.004,
         ladder_kind: kind,
         // Loop 19 XX: HuggingFace 1.58 recipe — warmup = 20% of steps for stable BitLinear convergence.
-        warmup_steps_unquantized: (1000usize / 5).max(20),
+        warmup_steps_unquantized: 1000usize / 5,
         spike_injection_steps: Vec::new(),
         iso_neff_n_target: iso_target,
         corpus,

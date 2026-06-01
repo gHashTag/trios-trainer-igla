@@ -186,9 +186,7 @@ fn aggregate(rows: &[LongRow]) -> Vec<WideRow> {
             _ => None,
         };
         if let Some(key) = key_opt {
-            if !baselines.contains_key(&key) {
-                baselines.insert(key, seeds.clone());
-            }
+            baselines.entry(key).or_insert_with(|| seeds.clone());
         }
     }
     // Fallback: if no canonical baseline found (legacy CSV), use idx=0.

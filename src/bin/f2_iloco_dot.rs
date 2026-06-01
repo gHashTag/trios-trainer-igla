@@ -4,9 +4,9 @@
 //! and emits Graphviz DOT with:
 //!   - one node per fix
 //!   - undirected edges colored by `kind`:
-//!       compensatory → red    (positive iLOCO; sum-of-individual overstates joint cost)
-//!       redundant    → blue   (negative iLOCO; joint cost exceeds sum)
-//!       independent  → grey   (|iLOCO| < eps; omitted by default)
+//!     compensatory -> red    (positive iLOCO; sum-of-individual overstates joint cost)
+//!     redundant    -> blue   (negative iLOCO; joint cost exceeds sum)
+//!     independent  -> grey   (|iLOCO| < eps; omitted by default)
 //!   - edge penwidth ∝ |iLOCO|
 //!   - edge label = "iLOCO=±X.XX  q=Y.YYe-Z"
 //!   - significant edges (q < α) styled solid; non-significant dashed

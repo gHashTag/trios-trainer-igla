@@ -320,12 +320,12 @@ mod tests {
         let tmp = std::env::temp_dir().join("f2_jsonl_blank_lines.csv");
         let mut f = File::create(&tmp).unwrap();
         writeln!(f, "fix_x,value").unwrap();
-        writeln!(f, "").unwrap(); // blank
+        writeln!(f).unwrap(); // blank
         writeln!(f, "rms,5.0").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(f, "wd,0.07").unwrap();
-        writeln!(f, "").unwrap();
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
+        writeln!(f).unwrap();
         drop(f);
         let mut buf = Vec::new();
         let n = convert_csv_to_jsonl(&tmp, &mut buf).unwrap();

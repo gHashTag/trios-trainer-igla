@@ -115,7 +115,7 @@ fn detect_strata_in_data(path: &str) -> Option<Vec<String>> {
             }
         })
         .collect();
-    for line in r.lines().flatten() {
+    for line in r.lines().map_while(Result::ok) {
         if line.is_empty() || line.starts_with('#') || line.starts_with("mode,") {
             continue;
         }

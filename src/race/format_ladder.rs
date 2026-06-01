@@ -544,7 +544,7 @@ mod tests {
         let mut c = ConversionCounter::new();
         apply_paretoq(&mut v, 2.0, &mut c);
         let unique_count = {
-            let mut sorted: Vec<f32> = v.iter().copied().collect();
+            let mut sorted: Vec<f32> = v.to_vec();
             sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
             sorted.dedup_by(|a, b| (*a - *b).abs() < 1e-5);
             sorted.len()

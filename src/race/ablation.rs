@@ -141,7 +141,7 @@ pub const LABEL_ORDERING_CONVENTION: &str =
 
 /// Loop 34 fix 5: membership test for canonical fix short-names.
 pub fn is_canonical_fix(name: &str) -> bool {
-    CANONICAL_FIX_NAMES.iter().any(|n| *n == name)
+    CANONICAL_FIX_NAMES.contains(&name)
 }
 
 impl AblationFix {

@@ -91,7 +91,7 @@ fn read_header_map(
             // Loop 49: capture stratum if present. Expected form:
             //   `# INPUT STRATUM = warmup0` or `# INPUT STRATUM = warmup0 (Loop 47 audit fix 2)`
             if let Some(rest) = trimmed.strip_prefix("# INPUT STRATUM") {
-                let after_eq = rest.splitn(2, '=').nth(1).map(|s| s.trim()).unwrap_or("");
+                let after_eq = rest.split_once('=').map(|x| x.1.trim()).unwrap_or("");
                 // Take the first whitespace-delimited token (drop trailing
                 // " (Loop 47 audit fix 2)" annotations).
                 if let Some(tok) = after_eq.split_whitespace().next() {
