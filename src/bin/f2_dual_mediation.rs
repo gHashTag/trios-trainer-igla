@@ -210,6 +210,36 @@ struct DualMediationRow {
     n_seeds: usize,
 }
 
+/// Loop 47 audit fix 2: detect which stratum the input rows belong to.
+///
+/// At default `--m1 wd --m2 warmup`, a CSV from `warmup_stratified` has the
+/// mediator pinned at its disabled value — so what the binary reports as
+/// "NDE" / "NIE_*" are **Controlled Direct Effects** (Pearl CDE), not the
+/// marginal NDE/NIE the user might assume from the column names. Surfacing
+/// the stratum in the output header forces consumers to read the CDE framing
+/// rather than the canonical labels.
+fn detect_input_stratum(rows: &[LongRow]) -> &'static str {
+    let mut has_canonical = false;
+    let mut has_wd0 = false;
+    let mut has_warmup0 = false;
+    for r in rows {
+        if r.mode.starts_with("wd0_") {
+            has_wd0 = true;
+        } else if r.mode.starts_with("warmup0_") {
+            has_warmup0 = true;
+        } else {
+            has_canonical = true;
+        }
+    }
+    match (has_canonical, has_wd0, has_warmup0) {
+        (true, false, false) => "canonical",
+        (false, true, false) => "wd0",
+        (false, false, true) => "warmup0",
+        (false, false, false) => "empty",
+        _ => "mixed",
+    }
+}
+
 fn compute_dual_mediation(
     rows: &[LongRow],
     m1: &str,
@@ -404,8 +434,29 @@ fn compute_dual_mediation(
     out
 }
 
-fn emit<W: Write>(w: &mut W, rows: &[DualMediationRow], m1: &str, m2: &str) -> std::io::Result<()> {
+fn emit<W: Write>(
+    w: &mut W,
+    rows: &[DualMediationRow],
+    m1: &str,
+    m2: &str,
+    stratum: &str,
+) -> std::io::Result<()> {
     writeln!(w, "# Dual-mediator decomposition (Zhao-Luo 2020 arXiv:2007.16031)")?;
+    writeln!(w, "# INPUT STRATUM = {} (Loop 47 audit fix 2)", stratum)?;
+    if stratum != "canonical" {
+        writeln!(
+            w,
+            "# NOTE: rows came from a stratified sweep. NDE/NIE_* below are Pearl"
+        )?;
+        writeln!(
+            w,
+            "# CONTROLLED DIRECT/INDIRECT EFFECTS at the disabled-value of the stratum"
+        )?;
+        writeln!(
+            w,
+            "# variable (e.g. warmup0 = warmup_steps held at 0); NOT marginal effects."
+        )?;
+    }
     writeln!(w, "# M1 = {}, M2 = {}", m1, m2)?;
     writeln!(
         w,
@@ -516,7 +567,13 @@ fn main() {
         eprintln!("# Loading {}", p);
         all_rows.extend(parse_csv(p));
     }
-    eprintln!("# Loaded {} rows; M1='{}', M2='{}'", all_rows.len(), m1, m2);
+    // Loop 47 audit fix 2: surface input stratum so user reads "Pearl CDE at
+    // mediator=0", not marginal NDE/NIE.
+    let stratum = detect_input_stratum(&all_rows);
+    eprintln!(
+        "# Loaded {} rows; M1='{}', M2='{}'; INPUT STRATUM = {}",
+        all_rows.len(), m1, m2, stratum
+    );
     let rows = compute_dual_mediation(&all_rows, &m1, &m2);
     if rows.is_empty() {
         eprintln!("# ERROR: no decomposition rows produced (missing loco/pairwise/triplet rows?).");
@@ -524,12 +581,12 @@ fn main() {
     }
     if let Some(path) = out_path.as_deref() {
         let mut f = File::create(path).expect("create out CSV");
-        emit(&mut f, &rows, &m1, &m2).expect("write");
+        emit(&mut f, &rows, &m1, &m2, stratum).expect("write");
         eprintln!("# Wrote {} rows to {}", rows.len(), path);
     } else {
         let stdout = std::io::stdout();
         let mut h = stdout.lock();
-        emit(&mut h, &rows, &m1, &m2).expect("write stdout");
+        emit(&mut h, &rows, &m1, &m2, stratum).expect("write stdout");
     }
 }
 
@@ -652,6 +709,69 @@ mod tests {
                 r.fix_x, r.residual
             );
         }
+    }
+
+    #[test]
+    fn detect_input_stratum_classifies_each_prefix() {
+        // Loop 47 audit fix 2: stratum detection.
+        let canonical = vec![
+            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
+            LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+        ];
+        assert_eq!(detect_input_stratum(&canonical), "canonical");
+        let wd0 = vec![
+            LongRow { mode: "wd0_pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
+            LongRow { mode: "wd0_loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+        ];
+        assert_eq!(detect_input_stratum(&wd0), "wd0");
+        let warmup0 = vec![
+            LongRow { mode: "warmup0_pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
+        ];
+        assert_eq!(detect_input_stratum(&warmup0), "warmup0");
+        let mixed = vec![
+            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
+            LongRow { mode: "wd0_loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+        ];
+        assert_eq!(detect_input_stratum(&mixed), "mixed");
+        assert_eq!(detect_input_stratum(&[]), "empty");
+    }
+
+    #[test]
+    fn dual_mediation_m1_m2_swap_is_symmetric() {
+        // Loop 41 fix 4: swapping (M1, M2) on the CLI must swap NIE_M1 ↔ NIE_M2
+        // (and their SEs and CIs) exactly; NDE and NIE_chain remain unchanged.
+        // The Zhao-Luo decomposition is *labeling-symmetric* in M1, M2 under
+        // the no-interaction assumption.
+        let mut rows = synth_rows();
+        for sid in [2u64, 3u64] {
+            let jit = 0.01 * (sid as f64);
+            rows.push(LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: sid, bpb: 4.0 + jit });
+            rows.push(LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: sid, bpb: 5.0 + jit });
+            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), seed: sid, bpb: 4.5 + jit });
+            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_warmup".into(), seed: sid, bpb: 4.7 + jit });
+            rows.push(LongRow { mode: "triplet".into(), fix_name: "triplet_rms_warmup_wd".into(), seed: sid, bpb: 4.3 + jit });
+        }
+        let a = compute_dual_mediation(&rows, "wd", "warmup");
+        let b = compute_dual_mediation(&rows, "warmup", "wd");
+        assert_eq!(a.len(), 1);
+        assert_eq!(b.len(), 1);
+        let ra = &a[0];
+        let rb = &b[0];
+        // NDE and chain are M1↔M2 symmetric and must be byte-identical.
+        assert!((ra.nde - rb.nde).abs() < 1e-9, "NDE drifted: {} vs {}", ra.nde, rb.nde);
+        assert!((ra.nie_chain - rb.nie_chain).abs() < 1e-9);
+        // SE for NDE and chain unchanged.
+        assert!((ra.se_nde - rb.se_nde).abs() < 1e-9);
+        assert!((ra.se_nie_chain - rb.se_nie_chain).abs() < 1e-9);
+        // NIE_M1 in run a == NIE_M2 in run b (and vice versa).
+        assert!((ra.nie_m1 - rb.nie_m2).abs() < 1e-9, "NIE_M1↔M2 swap broken: a.M1={}, b.M2={}", ra.nie_m1, rb.nie_m2);
+        assert!((ra.nie_m2 - rb.nie_m1).abs() < 1e-9);
+        // SEs swap too.
+        assert!((ra.se_nie_m1 - rb.se_nie_m2).abs() < 1e-9);
+        assert!((ra.se_nie_m2 - rb.se_nie_m1).abs() < 1e-9);
+        // CIs swap.
+        assert!((ra.ci95_nie_m1_lo - rb.ci95_nie_m2_lo).abs() < 1e-9);
+        assert!((ra.ci95_nie_m1_hi - rb.ci95_nie_m2_hi).abs() < 1e-9);
     }
 
     #[test]

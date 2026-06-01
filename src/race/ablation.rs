@@ -39,23 +39,54 @@ pub const CANONICAL_FIX_NAMES: &[&str] = &[
 /// in a single canonical order. Downstream lookup helpers iterate this enum
 /// instead of probing hardcoded const arrays, so adding a new stratum
 /// (e.g. warmup-zero) requires only a new `Stratum` variant.
+/// Stratification mode for the F2 ablation sweep.
+///
+/// Loop 45 fix 5: policy for adding new variants.
+///
+/// **Add a `<FixName>0` variant when:**
+///   1. The fix has been identified as a strong mediator (≥50% indirect effect)
+///      in a previous loop's `f2_dual_mediation` or `f2_mediation` analysis, AND
+///   2. The Pearl Controlled Direct Effect (CDE) at the disabled-value of the
+///      fix is the natural next analytical question.
+///
+/// **Don't add a variant just because the fix exists.** Stratification cost
+/// is ~25min/200-step sweep; adding decorative strata bloats the registry.
+///
+/// **Process to add (see Loop 41 Warmup0 PR for reference):**
+///   1. Append the variant to `Stratum` + `ALL`.
+///   2. Add a `prefix()` arm (lowercase + trailing `_`, e.g. `"clamp0_"`).
+///   3. Mirror the `wd_stratified` mode branch in `f2_ablation_sweep.rs` (the
+///      registry takes care of f2_dual_mediation lookups automatically).
+///   4. Update `tests/f2_*_stratified_e2e.rs` to mirror the wd_stratified test.
+///   5. Bump `docs/F2_BINARIES.md` row count for binaries that change.
+///
+/// Mediator candidates considered for future strata (per Loop 30/33/40 findings):
+///   - `LabelSmoothing0`: low priority — Loop 28 showed label smoothing has near-zero
+///     direct effect at our scale; only useful if a later loop finds it mediates.
+///   - `Dropout0`: similar to LabelSmoothing — usually decorative at small N.
+///   - `ClampZero`: latent_clamp_max=None; Loop 26 found it has near-zero direct
+///     effect; defer until a sensitivity envelope flags it as dominant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stratum {
     /// Default WD=0.1 / BitNet recipe.
     Canonical,
     /// Loop 31 wd_stratified: WD pinned to 0.0 (Pearl CDE on WD).
     Wd0,
+    /// Loop 41 fix 3: warmup pinned to disabled (Pearl CDE on warmup, after
+    /// Loop 33 identified warmup as the 2nd dominant mediator).
+    Warmup0,
 }
 
 impl Stratum {
-    pub const ALL: &'static [Stratum] = &[Stratum::Canonical, Stratum::Wd0];
+    pub const ALL: &'static [Stratum] = &[Stratum::Canonical, Stratum::Wd0, Stratum::Warmup0];
 
     /// CSV mode-column prefix for this stratum. Canonical uses no prefix,
-    /// stratified modes prepend e.g. `"wd0_"`.
+    /// stratified modes prepend e.g. `"wd0_"` / `"warmup0_"`.
     pub fn prefix(&self) -> &'static str {
         match self {
             Stratum::Canonical => "",
             Stratum::Wd0 => "wd0_",
+            Stratum::Warmup0 => "warmup0_",
         }
     }
 }
@@ -190,21 +221,18 @@ pub fn cumulative_config(base: &MultiSeedConfig, n: usize) -> MultiSeedConfig {
     // sentinel (zero / None). Lets any stratification mode (wd_stratified,
     // future warmup_stratified, etc.) pin a knob to its reference level via
     // base_config alone — no further ablation.rs edits needed.
+    // Loop 42 fix 3: extend Loop 31's unconditional defer-to-base from WeightDecay
+    // to WarmupSchedule, LabelSmoothing, and Dropout. The `if base.X > 0` guard
+    // treated zero as "unset, use default" — wrong for stratification modes
+    // that need to *pin* a knob to zero (e.g. Warmup0). The base_config caller
+    // is responsible for setting defaults; ablation.rs simply respects them.
     for &fix in AblationFix::ALL.iter().take(n) {
         match fix {
             AblationFix::WarmupSchedule => {
-                cfg.warmup_steps_unquantized = if base.warmup_steps_unquantized > 0 {
-                    base.warmup_steps_unquantized
-                } else {
-                    (cfg.steps / 5).max(20)
-                };
+                cfg.warmup_steps_unquantized = base.warmup_steps_unquantized;
             }
             AblationFix::LabelSmoothing => {
-                cfg.label_smoothing = if base.label_smoothing > 0.0 {
-                    base.label_smoothing
-                } else {
-                    0.1
-                };
+                cfg.label_smoothing = base.label_smoothing;
             }
             AblationFix::WeightDecay => {
                 // Loop 31 fix: defer to base.weight_decay (mediator-stratified support).
@@ -217,11 +245,7 @@ pub fn cumulative_config(base: &MultiSeedConfig, n: usize) -> MultiSeedConfig {
                 cfg.latent_clamp_max = base.latent_clamp_max.or(Some(1.0));
             }
             AblationFix::Dropout => {
-                cfg.dropout_p = if base.dropout_p > 0.0 {
-                    base.dropout_p
-                } else {
-                    0.1
-                };
+                cfg.dropout_p = base.dropout_p;
             }
             AblationFix::RmsNorm => {
                 cfg.apply_rmsnorm = true;
@@ -274,15 +298,35 @@ mod tests {
     }
 
     #[test]
+    fn cumulative_config_respects_base_warmup_zero() {
+        // Loop 43 fix 1+2: locks Loop 42's defer-to-base sentinel fix.
+        // base.warmup_steps_unquantized = 0 must STAY 0 through cumulative_config
+        // (was previously overridden by `(steps/5).max(20)` when base was 0).
+        let mut cfg = micro_cfg();
+        cfg.warmup_steps_unquantized = 0;
+        cfg.label_smoothing = 0.0;
+        cfg.dropout_p = 0.0;
+        let n = AblationFix::ALL.len();
+        let full = cumulative_config(&cfg, n);
+        assert_eq!(full.warmup_steps_unquantized, 0,
+            "Warmup0 stratum broken: cumulative_config overrode base=0");
+        assert_eq!(full.label_smoothing, 0.0,
+            "LabelSmoothing0 broken: cumulative_config overrode base=0");
+        assert_eq!(full.dropout_p, 0.0,
+            "Dropout0 broken: cumulative_config overrode base=0");
+    }
+
+    #[test]
     fn stratum_registry_produces_expected_mode_strings() {
-        // Loop 39 fix 2: assert the registry-generated mode strings match the
-        // legacy hardcoded ones (so it's a drop-in replacement).
+        // Loop 39 fix 2 + Loop 41 fix 3: assert the registry covers Canonical,
+        // Wd0, and Warmup0 — adding a new stratum extends every lookup
+        // automatically.
         let loco = all_mode_strings(ModeKind::Loco);
-        assert_eq!(loco, vec!["loco", "wd0_loco"]);
+        assert_eq!(loco, vec!["loco", "wd0_loco", "warmup0_loco"]);
         let pair = all_mode_strings(ModeKind::Pairwise);
-        assert_eq!(pair, vec!["pairwise", "wd0_pairwise"]);
+        assert_eq!(pair, vec!["pairwise", "wd0_pairwise", "warmup0_pairwise"]);
         let triplet = all_mode_strings(ModeKind::Triplet);
-        assert_eq!(triplet, vec!["triplet", "wd0_triplet"]);
+        assert_eq!(triplet, vec!["triplet", "wd0_triplet", "warmup0_triplet"]);
     }
 
     /// Loop 35 fix 2: lock the AblationFix::ALL-index pair label format
