@@ -265,7 +265,9 @@ In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
 within-seed difference `Y_i(\text{remove } S) − Y_i(\text{full stack})`. Each
 PSE then has a per-seed estimator that is a **linear combination** of these
 seed-level differences. Linearity is the crucial property: the multivariate
-delta-method reduces (Miles & Shpitser 2017, arXiv:1710.02011 §3) to the
+delta-method reduces (Miles, Shpitser, Kanki, Meloni & Tchetgen Tchetgen
+2017, arXiv:1710.02011, "On semiparametric estimation of a path-specific
+effect in the presence of mediator-outcome confounding") to the
 **sample variance of per-seed PSE values**:
 
 $$
@@ -300,12 +302,18 @@ assumption holds.
 
 Sequential ignorability is the identifying assumption; it may fail in the
 presence of unmeasured mediator-outcome confounding. The **additive
-bridge-score envelope** (Ohnishi & Li 2026, arXiv:2605.18724 Thm 2)
-provides a sharp bound parameterized by two interpretable quantities:
+bridge-score envelope** (Ohnishi & Li 2026, arXiv:2605.18724, Theorem 2)
+provides a sharp bound. In their notation the envelope is parameterized
+by `(γ_a, η_a)`; we work with a uniform-scalar reduction
+`Γ := sup_{m,b} γ_a(m,b)`, `Λ := sup_{m,b} η_a(m,b)` so that the
+envelope can be reported per-PSE with two interpretable quantities:
 
 - **Γ ≥ 1**: residual selection ratio. `Γ = 1` corresponds to no
   unmeasured confounding; `Γ = 2` to a doubling of the selection odds.
-  This is the VanderWeele-Ding E-value scale.
+  This is the same scale family as the VanderWeele-Ding E-value, but
+  the Ohnishi-Li bridge-conditional `γ_a` is provably ≤ the VW-D
+  E-value (Ohnishi-Li Prop. 2), so a `Γ_tip` reported here is a
+  conservative-leaning analogue of the standard E-value.
 - **Λ ≥ 0**: outcome scale residual (units of BPB in our setting). It
   bounds the maximum gap in `Y` that an unobserved confounder can induce
   between mediator strata.
@@ -316,8 +324,9 @@ $$
 \text{expansion}(\Gamma, \Lambda) \;=\; \Lambda \cdot \frac{\Gamma - 1}{\Gamma}
 $$
 
-(equivalent to Ohnishi-Li Theorem 2 under the BPB additive scale). The
-worst-case envelope is
+(equivalent to Ohnishi-Li Theorem 2, Eq. (5), under the BPB additive
+scale and the uniform-scalar reduction above). The worst-case envelope
+is
 
 $$
 [\text{CI}_{\text{lo}} - \text{expansion}, \;\; \text{CI}_{\text{hi}} + \text{expansion}]
@@ -333,14 +342,20 @@ $$
 \Gamma_{\text{tip}}(\Lambda) \;=\; 1 \;+\; \frac{\min(|\text{CI}_{\text{lo}}|, |\text{CI}_{\text{hi}}|)}{\Lambda}
 $$
 
-`Γ_tip(Λ) → ∞` as `Λ → 0` and `Γ_tip(Λ) → 1` as `Λ → ∞`. We adopt
-VanderWeele-Ding's E-value convention:
+`Γ_tip(Λ) → ∞` as `Λ → 0` and `Γ_tip(Λ) → 1` as `Λ → ∞`. We adopt the
+following thresholds **as a paper-specific reporting convention**,
+calibrated against the E-value literature (VanderWeele & Ding 2017,
+*Annals of Internal Medicine*, and the JAMA Guide to Statistics and
+Methods entry by Haneuse, VanderWeele & Arterburn 2019). Neither paper
+prescribes universal cutoffs; the tiers below are a reporting
+convenience and should not be over-interpreted as the literature
+consensus.
 
-| `Γ_tip` range  | Interpretation |
-|----------------|----------------|
-| `< 1.25`       | **fragile**: any plausible unmeasured confounding flips the verdict |
+| `Γ_tip` range  | Our reporting tier |
+|----------------|---------------------|
+| `< 1.25`       | **fragile**: small unmeasured confounding can flip the verdict |
 | `1.25 ≤ x < 2` | **moderate** |
-| `≥ 2.0`        | **robust**: comparable to the smoking-cancer benchmark E-value |
+| `≥ 2.0`        | **robust**: requires a substantial confounder to overturn |
 
 The Λ-sweep emits a per-PSE × per-Λ table in either long-form (CMAverse
 convention, one row per PSE × Λ tuple) or wide-form (one row per PSE,
