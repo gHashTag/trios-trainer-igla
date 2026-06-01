@@ -12,11 +12,13 @@
 #       LaTeX render)
 #   (5) verify_tables_against_csv.py — Loop 99: every numeric row in a
 #       registered table matches its source CSV at 2-decimal tolerance
-#   (6) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
-#   (7) compile_tmlr_test.sh     — xelatex compile all 3 variants
+#   (6) verify_formulas_vs_tables.py — Loop 103: four-PSE closure +
+#       §3.3 envelope Γ_tip claims re-derived from CIs
+#   (7) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
+#   (8) compile_tmlr_test.sh     — xelatex compile all 3 variants
 #       (non-anon, anon, real TMLR class)
-#   (8) figure_regen.sh          — regenerate all 6 figures
-#   (9) pack_supplementary.sh    — bundle supplementary zip (which
+#   (9) figure_regen.sh          — regenerate all 6 figures
+#   (10) pack_supplementary.sh   — bundle supplementary zip (which
 #       itself runs the 3-stage pre-flight from Loop 72)
 #
 # Output: PASS/FAIL summary on stdout. Exit 0 if every stage passes,
@@ -118,6 +120,7 @@ STAGES=(
     "no fabricated SHAs:python3 papers/scripts/check_no_fabricated_shas.py"
     "markdown lint:python3 papers/scripts/lint_paper_md.py"
     "tables vs CSVs:python3 papers/scripts/verify_tables_against_csv.py"
+    "formulas vs tables:python3 papers/scripts/verify_formulas_vs_tables.py"
     "test inventory regen:papers/scripts/generate_appendix_d.sh"
     "xelatex 3-variant compile:papers/scripts/compile_tmlr_test.sh"
     "figure regen:papers/scripts/figure_regen.sh"

@@ -611,12 +611,154 @@ for submission.
 
 ---
 
-## DRAFT notes (Loops 98–102)
+## 6. Scope and limitations
 
-§1 (Loop 98), §2 (Loop 99), §3 (Loop 100), §4 (Loop 101), §5
-(Loop 102) drafted. Remaining sections:
-- §6 — Scope/limitations
-- §7 — EOI
+This section enumerates what this paper does **not** claim and what
+a reviewer should not infer. The list extends the §1.4 carve-outs
+to the post-protocol-locking phase.
+
+### 6.1 Scale-extrapolation is out of scope
+
+The pre-registered sweep is locked at **~1B parameters and 50B
+FineWeb tokens**. We make no claim about behavior at any other
+scale. The companion F2 paper's §10.1 venue calibration applies:
+the 8K-param sandbox-scale finding there does not transfer
+unconditionally to champion scale, and we do not assume the
+~1B-scale finding here will transfer to (e.g.) 175B-scale
+production training. A multi-scale replication is a separate
+paper.
+
+### 6.2 The training recipe is fixed
+
+The protocol fixes one optimizer (AdamW), one learning-rate
+schedule (linear warmup + cosine decay), one batch size (1024),
+one sequence length (2048), and one data corpus (FineWeb-Edu 10B
+shard). We do **not** test whether the result holds under
+alternative recipes; if it does not, that would be a future
+finding, not a reason to reject this one. The format-effect
+isolation is exactly what the protocol commits to.
+
+### 6.3 Secondary outcomes are secondary
+
+Wall-clock and peak-memory are reported but **not pre-registered
+as hypotheses**. A phi-config that wins on BPB but loses on
+wall-clock will be reported as winning on BPB with a wall-clock
+footnote, not as "overall winning". The reverse: a phi-config
+that loses on BPB but wins on wall-clock is **not** reportable
+as a positive result under our locked plan; if such a finding
+emerges from the data, it will be reported as a null on BPB
+plus an exploratory wall-clock observation.
+
+### 6.4 The wd0 stratum is a structural device, not a recommendation
+
+We test at wd0 because the companion F2 paper demonstrates that
+the wd0 Pearl CDE can surface format-WD interaction structure
+that the canonical (marginal) recipe hides. We do not recommend
+training transformers at WD=0 in production — the companion
+paper's §5.2 documents the wd0 stratum reproducing a real
+pre-AdamW configuration, not endorsing it. If H1 or H2 holds
+only at wd0 (and not at canonical), the result is **interpreted
+as evidence for format-WD interaction**, not as evidence that
+practitioners should drop WD.
+
+### 6.5 Non-finite cells are reported, not excluded
+
+The protocol commits to reporting every cell of the 80-run
+matrix, including those producing NaN or +Inf validation BPB.
+A diagnostic table separately reports non-finite cells with the
+seed and config that produced them; the primary BPB analyses
+exclude non-finite cells from the test statistic but the
+exclusion itself is reported, not hidden. **No post-hoc seed
+re-selection is permitted under the protocol.**
+
+### 6.6 What this paper cannot evaluate
+
+- **Quantization-aware fine-tuning from a bf16 checkpoint**. Our
+  protocol is from-scratch training at quantization-aware mode.
+  Any QAFT result is a separate study.
+- **Production deployment at higher batch sizes / longer
+  sequences**. The locked configuration is a specific cell of a
+  large practical space; we do not extrapolate.
+- **Hardware-specific behavior** (e.g., H100 vs B100 vs TPU v5).
+  The protocol does not name a target accelerator beyond
+  "any modern GPU with bf16 + INT4 + FP8 kernel support";
+  hardware-specific wall-clock comparisons would require a
+  separate protocol.
+
+### 6.7 What goes into the supplementary, not the body
+
+Per the companion paper's Appendix-as-pointer discipline, the
+following live in the supplementary zip rather than the main
+body: full 93-CSV manifest with provenance preambles; per-cell
+training logs (wall-clock + memory peak per step); per-figure
+input-CSV derivation chain; environment file
+(`Cargo.lock` + Python `requirements.txt`); hardware
+description; commit anchor.
+
+---
+
+## 7. Expression of Interest (MLRC 2026 EOI text)
+
+The protocol below is registered as the empirical companion to
+the methods paper *"Stratified mediation for ML ablations:
+bridging Pearl-style CDE and the additive bridge-score envelope"*
+([anchor], pending TMLR review). We seek MLRC 2026 visibility
+for the **pre-registered champion-scale phi-ladder evaluation**
+that the methods paper marks as `[Not yet attempted]`.
+
+**Submission target**: NeurIPS 2026 MLRC Track.
+
+**Why this protocol is MLRC-relevant**:
+- Pre-registered hypothesis tests with locked falsification
+  criteria — directly addresses MLRC's reproducibility-and-rigor
+  emphasis.
+- The companion methods paper is under TMLR review (per the
+  MLRC EOI Google Form prerequisite).
+- 93-CSV reproducibility artifact at submission; per-cell
+  reproducibility byte-stable via the F2 W3C-PROV preamble.
+- Single-format-axis isolation (no covariate sweep) so the
+  result is interpretable as "this format vs the zoo at this
+  recipe".
+
+**Submission window**: TMLR window 2025-06-20 ≤ submit ≤
+2026-09-30 AOE. MLRC EOI filed any time once paper is under
+TMLR review; soft EOI deadline 2026-06-04 AOE is informational
+only — the binding date is the 2026-09-30 TMLR decision
+deadline.
+
+**What we are NOT seeking from MLRC**: re-evaluation of the
+methods paper itself (already under TMLR), peer review of the
+pre-registration document (it is locked at the protocol level),
+or visibility for unverified empirical claims (this paper
+contains a pre-registered protocol, not a pre-registered
+*claim* — claims come in the follow-up paper after the run).
+
+**Author availability**: corresponding author available for
+clarifying questions on the protocol and on the F2 framework
+the protocol consumes; not available to negotiate the
+falsification criteria post-submission.
+
+---
+
+## DRAFT notes (Loops 98–103)
+
+§1 (Loop 98), §2 (Loop 99), §3 (Loop 100), §4 (Loop 101),
+§5 (Loop 102), §6 + §7 (Loop 103) drafted. **All seven sections
+of the §1-§7 backbone are now drafted.** The companion paper's
+review machinery (anonymization, CI gate, snapshot, semantic
+attribution, numeric consistency, formula derivation, reader
+experience) is available for the next phase: a full adversarial
+pass on this paper as a standalone manuscript.
+
+Citations to add to the bib before spin-off (introduced in
+§2 + §3):
+- Frantar/GPTQ (arXiv:2210.17323)
+- Xiao/SmoothQuant (arXiv:2211.10438)
+- Xi/Jetfire (arXiv:2310.16836)
+- Wang & Kanwar bf16 (Google blog post 2019)
+- Micikevicius FP8 (arXiv:2209.05433)
+- Hagmann phi-quantization (arXiv:2102.xxx — to verify)
+- Soldaini FineWeb-Edu (arXiv:2406.17557)
 
 Citation hygiene: §2 introduces new citations (Frantar/GPTQ,
 Xiao/SmoothQuant, BitNet-1.58, Xi/Jetfire, Wang/Kanwar bf16,
