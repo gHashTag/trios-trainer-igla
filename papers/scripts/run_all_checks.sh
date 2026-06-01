@@ -33,11 +33,82 @@
 #
 # Required external tools: xelatex, bibtex, pdftotext (poppler);
 # python3 with matplotlib + numpy; zip; cargo (Rust toolchain).
+#
+# Pass --check-prereqs to run the dependency probe only (no stages).
+# The probe runs by default before stage 1; missing deps cause an early
+# exit 2 with platform-aware install hints.
 
 set -euo pipefail
 
 CRATE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$CRATE_ROOT"
+
+# ---------------------------------------------------------------------------
+# Prerequisite probe (Loop 97)
+#
+# Run before any stage so the failure mode is "missing dep with install hint"
+# instead of an opaque eval error 30 seconds in.
+#
+# Use `--check-prereqs` to run the probe only and exit (useful in CI to
+# decide whether to install dependencies before running the gate).
+# ---------------------------------------------------------------------------
+PROBE_ONLY=0
+if [[ "${1:-}" == "--check-prereqs" ]]; then
+    PROBE_ONLY=1
+fi
+
+case "$(uname -s)" in
+    Darwin) INSTALL_HINT_TEX="brew install --cask mactex-no-gui"
+            INSTALL_HINT_POPPLER="brew install poppler"
+            INSTALL_HINT_PY="brew install python && python3 -m pip install matplotlib numpy"
+            INSTALL_HINT_ZIP="(zip ships with macOS — should not be missing)"
+            INSTALL_HINT_CARGO="curl https://sh.rustup.rs -sSf | sh" ;;
+    Linux)  INSTALL_HINT_TEX="apt-get install -y texlive-xetex texlive-bibtex-extra"
+            INSTALL_HINT_POPPLER="apt-get install -y poppler-utils"
+            INSTALL_HINT_PY="apt-get install -y python3-pip && pip3 install matplotlib numpy"
+            INSTALL_HINT_ZIP="apt-get install -y zip"
+            INSTALL_HINT_CARGO="curl https://sh.rustup.rs -sSf | sh" ;;
+    *)      INSTALL_HINT_TEX="install TeX Live with xelatex + bibtex"
+            INSTALL_HINT_POPPLER="install poppler (pdftotext)"
+            INSTALL_HINT_PY="install python3 with matplotlib + numpy"
+            INSTALL_HINT_ZIP="install zip"
+            INSTALL_HINT_CARGO="install Rust toolchain" ;;
+esac
+
+probe_miss=0
+probe_one() {
+    local name="$1"; local check="$2"; local hint="$3"
+    if eval "$check" > /dev/null 2>&1; then
+        printf "  OK    %s\n" "$name"
+    else
+        printf "  MISS  %s  — install: %s\n" "$name" "$hint" >&2
+        probe_miss=$((probe_miss + 1))
+    fi
+}
+
+echo "# prereq probe — $(uname -s)"
+probe_one "xelatex"   "command -v xelatex"   "$INSTALL_HINT_TEX"
+probe_one "bibtex"    "command -v bibtex"    "$INSTALL_HINT_TEX"
+probe_one "pdftotext" "command -v pdftotext" "$INSTALL_HINT_POPPLER"
+probe_one "python3"   "command -v python3"   "$INSTALL_HINT_PY"
+probe_one "matplotlib (python3)" "python3 -c 'import matplotlib'" "$INSTALL_HINT_PY"
+probe_one "numpy (python3)"      "python3 -c 'import numpy'"      "$INSTALL_HINT_PY"
+probe_one "zip"     "command -v zip"   "$INSTALL_HINT_ZIP"
+probe_one "cargo"   "command -v cargo" "$INSTALL_HINT_CARGO"
+probe_one "git"     "command -v git"   "(git is required — should already be installed)"
+
+if [[ $probe_miss -gt 0 ]]; then
+    echo "" >&2
+    echo "# prereq probe: $probe_miss missing tool(s). Install them and re-run." >&2
+    exit 2
+fi
+echo "# prereq probe: OK"
+echo
+
+if [[ $PROBE_ONLY -eq 1 ]]; then
+    echo "# --check-prereqs requested; exiting without running stages."
+    exit 0
+fi
 
 STAGES=(
     "cross-ref audit:papers/scripts/cross_reference_audit.py"

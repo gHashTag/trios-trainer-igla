@@ -88,9 +88,11 @@ one verified instance as proof-of-concept.
    matrix from `Stratum × ModeKind` automatically so that adding a new
    stratum is a single-variant code change.
 2. **Daniel et al. 4-PSE decomposition with finite-sample CIs**. We
-   implement the four-path decomposition (§3.2, Gao-Li-Luo 2020) with
-   delta-method standard errors that reduce to the Miles-Shpitser
-   (2017) efficient influence function under no-interaction, and we
+   implement the four-path decomposition (§3.2, no-interaction special
+   case of Gao-Li-Luo 2020) with delta-method standard errors in the
+   spirit of the Miles-Shpitser (2017) efficient-influence-function
+   treatment (extended from their single-pathway PSE setting to the
+   two-mediator decomposition), and we
    default to Student-`t` CIs at `df = 4` for the `N = 5` seed regime —
    not the asymptotic `z` interval that Owen (2025) shows to
    undercover at that sample size.
@@ -159,14 +161,17 @@ counterfactual-ablation question: what would change if I removed `X`
 and also disabled `M`?
 
 When two mediators are present, Gao, Li & Luo (2020,
-arXiv:2007.16031) derive a four-path decomposition that additively
-separates the total effect into the direct effect plus three indirect
-effects: through `M_1` alone, through `M_2` alone, and through the
-sequential chain `M_1 → M_2`. F2 (§3.2) implements this decomposition
-under a no-interaction assumption that reduces the asymptotic variance
-to the Miles-Shpitser (2017, arXiv:1710.02011) efficient influence
-function, which we use as the basis for the delta-method standard
-errors at `N = 5` seeds.
+arXiv:2007.16031) develop an interaction-effect framework whose
+no-interaction special case yields a four-path decomposition
+additively separating the total effect into the direct effect plus
+three indirect effects: through `M_1` alone, through `M_2` alone,
+and through the sequential chain `M_1 → M_2`. F2 (§3.2) operates
+in that no-interaction regime, with delta-method standard errors at
+`N = 5` seeds derived in the spirit of the Miles-Shpitser
+(2017, arXiv:1710.02011) efficient-influence-function treatment
+(originally for single-pathway PSEs with mediator-outcome
+confounding; we extend the EIF logic to the two-mediator
+no-interaction setting).
 
 ### 2.2 Sensitivity analysis
 
@@ -318,10 +323,14 @@ In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
 within-seed difference $Y_i(\text{remove } S) - Y_i(\text{full stack})$. Each
 PSE then has a per-seed estimator that is a **linear combination** of these
 seed-level differences. Linearity is the crucial property: the multivariate
-delta-method reduces (Miles, Shpitser, Kanki, Meloni & Tchetgen Tchetgen
-2017, arXiv:1710.02011, "On semiparametric estimation of a path-specific
-effect in the presence of mediator-outcome confounding") to the
-**sample variance of per-seed PSE values**:
+delta-method then reduces to the **sample variance of per-seed PSE
+values**. This finite-sample treatment is in the spirit of the
+single-pathway efficient-influence-function derivation of Miles,
+Shpitser, Kanki, Meloni & Tchetgen Tchetgen (2017, arXiv:1710.02011,
+"On semiparametric estimation of a path-specific effect in the
+presence of mediator-outcome confounding"); we adapt the EIF logic
+from their one-mediator setting to our two-mediator no-interaction
+decomposition. The resulting per-PSE variance is:
 
 $$
 \widehat{\text{Var}}(\widehat{\text{PSE}}) \;=\; \tfrac{1}{N(N-1)} \sum_{i=1}^N \left(\text{PSE}_i - \overline{\text{PSE}}\right)^2
@@ -1124,10 +1133,14 @@ regression locks deserve a direct mention because they back load-
 bearing claims in §3:
 
 - `dual_mediation_no_interaction_residual_lock` — locks the
-  no-interaction reduction to Miles-Shpitser (cited in §2.1) against
-  the four-path estimator; if the residual term ever exceeds a fixed
-  tolerance, the test fails and forces a retraction of the
-  delta-method SE formula.
+  Daniel et al. residual closure under our no-interaction assumption
+  against the four-path estimator; if the residual term
+  `Δ_X − (NDE + NIE_{M_1} + NIE_{M_2} + NIE_chain)` ever exceeds a
+  fixed tolerance ($1 \times 10^{-6}$), the test fails and forces a
+  retraction of the delta-method SE formula. The lock certifies
+  algebraic equivalence to the Daniel et al. decomposition only; the
+  Miles-Shpitser single-pathway EIF (§2.1) is invoked as
+  motivational, not as a target the lock verifies against.
 - `trainer_internals_schema_is_load_bearing` — locks the
   `TRAINER_INTERNALS_SCHEMA` constant into the config-fingerprint
   hash, so any internal schema bump produces a deterministic
@@ -1212,11 +1225,15 @@ paper mis-attributed the decomposition to "Zhao-Luo"; that attribution
 was corrected to Daniel et al. (primary) + Gao-Li-Luo (no-interaction
 collapse) in a Loop 60 validation pass.
 
-The delta-method linearization we use to derive per-PSE SEs reduces to
-the **efficient influence function** treatment of Miles & Shpitser
-(2017, arXiv:1710.02011) under our no-interaction assumption. Their §3
-provides the formal derivation; we cite it as the theoretical basis for
-the reduction.
+The delta-method linearization we use to derive per-PSE SEs is in the
+spirit of the **efficient-influence-function** treatment of Miles &
+Shpitser (2017, arXiv:1710.02011). Their §3 derives the EIF for a
+single-pathway PSE in the presence of mediator-outcome confounding;
+we adapt the linearization logic to our two-mediator no-interaction
+decomposition. We do not claim algebraic equality with their EIF —
+the lock test `dual_mediation_no_interaction_residual_lock` (§8.2)
+certifies only the Daniel et al. residual closure, not equivalence
+to the Miles-Shpitser single-pathway EIF.
 
 **DoWhy** (Sharma & Kıcıman, 2020, arXiv:2011.04216) is the closest
 Python-side toolkit; we adopt its flat-record-per-estimate JSON
@@ -1229,9 +1246,13 @@ stratified sweep modes provide.
 ### 9.3 Sensitivity analysis
 
 The **E-value** convention (VanderWeele & Ding, Annals of Internal
-Medicine, 2017, "Sensitivity Analysis in Observational Research: Introducing
-the E-Value") establishes the `Γ < 1.25` / `Γ ≥ 2.0` fragility/robustness
-thresholds we adopt for the `Γ_tip` classification in §3.3 and §5.4.
+Medicine, 2017, "Sensitivity Analysis in Observational Research:
+Introducing the E-Value") motivates the `Γ_tip` classification scheme
+we adopt for fragility/robustness reporting in §3.3 and §5.4. As we
+note in §3.3, the specific `Γ < 1.25` / `Γ ≥ 2.0` bracket boundaries
+are a reporting convenience rather than literature-prescribed cutoffs;
+the E-value paper itself does not prescribe universal thresholds, and
+we do not claim it does.
 
 The **bridge-score additive envelope** in §3.3 is from Ohnishi & Li
 (2026, arXiv:2605.18724) Theorem 2. We use the additive scale (their
