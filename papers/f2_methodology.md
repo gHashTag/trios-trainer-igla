@@ -545,7 +545,7 @@ checker in `src/bin/f2_provenance_check.rs`; stratum banner in
 `src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
 
 **3.5.5 Reviewer-grade tooling catalogue.** The §3.5.1–§3.5.4
-discipline is operationalized through five auxiliary scripts under
+discipline is operationalized through six auxiliary scripts under
 `papers/scripts/` that a reviewer can run to verify each invariant
 mechanically:
 
@@ -1363,19 +1363,29 @@ should consider it a default first step before reporting seed means.
 
 We map four candidate venues against the contribution profile:
 
-| Venue | Fit | Required artifacts |
-|-------|-----|---------------------|
-| NeurIPS MLRC (reproducibility track) | **Primary** | W3C-PROV preambles (§3.5.1), formula-locking regression tests (§8.2), reviewer reproducibility checklist (§3.5.4) |
-| NeurIPS Causal-ML Workshop | Fallback | A version re-balanced to lead with §3.2 (Daniel et al.) and §3.3 (bridge-score) and de-emphasize §3.5 (provenance) |
-| ICML main track | Future | Either a successful Phase 1 champion-scale sweep per `docs/F2_PRE_REG.md`, or F2 re-applied to a second publicly-debated ablation finding |
-| Stat journals (Biometrics, Stat. Med., JCI) | Aspirational | Stat-grade simulation study or domain co-author; the methodological bar is set by recent work such as Guo et al. (2026, *Statistics in Medicine*, doi:10.1002/sim.70548) |
+- **NeurIPS MLRC (reproducibility track) — primary target.**
+  Required artifacts: W3C-PROV preambles (§3.5.1), formula-locking
+  regression tests (§8.2), reviewer reproducibility checklist
+  (§3.5.4). The paper's load-bearing contribution is the
+  reproducibility-grade discipline around stratified Pearl-CDE
+  analysis, which directly matches this track's mission.
+- **NeurIPS Causal-ML Workshop — fallback.** A re-balanced version
+  would lead with §3.2 (Daniel et al. four-PSE) and §3.3
+  (bridge-score) and de-emphasize §3.5 (provenance), shifting
+  focus from infrastructure to identification theory.
+- **ICML main track — future.** Requires either a successful
+  Phase 1 champion-scale sweep per `docs/F2_PRE_REG.md`, or F2
+  re-applied to a second publicly-debated ablation finding.
+  Either path is outside the present submission scope.
+- **Stat journals (Biometrics, Stat. Med., JCI) — aspirational.**
+  Requires a stat-grade simulation study or domain co-author; the
+  methodological bar is set by recent work such as Guo et al.
+  (2026, *Statistics in Medicine*, doi:10.1002/sim.70548).
 
-The primary target is the MLRC reproducibility track because the
-paper's load-bearing contribution is the reproducibility-grade
-discipline around stratified Pearl-CDE analysis; the secondary and
-future tracks are listed for completeness. Submission logistics
-(deadlines, forms, registration paths) are tracked separately in
-`papers/SUBMISSION_CHECKLIST.md`.
+Submission logistics (deadlines, OpenReview / Google Form URLs,
+registration paths) are tracked separately in
+`papers/SUBMISSION_CHECKLIST.md` and intentionally kept out of
+the manuscript body.
 
 ### 10.3 Acknowledgments + funding disclosure
 
@@ -1510,25 +1520,34 @@ verdict; see §3.5.3.
 
 **B.3 Validation exit codes (`f2_provenance_check`):**
 
-| Exit code | Meaning |
-|-----------|---------|
-| `0` | All required keys present, schema string matches current `TRAINER_INTERNALS_SCHEMA`, git SHA matches `HEAD`. Safe to consume downstream. |
-| `1` | `WARN`: keys present, schema matches, but git SHA differs from `HEAD`. Older commit may still be valid; reviewer should confirm intentional. |
-| `2` | `FAIL`: schema mismatch OR required key missing. CSV is not safe for downstream consumption; the BPB numbers cannot be vouched for. |
-| `3` | `FAIL`: no preamble present at all. CSV predates the provenance discipline; quarantine. |
+- **Exit 0 — PASS.** All required keys present, schema string
+  matches current `TRAINER_INTERNALS_SCHEMA`, git SHA matches
+  `HEAD`. Safe to consume downstream.
+- **Exit 1 — WARN.** Keys present, schema matches, but git SHA
+  differs from `HEAD`. Older commit may still be valid; reviewer
+  should confirm intentional.
+- **Exit 2 — FAIL (schema).** Schema mismatch OR required key
+  missing. CSV is not safe for downstream consumption; the BPB
+  numbers cannot be vouched for.
+- **Exit 3 — FAIL (no preamble).** No preamble present at all.
+  CSV predates the provenance discipline; quarantine.
 
 The exit codes are locked by the
 `f2_provenance_check_exit_codes` integration suite (six tests covering
 the four codes + boundary cases).
 
 ### C. Code-to-paper crosswalk
-| Section | File | Function/binary |
-|---|---|---|
-| §3.1 | `src/race/ablation.rs` | `Stratum`, `mode_string` |
-| §3.2 | `src/bin/f2_dual_mediation.rs` | `compute_dual_mediation` |
-| §3.3 | `src/bin/f2_mediation_sensitivity.rs` | `envelope_expansion`, `tipping_point_gamma` |
-| §3.4 | `src/bin/f2_stratum_compare.rs` | `build_comparison`, `cis_overlap` |
-| §5.2 | `docs/F2_RMS_CDE.md` | Empirical reproduction |
+
+The crosswalk maps each load-bearing section of the paper to the
+canonical source file and function/binary:
+
+- §3.1 — `src/race/ablation.rs` (`Stratum`, `mode_string`).
+- §3.2 — `src/bin/f2_dual_mediation.rs` (`compute_dual_mediation`).
+- §3.3 — `src/bin/f2_mediation_sensitivity.rs`
+  (`envelope_expansion`, `tipping_point_gamma`).
+- §3.4 — `src/bin/f2_stratum_compare.rs` (`build_comparison`,
+  `cis_overlap`).
+- §5.2 — `docs/F2_RMS_CDE.md` (empirical reproduction).
 
 ### D. Test inventory
 

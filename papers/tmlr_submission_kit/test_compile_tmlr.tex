@@ -31,6 +31,13 @@ Suppression Mediation}
 
 \input{f2_methodology_anonymized_body.tex}
 
+% Loop 90 — force-include bib entries that the body cites as inline
+% text (not via \cite{}). Without these, the rendered references list
+% drops ~7 load-bearing citations that the converter doesn't translate.
+\nocite{vanderweele2017evalue, vaswani2017attention, loshchilov2019adamw,
+  daniel2015biom, guo2026sim, haneuse2019jama, fostiropoulos2023ablator,
+  meng2022rome, wang2023activation}
+
 \bibliographystyle{tmlr}
 \bibliography{f2_methodology}
 
