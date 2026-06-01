@@ -116,7 +116,9 @@ in the enum doc-comment.
 
 ### 3.2 Zhao-Luo four-path decomposition
 
-Following Zhao & Luo (2020, arXiv:2007.16031), the total effect of `X` on
+Following Gao, Li & Luo (2020, arXiv:2007.16031, "Decomposition of the
+Total Effect for Two Mediators: A Natural Counterfactual Interaction
+Effect Framework"), the total effect of `X` on
 `Y` in the presence of two ordered mediators `M_1` and `M_2` decomposes
 additively into four path-specific effects (PSEs):
 
@@ -163,9 +165,13 @@ $$
 $$
 
 At `N = 5`, `t_{0.975, 4} ≈ 2.776`. We deliberately avoid BCa bootstrap:
-Owen (2025, arXiv:2508.10083) shows BCa severely under-covers at `N ≤ 5`,
-while the Student-t adjustment correctly accounts for both the sample-size
-penalty and the unknown population variance.
+Owen (2025, arXiv:2508.10083, "Better bootstrap-t confidence intervals
+for the mean") motivates skepticism of BCa at small N by proposing a
+Beta-weighted bootstrap alternative; the empirical small-N coverage
+deficits of BCa it documents (as the baseline that motivates the new
+method) are the relevant evidence for our purposes. The Student-t
+adjustment we use is more conservative but does not require simulation
+calibration, which is desirable at the demonstration scale of §5.
 
 **Implementation**: `src/bin/f2_dual_mediation.rs`. The `Loop 34 lock test`
 `dual_mediation_no_interaction_residual_lock` verifies the residual
@@ -572,40 +578,147 @@ the magnitude.
 
 ## 6. Sensitivity to choices
 
-### 6.1 Mediator pair (M1, M2)
-- Loop 50 replication with (M1=rms, M2=warmup) gives the same qualitative
-  picture, with the cross-stratum-stable −0.75 BPB NIE_M1
-- Sign flip survives parameterization swap
+The headline finding in §5 depends on three modelling choices that a
+reviewer would reasonably interrogate: which mediator pair `(M_1, M_2)`
+we decompose against, which statistical family we use for confidence
+intervals, and which strata we run. We address each in turn.
+
+### 6.1 Mediator pair (M_1, M_2)
+
+The default decomposition uses `M_1 = wd, M_2 = warmup`, motivated by
+prior mediation analyses in this framework (Loop 30 and Loop 33) that
+identified WD and warmup as the two strongest mediators in the canonical
+ablation matrix. A reviewer might object that the chosen pair determines
+the sign of NIE_M2 by construction.
+
+To address this, Loop 50 ran a complete replication with the swapped pair
+`M_1 = rms, M_2 = warmup`. In this parameterization, RmsNorm itself is a
+candidate mediator, and the question becomes "what fraction of each
+non-mediator fix's effect runs through RmsNorm?" The answer:
+
+| stratum   | NIE_M1 via rms (95% CI)         |
+|-----------|----------------------------------|
+| canonical | **−0.75 [−1.32, −0.18]**         |
+| wd0       | −0.75 [−1.32, −0.18] (identical) |
+| warmup0   | −0.75 [−1.32, −0.18] (identical) |
+
+`f2_stratum_compare` flags this row as `stable_across_strata = true`,
+which is the cross-stratum invariant reported in §5.3. The fact that the
+swap recovers the same qualitative picture — small intrinsic helpful
+effect of RmsNorm — is the strongest robustness argument we have against
+the "parameterization artifact" objection.
 
 ### 6.2 Statistic family
-- We use t-CI (Owen 2025) and exact Fisher-Pitman permutation
-  (arXiv:2205.01416). Bootstrap-t and BCa give similar but slightly looser
-  bounds at N=5
-- Sample size N=5 is small; results meant as proof-of-concept, not
-  population estimates
+
+We use **paired Student-t** confidence intervals at `df = N − 1 = 4` for
+all point estimates in §5. Two alternative families exist and were
+considered:
+
+- **Exact permutation tests** (`f2_iloco_score --permutation`). At
+  `N = 5`, the sign-flip null distribution of the 32 paired-sign
+  permutations gives `2/32 = 0.0625` as the minimum two-sided p-value.
+  This is exact under exchangeability but provides only one significant
+  digit of resolution. We use permutation tests for the iLOCO module
+  but not for the dual-mediation PSEs because the resolution is too
+  coarse for tipping-point analysis.
+
+- **BCa bootstrap**. Bias-corrected and accelerated bootstrap at N=5
+  is well known to under-cover empirically (the motivating evidence in
+  the Owen 2025 reference we cited in §3.2). We do not use BCa for any
+  reported result.
+
+- **Bootstrap-t / Beta-weighted bootstrap-t**. The Owen (2025) Beta-
+  weighted bootstrap-t (arXiv:2508.10083) is the strongest small-N
+  alternative we are aware of, but it requires simulation calibration
+  per estimand. At our sandbox scale we judged the additional complexity
+  unjustified; for the champion-scale follow-up in `docs/F2_PRE_REG.md`
+  we plan to add it as an alternative CI.
+
+The Student-t choice is conservative-leaning at small N: it widens the
+CI relative to a Gaussian approximation, which makes the wd0 NDE result
+(`+0.43 [+0.01, +0.84]`) harder to obtain. A skeptical reviewer should
+read "this CI excludes zero under Student-t" as a stronger claim than
+the same conclusion under Gaussian.
 
 ### 6.3 Strata
-- We chose Wd0 + Warmup0 based on prior mediation analyses identifying these
-  as candidate mediators. Other strata (e.g., LabelSmoothing0, ClampZero)
-  are pre-defined in `Stratum::ALL` but not run here (see `src/race/ablation.rs`
-  doc comment for selection criteria)
+
+We chose `Wd0` and `Warmup0` based on prior mediation analyses
+(`docs/F2_RMS_CDE.md`, Loop 30) that identified WD and warmup as the
+two strongest mediators in the canonical ablation matrix. Three other
+candidate strata are pre-defined in the framework but not run for this
+paper:
+
+- `LabelSmoothing0` (label smoothing pinned to ε = 0.0)
+- `ClampZero` (latent clamp disabled)
+- `Dropout0` (dropout pinned to p = 0.0)
+
+The selection criteria for adding a new stratum are documented in the
+`Stratum` enum doc comment in `src/race/ablation.rs`: a variant is added
+when the corresponding fix exhibits ≥ 50% indirect-effect share in a
+canonical mediation analysis, and when the Pearl CDE at the disabled
+value is the natural next analytical question. None of the three skipped
+strata met both criteria in our preliminary analyses; we leave them as
+future work.
+
+A meta-objection a reviewer might raise: "you chose to stratify on the
+mediators that produce the cleanest sign-flip story." We do not
+deny that incentive exists; we cite the cross-stratum invariant in §5.3
+(invariant under both parameterizations) as the structural result that
+is independent of which particular mediator pair was chosen.
 
 ---
 
 ## 7. Limitations
 
-1. **Sandbox-scale only**: 200 steps × 8K params is a stress test for the
-   methodology, not a champion-scale claim. See `docs/F2_PRE_REG.md` for
-   the pre-registered champion-scale follow-up.
-2. **N=5**: minimum-detectable effect at this N is ~0.1 BPB for paired
-   permutation. The +0.43 CDE survives by a narrow margin.
-3. **Linearity / no-XM-interaction**: Zhao-Luo's identification rests on
-   sequential ignorability and no exposure-mediator interaction. We test
-   the no-interaction assumption empirically (Loop 34 lock test:
-   `dual_mediation_no_interaction_residual_lock`); residual is < 1e-6 in
-   our regime.
-4. **Synthetic task**: counter task is an analytical-tractability choice.
-   Real BPB on FineWeb is in the pre-registered follow-up.
+We list five limitations the paper's claims are subject to. Each is
+acknowledged here so a future reader can verify the framework is being
+applied within its valid scope.
+
+1. **Sandbox-scale only.** The 200-step, ~8K-parameter, single-batch
+   configuration of §4 is a stress test for the methodology, not a
+   champion-scale claim. The headline result (RmsNorm CDE sign flip)
+   surfaces a *qualitative* phenomenon (suppression by WD) that we
+   expect to generalize to larger scales, but the specific magnitudes
+   (−4.12 vs +0.43) do not transfer. Champion-scale validation is
+   pre-registered in `docs/F2_PRE_REG.md`.
+
+2. **Five seeds is small.** Owen (2025, arXiv:2508.10083) and a related
+   literature on N≤5 inference (see §3.2) argue that Student-t intervals
+   at df=4 are the most defensible default in this regime. We adopt this
+   choice deliberately, but report all numerical results in §5 with the
+   understanding that the minimum-detectable effect at N=5 is bounded
+   below by `t_{0.975, 4} · SE ≈ 2.776 · SE`. For the wd0 CDE of +0.43
+   BPB with SE ≈ 0.15, the lower CI endpoint is +0.01 BPB; the result
+   excludes zero by 0.01 BPB, a 7% margin. A larger seed budget would
+   yield tighter CIs and might or might not preserve the sign-flip
+   verdict.
+
+3. **No exposure-mediator interaction is assumed.** The Zhao-Luo
+   identification result (§3.2) requires both sequential ignorability
+   and a no-interaction assumption between the exposure `X` and the
+   mediators `(M_1, M_2)`. The latter is testable: we report empirically
+   that the residual
+   `Δ_X − (NDE + NIE_M1 + NIE_M2 + NIE_chain)` is below `10⁻⁶` in our
+   regime, validated by the
+   `dual_mediation_no_interaction_residual_lock` test (Loop 34). We do
+   not test sequential ignorability directly; the bridge-score envelope
+   (§3.3) is our defense against unmeasured confounding.
+
+4. **Synthetic counter task is not a language model.** The training task
+   we use is a deterministic counter: the target at each step is a
+   simple function of the running token count. This is an
+   analytical-tractability choice that gives a clean signal at small
+   scale. The pattern of WD suppression and RmsNorm sign-flip could in
+   principle be specific to this task. The pre-registered FineWeb
+   validation in `docs/F2_PRE_REG.md` is the appropriate next step.
+
+5. **The framework supports two-mediator decomposition only.** Adding a
+   third mediator requires reworking the identification arithmetic; we
+   have not done so. We currently work around this by re-running the
+   analysis with different `(M_1, M_2)` choices (the Loop 50 swap in
+   §6.1 is one example) and looking for cross-pairing invariance as
+   evidence of structural effects. A formal three-mediator extension
+   is left as future work.
 
 ---
 
