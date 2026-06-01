@@ -104,6 +104,39 @@ might survive LR pinning, given the apparent Peri-LN std reduction
 as a forward-looking application of F2's machinery, not as a
 re-analysis claim.
 
+## Second walkthrough — Switch Transformer Table 1 (3-seed)
+
+The Switch Transformer paper (Fedus, Zoph & Shazeer, JMLR 23 2022,
+"Switch Transformers: Scaling to Trillion Parameter Models with
+Simple and Efficient Sparsity") is the second multi-seed
+ablation paper in our survey. It reports **mean ± std over 3
+random seeds** of the 32-expert model's negative log perplexity
+after 3.5k training steps, in its expert-routing ablation.
+
+### What F2 could compute on Switch Transformer-style 3-seed data
+
+At N=3, the Student-t critical value `t_{0.975, 2} ≈ 4.303`, so a
+95% CI on a per-cell estimate is `mean ± 4.303 · (std / √3)`. The
+4-PSE delta-method formula in F2 §3.2 still applies, but the
+per-seed PSE variance estimator uses only 3 samples → much wider
+CIs than at N=5. This is exactly the regime where Owen 2025
+(arXiv:2508.10083) cautions against asymptotic CIs in favor of
+either exact permutation (only 2³=8 permutations at N=3, too
+coarse) or beta-weighted bootstrap-t. F2's default Student-t
+choice remains defensible at N=3 but reviewers should expect the
+sensitivity envelopes (§3.3 Γ_tip thresholds) to land closer to
+"fragile" at this N.
+
+### What F2 cannot do on Switch Transformer's published table
+
+Same gap as Peri-LN: the Switch Transformer paper reports summary
+statistics, not per-seed raw values. To apply F2 we would need
+the underlying 3-run logs. The paper does release training code
+(github.com/google-research/google-research/tree/master/switch_transformers),
+so an industrious reader could re-run the ablation at sandbox
+scale and produce the missing CSVs; F2's W3C-PROV preamble
+convention would then make those CSVs cross-citable.
+
 ## What this case study supports for the F2 paper
 
 1. **F2 fills a real methodological gap.** Survey shows the
