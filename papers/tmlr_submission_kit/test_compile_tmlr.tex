@@ -1,0 +1,37 @@
+% test_compile_tmlr.tex — compile against the real TMLR class.
+%
+% Uses tmlr.sty + tmlr.bst from JmlrOrg/tmlr-style-file (committed
+% under papers/tmlr_submission_kit/). Required: xelatex.
+%
+% This wraps the anonymized variant (for double-blind submission). For
+% an author-name variant, drop \usepackage{tmlr} and use
+% \usepackage[accepted]{tmlr} after acceptance.
+
+\documentclass[10pt]{article}
+
+\usepackage{tmlr}        % Under-review (anonymous) mode.
+% \usepackage[accepted]{tmlr}  % Camera-ready mode.
+
+\usepackage{fontspec}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\title{F2: A Stratified Pearl-CDE Framework for Transformer
+Training-Recipe Ablations, with a Sandbox Demonstration of
+Suppression Mediation}
+
+\author{Anonymous Authors\\
+\texttt{anonymous@openreview.net}}
+
+\begin{document}
+\maketitle
+
+\input{f2_methodology_anonymized_body.tex}
+
+\bibliographystyle{tmlr}
+\bibliography{f2_methodology}
+
+\end{document}

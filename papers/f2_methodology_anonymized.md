@@ -788,32 +788,54 @@ canonical and warmup0 columns match each other — a structural
 pattern consistent with the wd0 stratum being the only one that
 constrains the wd path.
 
-**Robustness — M_2 swap .** A natural follow-up question
-is whether the byte-identical invariance depends on the choice of
-M_2 = warmup. We re-ran the swap analysis with
-`(M_1 = rms, M_2 = dropout)` instead; outputs committed at
-`data/loop49_swap/canonical_swap_m2dropout.csv` (and the matching
-wd0 / warmup0 files). Result for `X = wd, NIE_M1` via rms:
+**Robustness — full M_2 swap sweep .** A natural follow-
+up question is whether the byte-identical invariance depends on
+the choice of M_2 = warmup. We re-ran the swap analysis with
+`(M_1 = rms, M_2 = m)` for every non-mediator candidate
+`m ∈ {gradclip, clamp, smooth, dropout}`, across all three
+strata; outputs committed at
+`data/loop49_swap/{canonical,wd0,warmup0}_swap_m2{m}.csv` (12
+new CSVs total). Result for `X = wd, NIE_M1` via rms:
 
-| stratum | M_2 = warmup | M_2 = dropout |
-|-------------|------------------------------|-------------------------------|
-| canonical | −0.751 [−1.325, −0.177] | −1.625 [−1.819, −1.431] |
-| wd0 | −0.751 [−1.325, −0.177] | **−1.625 [−1.819, −1.431]** |
-| warmup0 | −0.751 [−1.325, −0.177] | −0.400 [−0.787, −0.014] |
-| invariant? | **YES** (all 3 identical) | NO (warmup0 diverges) |
+| M_2 = … | canonical | wd0 | warmup0 | All 3 identical? |
+|------------|---------------------------|---------------------------|--------------------------|------------------|
+| **warmup** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **YES** |
+| gradclip | −1.781 [−2.210, −1.353] | −1.781 [−2.210, −1.353] | −0.626 [−1.341, +0.090] | No (warmup0) |
+| clamp | −1.693 [−2.162, −1.225] | −1.693 [−2.162, −1.225] | −0.751 [−1.325, −0.177] | No (warmup0) |
+| smooth | −1.693 [−2.162, −1.225] | −1.693 [−2.162, −1.225] | −0.751 [−1.325, −0.177] | No (warmup0) |
+| dropout | −1.625 [−1.819, −1.431] | −1.625 [−1.819, −1.431] | −0.400 [−0.787, −0.014] | No (warmup0) |
 
-The pattern is exactly what no-XM-interaction predicts: the
-invariance is **conditional on M_2 not being the
-stratum-pinned variable**. Under `M_2 = dropout`, the canonical
-and wd0 estimates still agree byte-identically (because wd0 pins
-a variable that affects neither M_1 = rms nor M_2 = dropout), but
-warmup0 diverges (because pinning warmup affects the M_2 path
-even though warmup is no longer M_2 in this parameterization —
-it remains a covariate). The §5.3 invariance claim should
-therefore be read narrowly: "byte-identical across all three
-strata holds when the swap parameterization's M_2 matches the
-warmup0 stratum's pinned variable", not "byte-identical for any
-swap parameterization".
+The pattern across all five M_2 alternatives is exactly what
+no-XM-interaction predicts:
+
+1. **wd0 = canonical in every row.** The wd0 stratum pins a
+   variable (`weight_decay`) that is the *outcome target* X for
+   this row, not a mediator on the rms-M_2 path. Removing wd
+   does not constrain the rms-mediated indirect effect, so the
+   per-seed `pair_X_M_2` and `triplet_X_M_1_M_2` rows used in
+   the NIE_M1 closed form are byte-identical in canonical and
+   wd0 sweeps. This holds for **every M_2 we tested**.
+2. **warmup0 diverges from canonical/wd0 unless M_2 = warmup.**
+   The warmup0 stratum pins warmup. If the swap parameterization
+   already has M_2 = warmup, the stratum pinning and the
+   parameterization align: the M_2 path is the stratum-fixed
+   path, and the formula gives the same result everywhere. For
+   any other M_2 choice, warmup is *also* a covariate that
+   takes its sweep value in canonical/wd0 but is pinned to 0
+   in warmup0 — so the per-seed BPB shifts and the NIE_M1
+   estimate diverges. This is the structural mechanism we
+   originally interpreted in §5.3 as a "wd row invariant"; the
+   full robustness sweep confirms it.
+
+The narrow scoping is therefore: **the wd × NIE_M1 via rms row
+is byte-identical across all three strata only when the swap
+parameterization's M_2 is precisely the variable pinned by the
+warmup0 stratum.** Under the four alternative M_2 choices, the
+weaker invariance (canonical = wd0) holds in 4 of 4 cases, but
+the full-triple-stratum invariance does not. We report this
+honestly as a result about the framework's *internal* structural
+predictions confirmed empirically, not as a general claim about
+training-recipe interactions.
 
 ### 5.4 Sensitivity envelope
 

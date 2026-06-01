@@ -18,3 +18,12 @@ test_compile_anon.blg
 test_compile_anon.out
 test_compile_anon.toc
 f2_methodology_anonymized_body.tex
+
+# Real-TMLR-class build artifacts
+test_compile_tmlr.pdf
+test_compile_tmlr.aux
+test_compile_tmlr.log
+test_compile_tmlr.bbl
+test_compile_tmlr.blg
+test_compile_tmlr.out
+test_compile_tmlr.toc
