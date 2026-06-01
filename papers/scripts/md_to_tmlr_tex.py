@@ -163,8 +163,38 @@ def transform_inline(line: str) -> str:
             continue
         # Backtick code spans → \texttt{}; escape LaTeX inside but
         # preserve the literal content's _ % # & ~ ^.
+        # The typewriter font (Computer Modern Typewriter) lacks many
+        # unicode symbols. Substitute ASCII equivalents inside texttt
+        # so they actually render in the PDF (Loop 85 visual catch).
+        BT_UNICODE_FALLBACK = {
+            "≥": ">=",
+            "≤": "<=",
+            "≠": "!=",
+            "≈": "~",
+            "±": "+/-",
+            "×": "x",
+            "·": ".",
+            "≪": "<<",
+            "≫": ">>",
+            "→": "->",
+            "←": "<-",
+            "⇒": "=>",
+            "…": "...",
+            "—": "--",
+            "–": "-",
+            # Combining macron / acute / etc. — strip; the base char remains.
+            "̄": "",
+            "́": "",
+            "̀": "",
+            "̃": "",
+            "̂": "",
+            "̈": "",
+        }
+
         def _bt(m: re.Match) -> str:
             inner = m.group(1)
+            for ch, repl in BT_UNICODE_FALLBACK.items():
+                inner = inner.replace(ch, repl)
             inner = (
                 inner.replace("\\", "\\textbackslash{}")
                 .replace("_", "\\_")
@@ -178,14 +208,19 @@ def transform_inline(line: str) -> str:
             )
             return f"\\texttt{{{inner}}}"
 
-        payload = unicode_to_latex(payload)
-        # First carve out backtick content (which has its own escaping
-        # rules) so we don't double-escape inside it.
+        # Carve out backtick content FIRST, so its native UTF-8 (Γ, Λ,
+        # σ etc.) survives unmolested inside \texttt{} (xelatex handles
+        # these via fontspec). Otherwise unicode_to_latex would replace
+        # Γ → $\Gamma$ inside the backtick span, then _bt would escape
+        # the backslash to \textbackslash{}, producing literal "\{}Gamma"
+        # in the PDF.
         bt_placeholders: list[str] = []
         def _bt_capture(m: re.Match) -> str:
             bt_placeholders.append(_bt(m))
             return f"\x00BT{len(bt_placeholders) - 1}\x00"
         payload = BACKTICK_RE.sub(_bt_capture, payload)
+        # NOW translate unicode prose specials to LaTeX math/macros.
+        payload = unicode_to_latex(payload)
         # Now escape LaTeX specials in the surviving prose. `_` and `^`
         # are illegal in text mode (subscript/superscript triggers); we
         # escape them everywhere outside backtick blocks.
@@ -231,7 +266,11 @@ def main() -> int:
         return 1
 
     out.parent.mkdir(parents=True, exist_ok=True)
-    src = paper.read_text().splitlines()
+    raw = paper.read_text()
+    # Strip HTML comments (e.g. the anonymizer banner). They render as
+    # prose in xelatex if left in.
+    raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
+    src = raw.splitlines()
 
     body: list[str] = []
     when = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

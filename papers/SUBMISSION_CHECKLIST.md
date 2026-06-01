@@ -132,6 +132,6 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: Loop 81 (2026-06-02)
+- Checklist version: Loops 81-84 (2026-06-02)
 - Branch HEAD at checklist creation: `55b28b3` (Loop 80)
 - Next deadline: MLRC EOI soft 2026-06-04 AOE / hard TMLR 2026-09-30 AOE

@@ -44,7 +44,7 @@ before submitting — editorial board changes annually.
   formula-locking regression tests. Hypothesis-testing background
   relevant for §6.2 (Student-t vs permutation vs bootstrap-t).
 
-### 5. Matt J. Kusner (Mila)
+### 5. Matt J. Kusner (University College London)
 - **Areas**: property testing, sequential hypothesis testing
 - **Fit**: Hypothesis-testing expertise directly relevant to §6.2.
   Property-testing background may engage with §8.2 lock tests as a
