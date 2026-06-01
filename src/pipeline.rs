@@ -289,7 +289,7 @@ pub fn training_step_gf16(
     loss
 }
 
-fn forward_f32_embeddings(embeddings: &[f32], input: &[f32], vocab_size: usize, d_model: usize) -> Vec<f32> {
+pub fn forward_f32_embeddings(embeddings: &[f32], input: &[f32], vocab_size: usize, d_model: usize) -> Vec<f32> {
     let seq_len = input.len();
     let mut logits = vec![0.0f32; seq_len * vocab_size];
     for (i, &token) in input.iter().enumerate() {
@@ -334,7 +334,7 @@ fn cross_entropy_loss_f32(logits: &[f32], target: &[u8], vocab_size: usize) -> f
     total_loss / seq_len.max(1) as f32
 }
 
-fn backward_f32_embeddings(
+pub fn backward_f32_embeddings(
     embeddings: &[f32],
     logits: &[f32],
     input: &[f32],

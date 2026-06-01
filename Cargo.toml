@@ -82,6 +82,16 @@ path = "src/bin/train_v2.rs"
 name = "smoke_train"
 path = "src/bin/smoke_train.rs"
 
+# F2 head-to-head harness — Issue #1021 (Phase F / F2 BPB comparison)
+[[bin]]
+name = "f2_harness"
+path = "src/bin/f2_harness.rs"
+
+# F2 Pareto sweep — multi-precision frontier data
+[[bin]]
+name = "f2_pareto_sweep"
+path = "src/bin/f2_pareto_sweep.rs"
+
 # Scarab Worker — fungible-pool claim loop. One image, N replicas.
 # See src/bin/scarab.rs and docs/SCARAB_WORKER.md.
 [[bin]]
@@ -269,3 +279,41 @@ path = "src/bin/cpu_train_fineweb.rs"
 [[bin]]
 name = "cpu_train_deep"
 path = "src/bin/cpu_train_deep.rs"
+
+[[bin]]
+name = "f2_ablation_sweep"
+path = "src/bin/f2_ablation_sweep.rs"
+
+[[bin]]
+name = "f2_ablation_aggregate"
+path = "src/bin/f2_ablation_aggregate.rs"
+
+# Loop 28 YYY — iLOCO scorer per arXiv:2502.06661 Eq.(3) + BH FDR per arXiv:1712.03305
+[[bin]]
+name = "f2_iloco_score"
+path = "src/bin/f2_iloco_score.rs"
+
+# Loop 29 Option A — DOT/Graphviz emitter for iLOCO interaction networks
+[[bin]]
+name = "f2_iloco_dot"
+path = "src/bin/f2_iloco_dot.rs"
+
+# Loop 30 — WD-as-mediator scorer (Baron-Kenny + percentile bootstrap)
+[[bin]]
+name = "f2_mediation"
+path = "src/bin/f2_mediation.rs"
+
+# Loop 33 — CSV provenance verifier (W3C-PROV / arXiv:2312.07852)
+[[bin]]
+name = "f2_provenance_check"
+path = "src/bin/f2_provenance_check.rs"
+
+# Loop 34 — Zhao-Luo two-mediator path-specific decomposition (arXiv:2007.16031)
+[[bin]]
+name = "f2_dual_mediation"
+path = "src/bin/f2_dual_mediation.rs"
+
+# Loop 40 — Additive bridge-score sensitivity envelope (arXiv:2605.18724 Thm 2)
+[[bin]]
+name = "f2_mediation_sensitivity"
+path = "src/bin/f2_mediation_sensitivity.rs"
