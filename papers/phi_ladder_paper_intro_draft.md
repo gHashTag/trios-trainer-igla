@@ -193,16 +193,23 @@ combined with an 8-bit activation path; the authors do not
 isolate the contribution of the ternary path from the activation
 quantization.
 
-The INT4-W4A8 schemes (Xi et al. 2024, arXiv:2310.16836 for
-*Jetfire*; Zhao et al. 2024 for *AffineQuant*) collapse weights
-to 4-bit integers while keeping activations at 8-bit. Their BPB
-deltas vs bf16 at $\sim$1B parameters are reported as $\leq 0.05$
-BPB in the original papers, but the comparisons are usually
-against post-training rather than from-scratch training, so the
-parsing into our protocol (from-scratch, FineWeb 50B tokens) is
-not direct. We include INT4-W4A8 in the zoo as the strongest
-integer-quantization-during-training competitor at our target
-scale.
+The INT4-W4A8 family includes both **post-training** and
+**from-scratch-training** variants. The contemporary
+from-scratch reference is **Jetfire** (Xi et al. 2024, NeurIPS,
+arXiv:2403.12422), which trains transformers with INT4 weights
+and INT8 activations from initialization. **LLM-FP4** (Liu et
+al., arXiv:2310.16836) is a related W4A4 floating-point
+*post-training* method, often grouped with the INT4 family in
+ablation surveys. AffineQuant (Zhao et al. 2024, arXiv:2403.12544)
+is another post-training INT4 variant. Their BPB deltas vs bf16
+at $\sim$1B parameters are reported as $\leq 0.05$ BPB in the
+original papers; the comparisons are typically against
+post-training rather than from-scratch training, so for our
+protocol (from-scratch, FineWeb 50B tokens) we use **Jetfire's
+from-scratch INT4-W4A8 recipe** as the zoo competitor. Earlier
+drafts mis-attributed arXiv:2310.16836 to Jetfire; the correct
+Jetfire arXiv id is 2403.12422 (corrected in Loop 104 after the
+27th adversarial pass).
 
 The integer family's strength is its alignment with existing
 hardware INT4/INT8 matmul kernels; its weakness is the
@@ -385,14 +392,43 @@ CSV is committed at run time to `data/issue1021/<batch>/`.
 ### 3.4 Connection to the F2 framework
 
 The protocol uses the F2 framework's identification machinery
-unchanged: the four-PSE decomposition of `f2_dual_mediation`
-applied with `X = format_choice`, `M_1 = lossy_conversions`, and
-`M_2 = wall_clock_s`. The hypothesis that phi-ladder configurations
-yield lower validation BPB factors through both mediators
-($M_1$ captures quantization-noise accumulation; $M_2$ captures
-the multiplicative-basis overhead) and a remaining direct path.
-The pre-registered question is whether the direct path itself
-favors phi-ladder, controlling for both mediators.
+**per pairwise (phi-config, zoo-config) comparison**, not as a
+single decomposition over all 8 configs. For each pair, X is
+binary (which of the two formats is in use), and the four-PSE
+decomposition of `f2_dual_mediation` runs unchanged.
+
+**Mediator-positivity caveat (added Loop 104 per 27th adversarial
+pass).** Naïvely using `lossy_conversions` as $M_1$ and
+`wall_clock_s` as $M_2$ would violate the positivity / overlap
+assumption that Pearl's four-PSE identification requires: a
+config's mediator value is largely *deterministic* in the format
+choice (bf16 has zero lossy conversions by definition; GFTernary
+has many). Under deterministic $M | X$, the four-PSE decomposition
+is not identified — the NIE_M1 and NIE_M2 pathways collapse into
+the direct path. We therefore use the following residualized
+mediators:
+
+- **$M_1$ = residual lossy-conversion rate** = (per-cell lossy
+  conversions) − (config-baseline lossy conversions at seed
+  median). This subtracts the format-deterministic component
+  and leaves only the *seed-residual* variation in conversion
+  counts, which has support across formats.
+- **$M_2$ = residual training wall-clock** = (per-cell wall_s) −
+  (config-baseline wall_s at seed median). Same residualization
+  argument.
+
+The pre-registered question is whether the *residualized* direct
+path (controlling for seed-residual variation in $M_1$ and $M_2$)
+favors phi-ladder. The format-deterministic component of each
+mediator is part of the *direct* effect under this
+identification, by design.
+
+This residualization differs from the companion F2 paper's
+unmediated mediator definition (RmsNorm × WD had clear
+positivity); the change is forced by the pairwise-categorical
+X structure here. We pre-register this identification choice
+along with the rest of the protocol; any deviation will be
+flagged at the run-result paper.
 
 The wd0 stratum is the Pearl CDE that the companion paper
 demonstrates can flip signs. If quantization-format × WD
@@ -447,12 +483,19 @@ mean BPB is $\geq 0.10$ BPB lower for the phi-config than for the
 zoo-config (twice the H0 equivalence margin), with the difference
 statistically significant at $p < 0.05$ after BH correction.
 
-**Falsified by**: every (phi-config, zoo-config) pair either
-(a) has paper-config $\geq$ zoo-config mean BPB, or
-(b) has a CI on the difference that includes zero, or
-(c) has $|{\rm diff}| < 0.10$ BPB even with $p < 0.05$.
-If all 16 pairs (4 phi × 4 zoo) satisfy at least one of (a)/(b)/(c)
-in both strata, H1 is falsified.
+**Falsified by**: every (phi-config, zoo-config) pair satisfies
+at least one of:
+(a) phi-config $\geq$ zoo-config mean BPB (phi is not lower),
+(b) the unadjusted-p 95% CI on the difference includes zero,
+(c) BH-adjusted $p \geq 0.05$ even when the unadjusted-p CI
+    excludes zero (BH inflation regime), or
+(d) phi-config is significantly lower (BH-adjusted $p < 0.05$)
+    but $|{\rm diff}| < 0.10$ BPB (significant but below the
+    H1 effect-size threshold).
+Conditions (a)–(d) are jointly exhaustive of "fails the H1 test"
+for finite-BPB results. Non-finite cells are excluded from the
+test per §3.5 reporting discipline. If every pair satisfies at
+least one of (a)/(b)/(c)/(d) in **both strata**, H1 is falsified.
 
 **Action if H1 holds**: report the specific pair(s) at which
 phi-ladder is superior, with the bridge-score envelope. Make no
@@ -475,19 +518,32 @@ bridge-score envelope and cross-stratum stability flag.
 
 ### 4.4 Confounder-controlled variant (joint with H1/H2)
 
-Both H1 and H2 are tested at the **wd0 stratum** separately. If
-H1 or H2 holds at wd0 but fails at canonical, the result is
-reported as "phi-ladder is superior when weight decay is controlled
-to zero, but the marginal-recipe canonical comparison is
-inconclusive." The companion paper's RmsNorm sign-flip at the wd0
-stratum establishes that the canonical/wd0 comparison can be
-substantive; H1/H2 at wd0 alone is therefore a meaningful finding.
+**Primary stratum**: canonical. **Secondary stratum**: wd0. This
+designation is pre-registered before any data acquisition; the
+canonical stratum reflects the marginal-recipe regime that a
+practitioner would adopt by default, and the locked decision
+prevents post-hoc stratum-shopping. The wd0 stratum is reported
+alongside but is **not** elevated to primary if it differs.
 
-If H1 or H2 holds at canonical but fails at wd0, the result is
-reported as "phi-ladder is superior in the marginal-recipe
-canonical regime, but the wd-controlled comparison is
-inconclusive — the marginal effect may be confounded by WD's
-interaction with the format choice."
+**Asymmetric reporting rules** (locked):
+
+- *H1/H2 holds at canonical (primary)*: this is the headline
+  finding. The wd0 result is reported as secondary evidence:
+  *consistent* if wd0 agrees, *interaction-flagged* if wd0
+  disagrees. Neither outcome at wd0 demotes the canonical result.
+- *H1/H2 fails at canonical but holds at wd0*: this is **NOT a
+  positive result** under the pre-registered plan. It is
+  reported as an exploratory observation requiring follow-up,
+  not as evidence for phi-ladder superiority. The asymmetry
+  is intentional: claiming a positive only-at-wd0 finding would
+  be an unfalsifiable rescue narrative since wd=0 is not a
+  production default.
+
+Earlier drafts (pre Loop 104) presented the wd0 and canonical
+results as symmetric; the 27th adversarial pass flagged that
+the symmetric framing creates an unfalsifiable rescue case
+("either way phi-ladder wins"). The locked asymmetry above
+prevents that.
 
 ### 4.5 What this paper does not test
 

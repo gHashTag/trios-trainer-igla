@@ -85,7 +85,7 @@ def main():
             err_hi.append(0.0)
             survives.append(False)
 
-    fig, ax = plt.subplots(figsize=(6.0, 4.0))
+    fig, ax = plt.subplots(figsize=(6.0, 4.6))
     xs = list(range(len(strata_labels)))
     # Color: red for negative (harmful direction), green for positive
     # (helpful direction). Per F2 BPB convention: lower BPB is better, so
@@ -140,7 +140,15 @@ def main():
                 fontsize=10,
                 color="black",
             )
+    # Loop 104 fix: give the wd0 bar's "*" + error-bar cap clear sky
+    # below the title (26th pass caught the collision).
+    y_data = [est + err_hi[i] for i, est in enumerate(estimates)
+              if not math.isnan(est)] + [0.0]
+    y_top = max(y_data) + 0.7   # +0.5 for asterisk, +0.2 padding
+    ax.set_ylim(top=y_top)
+
     fig.tight_layout()
+    fig.subplots_adjust(top=0.85)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=200)
