@@ -578,42 +578,50 @@ struct Opt {
     per_layer: Vec<[AdamWCpu; 8]>, // wq,wk,wv,wo,w1,w2,n1,n2
 }
 
-fn make_arm(arm: &str, n: usize, lr: f64) -> AdamWCpu {
-    // Fair control: BOTH arms share the same learning rate (passed via --lr).
-    // The only difference is the phi-anchored beta1 / weight_decay vs standard.
-    // (with_phi_defaults wrongly forced lr = 1/phi^3 ~ 0.118, which destabilises
-    //  short-horizon training and confounds the comparison -- avoided here.)
+// Resolve (beta1, weight_decay) for an arm, with optional explicit overrides.
+// Overrides win over the arm preset, enabling independent beta1 / wd sweeps
+// (Loop+1 Option A: isolate the magnitude of the phi^-3 decay anchor).
+fn arm_hparams(arm: &str, b1_ov: Option<f64>, wd_ov: Option<f64>) -> (f64, f64) {
     let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
-    match arm {
+    let (b1, wd) = match arm {
         // phi prior: beta1 = phi^-1 ~ 0.618, weight_decay = phi^-3 ~ 0.2361
-        "phi" => AdamWCpu::with_params(n, lr, 1.0 / phi, 0.999, 1.0 / (phi * phi * phi)),
+        "phi" => (1.0 / phi, 1.0 / (phi * phi * phi)),
         // diagnostic: phi beta1 only (standard weight_decay) -- isolates the momentum anchor
-        "phi_b1" => AdamWCpu::with_params(n, lr, 1.0 / phi, 0.999, 0.04),
+        "phi_b1" => (1.0 / phi, 0.04),
         // diagnostic: phi weight_decay only (standard beta1) -- isolates the decay anchor
-        "phi_wd" => AdamWCpu::with_params(n, lr, 0.9, 0.999, 1.0 / (phi * phi * phi)),
+        "phi_wd" => (0.9, 1.0 / (phi * phi * phi)),
         // standard tuned AdamW control
-        _ => AdamWCpu::with_params(n, lr, 0.9, 0.999, 0.04),
-    }
+        _ => (0.9, 0.04),
+    };
+    (b1_ov.unwrap_or(b1), wd_ov.unwrap_or(wd))
 }
 
-fn make_opt(m: &Model, arm: &str, lr: f64) -> Opt {
+fn make_arm(arm: &str, n: usize, lr: f64, b1_ov: Option<f64>, wd_ov: Option<f64>) -> AdamWCpu {
+    // Fair control: BOTH arms share the same learning rate (passed via --lr).
+    // The only difference is the phi-anchored beta1 / weight_decay vs standard.
+    let (b1, wd) = arm_hparams(arm, b1_ov, wd_ov);
+    AdamWCpu::with_params(n, lr, b1, 0.999, wd)
+}
+
+fn make_opt(m: &Model, arm: &str, lr: f64, b1_ov: Option<f64>, wd_ov: Option<f64>) -> Opt {
+    let mk = |n: usize| make_arm(arm, n, lr, b1_ov, wd_ov);
     Opt {
-        emb: make_arm(arm, m.emb.len(), lr),
-        pos: make_arm(arm, m.pos.len(), lr),
-        nf: make_arm(arm, m.nf.len(), lr),
+        emb: mk(m.emb.len()),
+        pos: mk(m.pos.len()),
+        nf: mk(m.nf.len()),
         per_layer: m
             .layers
             .iter()
             .map(|l| {
                 [
-                    make_arm(arm, l.wq.len(), lr),
-                    make_arm(arm, l.wk.len(), lr),
-                    make_arm(arm, l.wv.len(), lr),
-                    make_arm(arm, l.wo.len(), lr),
-                    make_arm(arm, l.w1.len(), lr),
-                    make_arm(arm, l.w2.len(), lr),
-                    make_arm(arm, l.n1.len(), lr),
-                    make_arm(arm, l.n2.len(), lr),
+                    mk(l.wq.len()),
+                    mk(l.wk.len()),
+                    mk(l.wv.len()),
+                    mk(l.wo.len()),
+                    mk(l.w1.len()),
+                    mk(l.w2.len()),
+                    mk(l.n1.len()),
+                    mk(l.n2.len()),
                 ]
             })
             .collect(),
@@ -669,12 +677,16 @@ struct TrainCfg {
     arm: String,
     seed: u64,
     verbose: bool,
+    beta1_ov: Option<f64>,
+    wd_ov: Option<f64>,
+    // if Some(stride), print a `curve` line every `stride` steps (Loop+1 Option B)
+    curve_stride: Option<usize>,
 }
 
 fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let mut model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
-    let mut opt = make_opt(&model, &cfg.arm, cfg.lr);
+    let mut opt = make_opt(&model, &cfg.arm, cfg.lr, cfg.beta1_ov, cfg.wd_ov);
     let mut drng = StdRng::seed_from_u64(cfg.seed ^ 0x9e37);
 
     for step in 0..cfg.steps {
@@ -687,13 +699,18 @@ fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
         }
         accum_scale(&mut g, 1.0 / cfg.batch as f32);
         opt_step(&mut model, &mut opt, &g);
+        let train_bpb = (loss / cfg.batch as f32) / std::f32::consts::LN_2;
         if cfg.verbose && (step % 200 == 0 || step == cfg.steps - 1) {
-            let nats = loss / cfg.batch as f32;
-            println!(
-                "  step={:>5} train_bpb={:.4}",
-                step,
-                nats / std::f32::consts::LN_2
-            );
+            println!("  step={:>5} train_bpb={:.4}", step, train_bpb);
+        }
+        if let Some(stride) = cfg.curve_stride {
+            if step % stride == 0 || step == cfg.steps - 1 {
+                // machine-parseable training curve line
+                println!(
+                    "curve arm={} seed={} step={} train_bpb={:.4}",
+                    cfg.arm, cfg.seed, step, train_bpb
+                );
+            }
         }
     }
 
@@ -1089,6 +1106,11 @@ fn main() {
     let lr: f64 = arg(&args, "--lr")
         .and_then(|s| s.parse().ok())
         .unwrap_or(0.002);
+    // Optional optimizer-hparam overrides (Loop+1 Option A: independent sweeps).
+    let beta1_ov: Option<f64> = arg(&args, "--beta1").and_then(|s| s.parse().ok());
+    let wd_ov: Option<f64> = arg(&args, "--wd").and_then(|s| s.parse().ok());
+    // Optional training-curve stride (Loop+1 Option B): prints `curve` lines.
+    let curve_stride: Option<usize> = arg(&args, "--curve").and_then(|s| s.parse().ok());
 
     let train = load_bin(&train_path);
     let val = load_bin(&val_path);
@@ -1114,7 +1136,14 @@ fn main() {
             lr,
             probe.param_count()
         );
-        for arm in ["standard", "phi"] {
+        // arms: default standard+phi; override with --arms a,b,c (e.g. add phi_b1,phi_wd)
+        let arms: Vec<String> = arg(&args, "--arms")
+            .unwrap_or_else(|| "standard,phi".into())
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        for arm in &arms {
             let mut vals = Vec::new();
             for &s in &seeds {
                 let cfg = TrainCfg {
@@ -1125,9 +1154,12 @@ fn main() {
                     steps,
                     batch,
                     lr,
-                    arm: arm.into(),
+                    arm: arm.clone(),
                     seed: s,
                     verbose: false,
+                    beta1_ov,
+                    wd_ov,
+                    curve_stride,
                 };
                 let bpb = train_once(&train, &val, &cfg);
                 vals.push(bpb);
@@ -1171,6 +1203,9 @@ fn main() {
         arm: arm.clone(),
         seed,
         verbose: true,
+        beta1_ov,
+        wd_ov,
+        curve_stride,
     };
     let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
     println!(
