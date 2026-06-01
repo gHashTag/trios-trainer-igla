@@ -209,12 +209,29 @@ def transform_inline(line: str) -> str:
 
 
 def main() -> int:
-    if not PAPER.exists():
-        print(f"ERROR: {PAPER} not found", file=sys.stderr)
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--input",
+        type=Path,
+        default=PAPER,
+        help=f"Markdown source (default: {PAPER.relative_to(CRATE_ROOT)})",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=OUT,
+        help=f"LaTeX output (default: {OUT.relative_to(CRATE_ROOT)})",
+    )
+    args = parser.parse_args()
+    paper = args.input
+    out = args.output
+    if not paper.exists():
+        print(f"ERROR: {paper} not found", file=sys.stderr)
         return 1
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    src = PAPER.read_text().splitlines()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    src = paper.read_text().splitlines()
 
     body: list[str] = []
     when = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -429,9 +446,14 @@ def main() -> int:
     if in_code:
         body.append("\\end{verbatim}")
 
-    OUT.write_text("\n".join(body) + "\n")
-    nlines = OUT.read_text().count("\n")
-    print(f"# Wrote {OUT.relative_to(CRATE_ROOT)} ({nlines} lines)")
+    out = out.resolve()
+    out.write_text("\n".join(body) + "\n")
+    nlines = out.read_text().count("\n")
+    try:
+        display = out.relative_to(CRATE_ROOT)
+    except ValueError:
+        display = out
+    print(f"# Wrote {display} ({nlines} lines)")
     if not seen_first_section:
         print("# warning: no section headers detected; output may be incomplete")
         return 1

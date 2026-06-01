@@ -1,0 +1,35 @@
+% test_compile.tex — vanilla wrapper for lint-compiling the auto-generated
+% body. The actual TMLR template (template.tex) uses \usepackage{tmlr},
+% which isn't installed locally; this wrapper uses plain article so the
+% script can sanity-check structural breakage in f2_methodology_body.tex.
+%
+% Compile with xelatex or lualatex (NOT pdflatex):
+%   xelatex test_compile.tex
+% xelatex handles UTF-8 natively, which the auto-generated body uses
+% inside backtick code spans (e.g. ̄, σ, √).
+
+\documentclass[11pt]{article}
+
+\usepackage{fontspec}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[colorlinks=true,linkcolor=blue,citecolor=blue]{hyperref}
+\usepackage{cleveref}
+\usepackage{url}
+
+\usepackage[round,authoryear]{natbib}
+
+\title{F2: Stratified Pearl-CDE Mediation Analysis for Transformer
+Training-Recipe Ablations}
+\author{Anonymous Authors}
+
+\begin{document}
+\maketitle
+
+\input{f2_methodology_anonymized_body.tex}
+
+\bibliographystyle{plainnat}
+\bibliography{f2_methodology}
+
+\end{document}

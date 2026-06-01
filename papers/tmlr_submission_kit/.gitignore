@@ -10,3 +10,11 @@ test_compile.blg
 test_compile.out
 test_compile.toc
 test_compile.xelatex.log
+test_compile_anon.pdf
+test_compile_anon.aux
+test_compile_anon.log
+test_compile_anon.bbl
+test_compile_anon.blg
+test_compile_anon.out
+test_compile_anon.toc
+f2_methodology_anonymized_body.tex
