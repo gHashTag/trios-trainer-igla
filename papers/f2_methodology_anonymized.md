@@ -20,11 +20,14 @@ yielding per-path 95% CIs valid at N=5 seeds; (3) an additive bridge-score
 sensitivity envelope (Ohnishi & Li 2026, Thm 2) that translates CI bounds
 into VanderWeele-Ding tipping points across an outcome-residual grid.
 
-Applied to a sandbox-scale (~8K params, 200 steps, 5 seeds) ablation matrix,
-the framework reveals a **sign flip**: under canonical mediation the RmsNorm
-Natural Direct Effect (NDE) is −4.12 BPB (apparently harmful), but under
-wd=0 Pearl CDE the same estimand is **+0.43 BPB [+0.01, +0.84]**
-(intrinsically helpful, CI excludes zero). We frame this as a unit-test
+Applied to a sandbox-scale (~8K params, 200 steps, 5 seeds) ablation
+matrix, the framework reveals a **sign flip in the intervention's
+direction of effect**: under canonical mediation, the Natural Direct
+Effect (NDE) of replacing RmsNorm with LayerNorm is −4.12 BPB
+(the replacement helps — BPB drops by 4.12), but under wd=0 Pearl
+CDE the same estimand is **+0.43 BPB [+0.01, +0.84]** (the
+replacement hurts — BPB rises by 0.43 — and the 95% CI excludes
+zero). We frame this as a unit-test
 demonstration on a synthetic task that the framework detects a sign
 flip when one is constructed — the magnitudes are sandbox-specific
 and we do not claim the qualitative finding transfers to
@@ -706,20 +709,37 @@ blocked), the NIE_M1 column trivially zeros out (the mediator is pinned).
 The interesting column is now the NDE — the *direct* effect with WD
 held constant.
 
-Table 2 compares per-fix NDE at the canonical vs wd0 strata:
+Table 2 compares per-fix NDE across the three strata (canonical,
+wd0, warmup0):
 
-| fix | NDE_canonical (95% CI) | NDE_wd0 (95% CI) | sign flip? |
-|---------|-----------------------------|-------------------------------|:----------:|
-| **rms** | **−4.12 [−4.68, −3.55]** | **+0.43 [+0.01, +0.84]** | **yes** |
-| dropout | −4.55 [−4.89, −4.22] | −4.16 [unchanged] | no |
-| gradclip| −4.74 [−5.00, −4.49] | −4.12 [unchanged sign] | no |
-| clamp | −4.87 [−4.88, −4.86] | −4.12 [unchanged sign] | no |
-| smooth | −4.87 [−4.88, −4.86] | −4.12 [unchanged sign] | no |
+| fix | NDE_canonical (95% CI) | NDE_wd0 (95% CI) | NDE_warmup0 (95% CI) | rms-style sign flip? |
+|---------|--------------------------|--------------------------|--------------------------|:--------------------:|
+| **rms** | **−4.12 [−4.68, −3.55]** | **+0.43 [+0.01, +0.84]** | **−4.12 [−4.70, −3.55]** | **yes** |
+| dropout | −4.55 [−4.89, −4.22] | −0.01 [−0.34, +0.33] | −4.56 [−4.90, −4.21] | no (CI brackets 0) |
+| gradclip| −4.74 [−5.00, −4.49] | −0.20 [−0.67, +0.27] | −4.75 [−4.98, −4.52] | no (CI brackets 0) |
+| clamp | −4.87 [−4.88, −4.86] | −0.32 [−0.61, −0.04] | −4.87 [−4.91, −4.84] | no (magnitude ~15× smaller) |
+| smooth | −4.87 [−4.88, −4.86] | −0.32 [−0.61, −0.04] | −4.87 [−4.91, −4.84] | no (magnitude ~15× smaller) |
 
-Only RmsNorm exhibits a sign flip. The canonical "removing rms helps
-BPB by 4.12" estimate is, under Pearl CDE, "removing rms hurts BPB by
-0.43" — and the 95% CI excludes zero by 0.01 BPB (`Γ_tip(Λ=1.0) = 1.43`
-per §5.4, moderate per the §3.3 reporting convention).
+The wd0 stratum has two stories. **Only RmsNorm crosses zero**: the
+canonical "removing rms helps BPB by 4.12" estimate is, under Pearl
+CDE at WD=0, "removing rms hurts BPB by 0.43" — and the 95% CI
+excludes zero by 0.01 BPB (`Γ_tip(Λ=1.0) = 1.43` per §5.4, moderate
+per the §3.3 reporting convention). But **all four non-rms fixes
+also collapse in magnitude** at wd0 — the canonical ~−4.5 to −4.9
+BPB direct effect drops to between −0.01 and −0.32 BPB. Two of the
+four (dropout, gradclip) have 95% CIs that now bracket zero; the
+other two (clamp, smooth) have small but distinguishable negative
+effects. The wd0 stratum is therefore a structural attenuator on
+the entire NDE column, not just a sign-flipper for RmsNorm; what
+distinguishes RmsNorm is that the attenuation overshoots into
+positive territory.
+
+The warmup0 stratum, by contrast, reproduces the canonical NDE
+column almost line-by-line — every fix's warmup0 estimate is within
+0.05 BPB of its canonical estimate. This rules out "any non-default
+stratum flips the sign" as an explanation; the wd0 finding is
+specifically tied to weight decay's structural role, not to
+stratification *per se*.
 
 **Why wd=0 is a meaningful counterfactual, not a pathological state.**
 A reviewer may ask whether the wd0 stratum is degenerate — perhaps

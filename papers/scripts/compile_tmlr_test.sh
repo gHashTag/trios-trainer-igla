@@ -20,6 +20,25 @@
 
 set -euo pipefail
 
+# Loop 98 — optional regression-snapshot mode.
+#   --diff             after compile, diff each variant's pdftotext output
+#                      against the committed expected_*.pdftotext snapshot
+#                      (exits 1 on any non-trivial drift)
+#   --update-snapshot  after compile, overwrite the committed snapshots
+#                      with the current pdftotext output (use when an
+#                      intentional content change has landed)
+# Default (no flag): existing behavior — compile + pdftotext grep only.
+MODE="default"
+case "${1:-}" in
+    --diff) MODE="diff" ;;
+    --update-snapshot) MODE="update" ;;
+    "") MODE="default" ;;
+    *)
+        echo "# usage: compile_tmlr_test.sh [--diff | --update-snapshot]" >&2
+        exit 64
+        ;;
+esac
+
 CRATE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$CRATE_ROOT"
 
@@ -151,3 +170,72 @@ else
     fi
 fi
 echo "# All three variants verified."
+
+# --- Optional regression snapshot (Loop 98) -------------------------
+# Normalize pdftotext output so a snapshot diff is robust against
+# pdftotext implementation differences (page numbers, headers,
+# trailing whitespace, blank-line collapses).
+normalize_pdftext() {
+    # Strip trailing whitespace; collapse runs of blank lines; strip
+    # form-feed page separators that pdftotext emits between pages.
+    sed -e 's/[[:space:]]*$//' \
+        -e '/^\f$/d' \
+        | awk 'BEGIN{blank=0} /^$/{blank++; if(blank<=1)print; next} {blank=0; print}'
+}
+
+snapshot_one() {
+    local variant="$1"   # e.g. test_compile_tmlr
+    local pdfpath="$KIT/${variant}.pdf"
+    local snapshot="$KIT/expected_${variant}.pdftotext"
+    local current="/tmp/${variant}_current.$$.txt"
+
+    if [[ ! -f "$pdfpath" ]]; then
+        echo "  SKIP  $variant (no PDF produced)"
+        return 0
+    fi
+    pdftotext "$pdfpath" - 2>/dev/null | normalize_pdftext > "$current"
+
+    case "$MODE" in
+        update)
+            cp "$current" "$snapshot"
+            echo "  WROTE $(basename "$snapshot") ($(wc -l < "$snapshot" | tr -d ' ') lines)"
+            ;;
+        diff)
+            if [[ ! -f "$snapshot" ]]; then
+                echo "  FAIL  $(basename "$snapshot") missing — run --update-snapshot to create it" >&2
+                rm -f "$current"
+                return 1
+            fi
+            if diff -q "$snapshot" "$current" > /dev/null 2>&1; then
+                echo "  PASS  $variant matches snapshot"
+                rm -f "$current"
+                return 0
+            else
+                echo "  FAIL  $variant drift vs snapshot (first 20 changed lines):" >&2
+                diff "$snapshot" "$current" | head -20 >&2
+                rm -f "$current"
+                return 1
+            fi
+            ;;
+    esac
+}
+
+if [[ "$MODE" == "diff" || "$MODE" == "update" ]]; then
+    if ! command -v pdftotext >/dev/null 2>&1; then
+        echo "# WARN: pdftotext missing; snapshot $MODE skipped" >&2
+        exit 0
+    fi
+    echo "# (5/5) snapshot $MODE"
+    ANY_SNAP_FAIL=0
+    for variant in test_compile test_compile_anon test_compile_tmlr; do
+        if ! snapshot_one "$variant"; then
+            ANY_SNAP_FAIL=1
+        fi
+    done
+    if [[ $ANY_SNAP_FAIL -eq 1 ]]; then
+        echo "# ABORT: snapshot drift detected. Inspect the diff, then" \
+            "either fix the regression or run --update-snapshot if" \
+            "the change is intentional." >&2
+        exit 1
+    fi
+fi
