@@ -31,7 +31,7 @@ cross-stratum compare CSV.
 | `warmup0_swap_m2gradclip.csv` | 2038 | `8382d44e0f995d1be6df73e21bbb1d74` |
 | `warmup0_swap_m2smooth.csv` | 2037 | `d023094601f4473d4e4bdb4ae7bb5782` |
 
-(Checksums computed at Loop 76 commit, `b6f5c4` and ancestors.)
+(Checksums computed at Loop 76 commit, `3783ab7` and descendants.)
 
 ## File naming convention
 

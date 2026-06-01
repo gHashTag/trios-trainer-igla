@@ -51,9 +51,10 @@ BitNet b1.58, Peri-LN, nanoGPT) and find that the
 multi-seed-with-data-release norm is not yet established in this
 literature: seven of nine publish single-run tables, zero release
 per-seed CSVs — illustrating the methodological gap F2 is designed
-to close. The framework is open-source under MIT (805 tests, 10
-binaries sharing a long-form CSV contract); the empirical CSVs
-backing all findings are committed in-repo with MD5 checksums.
+to close. The framework is open-source under MIT (805 total tests
+across `src/lib.rs` (710), per-binary unit tests, and 7 integration
+suites; 10 binaries sharing a long-form CSV contract); the empirical
+CSVs backing all findings are committed in-repo with MD5 checksums.
 
 **Reproducibility claim**: "Mechanical reproducibility for §5":
 every numerical claim and every figure regenerates from the anchor

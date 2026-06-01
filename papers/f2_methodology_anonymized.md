@@ -630,8 +630,9 @@ Three reasons we deliberately chose the small configuration:
    licensing, eliminating most reviewers.
 
 2. **Mediation arithmetic is scale-invariant under the no-interaction
-   assumption.** Daniel et al.'s identification depends on the conditional
-   expectations being linear in the mediator and exposure structure;
+   assumption.** The Daniel et al. identification result depends on the
+   conditional expectations being linear in the mediator and exposure
+   structure;
    if it holds at sandbox scale, the same decomposition formulas apply
    at champion scale (only the numerical magnitudes change). The
    `dual_mediation_no_interaction_residual_lock` test confirms
@@ -1278,9 +1279,10 @@ ablation matrix — that the standard seed-mean ablation practice in ML
 systematically misattributes effects when one intervention mediates
 another. The (internal ref) RmsNorm sign flip (canonical NDE −4.12 BPB → wd0
 CDE +0.43 BPB) is a single concrete instance; the framework that
-produced it (Pearl-style stratified CDE + Daniel et al. four-path
-decomposition + delta-method SE + bridge-score sensitivity envelope +
-cross-stratum stability flag) is generic and ready for re-use on any
+produced it (Pearl-style stratified CDE + the Daniel et al. (2015)
+four-path decomposition + delta-method SE + bridge-score sensitivity
+envelope + cross-stratum stability flag) is generic and ready for
+re-use on any
 ablation question where a suppression-mediator may be present.
 
 The cost is modest: ~25 minutes of compute per stratum at sandbox scale,
