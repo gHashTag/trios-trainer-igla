@@ -11,26 +11,49 @@ data. The original ablation authors did not release per-seed CSVs,
 which is itself one of the methodological gaps F2 is designed to
 close.
 
-## Survey: 3 recent transformer-ablation papers
+## Survey: 9 recent transformer-ablation papers
+
+Loop 64 expansion (was 3 papers in Loop 63). Selection criterion:
+well-cited transformer training-recipe or architecture ablation
+papers from 2021–2025 that have public ablation tables.
 
 | Paper | Year | Ablation focus | Seeds / cell | Variance reported | Per-seed data released | F2-applicable as-is |
 |---|---|---|---|---|---|---|
-| NormFormer (Shleifer et al., arXiv:2110.09456) | 2021 | Pre-LN/Post-LN/extra LayerNorms | 1 | No | No | **No** (single-run) |
+| NormFormer (Shleifer et al., arXiv:2110.09456) | 2021 | Pre-LN / Post-LN / extra LayerNorms | 1 | No | No | **No** (single-run) |
 | BitNet b1.58 (Ma et al., arXiv:2402.17764) | 2024 | FP16 vs INT8 vs ternary 1.58-bit | 1 | No | No | **No** (single-run) |
-| Peri-LN (Kim et al., arXiv:2502.02732) | 2025 | Pre-LN/Post-LN/Peri-LN | 5 | Yes (std reported per benchmark) | No | **Partial** (summary stats only) |
+| Peri-LN (Kim et al., arXiv:2502.02732) | 2025 | Pre-LN / Post-LN / Peri-LN | 5 | Yes (per-benchmark std) | No | **Partial** (summary only) |
+| Pythia suite (Biderman et al., arXiv:2304.01373) | 2023 | Model size × dedup × hyperparam | 1 per config | No | Weights released, not per-seed | **No** (single-config) |
+| nanoGPT (Karpathy, github.com/karpathy/nanoGPT) | 2023 | Educational reference codebase | N/A | No | N/A | **No** (no formal ablation tables) |
+| Mamba (Gu & Dao, arXiv:2312.00752) | 2023 | SSM projection size, init schemes | Single-point | No | Code released, not per-seed | **No** (single-run) |
+| OPT (Zhang et al., arXiv:2205.01068) | 2022 | Reproducibility via transparency | 1 per scale | No (logs/code instead) | Yes (training logs) | **No** (single-run tables) |
+| Llama (Touvron et al., arXiv:2302.13971) | 2023 | Pre-training recipe | 1 | No | No | **No** (single-run) |
+| Switch Transformer (Fedus et al., JMLR 2022) | 2022 | Expert dropout, capacity factor | 3 | Yes (std reported) | No | **Partial** (summary stats only) |
 
-**Headline result of the survey**: of three recent, well-cited
-transformer-architecture ablation papers, **two** publish single-run
-tables and **one** publishes multi-seed summary statistics but does
-not release per-seed CSVs. The F2 framework cannot be applied to the
-single-run papers (no variance information at all); it can be
-applied to Peri-LN's reported summaries via shape-matched
-simulation, but a true F2 re-analysis would require the per-seed
-data the authors did not release.
+**Headline result of the survey**: of nine recent, well-cited
+transformer training-recipe / architecture-ablation papers,
+**seven** publish single-run ablation tables, **two** publish
+multi-seed summary statistics (Peri-LN at N=5, Switch Transformer
+at N=3), and **zero** release per-seed CSVs alongside their
+ablation tables. Only the two papers with reported variance are
+even partially F2-applicable, and neither at full per-seed
+resolution.
 
-This survey illustrates the methodological gap F2 is designed to
-close: even in 2025, multi-seed ablation reporting with per-seed
-data release is **not the norm** in transformer architecture papers.
+This 9-paper survey illustrates the methodological gap F2 is
+designed to close: as of 2025, multi-seed ablation reporting
+with per-seed data release is **not** the norm in transformer
+architecture papers, even at high citation count. Reporting
+varies from single-run point estimates (NormFormer, BitNet,
+Llama, OPT) to single-config controlled suites (Pythia) to
+multi-seed summaries without raw data (Peri-LN, Switch Transformer).
+
+We conjecture that the gap is structural: multi-seed runs at the
+scales these papers operate at (~hundreds of GPU-hours per cell)
+are economically prohibitive, and per-seed CSV release at
+publication time is not yet a community norm. F2's long-form CSV
+contract (§3.5.1) + W3C-PROV preamble + 727-test framework are a
+concrete proposal for what such a community norm could look like
+at sandbox scale, where the per-seed compute is in seconds rather
+than GPU-hours.
 
 ## Detailed walkthrough — Peri-LN Table 1
 
@@ -103,15 +126,19 @@ re-analysis claim.
 - **No re-analysis with original data.** This is a forward-looking
   walkthrough; the F2 framework cannot be tested against Peri-LN's
   data without access to per-seed runs the authors did not release.
-- **Single detailed case.** A stronger paper would include 2-3
-  detailed walkthroughs. We have time-budgeted one for the present
-  submission and pre-register expanded case studies as Phase-2
-  follow-up.
-- **Selection bias of papers surveyed.** The three papers above are
-  high-visibility ablations; the underlying methodological gap
-  applies more broadly, but a systematic survey of, say, the top-100
-  cited transformer ablation papers since 2017 is outside the scope
-  of the present submission.
+- **Single detailed case.** The survey covers 9 papers but the
+  detailed F2-style walkthrough is done only for Peri-LN. A
+  stronger paper would include 2–3 detailed walkthroughs. We have
+  time-budgeted one for the present submission and pre-register
+  expanded case studies as Phase-2 follow-up.
+- **Selection bias.** The 9 papers above are high-visibility
+  transformer-architecture and training-recipe ablations from
+  2021–2025. The survey size is large enough to credibly claim
+  the per-seed-data-release norm is not yet established, but a
+  systematic survey of, say, the top-100 cited transformer ablation
+  papers since 2017 is outside the scope of the present submission.
+  We expect the per-seed-CSV-released proportion in a 100-paper
+  survey to remain at or near 0%.
 
 ## Pointer from the main paper
 

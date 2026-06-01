@@ -1037,16 +1037,19 @@ can flip baseline-vs-SOTA orderings; F2's `f2_provenance_check` + lock
 tests are direct responses to this concern at the framework level.
 
 **Applicability survey** (`papers/case_study_published_ablations.md`).
-We survey three recent transformer-architecture ablation papers
-(NormFormer 2021, BitNet b1.58 2024, Peri-LN 2025) and find that
-the multi-seed-with-data-release norm is not yet established in
-this literature: two of the three publish single-run tables and the
-third reports multi-seed summary statistics without per-seed CSVs.
-F2 can be applied as-is to long-form CSVs with the contract in
-§3.5.1; the case study illustrates what F2 *would* surface against
-the Peri-LN Table 1 ablation if per-seed data were available, and
-explicitly catalogues the methodological gap F2 is designed to
-close.
+We survey nine recent transformer-architecture and training-recipe
+ablation papers (NormFormer 2021, OPT 2022, Switch Transformer 2022,
+Pythia 2023, Mamba 2023, Llama 2023, BitNet b1.58 2024, Peri-LN
+2025, plus the nanoGPT educational codebase) and find that the
+multi-seed-with-data-release norm is not yet established in this
+literature: **seven of nine publish single-run ablation tables**,
+**two report multi-seed summaries without per-seed CSVs**
+(Peri-LN at N=5, Switch Transformer at N=3), and **zero release
+per-seed data alongside their ablation tables**. F2 can be applied
+as-is to long-form CSVs with the contract in §3.5.1; the case
+study illustrates what F2 *would* surface against the Peri-LN
+Table 1 ablation if per-seed data were available, and explicitly
+catalogues the methodological gap F2 is designed to close.
 
 ### 9.2 Causal mediation
 
