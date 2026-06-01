@@ -78,9 +78,13 @@ Run `f2_ablation_aggregate` on the 80-run CSV to produce wide-form table.
 
 ### Step 2: paired permutation test
 For each (phi-config, zoo-config) pair, paired permutation test on BPB
-differences across 5 seeds (Fisher-Pitman exact, 32 sign-flips per
-arXiv:2205.01416). BH-correct p-values over the 4 comparisons within each
-stratum.
+differences across 5 seeds. We use the exact paired-permutation
+procedure of Zmigrod, Vieira & Cotterell (2022, arXiv:2205.01416,
+"Exact Paired-Permutation Testing for Structured Test Statistics") —
+their algorithm runs the exact 2^5 = 32-sign-flip enumeration without
+Monte-Carlo approximation. BH-correct p-values over the 4
+comparisons within each stratum per Liu, Leung & Shao
+(arXiv:1712.03305).
 
 ### Step 3: cross-stratum stability
 Run `f2_dual_mediation` on each pair at the wd0 stratum; pipe to
@@ -139,8 +143,10 @@ We will report, regardless of outcome:
   to be added when compute is approved).
 - All raw CSVs + provenance preambles are committed in a `data/loop_52/`
   subdirectory.
-- The PR opening this study (anchored at `19d032e` HEAD) links to this
-  pre-registration as the protocol.
+- The PR opening this study (PR #185 on `f2-methodology` branch,
+  anchored at the latest descendant of `5367bde`) links to this
+  pre-registration as the protocol. The current branch HEAD at the
+  time of this Loop 58 update is `a092d5e`.
 
 ## 9. What this document is NOT
 
@@ -155,9 +161,12 @@ We will report, regardless of outcome:
 If anyone wants to attack the design before data is collected:
 
 - Q: Why 5 seeds? A: Owen 2025 (arXiv:2508.10083) shows BCa undercovers at
-  N=5; we use Fisher-Pitman exact (arXiv:2205.01416) which is valid at this N.
+  N=5; we use the exact paired-permutation procedure of Zmigrod et al.
+  (arXiv:2205.01416), which enumerates the 2^5 = 32 sign-flip outcomes
+  exactly without Monte-Carlo approximation.
 - Q: Why BH over 4 comparisons within each stratum? A: matches Liu/Leung/Shao
-  arXiv:1712.03305 dependent-test BH validity at N=5.
+  (arXiv:1712.03305) asymptotic dependent-test BH validity for pairwise
+  t-statistic comparisons.
 - Q: Why 50B tokens? A: Quantization scaling laws (arXiv:2502.05003) suggest
   effects saturate beyond ~30B; we add headroom for safety.
 - Q: Why both strata? A: Loop 49 sign-flip finding established that

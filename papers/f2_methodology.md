@@ -787,7 +787,7 @@ is independent of which particular mediator pair was chosen.
 
 ## 7. Limitations
 
-We list five limitations the paper's claims are subject to. Each is
+We list six limitations the paper's claims are subject to. Each is
 acknowledged here so a future reader can verify the framework is being
 applied within its valid scope.
 
@@ -837,6 +837,28 @@ applied within its valid scope.
    evidence of structural effects. A formal three-mediator extension
    is left as future work.
 
+6. **No post-treatment / intermediate confounders.** The Zhao-Luo
+   identification (§3.2) assumes that any confounder of the mediators
+   `(M_1, M_2)` is *pre-treatment* — measured before the intervention
+   `X` is applied. If a mediator is itself caused by `X` and also
+   confounds the second mediator (a *treatment-induced confounder*,
+   per Rudolph & Díaz 2023, arXiv:2205.04408), the standard Zhao-Luo
+   identification fails and the four-PSE decomposition is not
+   point-identifiable. In our setting `X` is a discrete intervention
+   on training-recipe knobs and the candidate mediators
+   `(wd, warmup, gradclip, clamp, smooth, dropout)` are all *also*
+   training-recipe knobs that are set at the same configuration step
+   as `X`. We argue this regime is closer to pre-treatment than to
+   post-treatment because the configuration choice for one knob is
+   not causally downstream of the choice for another — the analyst
+   sets them jointly, not sequentially. A reviewer who disagrees with
+   this framing should consult Hong, Yang & Qin (2023,
+   arXiv:2107.11014) for the post-treatment sensitivity analysis they
+   would impose instead, or Díaz et al. (2021, arXiv:1912.09936) for
+   the interventional-effects framework that point-identifies a
+   related estimand without the no-post-treatment assumption. We
+   leave a formal post-treatment extension of F2 as future work.
+
 ---
 
 ## 8. Software
@@ -864,17 +886,16 @@ the binaries cited in §5 are:
 | `f2_provenance_check` | Validate that a CSV's W3C-PROV preamble matches the current `TRAINER_INTERNALS_SCHEMA`; exit codes drive CI. |
 
 The remaining four binaries (`f2_ablation_aggregate`, `f2_iloco_dot`,
-`f2_iloco_score`, `f2_mediation`, plus the orthogonal
-`f2_ablation_aggregate`) cover aggregation, ILOCO scoring, and the
-single-mediator legacy path; they are documented for completeness in
-the binaries index.
+`f2_iloco_score`, `f2_mediation`) cover aggregation, ILOCO scoring,
+and the single-mediator legacy path; they are documented for
+completeness in the binaries index.
 
 ### 8.2 Tests
 
 The auto-generated Appendix D inventory (regenerable via
-`papers/scripts/generate_appendix_d.sh`) lists 726 tests grouped by
+`papers/scripts/generate_appendix_d.sh`) lists 727 tests grouped by
 source: 632 in `src/lib.rs`, the remainder distributed across
-per-binary unit tests and six integration suites under `tests/`. Two
+per-binary unit tests and seven integration suites under `tests/`. Two
 regression locks deserve a direct mention because they back load-
 bearing claims in §3:
 
