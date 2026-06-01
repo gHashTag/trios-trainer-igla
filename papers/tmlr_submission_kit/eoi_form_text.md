@@ -38,17 +38,22 @@ synthetic-counter sandbox: the canonical Natural Direct Effect of
 replacing RmsNorm with LayerNorm is −4.12 BPB (helpful), but the
 wd0 Pearl CDE is +0.43 BPB (harmful), with both CIs excluding
 zero. We frame this as a unit-test demonstration that the
-framework detects a sign flip when one is constructed — not as a
-final claim about RmsNorm at champion scale, which is pre-
-registered as Phase-1 follow-up. We additionally survey three
-recent transformer-architecture ablation papers (NormFormer 2021,
-BitNet b1.58 2024, Peri-LN 2025) and find that the
+framework detects a sign flip when one is constructed. A
+swap-parameterization Phase 0 run (committed at
+`data/loop49_swap/`) yields a narrower secondary finding: under
+(M_1 = rms, M_2 = warmup), the rms-mediated indirect effect of
+weight decay is byte-identical −0.751 [−1.325, −0.177] across all
+three strata — a structural cross-stratum invariant predicted by
+the no-XM-interaction reduction and confirmed empirically. We
+additionally survey nine recent transformer ablation papers
+(NormFormer, OPT, Switch Transformer, Pythia, Mamba, Llama,
+BitNet b1.58, Peri-LN, nanoGPT) and find that the
 multi-seed-with-data-release norm is not yet established in this
-literature, illustrating the methodological gap F2 is designed
+literature: seven of nine publish single-run tables, zero release
+per-seed CSVs — illustrating the methodological gap F2 is designed
 to close. The framework is open-source under MIT (727 tests, 10
-binaries sharing a long-form CSV contract); the six empirical
-CSVs that back the sign-flip are committed in-repo with MD5
-checksums and per-file reproduction commands.
+binaries sharing a long-form CSV contract); the empirical CSVs
+backing all findings are committed in-repo with MD5 checksums.
 
 **Reproducibility claim**: "Mechanical reproducibility for §5":
 every numerical claim and every figure regenerates from the anchor

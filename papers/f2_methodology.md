@@ -33,11 +33,18 @@ that the framework detects a sign flip when one is constructed —
 the magnitudes are sandbox-specific and we do not claim the
 qualitative finding transfers to champion-scale models without
 additional evidence; champion-scale validation is pre-registered in
-`docs/F2_PRE_REG.md`.
+`docs/F2_PRE_REG.md`. A swap-parameterization Phase 0 run
+(committed at `data/loop49_swap/`) confirms a narrower secondary
+finding: under (`M_1 = rms, M_2 = warmup`), the rms-mediated
+indirect effect of weight decay is **byte-identical −0.751
+[−1.325, −0.177] BPB across all three strata** — the only PSE row
+in our matrix that survives intact across canonical, wd0, and
+warmup0 reference points.
 
-The framework is open-source in Rust with 11 binaries, 726 unit/integration
-tests, and W3C-PROV-tagged CSV provenance preambles. We release it as a
-reproducibility artifact for ML methodology research.
+The framework is open-source in Rust with 10 binaries, 727
+unit/integration tests, and W3C-PROV-tagged CSV provenance
+preambles. We release it as a reproducibility artifact for ML
+methodology research.
 
 ---
 
@@ -101,11 +108,16 @@ one verified instance as proof-of-concept.
    flag per PSE based on CI overlap, surfacing suppression mediation
    without a-priori knowledge of which mediator is doing the
    suppressing.
-5. **Empirical proof-of-concept**. §5 documents the RmsNorm × WD
-   sign-flip at small scale (5 seeds, ~ minute-of-compute per run) and
-   §6 demonstrates that no choice in §3 — point estimator, CI method,
-   bridge-score `Λ`, stratum reference value — flips the qualitative
-   conclusion.
+5. **Sandbox empirical demonstration with two findings**. §5
+   documents the RmsNorm × WD sign-flip at small scale (5 seeds,
+   ~minute-of-compute per run) as a unit-test demonstration that
+   the framework detects a sign flip when one is constructed. A
+   narrower secondary finding from the Phase 0 swap-parameterization
+   run (committed at `data/loop49_swap/`): the
+   rms-mediated indirect effect of weight decay is byte-identical
+   across all three strata. §6 demonstrates that no choice in §3 —
+   point estimator, CI method, bridge-score `Λ`, stratum reference
+   value — flips the qualitative conclusion of either finding.
 
 ### 1.3 Roadmap
 
