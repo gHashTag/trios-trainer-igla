@@ -28,11 +28,12 @@ Applied to a sandbox-scale (~8K params, 200 steps, 5 seeds) ablation matrix,
 the framework reveals a **sign flip**: under canonical mediation the RmsNorm
 NDE is −4.12 BPB (apparently harmful), but under wd=0 Pearl CDE the same
 estimand is **+0.43 BPB [+0.01, +0.84]** (intrinsically helpful, CI excludes
-zero). The pattern replicates under an alternative mediator parameterization
-where the rms-mediated NIE is −0.75 BPB stable across all three strata
-(CI excludes zero universally). We argue this reframes the "rms is the only
-intrinsic fix" claim from prior work into a quantitative, sign-corrected
-empirical finding.
+zero). We frame this as a unit-test demonstration on a synthetic task
+that the framework detects a sign flip when one is constructed —
+the magnitudes are sandbox-specific and we do not claim the
+qualitative finding transfers to champion-scale models without
+additional evidence; champion-scale validation is pre-registered in
+`docs/F2_PRE_REG.md`.
 
 The framework is open-source in Rust with 11 binaries, 726 unit/integration
 tests, and W3C-PROV-tagged CSV provenance preambles. We release it as a
@@ -667,43 +668,82 @@ Table 2 compares per-fix NDE at the canonical vs wd0 strata:
 Only RmsNorm exhibits a sign flip. The canonical "removing rms helps
 BPB by 4.12" estimate is, under Pearl CDE, "removing rms hurts BPB by
 0.43" — and the 95% CI excludes zero by 0.01 BPB (`Γ_tip(Λ=1.0) = 1.43`
-per §5.4, moderate-to-fragile per VanderWeele-Ding).
+per §5.4, moderate per the §3.3 reporting convention).
+
+**Why wd=0 is a meaningful counterfactual, not a pathological state.**
+A reviewer may ask whether the wd0 stratum is degenerate — perhaps
+the model in this regime is not in a useful operating point and the
+canonical NDE is "the real answer". Three observations push back:
+
+1. **Published recipes operate at WD ≈ 0.** The pre-AdamW transformer
+   literature (Vaswani et al. 2017 *Attention is All You Need*; many
+   2017–2018 fairseq defaults) treated WD as an optional knob and
+   shipped with WD ∈ {0, 0.01}. Decoupled-WD (Loshchilov & Hutter
+   2017, the AdamW paper) explicitly argues that prior practice
+   under-used WD because of the Adam-coupling pitfall. Many
+   low-precision-training ablation tables (notably BitNet b1.58,
+   arXiv:2402.17764, supplementary §C) hold WD at zero or very low
+   values to isolate quantization effects from regularization
+   effects. Pinning WD=0 reproduces a real published configuration,
+   not a degenerate one.
+2. **The trainer remains stable at WD=0** in our sandbox: every wd0
+   seed produces a finite, non-NaN final BPB, and per-seed BPB CVs
+   are within the §3.5.4 stability tolerance. There is no
+   divergence-based reason to dismiss the stratum.
+3. **The framework is symmetric in its strata-choice machinery.**
+   The warmup0 stratum produces the *same direction* of NDE as the
+   canonical stratum (−4.12 vs −4.12 — see Table 2), so the
+   sign-flip is specifically tied to WD-pinning, not to "any
+   non-default stratum". This is the asymmetry the framework is
+   designed to surface; it would not appear if wd0 were merely a
+   degenerate state.
 
 This is the headline finding of the paper. **Figure 1** visualizes the
 three NDE values for rms (canonical, wd0, warmup0) with error bars.
+We frame this finding as a *unit-test demonstration on a synthetic
+task* that the framework can detect a sign flip when one is
+constructed — not as a final ML finding about RmsNorm's intrinsic
+behavior at champion scale. See §1.2 and §10.1 for venue calibration.
 
-### 5.3 Cross-stratum stability — the rms invariant
+### 5.3 Cross-stratum stability flag
 
-`f2_stratum_compare` joins per-fix PSEs across the three strata. Of the
-20 cross-stratum PSE rows in our matrix (5 fixes × 4 PSEs):
+`f2_stratum_compare` joins per-fix PSEs across the three strata and
+flags each row with `stable_across_strata = true` iff every pair of
+present 95% CIs has non-empty intersection. The committed output at
+`data/loop49/loop49_3stratum.csv` (M_1=wd, M_2=warmup parameterization,
+20 rows = 5 fixes × 4 PSEs) shows:
 
-- 16 PSEs are flagged `stable_across_strata = false` (no CI overlap
-  across all present strata). The majority of these are NIE_M2 rows, where
-  the M_2 mediator differs by definition across strata; CI disagreement
-  is expected, not pathological.
-- 4 PSEs are `stable_across_strata = true`. These are the small-effect
-  PSEs (gradclip and dropout NIE_M2/NIE_chain) where every stratum
-  estimate brackets zero.
+- **16 PSEs flagged `false`**. These are dominated by rows where the
+  M_1=wd PSE column (NIE_M1) is trivially zero in the wd0 stratum
+  because the mediator is pinned — by construction, the wd-mediated
+  indirect effect at wd=0 is exactly zero. The stability flag
+  correctly fires on this *structural* disagreement; the flag is
+  faithfully reporting that an apples-to-apples comparison is not
+  possible when the mediator is pinned.
+- **4 PSEs flagged `true`** (gradclip and dropout NIE_M2 and
+  NIE_chain). These are the small-effect rows whose CIs all bracket
+  zero in every stratum, so the overlap test trivially succeeds.
 
-The remaining structural result is a single cross-stratum invariant
-obtained under the **alternative parameterization** with rms as a
-candidate mediator (`M_1 = rms, M_2 = warmup`). With this swap, every
-non-mediator fix `X` produces an NIE_M1 estimate that quantifies "the
-part of X's effect mediated by rms."
+What this empirically demonstrates is the *framework's mechanics*:
+the comparator surfaces stratum-induced disagreement loudly, and the
+analyst reads the flag with knowledge of why each disagreement
+exists (mediator-pinning structural; small-effect bracketing-zero
+trivial; or — the interesting case — a substantive
+sign-flip-or-magnitude disagreement that *isn't* explained by either
+of those mechanisms).
 
-The result:
-
-| stratum   | NIE_M1 via rms (95% CI)     |
-|-----------|------------------------------|
-| canonical | **−0.75 [−1.32, −0.18]**     |
-| wd0       | −0.75 [−1.32, −0.18]         |
-| warmup0   | −0.75 [−1.32, −0.18]         |
-
-`f2_stratum_compare` flags this as `stable_across_strata = true`. The
-estimate is **byte-identical** across all three strata. We interpret this
-invariance as evidence that the rms-mediated pathway is a structural
-feature of the training dynamics in this regime, not an artifact of any
-particular confounding pattern.
+**A note on the swap parameterization.** A natural follow-up
+analysis re-runs the four-PSE decomposition with `(M_1 = rms,
+M_2 = warmup)` instead, to obtain an NIE_M1 estimate that quantifies
+"the part of X's effect mediated by rms" for each non-mediator X. We
+have *not* committed a three-stratum CSV under this swap
+parameterization (the only committed dual-mediation CSVs in
+`data/loop49/` are the canonical `M_1=wd` ones). The framework
+*predicts* that the rms-mediated NIE under no-XM-interaction should
+be approximately stable across the wd0 stratum (since pinning wd
+does not directly constrain the rms-mediated pathway), but
+verifying this empirically requires a swap-parameterization sweep
+and is queued as a Phase-1 deliverable per `docs/F2_PRE_REG.md`.
 
 ### 5.4 Sensitivity envelope
 
@@ -715,7 +755,6 @@ VanderWeele-Ding classification for each headline estimate:
 | Canonical NDE for rms (−4.12)              | 4.55         | robust   |
 | Canonical NIE_M1 via WD (+4.99)            | 5.42         | robust   |
 | wd0 CDE for rms (+0.43)                    | 1.43         | moderate |
-| Cross-stratum stable NIE via rms (−0.75)   | 1.24         | fragile  |
 
 **Figure 4** plots the full `Γ_tip(Λ)` hyperbolae for rms's four PSEs
 over `Λ ∈ [0.1, 5.0]` BPB. The crossover at `Λ ≈ 1.5` is where the
@@ -723,12 +762,15 @@ NIE_M2 and NIE_chain estimates leave the moderate range and become
 fragile.
 
 The honest reading: the **canonical NIE_M1** ("WD as mediator") result
-is robust under E-value-style stress testing comparable to the
-smoking-cancer benchmark. The **wd0 NDE** ("rms intrinsically helps")
-result is the more fragile claim — but it is qualitatively consistent
-with the cross-stratum stable NIE estimate (both negative for rms's
-effect direction), making the sign-flip itself harder to dismiss than
-the magnitude.
+is robust under E-value-style stress testing — Γ_tip > 5 means any
+unmeasured confounder would have to be substantially stronger than
+typical training-recipe correlates to overturn the verdict. The
+**wd0 NDE** ("rms-intrinsic-effect-under-WD-pinning") result is the
+more fragile claim, with Γ_tip = 1.43 placing it in the moderate
+range. The sign-flip *across* strata is the qualitatively
+interesting finding; the wd0 magnitude itself should be read as
+"directionally consistent with positive effect, fragile to
+moderate-strength unmeasured confounding".
 
 ---
 
@@ -747,22 +789,20 @@ identified WD and warmup as the two strongest mediators in the canonical
 ablation matrix. A reviewer might object that the chosen pair determines
 the sign of NIE_M2 by construction.
 
-To address this, Loop 50 ran a complete replication with the swapped pair
-`M_1 = rms, M_2 = warmup`. In this parameterization, RmsNorm itself is a
-candidate mediator, and the question becomes "what fraction of each
-non-mediator fix's effect runs through RmsNorm?" The answer:
-
-| stratum   | NIE_M1 via rms (95% CI)         |
-|-----------|----------------------------------|
-| canonical | **−0.75 [−1.32, −0.18]**         |
-| wd0       | −0.75 [−1.32, −0.18] (identical) |
-| warmup0   | −0.75 [−1.32, −0.18] (identical) |
-
-`f2_stratum_compare` flags this row as `stable_across_strata = true`,
-which is the cross-stratum invariant reported in §5.3. The fact that the
-swap recovers the same qualitative picture — small intrinsic helpful
-effect of RmsNorm — is the strongest robustness argument we have against
-the "parameterization artifact" objection.
+To address this, the swap parameterization `M_1 = rms, M_2 = warmup`
+is the natural replication: RmsNorm itself becomes the candidate
+mediator, and the question becomes "what fraction of each
+non-mediator fix's effect runs through RmsNorm?" Under no-XM-
+interaction, the framework predicts that the rms-mediated NIE
+should be approximately stable across the wd0 stratum, since
+pinning wd does not directly constrain the rms-mediated pathway. A
+three-stratum swap-parameterization CSV is not committed in
+`data/loop49/`; we have run individual swap calculations on
+canonical-stratum data during framework development (Loop 50)
+which produce a small negative NIE_M1 via rms for every non-
+mediator fix X, but the three-stratum CDE re-run is pre-registered
+as a Phase-1 deliverable (`docs/F2_PRE_REG.md`) and not asserted
+in this paper as committed empirical evidence.
 
 ### 6.2 Statistic family
 
