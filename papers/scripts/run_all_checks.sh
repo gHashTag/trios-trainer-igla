@@ -14,11 +14,15 @@
 #       registered table matches its source CSV at 2-decimal tolerance
 #   (6) verify_formulas_vs_tables.py — Loop 103: four-PSE closure +
 #       §3.3 envelope Γ_tip claims re-derived from CIs
-#   (7) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
-#   (8) compile_tmlr_test.sh     — xelatex compile all 3 variants
+#   (7) #1021 cross-ref audit — Loop 106: cross_reference_audit.py
+#       run on phi_ladder_paper_intro_draft.md (multi-paper mode)
+#   (8) #1021 markdown lint — Loop 106: lint_paper_md.py on the
+#       same draft (multi-paper mode)
+#   (9) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
+#   (10) compile_tmlr_test.sh    — xelatex compile all 3 variants
 #       (non-anon, anon, real TMLR class)
-#   (9) figure_regen.sh          — regenerate all 6 figures
-#   (10) pack_supplementary.sh   — bundle supplementary zip (which
+#   (11) figure_regen.sh         — regenerate all 6 figures
+#   (12) pack_supplementary.sh   — bundle supplementary zip (which
 #       itself runs the 3-stage pre-flight from Loop 72)
 #
 # Output: PASS/FAIL summary on stdout. Exit 0 if every stage passes,
@@ -121,6 +125,8 @@ STAGES=(
     "markdown lint:python3 papers/scripts/lint_paper_md.py"
     "tables vs CSVs:python3 papers/scripts/verify_tables_against_csv.py"
     "formulas vs tables:python3 papers/scripts/verify_formulas_vs_tables.py"
+    "#1021 cross-ref audit:papers/scripts/cross_reference_audit.py papers/phi_ladder_paper_intro_draft.md"
+    "#1021 markdown lint:python3 papers/scripts/lint_paper_md.py papers/phi_ladder_paper_intro_draft.md"
     "test inventory regen:papers/scripts/generate_appendix_d.sh"
     "xelatex 3-variant compile:papers/scripts/compile_tmlr_test.sh"
     "figure regen:papers/scripts/figure_regen.sh"

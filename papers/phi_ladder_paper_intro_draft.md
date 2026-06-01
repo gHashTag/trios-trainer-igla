@@ -115,16 +115,27 @@ deviates from this plan will be explicitly labeled exploratory.
 
 ### 1.3 What the F2 companion provides
 
-Our methodology companion paper provides the analysis machinery
-that this paper consumes: stratified Pearl-CDE
-(`f2_dual_mediation`), four-PSE decomposition with delta-method
-SEs (`f2_mediation_sensitivity`), additive bridge-score envelope
-(Ohnishi & Li 2026 Thm 2), and cross-stratum comparator
-(`f2_stratum_compare`). The same 10 F2 binaries, 805 tests, and
-W3C-PROV preamble discipline that back the companion paper's
-sandbox-scale RmsNorm finding are the substrate this paper runs on
-at champion scale. A reader who has not yet seen F2 should treat
-§3 of this paper as a pointer to the methodology paper, with the
+Our methodology companion paper provides four pieces of analysis
+machinery, of which this paper consumes two: (1) **stratified
+Pearl-CDE** via the same two strata (`canonical`, `wd0`) the F2
+sandbox-scale finding used; (2) the **additive bridge-score
+envelope** of Ohnishi & Li 2026 Thm 2 (`f2_mediation_sensitivity`,
+operated in total-effect mode for this paper — see §3.4). The
+F2 framework also provides (3) the **four-PSE nested-counterfactual
+decomposition** (`f2_dual_mediation`) and (4) the **cross-stratum
+comparator** (`f2_stratum_compare`); this paper does **not**
+deploy (3) for the format comparison because the candidate
+mediators (`lossy_conversions`, `wall_clock_s`) are deterministic
+functions of the format-choice $X$ and so violate the
+positivity/overlap assumption that nested-counterfactual
+identification requires — see §3.4 for the diagnostic and the
+total-effect reframe. The cross-stratum comparator (4) is
+applied at the (phi, zoo) total-effect level rather than per-PSE.
+The same 10 F2 binaries, 805 tests, and W3C-PROV preamble
+discipline that back the companion paper's sandbox-scale RmsNorm
+finding are the substrate this paper runs on at champion scale.
+A reader who has not yet seen F2 should treat §3 of this paper
+as a pointer to the methodology paper, with the
 quantization-zoo-specific extensions (the eight-configuration
 sweep mode, the FineWeb data harness, the wall-clock provenance
 preamble) called out in §3.1.
@@ -389,9 +400,11 @@ study unmodified at the per-cell level:
   the envelope is calibrated against the VanderWeele-Ding E-value
   for fragility/robustness reporting.
 
-The five F2 binaries above each produce a long-form CSV with
+The six F2 binaries above each produce a long-form CSV with
 W3C-PROV preamble per `f2_provenance_check`'s schema. The 80-cell
-matrix produces **80 + 2 + 1 + 1 + 1 + 8 = 93 CSVs** total. Every
+matrix produces **80 + 2 + 1 + 1 + 1 + ≤16 = 85 to 101 CSVs**
+total (point estimate 93 under the F2 half-survival baseline; see
+§5.1). Every
 CSV is committed at run time to `data/issue1021/<batch>/`.
 
 ### 3.4 Connection to the F2 framework
@@ -591,9 +604,12 @@ specified below.
 | 1 | `pairwise_canonical.csv` | 16 (phi-config, zoo-config) pairs × {diff, p-value, BH-adjusted-p} | `f2_pairwise_perm` |
 | 1 | `pairwise_wd0.csv` | same schema, wd0 stratum | `f2_pairwise_perm` |
 | 1 | `stratum_compare.csv` | 16 pairs × `stable_across_strata` flag | `f2_stratum_compare` |
-| 8 | `sensitivity_<phi-config>_vs_<zoo-config>.csv` | bridge-score envelope per pair that survives the perm test | `f2_mediation_sensitivity` |
+| ≤16 | `sensitivity_<phi-config>_vs_<zoo-config>.csv` | bridge-score envelope per (phi-config, zoo-config) pair that survives the perm test; upper bound = 16 if every pair survives, point estimate 8 based on the F2 sandbox-scale half-survival baseline | `f2_mediation_sensitivity` |
 
-Total: 80 + 2 + 1 + 1 + 1 + 8 = **93 CSVs**. Each CSV has the
+Total: 80 + 2 + 1 + 1 + 1 + (8…16) = **between 85 and 101 CSVs**
+(point estimate 93 under the F2 sandbox-scale half-survival
+baseline; actual count reported at the run-result paper). Each
+CSV has the
 F2 W3C-PROV preamble (timestamp, anchor commit, config_hash,
 seed, training-token-budget), parseable by
 `f2_provenance_check`.
@@ -748,7 +764,7 @@ re-selection is permitted under the protocol.**
   large practical space; we do not extrapolate.
 - **Hardware-specific behavior** (e.g., H100 vs B100 vs TPU v5).
   The protocol does not name a target accelerator beyond
-  "any modern GPU with bf16 + INT4 + FP8 kernel support";
+  "any modern GPU with bf16 + INT8 + FP8 kernel support";
   hardware-specific wall-clock comparisons would require a
   separate protocol.
 
