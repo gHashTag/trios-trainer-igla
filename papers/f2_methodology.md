@@ -122,9 +122,9 @@ cross-stratum comparator) with LaTeX derivations and CSV contracts.
 §4 specifies the small-scale sandbox ablation matrix that backs the
 empirical results. §5 presents the headline RmsNorm sign-flip across
 three strata, with replication under an alternative mediator
-parameterization. §6 sweeps four design choices (estimator, CI method,
-`Λ`, stratum reference) to show that the qualitative finding is robust
-to all. §7 enumerates six limitations, including the deferred
+parameterization. §6 sweeps four design choices (mediator pair, CI
+method, stratum reference, M_2 robustness landscape) to show that
+the qualitative finding is robust to all. §7 enumerates six limitations, including the deferred
 champion-scale follow-up. §8 catalogues the software artifacts. §9
 positions the contribution against the closest ML ablation, causal
 mediation, and sensitivity-analysis work. §10 concludes and
@@ -780,60 +780,16 @@ canonical and warmup0 columns match each other — a structural
 pattern consistent with the wd0 stratum being the only one that
 constrains the wd path.
 
-**Robustness — full M_2 swap sweep (Loop 68).** A natural follow-
-up question is whether the byte-identical invariance depends on
-the choice of M_2 = warmup. We re-ran the swap analysis with
-`(M_1 = rms, M_2 = m)` for every non-mediator candidate
-`m ∈ {gradclip, clamp, smooth, dropout}`, across all three
-strata; outputs committed at
-`data/loop49_swap/{canonical,wd0,warmup0}_swap_m2{m}.csv` (12
-new CSVs total). Result for `X = wd, NIE_M1` via rms:
-
-| M_2 = …    | canonical                 | wd0                       | warmup0                  | All 3 identical? |
-|------------|---------------------------|---------------------------|--------------------------|------------------|
-| **warmup** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **YES**          |
-| gradclip   | −1.781 [−2.210, −1.353]   | −1.781 [−2.210, −1.353]   | −0.626 [−1.341, +0.090]  | No (warmup0)     |
-| clamp      | −1.693 [−2.162, −1.225]   | −1.693 [−2.162, −1.225]   | −0.751 [−1.325, −0.177]  | No (warmup0)     |
-| smooth     | −1.693 [−2.162, −1.225]   | −1.693 [−2.162, −1.225]   | −0.751 [−1.325, −0.177]  | No (warmup0)     |
-| dropout    | −1.625 [−1.819, −1.431]   | −1.625 [−1.819, −1.431]   | −0.400 [−0.787, −0.014]  | No (warmup0)     |
-
-The pattern across all five M_2 alternatives is exactly what
-no-XM-interaction predicts:
-
-1. **wd0 = canonical in every row.** The wd0 stratum pins a
-   variable (`weight_decay`) that is the *outcome target* X for
-   this row, not a mediator on the rms-M_2 path. Removing wd
-   does not constrain the rms-mediated indirect effect, so the
-   per-seed `pair_X_M_2` and `triplet_X_M_1_M_2` rows used in
-   the NIE_M1 closed form are byte-identical in canonical and
-   wd0 sweeps. This holds for **every M_2 we tested**.
-2. **warmup0 diverges from canonical/wd0 unless M_2 = warmup.**
-   The warmup0 stratum pins warmup. If the swap parameterization
-   already has M_2 = warmup, the stratum pinning and the
-   parameterization align: the M_2 path is the stratum-fixed
-   path, and the formula gives the same result everywhere. For
-   any other M_2 choice, warmup is *also* a covariate that
-   takes its sweep value in canonical/wd0 but is pinned to 0
-   in warmup0 — so the per-seed BPB shifts and the NIE_M1
-   estimate diverges. This is the structural mechanism we
-   originally interpreted in §5.3 as a "wd row invariant"; the
-   full robustness sweep confirms it.
-
-The narrow scoping is therefore: **the wd × NIE_M1 via rms row
-is byte-identical across all three strata only when the swap
-parameterization's M_2 is precisely the variable pinned by the
-warmup0 stratum.** Under the four alternative M_2 choices, the
-weaker invariance (canonical = wd0) holds in 4 of 4 cases, but
-the full-triple-stratum invariance does not. We report this
-honestly as a result about the framework's *internal* structural
-predictions confirmed empirically, not as a general claim about
-training-recipe interactions.
-
-**Figure 6** visualizes the full 5 × 3 landscape. The top row
-(M_2 = warmup) is marked with a thick outline indicating all three
-estimates are byte-identical; every other row shows
-canonical = wd0 to two decimals but a visibly different warmup0
-cell, exactly the structural pattern predicted by no-XM-interaction.
+**Robustness to the M_2 choice.** A reviewer may ask whether the
+byte-identical pattern depends on the specific M_2 = warmup choice
+in the swap parameterization. §6.4 reports the full M_2 sensitivity
+sweep across all five candidate mediators. The headline result
+moved there: the invariance is **conditional on M_2 matching the
+warmup0 stratum's pinned variable**; under the four alternative M_2
+choices, the weaker canonical = wd0 invariance still holds in
+every case (a structural consequence of wd being target X, not a
+mediator on the rms-M_2 path), but the full triple-stratum
+invariance does not.
 
 ### 5.4 Sensitivity envelope
 
@@ -951,6 +907,53 @@ mediators that produce the cleanest sign-flip story." We do not
 deny that incentive exists; we cite the cross-stratum invariant in §5.3
 (invariant under both parameterizations) as the structural result that
 is independent of which particular mediator pair was chosen.
+
+### 6.4 M_2 robustness — full sweep
+
+§5.3 reports that the swap-parameterization NIE_M1 via rms for
+X = wd is byte-identical across all three strata under
+(M_1 = rms, M_2 = warmup). A natural follow-up is whether the
+invariance depends on M_2 = warmup specifically. We re-ran the
+swap analysis with `(M_1 = rms, M_2 = m)` for every non-mediator
+candidate `m ∈ {gradclip, clamp, smooth, dropout}` across all
+three strata; outputs committed at
+`data/loop49_swap/{canonical,wd0,warmup0}_swap_m2{m}.csv` (12
+new CSVs). Result for `X = wd, NIE_M1` via rms:
+
+| M_2 = …    | canonical                 | wd0                       | warmup0                  | All 3 identical? |
+|------------|---------------------------|---------------------------|--------------------------|------------------|
+| **warmup** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **−0.751 [−1.325, −0.177]** | **YES**          |
+| gradclip   | −1.781 [−2.210, −1.353]   | −1.781 [−2.210, −1.353]   | −0.626 [−1.341, +0.090]  | No (warmup0)     |
+| clamp      | −1.693 [−2.162, −1.225]   | −1.693 [−2.162, −1.225]   | −0.751 [−1.325, −0.177]  | No (warmup0)     |
+| smooth     | −1.693 [−2.162, −1.225]   | −1.693 [−2.162, −1.225]   | −0.751 [−1.325, −0.177]  | No (warmup0)     |
+| dropout    | −1.625 [−1.819, −1.431]   | −1.625 [−1.819, −1.431]   | −0.400 [−0.787, −0.014]  | No (warmup0)     |
+
+The pattern across all five M_2 alternatives is exactly what
+no-XM-interaction predicts:
+
+1. **wd0 = canonical in every row.** The wd0 stratum pins a
+   variable (`weight_decay`) that is the *outcome target* X for
+   this row, not a mediator on the rms-M_2 path. Removing wd does
+   not constrain the rms-mediated indirect effect, so the per-seed
+   `pair_X_M_2` and `triplet_X_M_1_M_2` rows used in the NIE_M1
+   closed form are byte-identical in canonical and wd0 sweeps.
+2. **warmup0 diverges from canonical/wd0 unless M_2 = warmup.**
+   The warmup0 stratum pins warmup. If the swap parameterization
+   already has M_2 = warmup, the stratum pinning and the
+   parameterization align: the M_2 path is the stratum-fixed path,
+   and the formula gives the same result everywhere. For any
+   other M_2 choice, warmup is *also* a covariate that takes its
+   sweep value in canonical/wd0 but is pinned to 0 in warmup0 —
+   so the per-seed BPB shifts and the NIE_M1 estimate diverges.
+
+The narrow scoping is therefore: **the wd × NIE_M1 via rms row
+is byte-identical across all three strata only when the swap
+parameterization's M_2 is precisely the variable pinned by the
+warmup0 stratum.** Under the four alternative M_2 choices, the
+weaker invariance (canonical = wd0) holds in 4 of 4 cases, but
+the full-triple-stratum invariance does not. **Figure 6**
+visualizes the full 5 × 3 landscape with thick row outline
+marking the warmup row's full invariance.
 
 ---
 
