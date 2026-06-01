@@ -105,7 +105,10 @@ mod tests {
         let t = vec![0.001_f32, -0.002, 0.0015, -0.0005];
         let q = ScaleAwareTernary::quantize(&t);
         // absmax is 0.002 -> the largest-magnitude entries must be +-1, not 0.
-        assert!(q.nonzero_count() >= 2, "micro-scale tensor collapsed: {q:?}");
+        assert!(
+            q.nonzero_count() >= 2,
+            "micro-scale tensor collapsed: {q:?}"
+        );
         // The -0.002 entry is the absmax -> level -1.
         let idx = 1;
         assert_eq!(q.levels[idx], -1);

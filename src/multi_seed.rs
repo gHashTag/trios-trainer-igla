@@ -161,7 +161,11 @@ fn welch(a: &ArmSamples, b: &ArmSamples) -> (f64, f64, f64, f64) {
     // Welch-Satterthwaite df.
     let df_num = (sa + sb) * (sa + sb);
     let df_den = (sa * sa) / (na - 1.0) + (sb * sb) / (nb - 1.0);
-    let df = if df_den > 0.0 { df_num / df_den } else { na + nb - 2.0 };
+    let df = if df_den > 0.0 {
+        df_num / df_den
+    } else {
+        na + nb - 2.0
+    };
 
     let p = two_sided_p_from_t(t.abs(), df);
     (mean_diff, t, df, p)
@@ -261,9 +265,7 @@ fn ln_gamma(z: f64) -> f64 {
     ];
     if z < 0.5 {
         // reflection
-        std::f64::consts::PI.ln()
-            - (std::f64::consts::PI * z).sin().ln()
-            - ln_gamma(1.0 - z)
+        std::f64::consts::PI.ln() - (std::f64::consts::PI * z).sin().ln() - ln_gamma(1.0 - z)
     } else {
         let z = z - 1.0;
         let mut x = 0.99999999999980993;

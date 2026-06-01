@@ -32,14 +32,20 @@ fn main() {
     println!("         only phi^2 + phi^-2 = 3 is [Verified]; this proxy cannot");
     println!("         promote the moat. Accuracy verdict may be Tie/ZooWins.");
     println!("------------------------------------------------------------------");
-    println!(" config: seeds={:?} steps={steps} warmup_unquantized={warmup} dim={dim} alpha={alpha}", seeds);
+    println!(
+        " config: seeds={:?} steps={steps} warmup_unquantized={warmup} dim={dim} alpha={alpha}",
+        seeds
+    );
     println!("------------------------------------------------------------------");
     println!(" ACCURACY AXIS (proxy_bits, lower is better -- NOT real BPB)");
     let phi_mean = r.phi.bits.iter().sum::<f64>() / r.phi.bits.len() as f64;
     let zoo_mean = r.zoo.bits.iter().sum::<f64>() / r.zoo.bits.len() as f64;
     println!("   phi-ladder mean proxy_bits : {phi_mean:.6}");
     println!("   zoo        mean proxy_bits : {zoo_mean:.6}");
-    println!("   mean_diff (phi - zoo)      : {:.6}  (negative favours phi)", r.mean_diff);
+    println!(
+        "   mean_diff (phi - zoo)      : {:.6}  (negative favours phi)",
+        r.mean_diff
+    );
     println!("   Welch t                    : {:.6}", r.t_stat);
     println!("   Welch-Satterthwaite df     : {:.4}", r.df);
     println!("   two-sided p                : {:.3e}", r.p_two_sided);
@@ -52,7 +58,9 @@ fn main() {
     println!("------------------------------------------------------------------");
 
     let verdict_str = match r.verdict {
-        F2Verdict::PhiWins => "PHI WINS (accuracy proxy) -- NOT a Verdict; moat stays [Open conjecture]",
+        F2Verdict::PhiWins => {
+            "PHI WINS (accuracy proxy) -- NOT a Verdict; moat stays [Open conjecture]"
+        }
         F2Verdict::Tie => "TIE (accuracy proxy) -- moat stays [Open conjecture]",
         F2Verdict::ZooWins => "ZOO WINS (accuracy proxy) -- demote breadth-as-moat to [Risk] FIRST",
     };
