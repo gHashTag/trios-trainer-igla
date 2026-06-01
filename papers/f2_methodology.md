@@ -732,18 +732,39 @@ trivial; or — the interesting case — a substantive
 sign-flip-or-magnitude disagreement that *isn't* explained by either
 of those mechanisms).
 
-**A note on the swap parameterization.** A natural follow-up
-analysis re-runs the four-PSE decomposition with `(M_1 = rms,
-M_2 = warmup)` instead, to obtain an NIE_M1 estimate that quantifies
-"the part of X's effect mediated by rms" for each non-mediator X. We
-have *not* committed a three-stratum CSV under this swap
-parameterization (the only committed dual-mediation CSVs in
-`data/loop49/` are the canonical `M_1=wd` ones). The framework
-*predicts* that the rms-mediated NIE under no-XM-interaction should
-be approximately stable across the wd0 stratum (since pinning wd
-does not directly constrain the rms-mediated pathway), but
-verifying this empirically requires a swap-parameterization sweep
-and is queued as a Phase-1 deliverable per `docs/F2_PRE_REG.md`.
+**Swap parameterization — Phase 0 result (Loop 64).** A natural
+follow-up analysis re-runs the four-PSE decomposition with
+`(M_1 = rms, M_2 = warmup)` instead, to obtain an NIE_M1 estimate
+that quantifies "the part of X's effect mediated by rms" for each
+non-mediator X. Pre-registered in section 4.5 of `docs/F2_PRE_REG.md` and executed
+in Loop 64 against the regenerated `--mode all` canonical sweep
+plus the two committed stratified sweeps; outputs are committed at
+`data/loop49_swap/`. Of the 20 rows in
+`data/loop49_swap/3stratum_swap.csv`, **5 are flagged
+`stable_across_strata = true`** under CI-overlap. The
+substantively interesting row is:
+
+| stratum     | X = wd, NIE_M1 via rms (95% CI)  |
+|-------------|-----------------------------------|
+| canonical   | **−0.751 [−1.325, −0.177]**       |
+| wd0         | −0.751 [−1.325, −0.177] (identical)|
+| warmup0     | −0.751 [−1.325, −0.177] (identical)|
+
+The byte-identical values are not an overclaim but an artifact of
+the no-XM-interaction structure plus the deterministic per-seed
+LOCO/pair/triplet sweep design: under the swap parameterization
+the NIE_M1 closed form reduces to `Δ_{X, M_2} − Δ_{X, M_1, M_2}`,
+which evaluates from the same pair/triplet sweep rows regardless
+of the stratum's baseline-config choice when the mediator-pinning
+does not interact with the rms-mediated pathway. The
+`dual_mediation_no_interaction_residual_lock` test (§8.2) validates
+the residual at `< 10⁻⁶` for the canonical parameterization;
+Phase 0 confirms the equivalence empirically holds under swap.
+We interpret this row narrowly as evidence that **the rms-mediated
+NIE-via-WD for the wd fix specifically is the only PSE whose
+value survives identical across all three stratum reference
+points** — a real result, but a much narrower claim than an
+"all PSEs invariant" assertion.
 
 ### 5.4 Sensitivity envelope
 

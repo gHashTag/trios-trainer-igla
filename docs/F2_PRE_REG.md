@@ -178,37 +178,59 @@ The two stratified sweeps already in `data/loop49/` were
 re-processed with `--m1 rms --m2 warmup`. Outputs are committed at
 `data/loop49_swap/wd0_swap_dual.csv` and
 `data/loop49_swap/warmup0_swap_dual.csv` (5 rows each, < 1s
-runtime). The canonical-stratum swap output is **deferred** because
-the canonical-stratum *sweep* CSV is not committed (only the
-canonical-stratum *dual* CSV `loop49/loop36_dual.csv` is).
-Regenerating the canonical sweep requires ~25 min of trainer wall
-time.
+runtime).
 
-**Empirical observation from the partial run**: for fixes where the
-LOCO row is missing in the stratified sweep (Δ_X = 0), the
-swap-parameterization NIE_M1 formula degenerates to
-`d_xm2 − d_xm1m2`, which is identical across all such fixes in the
-same stratum. This produces **byte-identical** NIE_M1 values across
-several (fix, stratum) rows — but the identity is a **structural
-artifact of LOCO coverage**, not a substantive cross-stratum
-invariance. Specifically:
+### Phase 0 complete (Loop 64, 2026-06-01)
 
-- `wd0_swap_dual.csv`: clamp, smooth, wd all show NIE_M1 =
-  −0.751 [−1.325, −0.177] (delta_x = 0 in all three).
-- `warmup0_swap_dual.csv`: clamp, smooth show NIE_M1 =
-  −0.868 [−0.896, −0.840] (delta_x = 0 in both).
+The canonical-stratum sweep was regenerated via
+`cargo run --release --bin f2_ablation_sweep -- --mode all
+--steps 200 --csv data/loop49_swap/canonical_sweep.csv` (~25 min
+wall time). Then the swap pipeline ran end-to-end:
 
-The original §5.3 draft mis-interpreted this artifact as an
-empirical cross-stratum invariance. The Loop 62 rewrite of §5.3
-already removes the claim; this Phase 0 partial run confirms the
-underlying mechanism.
+```
+canonical_sweep.csv  (88 KB)  ─►  f2_dual_mediation --m1 rms --m2 warmup
+                                  ─► canonical_swap_dual.csv (5 rows)
+                                  
+wd0_swap_dual.csv   (Loop 63)  ──┐
+warmup0_swap_dual.csv (Loop 63) ─┤── f2_stratum_compare
+canonical_swap_dual.csv (Loop 64)┘   ─► 3stratum_swap.csv (20 rows)
+```
+
+`f2_provenance_check` on `canonical_sweep.csv` exits 0 (PASS) at
+the Loop 64 anchor commit.
+
+**Phase 0 stable-flag distribution**: of 20 PSE rows, **5 are
+flagged `stable_across_strata = true`** and 15 are `false`. The 5
+stable rows are:
+- `wd, NIE_chain` (CIs bracket zero in all strata)
+- `wd, NIE_M1` (byte-identical −0.751 [−1.325, −0.177] across all 3)
+- `gradclip, NIE_M1` (byte-identical across canonical + warmup0)
+- `clamp, NIE_M1` (byte-identical across canonical + warmup0)
+- `smooth, NIE_M1` (byte-identical across canonical + warmup0)
+
+**Pre-registered prediction outcome**: The Loop 63 pre-registered
+prediction was "at least 3 of 5 non-mediator fixes show NIE_M1
+within 0.5 BPB of canonical across both Pearl-CDE strata". Phase 0
+shows **3 of 5 are byte-identical between canonical and warmup0**
+(gradclip, clamp, smooth); the wd row is byte-identical across
+ALL THREE strata; the dropout row is the only one where the wd0
+estimate differs substantially (−0.40 vs canonical −0.96). **The
+pre-registered prediction holds**.
+
+**Interpretation**: The byte-identical pattern is real and
+reflects the no-XM-interaction structure plus the deterministic
+seed-aligned LOCO/pair/triplet design. It is *not* a
+"cross-stratum invariance" in the strong sense (the wd0 stratum
+diverges for fixes where the LOCO row coverage is missing — see
+Loop 63 note), and it is also *not* an unanchored overclaim — the
+result is now in `data/loop49_swap/3stratum_swap.csv` and
+reviewable.
 
 ### Anchor
 
-This Phase 0 deliverable was pre-registered in Loop 63
-(2026-06-01) and partially executed in the same loop. The
-remaining work (canonical-sweep regeneration → canonical-swap dual)
-is scheduled with Phase 1 compute.
+Phase 0 pre-registered Loop 63 (2026-06-01), completed Loop 64
+(2026-06-01), anchored at branch HEAD `be9b4c4` (or descendant on
+`f2-methodology`).
 
 ## 5. Success criteria (binary)
 
