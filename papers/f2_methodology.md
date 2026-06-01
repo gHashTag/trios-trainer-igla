@@ -43,42 +43,159 @@ reproducibility artifact for ML methodology research.
 ## 1. Introduction
 
 ### 1.1 The problem with seed-mean ablation
-- ML practitioners report mean BPB ± std across 3-5 seeds.
-- Suppression mediation — where one intervention masks another's intrinsic
-  effect — can flip the sign of the apparent effect.
-- We document one instance (RmsNorm × WD) and provide infrastructure to
-  detect more.
+
+The median ML ablation report follows a fixed recipe: pick a target
+intervention `X`, train `N ∈ {3, 5}` seeds with and without `X`,
+report `Δ̄ ± σ/√N` on a held-out metric, and infer that `X` helps,
+hurts, or is null. This recipe is statistically defensible when every
+other configuration parameter is held fixed, but ML training recipes
+are not single-knob systems. A transformer training run simultaneously
+exercises weight decay, learning-rate warmup, gradient clipping,
+RmsNorm vs LayerNorm, label smoothing, and dropout — to name only the
+canonical seven we ablate in §4. Two of these knobs are statistically
+dependent whenever one is on the regularization path of the other.
+
+When such a dependency exists, a seed-mean ablation reports the
+**marginal** effect of `X`: the average over the empirical joint of all
+other knobs in the training configuration. The marginal effect is what
+practitioners actually consume — "should I turn this on by default?" —
+but it is silent on a more dangerous failure mode: **suppression
+mediation**, where one intervention's effect is dominated by its
+correlated mediator, and the apparent sign of the effect flips when the
+mediator is held at a non-default reference value. The empirical
+demonstration in §5 is one such case: replacing RmsNorm with LayerNorm
+has marginal NDE −4.12 BPB (helpful) at canonical training, but +0.43
+BPB (harmful) under the Pearl Controlled Direct Effect (CDE) with
+weight decay pinned to zero. Both CIs exclude zero. The sign is not a
+seed artifact.
+
+If suppression mediation is more common than the current ablation
+literature acknowledges, then a meaningful fraction of "ablation shows
+`X` helps" claims may be confounded by mediators outside the
+ablation. The contribution of this paper is twofold: (i) provide the
+methodological and software infrastructure to detect such cases at the
+same engineering cost as a normal ablation sweep, and (ii) document
+one verified instance as proof-of-concept.
 
 ### 1.2 Contributions
-1. Stratification framework (3 strata: canonical, wd0, warmup0)
-2. Zhao-Luo 4-PSE decomposition with t-CI valid at N=5
-3. Bridge-score sensitivity envelope with tipping-point classification
-4. Cross-stratum comparator with stability flag
-5. Empirical: RmsNorm CDE sign-flip across strata
+
+1. **Stratification framework**. The `Stratum::{Canonical, Wd0,
+   Warmup0}` registry (§3.1) routes a single ablation sweep across one
+   marginal stratum and two Pearl-CDE strata, deriving the mode-string
+   matrix from `Stratum × ModeKind` automatically so that adding a new
+   stratum is a single-variant code change.
+2. **Zhao-Luo 4-PSE decomposition with finite-sample CIs**. We
+   implement the four-path decomposition (§3.2, Gao-Li-Luo 2020) with
+   delta-method standard errors that reduce to the Miles-Shpitser
+   (2017) efficient influence function under no-interaction, and we
+   default to Student-`t` CIs at `df = 4` for the `N = 5` seed regime —
+   not the asymptotic `z` interval that Owen (2025) shows to
+   undercover at that sample size.
+3. **Bridge-score sensitivity envelope**. We adopt the Ohnishi-Li
+   (2026) additive bridge-score envelope on each PSE (§3.3),
+   classifying every effect as fragile / median / robust against the
+   VanderWeele-Ding tipping-point thresholds (`Γ < 1.25`, `Γ ≥ 2.0`).
+4. **Cross-stratum stability comparator**. `f2_stratum_compare` (§3.4)
+   takes the three single-stratum CSVs and emits a `stable_across_strata`
+   flag per PSE based on CI overlap, surfacing suppression mediation
+   without a-priori knowledge of which mediator is doing the
+   suppressing.
+5. **Empirical proof-of-concept**. §5 documents the RmsNorm × WD
+   sign-flip at small scale (5 seeds, ~ minute-of-compute per run) and
+   §6 demonstrates that no choice in §3 — point estimator, CI method,
+   bridge-score `Λ`, stratum reference value — flips the qualitative
+   conclusion.
 
 ### 1.3 Roadmap
-§2 background, §3 framework, §4 sandbox ablation matrix, §5 results,
-§6 sensitivity, §7 limitations, §8 software, §9 related work, §10 conclusion.
+
+§2 reviews Pearl causal mediation, sensitivity analysis, and the
+adjacent ML ablation literature. §3 develops the F2 framework
+(stratification, 4-PSE decomposition, bridge-score envelope,
+cross-stratum comparator) with LaTeX derivations and CSV contracts.
+§4 specifies the small-scale sandbox ablation matrix that backs the
+empirical results. §5 presents the headline RmsNorm sign-flip across
+three strata, with replication under an alternative mediator
+parameterization. §6 sweeps four design choices (estimator, CI method,
+`Λ`, stratum reference) to show that the qualitative finding is robust
+to all. §7 enumerates five limitations, including the deferred
+champion-scale follow-up. §8 catalogues the software artifacts. §9
+positions the contribution against the closest ML ablation, causal
+mediation, and sensitivity-analysis work. §10 concludes and
+calibrates the contribution against four candidate publication venues.
 
 ---
 
 ## 2. Background
 
 ### 2.1 Pearl causal mediation
-- Natural direct effect (NDE) vs Natural indirect effect (NIE)
-- Controlled direct effect (CDE) when mediator is set to a reference level
-- Zhao & Luo (2020) four-way decomposition for two ordered mediators
+
+Under Pearl's potential-outcomes calculus, the total effect of an
+intervention `X` on an outcome `Y` admits two decompositions of
+practical interest in ablation work. The **natural direct-and-indirect
+effect (NDE/NIE)** decomposition splits the total effect into the part
+that flows through a mediator `M` under its natural distribution (the
+NIE) and the part that does not (the NDE). The NDE is contrastive at
+the population mean of `M`, which means it answers the marginal-
+ablation question — what would change on average if I removed `X` but
+left `M` to find its own equilibrium? The **controlled direct effect
+(CDE)** instead fixes `M` at a specific reference value `m*` and reports
+the effect of `X` with `M` clamped at `m*`. The CDE answers the
+counterfactual-ablation question: what would change if I removed `X`
+and also disabled `M`?
+
+When two mediators are present, Gao, Li & Luo (2020,
+arXiv:2007.16031) derive a four-path decomposition that additively
+separates the total effect into the direct effect plus three indirect
+effects: through `M_1` alone, through `M_2` alone, and through the
+sequential chain `M_1 → M_2`. F2 (§3.2) implements this decomposition
+under a no-interaction assumption that reduces the asymptotic variance
+to the Miles-Shpitser (2017, arXiv:1710.02011) efficient influence
+function, which we use as the basis for the delta-method standard
+errors at `N = 5` seeds.
 
 ### 2.2 Sensitivity analysis
-- E-value (VanderWeele & Ding 2017): Γ such that unmeasured confounding
-  of that strength would explain the effect
-- Bridge-score additive bound (Ohnishi & Li 2026): same idea on an additive
-  scale, parameterized by (Γ, Λ)
+
+Causal estimates from observational or pseudo-observational data are
+vulnerable to unmeasured confounding. The two standard formal tools
+for bounding this exposure are the **E-value** of VanderWeele & Ding
+(2017, "Sensitivity Analysis in Observational Research: Introducing
+the E-Value", *Annals of Internal Medicine*) and the additive
+**bridge-score envelope** of Ohnishi & Li (2026, arXiv:2605.18724,
+Theorem 2). The E-value quantifies the smallest confounding strength
+`Γ` on the risk-ratio scale that would explain away an observed effect;
+the bridge-score envelope translates the same idea to an additive
+metric scale and parameterizes the envelope by a pair `(Γ, Λ)` of
+sensitivity dials.
+
+Bits-per-byte is on the additive scale by construction, so F2 (§3.3)
+uses the bridge-score envelope directly without any log or risk-ratio
+translation. We classify every PSE estimate against the
+VanderWeele-Ding tipping-point thresholds (`Γ_tip < 1.25` is fragile;
+`Γ_tip ≥ 2.0` is robust), which keeps the sensitivity analysis on the
+same scale as the headline numbers and avoids a category mismatch
+between the estimate and its sensitivity envelope.
 
 ### 2.3 ML ablation practice
-- AblationBench (arXiv:2507.08038): paired Welch + Cohen's d wide-form
-- AblateMe / ablator (PMLR 2023): multi-seed ranking but no mediation
-- ROME / activation patching: causal but single forward pass, not training
+
+The ML-side closest to F2 is **AblationBench** (Abramovich et al.,
+2025, arXiv:2507.08038), which benchmarks ablation methodology across
+recent NLP papers. Their wide-form CSV schema combined with paired
+Welch tests and Cohen's-`d` standardized effect sizes is the median
+practice; F2 generalizes the schema to long-form with W3C-PROV
+preambles and replaces paired Welch with stratified CDE plus
+bridge-score sensitivity. **ABLATOR** (Fostiropoulos & Itti, 2023) is
+the closest infrastructure work — a tool for running multi-seed
+ablation studies at scale with result aggregation — but stops at
+multi-seed ranking without mediation decomposition or stratified CDE.
+
+A parallel line of causal-mediation work in ML interpretability is
+typified by **ROME** (Meng et al., 2022) and **activation patching**
+(Wang et al., 2023): both apply causal-mediation language at a single
+forward pass to localize knowledge or attention behaviors inside an
+already-trained model. F2 targets the orthogonal question of training-
+recipe mediation: which training-time interventions confound which
+others. The forward-pass and training-recipe questions share a
+methodological vocabulary but do not share a problem.
 
 ---
 
@@ -724,10 +841,69 @@ applied within its valid scope.
 
 ## 8. Software
 
-- Rust 1.82, MIT-licensed, ~726 tests
-- 11 binaries documented in `docs/F2_BINARIES.md`
-- W3C-PROV preambles for reproducibility
-- Anchored at commit hash 19d032e (this PR)
+The F2 framework is implemented as a Rust 1.82 crate, MIT-licensed and
+single-process. The codebase is anchored at commit `5367bde` for every
+empirical result in §5; the test inventory in Appendix D is
+auto-generated from that anchor commit.
+
+### 8.1 Binaries
+
+Ten F2 binaries form a Unix-style pipeline over the long-form CSV
+contract documented in §3.5.2. Each binary reads zero or more CSVs,
+emits one CSV, and validates W3C-PROV preambles on entry. The full
+index, including per-binary CLI synopses, lives in `docs/F2_BINARIES.md`;
+the binaries cited in §5 are:
+
+| Binary | Role |
+|--------|------|
+| `f2_ablation_sweep` | Run a single ablation sweep at one stratum, write long-form CSV with ModeKind × Stratum tagged rows. |
+| `f2_dual_mediation` | Apply the Zhao-Luo 4-PSE decomposition (§3.2) to a sweep CSV, emit per-PSE estimates + `t`-CIs. |
+| `f2_mediation_sensitivity` | Compute the bridge-score envelope (§3.3) with `--lambda-grid` / `--tipping-point` / `--wide-form` modes. |
+| `f2_stratum_compare` | Take the canonical, wd0, and warmup0 CSVs and emit the cross-stratum comparison with `stable_across_strata` flags (§3.4). |
+| `f2_to_jsonl` | Stream-convert a CSV to JSON Lines for matplotlib + downstream tooling. |
+| `f2_provenance_check` | Validate that a CSV's W3C-PROV preamble matches the current `TRAINER_INTERNALS_SCHEMA`; exit codes drive CI. |
+
+The remaining four binaries (`f2_ablation_aggregate`, `f2_iloco_dot`,
+`f2_iloco_score`, `f2_mediation`, plus the orthogonal
+`f2_ablation_aggregate`) cover aggregation, ILOCO scoring, and the
+single-mediator legacy path; they are documented for completeness in
+the binaries index.
+
+### 8.2 Tests
+
+The auto-generated Appendix D inventory (regenerable via
+`papers/scripts/generate_appendix_d.sh`) lists 726 tests grouped by
+source: 632 in `src/lib.rs`, the remainder distributed across
+per-binary unit tests and six integration suites under `tests/`. Two
+regression locks deserve a direct mention because they back load-
+bearing claims in §3:
+
+- `dual_mediation_no_interaction_residual_lock` — locks the
+  no-interaction reduction to Miles-Shpitser (cited in §2.1) against
+  the four-path estimator; if the residual term ever exceeds a fixed
+  tolerance, the test fails and forces a retraction of the
+  delta-method SE formula.
+- `trainer_internals_schema_is_load_bearing` — locks the
+  `TRAINER_INTERNALS_SCHEMA` constant into the config-fingerprint
+  hash, so any internal schema bump produces a deterministic
+  fingerprint change. This is the mechanism that makes the
+  reproducibility checklist in §3.5.4 surface schema drift as a hard
+  `f2_provenance_check` failure rather than as a silent BPB shift.
+
+### 8.3 Provenance and empirical data
+
+Every CSV emitted by F2 binaries opens with a W3C-PROV preamble:
+`# prov:generatedBy`, `# prov:wasDerivedFrom`, `# prov:atTime`,
+`# git_sha`, `# config_fingerprint`. The preamble is validated on
+entry to every downstream binary; the validation rules and exit codes
+are specified in §3.5.1 and locked by the
+`f2_provenance_check_exit_codes` integration suite.
+
+The six CSVs that back the headline finding in §5 are anchored at
+`data/loop49/` with MD5 checksums and per-file reproduction commands
+in the directory's `README.md`. Reproducing §5 byte-for-byte requires
+nothing beyond a `git checkout` of the anchor commit and the commands
+listed in §3.5.4.
 
 ---
 
