@@ -452,7 +452,7 @@ emit a verdict.
 **3.5.4 Reproducibility checklist (for reviewers).** A reviewer wishing to
 reproduce any number in §5 should perform the following:
 
-1. `git checkout ae48fd5` (or whatever anchor commit the paper cites).
+1. `git checkout 5367bde` (or whatever descendant of `f2-methodology` the paper cites).
 2. `cargo test --lib` exits 0 with 632 passing tests.
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
@@ -971,6 +971,20 @@ The **bridge-score additive envelope** in §3.3 is from Ohnishi & Li
 Eq. 6) directly; BPB is on the additive scale by construction, so no
 log/risk-ratio translation is required.
 
+The most recent sensitivity-analysis paper in our adjacent literature
+is **Guo et al. (2026)**, "Sensitivity Analysis for Unmeasured
+Confounding in Causal Mediation Analysis With Survival Outcome",
+*Statistics in Medicine* 45 (2026), doi:10.1002/sim.70548. They
+extend mediation sensitivity analysis to survival outcomes without the
+rare-outcome assumption that has constrained prior work, and address
+both mediator-outcome and exposure-confounder confounding by simulating
+the unmeasured confounder from its conditional distribution. Their
+exposure-confounding axis is conceptually adjacent to our §3.3
+bridge-score `Γ` parameter; their setting (epidemiology / survival)
+does not overlap with ML ablation, but a future stat-journal-grade
+extension of F2 would borrow their conditional-distribution simulation
+in place of the additive bridge-score.
+
 We are not aware of prior work that combines E-value-style robustness
 classification with mediator stratification, four-path decomposition,
 and reproducibility-grade infrastructure in a single framework. The
@@ -1039,35 +1053,47 @@ should consider it a default first step before reporting seed means.
 
 ### 10.2 Venue calibration
 
-We map the workshop / track options against the contribution profile of
-the paper:
+We map the track / workshop options against the contribution profile of
+the paper. Calibration was updated in Loop 57 against the NeurIPS 2026
+call schedule.
 
-- **NeurIPS 2026 ML Reproducibility Workshop** *(traditional deadline:
-  late September)*. Best primary fit. Our W3C-PROV preamble discipline,
-  formula-locking unit tests, commit-anchored claim table, and
-  reviewer-grade reproducibility checklist (§3.5.4) are exactly the
-  artifacts this workshop catalogues. The RmsNorm sign-flip is a
-  reproducible empirical demonstration; the paper's value is the
-  framework + the demonstration jointly.
+- **NeurIPS 2026 MLRC (Reproducibility) — official track.** Best
+  primary fit. Importantly for 2026, MLRC has been promoted from a
+  workshop to an official NeurIPS track, with submission via TMLR.
+  Soft deadline for "intent to submit" is **2026-06-04 AOE**; the hard
+  TMLR decision deadline is **2026-09-30 AOE**, with author
+  notifications **2026-10-07**. Our W3C-PROV preamble discipline (§3.5.1),
+  formula-locking regression tests (§8.2), commit-anchored claim table,
+  and §3.5.4 reviewer reproducibility checklist are exactly the
+  artifacts this track catalogues. The publication path is: submit to
+  TMLR within the eligibility window (≥ 2025-06-20 AOE), self-nominate
+  to MLRC on acceptance, present in person at NeurIPS 2026 (Sydney,
+  December 6–13). Path: TMLR → MLRC.
 
-- **NeurIPS 2026 Causal-ML Workshop** *(traditional deadline: October)*.
-  Strong secondary fit. The audience cares more about identification
-  theory than reproducibility infrastructure; we would re-balance the
-  paper to lead with §3.2 (Zhao-Luo) and §3.3 (bridge-score) and
-  de-emphasize §3.5 (provenance).
+- **NeurIPS 2026 Causal-ML Workshop.** Strong secondary fit, retained
+  as a fall-back. The audience cares more about identification theory
+  than reproducibility infrastructure; a re-balanced submission would
+  lead with §3.2 (Zhao-Luo) and §3.3 (bridge-score) and de-emphasize
+  §3.5 (provenance). The workshop application deadline for organizers
+  is 2026-06-06 AOE; the call-for-papers deadline historically lands in
+  late September / early October per the NeurIPS workshop cycle.
 
-- **ICML 2027 main track**. The current paper is workshop-grade because
-  it lacks champion-scale empirical validation. Submission to a main
-  track requires either (a) the Phase 1 sweep of `docs/F2_PRE_REG.md`
-  completing successfully, or (b) re-applying the framework to a second,
-  publicly-debated ablation finding from another paper. Either path is
-  outside Loop 53's scope.
+- **ICML 2027 main track.** The current paper is track-grade for MLRC
+  because it lacks champion-scale empirical validation. Submission to
+  a main track requires either (a) the Phase 1 sweep of
+  `docs/F2_PRE_REG.md` completing successfully, or (b) re-applying the
+  framework to a second, publicly-debated ablation finding from another
+  paper. Either path is outside the Loop 53 scope and is the natural
+  next experimental milestone if MLRC acceptance lands.
 
-- **Stat journals (Biometrics, Stat. Med., JCI)**. The methodological
+- **Stat journals (Biometrics, Stat. Med., JCI).** The methodological
   contribution is real, but ML methodology in stat journals is a hard
-  sell to ML readers; we would need to either run a stat-journal-grade
-  simulation study or pair with a domain co-author. Unlikely as a
-  primary venue for the 2026 submission cycle.
+  sell to ML readers; a stat-journal submission would need either a
+  stat-grade simulation study or a domain co-author. Statistics in
+  Medicine 45 (2026) includes Guo et al.'s sensitivity-analysis-with-
+  unmeasured-confounding paper (doi:10.1002/sim.70548) in our adjacent
+  area, which sets the methodological bar for a credible stat-journal
+  submission. Unlikely as a primary venue for the 2026 cycle.
 
 ### 10.3 Acknowledgments + funding disclosure
 
@@ -1097,11 +1123,121 @@ policy.
 ## Appendices
 
 ### A. Reproducible commands
-[Mirror of `docs/F2_RMS_CDE.md` § Reproduce; expand with per-figure command
-sequences]
+
+Every numerical claim in §5 and every figure in §5 regenerates from the
+anchor commit `5367bde` (or any descendant on the `f2-methodology`
+branch) with the commands below. The data files referenced are
+committed to `data/loop49/` and verified with MD5 checksums in
+`data/loop49/README.md`.
+
+**A.1 Setup (one-time per reviewer machine):**
+```bash
+git clone <repo-url> && cd trios-trainer-igla
+git checkout 5367bde     # or descendant on f2-methodology
+cargo test --lib         # exits 0 with 632 passing tests (§8.2)
+```
+
+**A.2 Regenerate the raw sweep CSVs (§5.1, §5.2):**
+```bash
+# Canonical 5-seed × 7-fix sweep (Loop 36)
+cargo run --release --bin f2_ablation_sweep -- \
+  --steps 200 --csv data/loop49/loop36_dual.csv
+
+# warmup-stratified Pearl CDE (warmup_steps_unquantized = 0)
+cargo run --release --bin f2_ablation_sweep -- \
+  --mode warmup_stratified --steps 200 \
+  --csv data/loop49/loop47_warmup_stratified.csv
+
+# WD-stratified Pearl CDE (weight_decay = 0.0)
+cargo run --release --bin f2_ablation_sweep -- \
+  --mode wd_stratified --steps 200 \
+  --csv data/loop49/loop49_wd_stratified.csv
+```
+
+**A.3 Apply the four-PSE decomposition (§5.2):**
+```bash
+cargo run --release --bin f2_dual_mediation -- \
+  --m1 wd --m2 warmup data/loop49/loop47_warmup_stratified.csv \
+  --out data/loop49/loop49_warmup0_dual.csv
+
+cargo run --release --bin f2_dual_mediation -- \
+  --m1 wd --m2 warmup data/loop49/loop49_wd_stratified.csv \
+  --out data/loop49/loop49_wd0_dual.csv
+```
+
+**A.4 Cross-stratum comparison (§5.3, Figure 1 source):**
+```bash
+cargo run --release --bin f2_stratum_compare -- \
+  --canonical data/loop49/loop36_dual.csv \
+  --wd0       data/loop49/loop49_wd0_dual.csv \
+  --warmup0   data/loop49/loop49_warmup0_dual.csv \
+  --out       data/loop49/loop49_3stratum.csv
+```
+
+**A.5 Render Figure 1 (RmsNorm sign-flip bar chart):**
+```bash
+cargo run --release --bin f2_to_jsonl -- \
+  data/loop49/loop49_3stratum.csv --out /tmp/3strat.jsonl
+python3 papers/figures/fig1_rms_nde_signflip.py \
+  --input /tmp/3strat.jsonl --output papers/figures/fig1_rms_nde_signflip.png
+```
+
+Figures 2-4 follow the same `f2_to_jsonl → python fig*.py` pattern;
+their command sequences are inlined as docstrings at the top of each
+`papers/figures/fig*.py` script.
+
+**A.6 Determinism check:** Re-running A.2 against the same anchor
+commit should produce CSVs byte-identical to the checksums in
+`data/loop49/README.md`. A mismatch indicates either an uncommitted
+local change or a `TRAINER_INTERNALS_SCHEMA` drift (§3.5.2). Verify
+with `cargo run --release --bin f2_provenance_check -- <csv>`.
 
 ### B. Provenance preamble format
-[Mirror of `docs/F2_BINARIES.md` § Cross-binary contract]
+
+Every CSV emitted by an F2 binary opens with a W3C-PROV / RO-Crate
+preamble of the form documented in §3.5.1. The full record is six
+lines of `# prov:*` keys plus optional auxiliary fields. The validator
+in `src/bin/f2_provenance_check.rs` enforces the contract.
+
+**B.1 Required keys:**
+
+| Key | Value | Validation |
+|-----|-------|-----------|
+| `# prov:generatedAt` | Unix seconds UTC, integer | Must parse as `u64`. |
+| `# prov:wasGeneratedBy` | Full command line of the producing binary | Free text; surfaced in the audit trail. |
+| `# prov:agent_git_sha` | 7-char or 40-char git SHA at producer time | `WARN` if SHA differs from current `HEAD`; `PASS` otherwise. |
+| `# prov:trainer_internals_schema` | Versioned schema string, e.g. `trainer_internals_v1_2026_06_01` | Must match the producer's `TRAINER_INTERNALS_SCHEMA`. `FAIL` (exit 2) on mismatch. |
+| `# prov:cargo_pkg_version` | `cargo` package version, e.g. `0.1.0` | Free text. |
+| `# prov:host` | Producer hostname | Free text. |
+
+**B.2 Optional keys (stratified outputs):**
+
+When the producing binary is stratum-aware (`f2_dual_mediation`,
+`f2_mediation_sensitivity`, `f2_stratum_compare`), the preamble is
+followed by a single banner line of the form:
+
+```
+# INPUT STRATUM = canonical          (free baseline)
+# INPUT STRATUM = wd0                (Pearl CDE on weight_decay)
+# INPUT STRATUM = warmup0            (Pearl CDE on warmup_steps_unquantized)
+# INPUT STRATUM = mixed              (concatenated; causally undefined)
+```
+
+A `mixed` banner causes downstream binaries to refuse to emit a
+verdict; see §3.5.3.
+
+**B.3 Validation exit codes (`f2_provenance_check`):**
+
+| Exit code | Meaning |
+|-----------|---------|
+| `0` | All required keys present, schema string matches current `TRAINER_INTERNALS_SCHEMA`, git SHA matches `HEAD`. Safe to consume downstream. |
+| `1` | `WARN`: keys present, schema matches, but git SHA differs from `HEAD`. Older commit may still be valid; reviewer should confirm intentional. |
+| `2` | `FAIL`: schema mismatch OR required key missing. CSV is not safe for downstream consumption; the BPB numbers cannot be vouched for. |
+| `3` | `FAIL`: no preamble present at all. CSV predates the provenance discipline; quarantine. |
+
+The exit codes are locked by the
+`f2_provenance_check_exit_codes` integration suite (six tests covering
+the four codes + boundary cases).
 
 ### C. Code-to-paper crosswalk
 | Section | File | Function/binary |
@@ -1113,29 +1249,22 @@ sequences]
 | §5.2 | `docs/F2_RMS_CDE.md` | Empirical reproduction |
 
 ### D. Test inventory
-[List the 726 tests by suite + 6-line summary of each test's purpose]
 
----
+The full test inventory (726 tests across `src/lib.rs`, 10 F2 binaries,
+and 6 integration suites) is auto-generated by
+`papers/scripts/generate_appendix_d.sh` and committed at
+`papers/appendix_d_test_inventory.md`. The generator runs
+`cargo test --list` against each target and emits a Markdown table per
+source. To regenerate at any anchor commit:
 
-## Author notes for self (delete before submission)
+```bash
+papers/scripts/generate_appendix_d.sh
+# writes papers/appendix_d_test_inventory.md
+```
 
-- Headline finding: RmsNorm NDE sign flip across strata
-- Sub-finding: NIE_M1 via rms stable across strata (more robust)
-- 1-figure pitch: bar chart of rms NDE across 3 strata with CIs
-- 1-sentence pitch: "Seed-mean ablation in ML systematically misattributes
-  effects when one intervention mediates another; we propose stratified
-  CDE analysis and demonstrate a sign flip in the standard RmsNorm
-  ablation."
-- Estimated paper size: 8 pages workshop, 4 figures, ~15 references
-- Anchor commit: 19d032e (f2-methodology branch)
-- Empirical replication: also include 47/49/50 sweep CSVs in supplementary
-
-## Next steps to graduate this outline
-
-1. Decide on workshop target (NeurIPS Repro vs Causal-ML) — affects framing
-2. Run champion-scale validation per `docs/F2_PRE_REG.md` (optional but
-   strengthens claim)
-3. Generate the 4 figures (use Loop 49/50 data; matplotlib via f2_to_jsonl)
-4. Polish §3 (currently terse) and write §6.2 (sensitivity to statistic
-   choice) with more numerical detail
-5. Adversarial-review the paper against the checklist in `docs/F2_PRE_REG.md` §10
+Two load-bearing regression locks are highlighted in §8.2:
+`dual_mediation_no_interaction_residual_lock` and
+`trainer_internals_schema_is_load_bearing`. Both are listed in
+Appendix D under their respective binary sections and back the §3.2
+identification reduction and §3.5.2 schema-drift discipline,
+respectively.
