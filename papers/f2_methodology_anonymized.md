@@ -498,9 +498,14 @@ from multiple strata is causally undefined, and the binary refuses to
 emit a verdict.
 
 **3.5.4 Reproducibility checklist (for reviewers).** A reviewer wishing to
-reproduce any number in §5 should perform the following:
+reproduce any number in §5 or §6.4 should perform the following.
+We pin the anchor commit at `<anchor commit>` because it is the earliest
+commit on `<branch>` at which every empirical CSV referenced
+in the paper is committed (six files under `data/loop49/` plus 16
+under `data/loop49_swap/`); any descendant on the branch is also a
+valid anchor.
 
-1. `git checkout <anchor commit>` (or whatever descendant of `<branch>` the paper cites).
+1. `git checkout <anchor commit>` (or any descendant of `<branch>`).
 2. `cargo test --lib` exits 0 with 710 passing tests .
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA

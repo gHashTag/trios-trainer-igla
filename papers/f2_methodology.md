@@ -496,9 +496,14 @@ from multiple strata is causally undefined, and the binary refuses to
 emit a verdict.
 
 **3.5.4 Reproducibility checklist (for reviewers).** A reviewer wishing to
-reproduce any number in §5 should perform the following:
+reproduce any number in §5 or §6.4 should perform the following.
+We pin the anchor commit at `583b417` because it is the earliest
+commit on `f2-methodology` at which every empirical CSV referenced
+in the paper is committed (six files under `data/loop49/` plus 16
+under `data/loop49_swap/`); any descendant on the branch is also a
+valid anchor.
 
-1. `git checkout 5367bde` (or whatever descendant of `f2-methodology` the paper cites).
+1. `git checkout 583b417` (or any descendant of `f2-methodology`).
 2. `cargo test --lib` exits 0 with 710 passing tests (Loop 69 verified).
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
@@ -1064,7 +1069,7 @@ applied within its valid scope.
 ## 8. Software
 
 The F2 framework is implemented as a Rust 1.82 crate, MIT-licensed and
-single-process. The codebase is anchored at commit `5367bde` for every
+single-process. The codebase is anchored at commit `583b417` for every
 empirical result in §5; the test inventory in Appendix D is
 auto-generated from that anchor commit.
 
@@ -1361,7 +1366,7 @@ policy.
 ### A. Reproducible commands
 
 Every numerical claim in §5 and every figure in §5 regenerates from the
-anchor commit `5367bde` (or any descendant on the `f2-methodology`
+anchor commit `583b417` (or any descendant on the `f2-methodology`
 branch) with the commands below. The data files referenced are
 committed to `data/loop49/` and verified with MD5 checksums in
 `data/loop49/README.md`.
@@ -1369,7 +1374,7 @@ committed to `data/loop49/` and verified with MD5 checksums in
 **A.1 Setup (one-time per reviewer machine):**
 ```bash
 git clone <repo-url> && cd trios-trainer-igla
-git checkout 5367bde     # or descendant on f2-methodology
+git checkout 583b417     # or descendant on f2-methodology
 cargo test --lib         # exits 0 with 710 passing tests (§8.2)
 ```
 

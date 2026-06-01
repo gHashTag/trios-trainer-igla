@@ -114,7 +114,7 @@ pre-registers the run that would close the gap.
 ### Exact commands
 
 ```bash
-# Anchor: descendant of 5367bde on f2-methodology branch.
+# Anchor: descendant of 583b417 on f2-methodology branch.
 # Outputs land in data/loop49_swap/ (NEW subdir, force-add against
 # the parent .gitignore /data/ rule).
 
@@ -304,9 +304,10 @@ We will report, regardless of outcome:
 - All raw CSVs + provenance preambles are committed in a `data/loop_52/`
   subdirectory.
 - The PR opening this study (PR #185 on `f2-methodology` branch,
-  anchored at the latest descendant of `5367bde`) links to this
-  pre-registration as the protocol. The current branch HEAD at the
-  time of this Loop 58 update is `a092d5e`.
+  anchored at the latest descendant of `583b417`) links to this
+  pre-registration as the protocol. `583b417` is the commit at
+  which the full Phase 0 + Loop 68 robustness data is committed
+  under `data/loop49_swap/`; any descendant is also a valid anchor.
 
 ## 9. What this document is NOT
 

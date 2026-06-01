@@ -9,7 +9,7 @@ field below into the matching form field. The Abstract has been
 revised in Loop 63 to reflect the §5 reframing as a unit-test
 demonstration (per Loop 61 reviewer screen Top-1 closest-fix).
 
-Final paper anchor commit: descendant of `5367bde` on
+Final paper anchor commit: descendant of `583b417` on
 `f2-methodology` branch (currently `3077b0d` per Loop 62 push).
 
 ---
@@ -57,7 +57,7 @@ backing all findings are committed in-repo with MD5 checksums.
 
 **Reproducibility claim**: "Mechanical reproducibility for §5":
 every numerical claim and every figure regenerates from the anchor
-commit `5367bde` (or any descendant of `f2-methodology` branch) plus
+commit `583b417` (or any descendant of `f2-methodology` branch) plus
 the committed `data/loop49/` empirical CSVs. The reviewer-grade
 reproducibility checklist is documented in §3.5.4 of the paper.
 Champion-scale validation is explicitly pre-registered (`docs/F2_PRE_REG.md`)
@@ -76,7 +76,7 @@ Conference track (per MLRC 2026 dual-submission policy).
 ## Reviewer-facing reproducibility statement (excerpted from §3.5.4)
 
 > A reviewer wishing to reproduce any number in §5 should:
-> 1. `git checkout 5367bde` (or any descendant on `f2-methodology`).
+> 1. `git checkout 583b417` (or any descendant on `f2-methodology`).
 > 2. `cargo test --lib` exits 0 with 632 passing tests.
 > 3. Run any figure script in `papers/figures/`; no flags needed.
 > 4. Verify the input file's checksum against `data/loop49/README.md`.
