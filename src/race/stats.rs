@@ -190,9 +190,7 @@ pub fn student_t_critical_two_sided(alpha: f64, df: f64) -> f64 {
     // Loop 38 fix 5: tighten the validation — NaN/inf df should not enter
     // bisection. Previously caught only df ≤ 0 which let NaN slip through
     // (NaN comparisons return false, so `NaN ≤ 0` is false).
-    if !df.is_finite() || df <= 0.0
-        || !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0
-    {
+    if !df.is_finite() || df <= 0.0 || !alpha.is_finite() || alpha <= 0.0 || alpha >= 1.0 {
         return f64::NAN;
     }
     let target = alpha / 2.0; // upper-tail probability we want
@@ -293,7 +291,9 @@ mod tests {
             assert!(
                 (t - want).abs() < 0.002,
                 "df={}, want {}, got {}",
-                df, want, t
+                df,
+                want,
+                t
             );
         }
     }
@@ -311,7 +311,11 @@ mod tests {
         // At alpha=1e-6, df=4, the published value is ~31.6.
         let t = student_t_critical_two_sided(1e-6, 4.0);
         assert!(t.is_finite(), "expected finite t, got {}", t);
-        assert!(t > 20.0 && t < 50.0, "t={} for alpha=1e-6, df=4 outside plausible range", t);
+        assert!(
+            t > 20.0 && t < 50.0,
+            "t={} for alpha=1e-6, df=4 outside plausible range",
+            t
+        );
         // Inverse check: P(|T| > t) should be ≈ alpha.
         let p = 2.0 * student_t_cdf_upper(t, 4.0);
         assert!((p - 1e-6).abs() < 1e-7, "round-trip p={} for alpha=1e-6", p);

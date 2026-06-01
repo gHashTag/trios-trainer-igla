@@ -4,9 +4,7 @@
 //! behave correctly under controlled fault injection.
 
 use trios_trainer::race::format_ladder::LadderKind;
-use trios_trainer::race::multi_seed::{
-    power_matrix, run_multi_seed, MultiSeedConfig,
-};
+use trios_trainer::race::multi_seed::{power_matrix, run_multi_seed, MultiSeedConfig};
 
 fn battery_config(spike_steps: Vec<usize>) -> MultiSeedConfig {
     MultiSeedConfig {
@@ -38,29 +36,53 @@ fn battery_config(spike_steps: Vec<usize>) -> MultiSeedConfig {
 #[test]
 fn scenario_1_no_injection_no_spikes() {
     let report = run_multi_seed(&battery_config(Vec::new()));
-    let total_spikes: u64 = report.runs.iter().map(|r| r.stability.grad_norm_spike_count).sum();
+    let total_spikes: u64 = report
+        .runs
+        .iter()
+        .map(|r| r.stability.grad_norm_spike_count)
+        .sum();
     let total_nan: u64 = report.runs.iter().map(|r| r.stability.nan_step_count).sum();
     // Baseline: at warmup=30, ZClip should be stable
     assert_eq!(total_nan, 0);
     // Allow up to 2 spurious spikes from EMA warmup noise
-    assert!(total_spikes <= 2, "unexpected spike count in clean run: {}", total_spikes);
+    assert!(
+        total_spikes <= 2,
+        "unexpected spike count in clean run: {}",
+        total_spikes
+    );
 }
 
 #[test]
 fn scenario_2_single_spike_detected() {
     // One late-training spike per seed
     let report = run_multi_seed(&battery_config(vec![100]));
-    let total_spikes: u64 = report.runs.iter().map(|r| r.stability.grad_norm_spike_count).sum();
-    assert!(total_spikes >= 5, "expected ≥5 spikes (1 per seed), got {}", total_spikes);
+    let total_spikes: u64 = report
+        .runs
+        .iter()
+        .map(|r| r.stability.grad_norm_spike_count)
+        .sum();
+    assert!(
+        total_spikes >= 5,
+        "expected ≥5 spikes (1 per seed), got {}",
+        total_spikes
+    );
 }
 
 #[test]
 fn scenario_3_repeated_spikes_inflate_count() {
     // Three spikes per seed
     let report = run_multi_seed(&battery_config(vec![60, 80, 100]));
-    let total_spikes: u64 = report.runs.iter().map(|r| r.stability.grad_norm_spike_count).sum();
+    let total_spikes: u64 = report
+        .runs
+        .iter()
+        .map(|r| r.stability.grad_norm_spike_count)
+        .sum();
     // 5 seeds × 3 spikes = 15 minimum
-    assert!(total_spikes >= 10, "expected ≥10 spikes, got {}", total_spikes);
+    assert!(
+        total_spikes >= 10,
+        "expected ≥10 spikes, got {}",
+        total_spikes
+    );
 }
 
 #[test]

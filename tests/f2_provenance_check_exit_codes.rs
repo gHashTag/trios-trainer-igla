@@ -20,12 +20,25 @@ fn write_csv(path: &std::path::Path, schema: &str, sha: &str, ts: u64) {
     let mut f = File::create(path).unwrap();
     writeln!(f, "# f2_ablation_sweep provenance (W3C PROV / RO-Crate)").unwrap();
     writeln!(f, "# prov:generatedAt = {} (unix seconds UTC)", ts).unwrap();
-    writeln!(f, "# prov:wasGeneratedBy = f2_ablation_sweep --mode loco --steps 200").unwrap();
+    writeln!(
+        f,
+        "# prov:wasGeneratedBy = f2_ablation_sweep --mode loco --steps 200"
+    )
+    .unwrap();
     writeln!(f, "# prov:agent_git_sha = {}", sha).unwrap();
     writeln!(f, "# prov:host = test_host").unwrap();
     writeln!(f, "# prov:trainer_internals_schema = {}", schema).unwrap();
-    writeln!(f, "# prov:cargo_pkg_version = {}", env!("CARGO_PKG_VERSION")).unwrap();
-    writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+    writeln!(
+        f,
+        "# prov:cargo_pkg_version = {}",
+        env!("CARGO_PKG_VERSION")
+    )
+    .unwrap();
+    writeln!(
+        f,
+        "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+    )
+    .unwrap();
     writeln!(f, "loco,wd,0,,42,0.5,0xdead,0.1").unwrap();
 }
 
@@ -71,7 +84,11 @@ fn exit_code_0_on_current_schema() {
 fn exit_code_3_on_missing_preamble() {
     let tmp = std::env::temp_dir().join("f2_prov_exit_malformed_int.csv");
     let mut f = File::create(&tmp).unwrap();
-    writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+    writeln!(
+        f,
+        "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+    )
+    .unwrap();
     writeln!(f, "loco,wd,0,,42,0.5,0xdead,0.1").unwrap();
     drop(f);
     let status = Command::new(binary_path())

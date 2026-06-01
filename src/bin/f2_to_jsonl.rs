@@ -68,7 +68,11 @@ fn infer_column_kinds(header: &[&str], rows: &[Vec<String>]) -> Vec<CellKind> {
                     })
                     .unwrap_or(true)
             });
-            if all_numeric { CellKind::Number } else { CellKind::String }
+            if all_numeric {
+                CellKind::Number
+            } else {
+                CellKind::String
+            }
         })
         .collect()
 }
@@ -346,7 +350,10 @@ mod tests {
         // Spot-check last row is in output.
         let s = String::from_utf8(buf).unwrap();
         let last_marker = format!("\"fix{}\"", total - 1);
-        assert!(s.contains(&last_marker), "last row missing from streamed output");
+        assert!(
+            s.contains(&last_marker),
+            "last row missing from streamed output"
+        );
     }
 
     #[test]
@@ -358,7 +365,11 @@ mod tests {
         writeln!(f, "# f2_ablation_sweep provenance (W3C PROV)").unwrap();
         writeln!(f, "# prov:generatedAt = 1700000000").unwrap();
         writeln!(f, "# prov:agent_git_sha = abc123").unwrap();
-        writeln!(f, "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01").unwrap();
+        writeln!(
+            f,
+            "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01"
+        )
+        .unwrap();
         writeln!(f, "fix_x,value").unwrap();
         writeln!(f, "rms,5.0").unwrap();
         writeln!(f, "wd,0.07").unwrap();
@@ -388,8 +399,16 @@ mod tests {
         let s = String::from_utf8(buf).unwrap();
         // NaN → null; empty → null (numeric column inferred).
         let lines: Vec<&str> = s.lines().collect();
-        assert!(lines[0].contains("\"value\":null"), "NaN should map to null: {}", lines[0]);
-        assert!(lines[1].contains("\"value\":null"), "empty should map to null: {}", lines[1]);
+        assert!(
+            lines[0].contains("\"value\":null"),
+            "NaN should map to null: {}",
+            lines[0]
+        );
+        assert!(
+            lines[1].contains("\"value\":null"),
+            "empty should map to null: {}",
+            lines[1]
+        );
     }
 
     #[test]

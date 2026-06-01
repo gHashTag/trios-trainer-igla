@@ -69,10 +69,16 @@ fn parse_dual_mediation_csv(path: &std::path::Path) -> std::io::Result<Vec<PseRo
             ("NDE", "nde", "ci95_nde_lo", "ci95_nde_hi"),
             ("NIE_M1", "nie_m1", "ci95_nie_m1_lo", "ci95_nie_m1_hi"),
             ("NIE_M2", "nie_m2", "ci95_nie_m2_lo", "ci95_nie_m2_hi"),
-            ("NIE_chain", "nie_chain", "ci95_nie_chain_lo", "ci95_nie_chain_hi"),
+            (
+                "NIE_chain",
+                "nie_chain",
+                "ci95_nie_chain_lo",
+                "ci95_nie_chain_hi",
+            ),
         ];
         for (pse_name, est_col, lo_col, hi_col) in specs {
-            let (Some(ec), Some(lc), Some(hc)) = (h.get(*est_col), h.get(*lo_col), h.get(*hi_col)) else {
+            let (Some(ec), Some(lc), Some(hc)) = (h.get(*est_col), h.get(*lo_col), h.get(*hi_col))
+            else {
                 continue;
             };
             let est: f64 = parts[*ec].parse().unwrap_or(f64::NAN);
@@ -175,8 +181,16 @@ fn build_comparison(per_stratum: &[(Stratum, Vec<PseRow>)]) -> Vec<ComparedRow> 
     }
     // Sort by |canonical estimate| desc (most interesting first); ties broken by fix_x.
     out.sort_by(|a, b| {
-        let abs_a = if a.estimates[0].is_finite() { a.estimates[0].abs() } else { 0.0 };
-        let abs_b = if b.estimates[0].is_finite() { b.estimates[0].abs() } else { 0.0 };
+        let abs_a = if a.estimates[0].is_finite() {
+            a.estimates[0].abs()
+        } else {
+            0.0
+        };
+        let abs_b = if b.estimates[0].is_finite() {
+            b.estimates[0].abs()
+        } else {
+            0.0
+        };
         abs_b
             .partial_cmp(&abs_a)
             .unwrap_or(std::cmp::Ordering::Equal)
@@ -187,10 +201,7 @@ fn build_comparison(per_stratum: &[(Stratum, Vec<PseRow>)]) -> Vec<ComparedRow> 
 }
 
 fn emit<W: Write>(w: &mut W, rows: &[ComparedRow]) -> std::io::Result<()> {
-    writeln!(
-        w,
-        "# Cross-stratum PSE comparison (Loop 48 Option C)"
-    )?;
+    writeln!(w, "# Cross-stratum PSE comparison (Loop 48 Option C)")?;
     writeln!(
         w,
         "# `stable_across_strata` = true iff every pair of present 95% CIs overlap;"
@@ -207,10 +218,17 @@ fn emit<W: Write>(w: &mut W, rows: &[ComparedRow]) -> std::io::Result<()> {
         writeln!(
             w,
             "{},{},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{:.6},{}",
-            r.fix_x, r.pse_name,
-            r.estimates[0], r.ci_los[0], r.ci_his[0],
-            r.estimates[1], r.ci_los[1], r.ci_his[1],
-            r.estimates[2], r.ci_los[2], r.ci_his[2],
+            r.fix_x,
+            r.pse_name,
+            r.estimates[0],
+            r.ci_los[0],
+            r.ci_his[0],
+            r.estimates[1],
+            r.ci_los[1],
+            r.ci_his[1],
+            r.estimates[2],
+            r.ci_los[2],
+            r.ci_his[2],
             r.stable
         )?;
     }
@@ -278,7 +296,9 @@ fn main() {
                 std::process::exit(2);
             }
             _ => {
-                eprintln!("# ERROR: positional args not supported; use --canonical/--wd0/--warmup0.");
+                eprintln!(
+                    "# ERROR: positional args not supported; use --canonical/--wd0/--warmup0."
+                );
                 std::process::exit(2);
             }
         }
@@ -302,10 +322,13 @@ fn main() {
     }
     let compared = build_comparison(&per_stratum);
     let n_stable = compared.iter().filter(|r| r.stable).count();
-    let n_total = compared.iter().filter(|r| {
-        // Only count rows where ≥2 strata had data.
-        r.estimates.iter().filter(|e| e.is_finite()).count() >= 2
-    }).count();
+    let n_total = compared
+        .iter()
+        .filter(|r| {
+            // Only count rows where ≥2 strata had data.
+            r.estimates.iter().filter(|e| e.is_finite()).count() >= 2
+        })
+        .count();
     eprintln!(
         "# {} of {} multi-stratum PSEs are STABLE (CIs overlap across strata)",
         n_stable, n_total
@@ -337,14 +360,33 @@ mod tests {
             f,
             "1,{},5,1.0,{:.6},0.1,{:.6},{:.6},2.0,0.1,1.5,2.5,0.5,0.1,0.0,1.0,-0.5,0.1,-1.0,0.0",
             fix_x, nde, nde_lo, nde_hi
-        ).unwrap();
+        )
+        .unwrap();
     }
 
     #[test]
     fn cis_overlap_basic_cases() {
-        let a = PseRow { fix_x: "x".into(), pse_name: "NDE", estimate: 0.0, ci95_lo: -1.0, ci95_hi: 1.0 };
-        let b = PseRow { fix_x: "x".into(), pse_name: "NDE", estimate: 0.5, ci95_lo: 0.0, ci95_hi: 2.0 };
-        let c = PseRow { fix_x: "x".into(), pse_name: "NDE", estimate: 5.0, ci95_lo: 4.0, ci95_hi: 6.0 };
+        let a = PseRow {
+            fix_x: "x".into(),
+            pse_name: "NDE",
+            estimate: 0.0,
+            ci95_lo: -1.0,
+            ci95_hi: 1.0,
+        };
+        let b = PseRow {
+            fix_x: "x".into(),
+            pse_name: "NDE",
+            estimate: 0.5,
+            ci95_lo: 0.0,
+            ci95_hi: 2.0,
+        };
+        let c = PseRow {
+            fix_x: "x".into(),
+            pse_name: "NDE",
+            estimate: 5.0,
+            ci95_lo: 4.0,
+            ci95_hi: 6.0,
+        };
         assert!(cis_overlap(&a, &b));
         assert!(!cis_overlap(&a, &c));
     }
@@ -403,7 +445,10 @@ mod tests {
             ci95_hi: -0.5,
         }];
         let cmp = build_comparison(&[(Stratum::Canonical, canon), (Stratum::Wd0, wd0)]);
-        assert!(!cmp[0].stable, "CIs [-4.5,-3.5] vs [-1.5,-0.5] should not overlap");
+        assert!(
+            !cmp[0].stable,
+            "CIs [-4.5,-3.5] vs [-1.5,-0.5] should not overlap"
+        );
     }
 
     #[test]

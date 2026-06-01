@@ -56,7 +56,11 @@ fn noise(seed: u64, kind: u8) -> f64 {
 
 fn write_synth_csv(path: &Path, stratum: Stratum) {
     let mut f = File::create(path).unwrap();
-    writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+    writeln!(
+        f,
+        "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+    )
+    .unwrap();
     let pairwise = mode_string(ModeKind::Pairwise, stratum);
     let loco = mode_string(ModeKind::Loco, stratum);
     let triplet = mode_string(ModeKind::Triplet, stratum);
@@ -71,43 +75,46 @@ fn write_synth_csv(path: &Path, stratum: Stratum) {
         .unwrap();
         for (i, name) in CANONICAL_FIX_NAMES.iter().enumerate() {
             let v = if *name == "rms" { 5.0 } else { 4.5 } + noise(sid, 1 + i as u8);
-            writeln!(
-                f,
-                "{},{},0,,{},{:.6},0xdead,0.1",
-                loco, name, sid, v
-            )
-            .unwrap();
+            writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", loco, name, sid, v).unwrap();
         }
         let pairs = [
-            "pair_rms_warmup", "pair_rms_gradclip", "pair_rms_clamp", "pair_rms_smooth",
-            "pair_rms_wd", "pair_rms_dropout", "pair_warmup_gradclip", "pair_warmup_clamp",
-            "pair_warmup_smooth", "pair_warmup_wd", "pair_warmup_dropout", "pair_gradclip_clamp",
-            "pair_gradclip_smooth", "pair_gradclip_wd", "pair_gradclip_dropout",
-            "pair_clamp_smooth", "pair_clamp_wd", "pair_clamp_dropout", "pair_smooth_wd",
-            "pair_smooth_dropout", "pair_wd_dropout",
+            "pair_rms_warmup",
+            "pair_rms_gradclip",
+            "pair_rms_clamp",
+            "pair_rms_smooth",
+            "pair_rms_wd",
+            "pair_rms_dropout",
+            "pair_warmup_gradclip",
+            "pair_warmup_clamp",
+            "pair_warmup_smooth",
+            "pair_warmup_wd",
+            "pair_warmup_dropout",
+            "pair_gradclip_clamp",
+            "pair_gradclip_smooth",
+            "pair_gradclip_wd",
+            "pair_gradclip_dropout",
+            "pair_clamp_smooth",
+            "pair_clamp_wd",
+            "pair_clamp_dropout",
+            "pair_smooth_wd",
+            "pair_smooth_dropout",
+            "pair_wd_dropout",
         ];
         for (i, lbl) in pairs.iter().enumerate() {
             let v = if lbl.contains("_wd") { 0.5 } else { 4.0 } + noise(sid, 100 + i as u8);
-            writeln!(
-                f,
-                "{},{},0,,{},{:.6},0xdead,0.1",
-                pairwise, lbl, sid, v
-            )
-            .unwrap();
+            writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", pairwise, lbl, sid, v).unwrap();
         }
         let triplets = [
-            "triplet_rms_warmup_wd", "triplet_rms_warmup_dropout",
-            "triplet_warmup_gradclip_wd", "triplet_warmup_clamp_wd",
-            "triplet_warmup_smooth_wd", "triplet_warmup_wd_dropout",
+            "triplet_rms_warmup_wd",
+            "triplet_rms_warmup_dropout",
+            "triplet_warmup_gradclip_wd",
+            "triplet_warmup_clamp_wd",
+            "triplet_warmup_smooth_wd",
+            "triplet_warmup_wd_dropout",
         ];
         for (i, lbl) in triplets.iter().enumerate() {
             let v = if lbl.contains("_wd") { 0.4 } else { 4.0 } + noise(sid, 200 + i as u8);
-            writeln!(
-                f,
-                "{},{},0,,{},{:.6},0xdead,0.1",
-                triplet, lbl, sid, v
-            )
-            .unwrap();
+            writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", triplet, lbl, sid, v).unwrap();
         }
     }
 }
@@ -115,9 +122,13 @@ fn write_synth_csv(path: &Path, stratum: Stratum) {
 fn run_dual_mediation(input: &Path, out: &Path) {
     let result = Command::new(dual_mediation_path())
         .args([
-            "--m1", "wd", "--m2", "warmup",
+            "--m1",
+            "wd",
+            "--m2",
+            "warmup",
             input.to_str().unwrap(),
-            "--out", out.to_str().unwrap(),
+            "--out",
+            out.to_str().unwrap(),
         ])
         .output()
         .expect("spawn f2_dual_mediation");
@@ -151,10 +162,14 @@ fn three_stratum_pipeline_produces_stability_flags() {
     let three_stratum = tmp.join("three_stratum.csv");
     let compare = Command::new(stratum_compare_path())
         .args([
-            "--canonical", canonical_dual.to_str().unwrap(),
-            "--wd0", wd0_dual.to_str().unwrap(),
-            "--warmup0", warmup0_dual.to_str().unwrap(),
-            "--out", three_stratum.to_str().unwrap(),
+            "--canonical",
+            canonical_dual.to_str().unwrap(),
+            "--wd0",
+            wd0_dual.to_str().unwrap(),
+            "--warmup0",
+            warmup0_dual.to_str().unwrap(),
+            "--out",
+            three_stratum.to_str().unwrap(),
         ])
         .output()
         .expect("spawn f2_stratum_compare");
@@ -164,8 +179,7 @@ fn three_stratum_pipeline_produces_stability_flags() {
         String::from_utf8_lossy(&compare.stderr)
     );
 
-    let body = std::fs::read_to_string(&three_stratum)
-        .expect("read three_stratum.csv");
+    let body = std::fs::read_to_string(&three_stratum).expect("read three_stratum.csv");
     let data_rows: Vec<&str> = body
         .lines()
         .filter(|l| !l.is_empty() && !l.starts_with('#') && !l.starts_with("fix_x,"))
@@ -203,7 +217,9 @@ fn three_stratum_pipeline_produces_stability_flags() {
 
     assert!(
         body.starts_with("# f2_stratum_compare")
-            || body.lines().any(|l| l.starts_with("# `stable_across_strata`")),
+            || body
+                .lines()
+                .any(|l| l.starts_with("# `stable_across_strata`")),
         "expected stratum-compare header comment; body starts with: {}",
         body.lines().take(3).collect::<Vec<_>>().join(" | ")
     );

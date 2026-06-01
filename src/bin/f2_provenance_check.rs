@@ -108,7 +108,11 @@ fn detect_strata_in_data(path: &str) -> Option<Vec<String>> {
         .iter()
         .filter_map(|s| {
             let p = s.prefix();
-            if p.is_empty() { None } else { Some(p) }
+            if p.is_empty() {
+                None
+            } else {
+                Some(p)
+            }
         })
         .collect();
     for line in r.lines().flatten() {
@@ -161,7 +165,11 @@ fn check(prov: &Provenance) -> Vec<(Severity, String, String)> {
     let head_sha = current_git_sha();
     match (csv_sha, head_sha.as_deref()) {
         (Some(c), Some(h)) if c == h => {
-            out.push((Severity::Pass, "agent_git_sha".into(), format!("matches HEAD: {}", c)));
+            out.push((
+                Severity::Pass,
+                "agent_git_sha".into(),
+                format!("matches HEAD: {}", c),
+            ));
         }
         (Some(c), Some(h)) => {
             out.push((
@@ -192,11 +200,7 @@ fn check(prov: &Provenance) -> Vec<(Severity, String, String)> {
     if let Some(ts_s) = ts_field {
         let ts_token = ts_s.split_whitespace().next().unwrap_or("");
         if let Ok(ts) = ts_token.parse::<u64>() {
-            let age_days = if ts <= now {
-                (now - ts) / 86400
-            } else {
-                0
-            };
+            let age_days = if ts <= now { (now - ts) / 86400 } else { 0 };
             if ts > now + 86400 {
                 out.push((
                     Severity::Warn,
@@ -207,7 +211,10 @@ fn check(prov: &Provenance) -> Vec<(Severity, String, String)> {
                 out.push((
                     Severity::Warn,
                     "generatedAt".into(),
-                    format!("CSV is {} days old. Conventions/schemas may have changed.", age_days),
+                    format!(
+                        "CSV is {} days old. Conventions/schemas may have changed.",
+                        age_days
+                    ),
                 ));
             } else {
                 out.push((
@@ -276,7 +283,12 @@ fn main() {
         print_help();
         return;
     }
-    let inputs: Vec<String> = args.iter().skip(1).filter(|a| !a.starts_with("--")).cloned().collect();
+    let inputs: Vec<String> = args
+        .iter()
+        .skip(1)
+        .filter(|a| !a.starts_with("--"))
+        .cloned()
+        .collect();
     if inputs.is_empty() {
         eprintln!("# ERROR: no input CSVs given. See --help.");
         std::process::exit(3);
@@ -295,7 +307,11 @@ fn main() {
         // sweep" without having to grep modes by hand.
         if let Some(strata) = detect_strata_in_data(path) {
             if !strata.is_empty() {
-                println!("INFO  {:30}  contains stratified rows: {}", "stratum", strata.join(", "));
+                println!(
+                    "INFO  {:30}  contains stratified rows: {}",
+                    "stratum",
+                    strata.join(", ")
+                );
             }
         }
         let checks = check(&prov);
@@ -323,14 +339,26 @@ mod tests {
 
     fn write_csv(path: &std::path::Path, schema: &str, sha: &str, ts: u64) {
         let mut f = File::create(path).unwrap();
-        writeln!(f, "# f2_ablation_sweep provenance (W3C PROV / RO-Crate, arXiv:2312.07852)").unwrap();
+        writeln!(
+            f,
+            "# f2_ablation_sweep provenance (W3C PROV / RO-Crate, arXiv:2312.07852)"
+        )
+        .unwrap();
         writeln!(f, "# prov:generatedAt = {} (unix seconds UTC)", ts).unwrap();
-        writeln!(f, "# prov:wasGeneratedBy = f2_ablation_sweep --mode loco --steps 200").unwrap();
+        writeln!(
+            f,
+            "# prov:wasGeneratedBy = f2_ablation_sweep --mode loco --steps 200"
+        )
+        .unwrap();
         writeln!(f, "# prov:agent_git_sha = {}", sha).unwrap();
         writeln!(f, "# prov:host = test_host").unwrap();
         writeln!(f, "# prov:trainer_internals_schema = {}", schema).unwrap();
         writeln!(f, "# prov:cargo_pkg_version = 0.1.0").unwrap();
-        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(
+            f,
+            "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+        )
+        .unwrap();
         writeln!(f, "loco,wd,0,,42,0.5,0xdead,0.1").unwrap();
     }
 
@@ -340,7 +368,10 @@ mod tests {
         write_csv(&tmp, "trainer_internals_vX", "abc123", 1700000000);
         let prov = parse_provenance(tmp.to_str().unwrap());
         assert_eq!(prov.fields.get("agent_git_sha").unwrap(), "abc123");
-        assert_eq!(prov.fields.get("trainer_internals_schema").unwrap(), "trainer_internals_vX");
+        assert_eq!(
+            prov.fields.get("trainer_internals_schema").unwrap(),
+            "trainer_internals_vX"
+        );
         assert_eq!(prov.fields.get("host").unwrap(), "test_host");
     }
 
@@ -350,8 +381,15 @@ mod tests {
         write_csv(&tmp, "trainer_internals_v0_old", "abc123", 1700000000);
         let prov = parse_provenance(tmp.to_str().unwrap());
         let results = check(&prov);
-        let schema_check = results.iter().find(|(_, k, _)| k == "trainer_internals_schema").unwrap();
-        assert_eq!(schema_check.0, Severity::Fail, "expected FAIL for old schema");
+        let schema_check = results
+            .iter()
+            .find(|(_, k, _)| k == "trainer_internals_schema")
+            .unwrap();
+        assert_eq!(
+            schema_check.0,
+            Severity::Fail,
+            "expected FAIL for old schema"
+        );
     }
 
     #[test]
@@ -361,8 +399,15 @@ mod tests {
         write_csv(&tmp, cur, "abc123", 1700000000);
         let prov = parse_provenance(tmp.to_str().unwrap());
         let results = check(&prov);
-        let schema_check = results.iter().find(|(_, k, _)| k == "trainer_internals_schema").unwrap();
-        assert_eq!(schema_check.0, Severity::Pass, "expected PASS for matching schema");
+        let schema_check = results
+            .iter()
+            .find(|(_, k, _)| k == "trainer_internals_schema")
+            .unwrap();
+        assert_eq!(
+            schema_check.0,
+            Severity::Pass,
+            "expected PASS for matching schema"
+        );
     }
 
     #[test]
@@ -374,14 +419,17 @@ mod tests {
         let cur = trios_trainer::race::multi_seed::TRAINER_INTERNALS_SCHEMA;
         let mut f = File::create(&tmp).unwrap();
         writeln!(f, "# prov:trainer_internals_schema = {}", cur).unwrap();
-        writeln!(f, "# prov:git_sha = abc123").unwrap();       // legacy alias
+        writeln!(f, "# prov:git_sha = abc123").unwrap(); // legacy alias
         writeln!(f, "# prov:timestamp = 1700000000").unwrap(); // legacy alias
         writeln!(f, "mode,a,b\n").unwrap();
         drop(f);
         let prov = parse_provenance(tmp.to_str().unwrap());
         let results = check(&prov);
         // git SHA via alias should NOT be a "missing" WARN.
-        let sha = results.iter().find(|(_, k, _)| k == "agent_git_sha").unwrap();
+        let sha = results
+            .iter()
+            .find(|(_, k, _)| k == "agent_git_sha")
+            .unwrap();
         assert!(
             !sha.2.contains("missing"),
             "alias 'git_sha' should resolve agent_git_sha, got: {:?}",
@@ -396,7 +444,11 @@ mod tests {
         // Loop 34 fix 1: value containing '=' must survive parsing.
         let tmp = std::env::temp_dir().join("f2_prov_eq_value.csv");
         let mut f = File::create(&tmp).unwrap();
-        writeln!(f, "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01").unwrap();
+        writeln!(
+            f,
+            "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01"
+        )
+        .unwrap();
         writeln!(f, "# prov:host = host = with = equals").unwrap();
         writeln!(f, "mode,a,b\n").unwrap();
         drop(f);
@@ -411,12 +463,20 @@ mod tests {
         let cur = trios_trainer::race::multi_seed::TRAINER_INTERNALS_SCHEMA;
         let mut f = File::create(&tmp).unwrap();
         writeln!(f, "# prov:trainer_internals_schema = {}", cur).unwrap();
-        writeln!(f, "# prov:cargo_pkg_version = {}", env!("CARGO_PKG_VERSION")).unwrap();
+        writeln!(
+            f,
+            "# prov:cargo_pkg_version = {}",
+            env!("CARGO_PKG_VERSION")
+        )
+        .unwrap();
         writeln!(f, "mode,a,b\n").unwrap();
         drop(f);
         let prov = parse_provenance(tmp.to_str().unwrap());
         let results = check(&prov);
-        let pkg = results.iter().find(|(_, k, _)| k == "cargo_pkg_version").unwrap();
+        let pkg = results
+            .iter()
+            .find(|(_, k, _)| k == "cargo_pkg_version")
+            .unwrap();
         assert_eq!(pkg.0, Severity::Pass);
     }
 
@@ -432,7 +492,10 @@ mod tests {
         drop(f);
         let prov = parse_provenance(tmp.to_str().unwrap());
         let results = check(&prov);
-        let pkg = results.iter().find(|(_, k, _)| k == "cargo_pkg_version").unwrap();
+        let pkg = results
+            .iter()
+            .find(|(_, k, _)| k == "cargo_pkg_version")
+            .unwrap();
         assert_eq!(pkg.0, Severity::Warn);
     }
 
@@ -468,8 +531,16 @@ mod tests {
         // Loop 43 fix 6: scans data column for stratum prefixes.
         let tmp = std::env::temp_dir().join("f2_prov_stratum_detect.csv");
         let mut f = File::create(&tmp).unwrap();
-        writeln!(f, "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01").unwrap();
-        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(
+            f,
+            "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01"
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+        )
+        .unwrap();
         writeln!(f, "wd0_pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
         writeln!(f, "warmup0_loco,rms,0,,42,5.0,0xdead,0.1").unwrap();
         writeln!(f, "pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
@@ -484,7 +555,11 @@ mod tests {
     fn detect_strata_in_data_empty_for_canonical_only() {
         let tmp = std::env::temp_dir().join("f2_prov_stratum_canonical.csv");
         let mut f = File::create(&tmp).unwrap();
-        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(
+            f,
+            "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+        )
+        .unwrap();
         writeln!(f, "pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
         writeln!(f, "loco,rms,0,,42,5.0,0xdead,0.1").unwrap();
         drop(f);
@@ -503,14 +578,26 @@ mod tests {
         writeln!(f, "# prov:generatedAt = 1700000000").unwrap();
         writeln!(f, "# prov:agent_git_sha = abc123").unwrap();
         writeln!(f, "# prov:trainer_internals_schema = {}", cur).unwrap();
-        writeln!(f, "# prov:cargo_pkg_version = {}", env!("CARGO_PKG_VERSION")).unwrap();
-        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(
+            f,
+            "# prov:cargo_pkg_version = {}",
+            env!("CARGO_PKG_VERSION")
+        )
+        .unwrap();
+        writeln!(
+            f,
+            "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+        )
+        .unwrap();
         // No data rows!
         drop(f);
         let prov = parse_provenance(tmp.to_str().unwrap());
         assert!(!prov.fields.is_empty(), "preamble fields should be parsed");
         let results = check(&prov);
-        let schema = results.iter().find(|(_, k, _)| k == "trainer_internals_schema").unwrap();
+        let schema = results
+            .iter()
+            .find(|(_, k, _)| k == "trainer_internals_schema")
+            .unwrap();
         assert_eq!(schema.0, Severity::Pass);
     }
 

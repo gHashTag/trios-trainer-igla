@@ -189,7 +189,11 @@ fn parse_triplet_label(label: &str) -> Option<(String, String, String)> {
     if !is_canonical_fix(parts[0]) || !is_canonical_fix(parts[1]) || !is_canonical_fix(parts[2]) {
         return None;
     }
-    Some((parts[0].to_string(), parts[1].to_string(), parts[2].to_string()))
+    Some((
+        parts[0].to_string(),
+        parts[1].to_string(),
+        parts[2].to_string(),
+    ))
 }
 
 /// Triplet key: canonical sorted tuple for symmetric lookup.
@@ -291,8 +295,7 @@ fn compute_iloco_with_opts(
     // Emit a diagnostic of all modes seen so the cause is obvious. Per W3C CSVW
     // "withheld data" principle: surface rejection, don't drop quietly.
     if loco.is_empty() || pairs.is_empty() {
-        let mut modes_seen: std::collections::BTreeSet<String> =
-            std::collections::BTreeSet::new();
+        let mut modes_seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
         for ((m, _), _) in by_key.iter() {
             modes_seen.insert(m.clone());
         }
@@ -490,8 +493,15 @@ fn compute_iloco_three_way_with_test(rows: &[LongRow], sig: SigTest) -> Vec<Iloc
                 let mut per_seed: Vec<f64> = Vec::new();
                 for (sid, full_bpb) in &full_seeds {
                     let g = |v: &Vec<(u64, f64)>| v.iter().find(|(s, _)| s == sid).map(|(_, x)| *x);
-                    if let (Some(la), Some(lb), Some(lc), Some(pab), Some(pac), Some(pbc), Some(tabc)) =
-                        (g(la), g(lb), g(lc), g(pab), g(pac), g(pbc), g(tabc))
+                    if let (
+                        Some(la),
+                        Some(lb),
+                        Some(lc),
+                        Some(pab),
+                        Some(pac),
+                        Some(pbc),
+                        Some(tabc),
+                    ) = (g(la), g(lb), g(lc), g(pab), g(pac), g(pbc), g(tabc))
                     {
                         let da = la - full_bpb;
                         let db = lb - full_bpb;
@@ -616,10 +626,14 @@ fn print_help() {
     println!("                      threshold, CV injects more noise than it removes.");
     println!();
     println!("Required rows in input(s):");
-    println!("  - loco rows         (mode=loco, fix_name = rms|warmup|gradclip|clamp|smooth|wd|dropout)");
+    println!(
+        "  - loco rows         (mode=loco, fix_name = rms|warmup|gradclip|clamp|smooth|wd|dropout)"
+    );
     println!("  - pairwise rows     (mode=pairwise, fix_name = pair_<a>_<b>)");
     println!("  - full_stack row    (mode=pairwise, fix_name = full_stack) ← baseline");
-    println!("  - triplet rows      (--three-way only: mode=triplet, fix_name = triplet_<a>_<b>_<c>)");
+    println!(
+        "  - triplet rows      (--three-way only: mode=triplet, fix_name = triplet_<a>_<b>_<c>)"
+    );
 }
 
 /// Loop 29 audit fix 1: explicit indexed loop instead of filter-with-wrapping_sub.
@@ -709,7 +723,11 @@ fn main() {
         eprintln!("# Loading {}", path);
         all_rows.extend(parse_csv(path));
     }
-    eprintln!("# Loaded {} rows from {} file(s)", all_rows.len(), inputs.len());
+    eprintln!(
+        "# Loaded {} rows from {} file(s)",
+        all_rows.len(),
+        inputs.len()
+    );
     let three_way = opts.three_way;
     let sig = opts.sig;
     let out_path = opts.out_path.clone();
@@ -738,7 +756,11 @@ fn main() {
             eprintln!("# ERROR: no 3-way iLOCO scores produced — need loco + pairwise + triplet + full_stack rows.");
             std::process::exit(1);
         }
-        eprintln!("# Computed {} three-way iLOCO scores (Möbius inclusion-exclusion, sig={:?})", scores.len(), sig);
+        eprintln!(
+            "# Computed {} three-way iLOCO scores (Möbius inclusion-exclusion, sig={:?})",
+            scores.len(),
+            sig
+        );
         if let Some(path) = out_path.as_deref() {
             let mut f = File::create(path).expect("create out CSV");
             emit_three_way(&mut f, &scores).expect("write");
@@ -754,7 +776,11 @@ fn main() {
             eprintln!("# ERROR: no iLOCO scores produced — check that input has loco + pairwise + full_stack rows.");
             std::process::exit(1);
         }
-        eprintln!("# Computed {} iLOCO pair scores (sig={:?})", scores.len(), sig);
+        eprintln!(
+            "# Computed {} iLOCO pair scores (sig={:?})",
+            scores.len(),
+            sig
+        );
         if let Some(path) = out_path.as_deref() {
             let mut f = File::create(path).expect("create out CSV");
             emit(&mut f, &scores).expect("write");
@@ -814,7 +840,11 @@ mod tests {
         let adj = control_variate_adjust(&x, &y);
         // With zero variance in x, β = cov/eps ≈ 0, so adjusted ≈ y.
         for i in 0..5 {
-            assert!((adj[i] - y[i]).abs() < 1e-6, "expected ~y[i], got {}", adj[i]);
+            assert!(
+                (adj[i] - y[i]).abs() < 1e-6,
+                "expected ~y[i], got {}",
+                adj[i]
+            );
         }
     }
 
@@ -848,7 +878,11 @@ mod tests {
         let b = a.clone();
         let (_, p) = permutation_test_paired(&a, &b);
         // All differences are 0; |observed|=0; every sign-flip yields 0 ≥ 0.
-        assert!((p - 1.0).abs() < 1e-9, "expected p=1 for zero diffs, got {}", p);
+        assert!(
+            (p - 1.0).abs() < 1e-9,
+            "expected p=1 for zero diffs, got {}",
+            p
+        );
     }
 
     #[test]
@@ -858,7 +892,12 @@ mod tests {
         let a = vec![6.0, 6.0, 6.0, 6.0, 6.0];
         let b = vec![5.0, 5.0, 5.0, 5.0, 5.0];
         let (_, p) = permutation_test_paired(&a, &b);
-        assert!((p - 2.0 / 32.0).abs() < 1e-9, "expected p=2/32={}, got {}", 2.0/32.0, p);
+        assert!(
+            (p - 2.0 / 32.0).abs() < 1e-9,
+            "expected p=2/32={}, got {}",
+            2.0 / 32.0,
+            p
+        );
     }
 
     #[test]
@@ -886,18 +925,70 @@ mod tests {
         // baseline for all S. Möbius sum should be exactly 0.
         let base = 4.0;
         let rows = vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), fix_index: -1, seed: 1, bpb: base },
-            LongRow { mode: "loco".into(), fix_name: "rms".into(), fix_index: 0, seed: 1, bpb: base },
-            LongRow { mode: "loco".into(), fix_name: "wd".into(), fix_index: 1, seed: 1, bpb: base },
-            LongRow { mode: "loco".into(), fix_name: "dropout".into(), fix_index: 2, seed: 1, bpb: base },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), fix_index: 0, seed: 1, bpb: base },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_dropout".into(), fix_index: 1, seed: 1, bpb: base },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_wd_dropout".into(), fix_index: 2, seed: 1, bpb: base },
-            LongRow { mode: "triplet".into(), fix_name: "triplet_rms_wd_dropout".into(), fix_index: 0, seed: 1, bpb: base },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                fix_index: -1,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                fix_index: 1,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "dropout".into(),
+                fix_index: 2,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_dropout".into(),
+                fix_index: 1,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_wd_dropout".into(),
+                fix_index: 2,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "triplet".into(),
+                fix_name: "triplet_rms_wd_dropout".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: base,
+            },
         ];
         let scores = compute_iloco_three_way(&rows);
         assert_eq!(scores.len(), 1);
-        assert!(scores[0].iloco_3.abs() < 1e-9, "expected ~0, got {}", scores[0].iloco_3);
+        assert!(
+            scores[0].iloco_3.abs() < 1e-9,
+            "expected ~0, got {}",
+            scores[0].iloco_3
+        );
     }
 
     #[test]
@@ -906,18 +997,70 @@ mod tests {
         // iLOCO_3 = (1+1+1) − (1+1+1) + 1 = +1.
         let base = 0.0;
         let rows = vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), fix_index: -1, seed: 1, bpb: base },
-            LongRow { mode: "loco".into(), fix_name: "rms".into(), fix_index: 0, seed: 1, bpb: 1.0 },
-            LongRow { mode: "loco".into(), fix_name: "wd".into(), fix_index: 1, seed: 1, bpb: 1.0 },
-            LongRow { mode: "loco".into(), fix_name: "dropout".into(), fix_index: 2, seed: 1, bpb: 1.0 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), fix_index: 0, seed: 1, bpb: 1.0 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_dropout".into(), fix_index: 1, seed: 1, bpb: 1.0 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_wd_dropout".into(), fix_index: 2, seed: 1, bpb: 1.0 },
-            LongRow { mode: "triplet".into(), fix_name: "triplet_rms_wd_dropout".into(), fix_index: 0, seed: 1, bpb: 1.0 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                fix_index: -1,
+                seed: 1,
+                bpb: base,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                fix_index: 1,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "dropout".into(),
+                fix_index: 2,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_dropout".into(),
+                fix_index: 1,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_wd_dropout".into(),
+                fix_index: 2,
+                seed: 1,
+                bpb: 1.0,
+            },
+            LongRow {
+                mode: "triplet".into(),
+                fix_name: "triplet_rms_wd_dropout".into(),
+                fix_index: 0,
+                seed: 1,
+                bpb: 1.0,
+            },
         ];
         let scores = compute_iloco_three_way(&rows);
         assert_eq!(scores.len(), 1);
-        assert!((scores[0].iloco_3 - 1.0).abs() < 1e-9, "expected +1, got {}", scores[0].iloco_3);
+        assert!(
+            (scores[0].iloco_3 - 1.0).abs() < 1e-9,
+            "expected +1, got {}",
+            scores[0].iloco_3
+        );
     }
 
     #[test]

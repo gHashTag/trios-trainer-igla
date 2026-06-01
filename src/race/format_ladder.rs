@@ -4,7 +4,7 @@
 //! and format-zoo (INT8/FP8/bf16) paths. Metric (2) of the F2 protocol.
 
 use crate::gf16::GF16;
-use crate::phi_numbers::{GF8, GF32, GFTernary};
+use crate::phi_numbers::{GFTernary, GF32, GF8};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LadderKind {
@@ -205,10 +205,7 @@ pub fn paretoq_scale(values: &[f32], family: ParetoQFamily) -> f32 {
             // SEQ: α = max(|W|) / outermost_level
             // Outermost level is half_levels (1.0 for ternary, 1.5 for 4-cell SEQ).
             // This makes max|W| map exactly to ±outermost·α, avoiding tie-induced collapse.
-            let max_abs: f32 = values
-                .iter()
-                .map(|x| x.abs())
-                .fold(0.0_f32, f32::max);
+            let max_abs: f32 = values.iter().map(|x| x.abs()).fold(0.0_f32, f32::max);
             (max_abs / half_levels.max(1e-9)).max(f32::EPSILON)
         }
         ParetoQFamily::LsqAsymmetric { q_p, .. } => {
@@ -461,7 +458,10 @@ mod tests {
         let mut c = ConversionCounter::new();
         let gf8 = GF8::from_f32(0.42);
         let _t = c.convert_gf8_to_ternary(gf8);
-        assert!(c.lossy_total > 0, "ternary quantization of 0.42 should be lossy");
+        assert!(
+            c.lossy_total > 0,
+            "ternary quantization of 0.42 should be lossy"
+        );
     }
 
     #[test]
@@ -550,7 +550,11 @@ mod tests {
             sorted.len()
         };
         // SEQ 4-level should give exactly 4 unique values, not 3 (ternary collapse).
-        assert_eq!(unique_count, 4, "P=2.0 SEQ should yield 4 distinct values, got {}", unique_count);
+        assert_eq!(
+            unique_count, 4,
+            "P=2.0 SEQ should yield 4 distinct values, got {}",
+            unique_count
+        );
     }
 
     #[test]
@@ -562,7 +566,11 @@ mod tests {
         let mut abs_vals: Vec<f32> = v.iter().map(|x| x.abs()).collect();
         abs_vals.sort_by(|a, b| a.partial_cmp(b).unwrap());
         abs_vals.dedup_by(|a, b| (*a - *b).abs() < f32::EPSILON);
-        assert!(abs_vals.len() <= 2, "ternary should yield ≤2 distinct |x|, got {:?}", v);
+        assert!(
+            abs_vals.len() <= 2,
+            "ternary should yield ≤2 distinct |x|, got {:?}",
+            v
+        );
     }
 
     #[test]
@@ -576,8 +584,7 @@ mod tests {
         apply_paretoq(&mut v_int4, 4.0, &mut c2);
         let u_ternary: std::collections::HashSet<u32> =
             v_ternary.iter().map(|x| x.to_bits()).collect();
-        let u_int4: std::collections::HashSet<u32> =
-            v_int4.iter().map(|x| x.to_bits()).collect();
+        let u_int4: std::collections::HashSet<u32> = v_int4.iter().map(|x| x.to_bits()).collect();
         assert!(u_int4.len() > u_ternary.len());
     }
 
@@ -617,7 +624,11 @@ mod tests {
             .zip(v.iter())
             .filter(|(a, b)| a.signum() == b.signum() || b.abs() < f32::EPSILON)
             .count();
-        assert!(signs_preserved >= 4, "ternary should preserve sign; got {:?}", v);
+        assert!(
+            signs_preserved >= 4,
+            "ternary should preserve sign; got {:?}",
+            v
+        );
     }
 
     #[test]

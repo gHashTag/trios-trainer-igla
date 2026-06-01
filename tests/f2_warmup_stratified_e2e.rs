@@ -40,24 +40,48 @@ fn noise(seed: u64, kind: u8) -> f64 {
 
 fn write_csv(path: &std::path::Path) {
     let mut f = File::create(path).unwrap();
-    writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+    writeln!(
+        f,
+        "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+    )
+    .unwrap();
     let pairwise = mode_string(ModeKind::Pairwise, Stratum::Warmup0);
     let loco = mode_string(ModeKind::Loco, Stratum::Warmup0);
     let triplet = mode_string(ModeKind::Triplet, Stratum::Warmup0);
     for &sid in &[1u64, 2, 3, 4, 5] {
-        writeln!(f, "{},full_stack,-1,,{},{:.6},0xdead,0.1", pairwise, sid, 4.0 + noise(sid, 0)).unwrap();
+        writeln!(
+            f,
+            "{},full_stack,-1,,{},{:.6},0xdead,0.1",
+            pairwise,
+            sid,
+            4.0 + noise(sid, 0)
+        )
+        .unwrap();
         for (i, name) in CANONICAL_FIX_NAMES.iter().enumerate() {
             let v = if *name == "rms" { 5.0 } else { 4.5 } + noise(sid, 1 + i as u8);
             writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", loco, name, sid, v).unwrap();
         }
         let pairs = [
-            "pair_rms_warmup", "pair_rms_gradclip", "pair_rms_clamp",
-            "pair_rms_smooth", "pair_rms_wd", "pair_rms_dropout",
-            "pair_warmup_gradclip", "pair_warmup_clamp", "pair_warmup_smooth",
-            "pair_warmup_wd", "pair_warmup_dropout",
-            "pair_gradclip_clamp", "pair_gradclip_smooth", "pair_gradclip_wd", "pair_gradclip_dropout",
-            "pair_clamp_smooth", "pair_clamp_wd", "pair_clamp_dropout",
-            "pair_smooth_wd", "pair_smooth_dropout",
+            "pair_rms_warmup",
+            "pair_rms_gradclip",
+            "pair_rms_clamp",
+            "pair_rms_smooth",
+            "pair_rms_wd",
+            "pair_rms_dropout",
+            "pair_warmup_gradclip",
+            "pair_warmup_clamp",
+            "pair_warmup_smooth",
+            "pair_warmup_wd",
+            "pair_warmup_dropout",
+            "pair_gradclip_clamp",
+            "pair_gradclip_smooth",
+            "pair_gradclip_wd",
+            "pair_gradclip_dropout",
+            "pair_clamp_smooth",
+            "pair_clamp_wd",
+            "pair_clamp_dropout",
+            "pair_smooth_wd",
+            "pair_smooth_dropout",
             "pair_wd_dropout",
         ];
         for (i, lbl) in pairs.iter().enumerate() {
@@ -65,9 +89,12 @@ fn write_csv(path: &std::path::Path) {
             writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", pairwise, lbl, sid, v).unwrap();
         }
         let triplets = [
-            "triplet_rms_warmup_wd", "triplet_rms_warmup_dropout",
-            "triplet_warmup_gradclip_wd", "triplet_warmup_clamp_wd",
-            "triplet_warmup_smooth_wd", "triplet_warmup_wd_dropout",
+            "triplet_rms_warmup_wd",
+            "triplet_rms_warmup_dropout",
+            "triplet_warmup_gradclip_wd",
+            "triplet_warmup_clamp_wd",
+            "triplet_warmup_smooth_wd",
+            "triplet_warmup_wd_dropout",
         ];
         for (i, lbl) in triplets.iter().enumerate() {
             let v = if lbl.contains("_wd") { 0.4 } else { 4.0 } + noise(sid, 200 + i as u8);

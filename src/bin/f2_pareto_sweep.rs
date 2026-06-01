@@ -27,7 +27,9 @@ fn paired_bca_self(samples: &[f64], seed: u64) -> (f64, f64) {
     for _ in 0..b {
         let mut sum = 0.0;
         for _ in 0..n {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let idx = (rng >> 33) as usize % n;
             sum += samples[idx];
         }
@@ -87,7 +89,7 @@ fn sweep_arm(
         train_ratio: 0.8,
         vocab_size,
         d_model: base_d_model,
-        steps: 1000,  // Loop 18: was 100. Research-prescribed signal floor for sparse parity (5K elbow, 1K starts).
+        steps: 1000, // Loop 18: was 100. Research-prescribed signal floor for sparse parity (5K elbow, 1K starts).
         lr: 0.004,
         ladder_kind: kind,
         // Loop 19 XX: HuggingFace 1.58 recipe — warmup = 20% of steps for stable BitLinear convergence.
@@ -176,8 +178,12 @@ fn print_help() {
     println!("FLAGS:");
     println!("  --help, -h          Print this help and exit");
     println!("  --json              Emit structured JSON sweep report to stdout");
-    println!("  --csv PATH          Write 12-column CSV (arm,P,N,N_eff,eff,BPB±std,CI,on_frontier,hash)");
-    println!("  --iso-neff          Iso-N_eff mode: scale phi N to match zoo's N_eff (capacity-matched)");
+    println!(
+        "  --csv PATH          Write 12-column CSV (arm,P,N,N_eff,eff,BPB±std,CI,on_frontier,hash)"
+    );
+    println!(
+        "  --iso-neff          Iso-N_eff mode: scale phi N to match zoo's N_eff (capacity-matched)"
+    );
     println!();
     println!("Sweep points: phi P ∈ {{1.58, 2.0, 3.0, 4.0}} (ParetoQ SEQ/LSQ cascade),");
     println!("              zoo P ∈ {{4.0, 8.0}} (INT4 RTN group=32 / bf16+E4M3 HYBRID).");
@@ -204,7 +210,11 @@ fn main() {
     let iso_baseline_n: Option<u64> = if iso_neff_mode { Some(8192) } else { None };
     // Loop 16 OO: --sparse-parity uses Michaud's multitask sparse parity (non-trivial task).
     let task: TaskKind = if args.iter().any(|a| a == "--sparse-parity") {
-        TaskKind::SparseParity { n_bits: 40, k: 3, n_tasks: 64 }
+        TaskKind::SparseParity {
+            n_bits: 40,
+            k: 3,
+            n_tasks: 64,
+        }
     } else {
         TaskKind::Counter
     };
@@ -222,16 +232,32 @@ fn main() {
 
     // FP32 baseline (same task + architecture as quantized arms).
     let fp32_point = sweep_arm(
-        "fp32", LadderKind::PhiLadder, 32.0, 128, None, true, task.clone(), use_ffn,
-        corpus.clone(), vocab,
+        "fp32",
+        LadderKind::PhiLadder,
+        32.0,
+        128,
+        None,
+        true,
+        task.clone(),
+        use_ffn,
+        corpus.clone(),
+        vocab,
     );
     let fp32_baseline_bpb = fp32_point.bpb_mean;
 
     let mut points = Vec::new();
     for &p in &[1.58_f64, 2.0, 3.0, 4.0] {
         let mut pt = sweep_arm(
-            "phi", LadderKind::PhiLadder, p, 128, iso_baseline_n, false, task.clone(), use_ffn,
-            corpus.clone(), vocab,
+            "phi",
+            LadderKind::PhiLadder,
+            p,
+            128,
+            iso_baseline_n,
+            false,
+            task.clone(),
+            use_ffn,
+            corpus.clone(),
+            vocab,
         );
         pt.bpb_fp32_baseline = Some(fp32_baseline_bpb);
         pt.delta_bpb_vs_fp32 = Some(pt.bpb_mean - fp32_baseline_bpb);
@@ -239,8 +265,16 @@ fn main() {
     }
     for &p in &[4.0_f64, 8.0] {
         let mut pt = sweep_arm(
-            "zoo", LadderKind::FormatZoo, p, 128, None, false, task.clone(), use_ffn,
-            corpus.clone(), vocab,
+            "zoo",
+            LadderKind::FormatZoo,
+            p,
+            128,
+            None,
+            false,
+            task.clone(),
+            use_ffn,
+            corpus.clone(),
+            vocab,
         );
         pt.bpb_fp32_baseline = Some(fp32_baseline_bpb);
         pt.delta_bpb_vs_fp32 = Some(pt.bpb_mean - fp32_baseline_bpb);
@@ -257,12 +291,8 @@ fn main() {
         return;
     }
 
-    println!(
-        "\n| arm  | P_w  | N      | N_eff   | eff    | BPB_mean | BPB_std | ΔBPB_vs_fp32 |"
-    );
-    println!(
-        "|------|------|--------|---------|--------|----------|---------|--------------|"
-    );
+    println!("\n| arm  | P_w  | N      | N_eff   | eff    | BPB_mean | BPB_std | ΔBPB_vs_fp32 |");
+    println!("|------|------|--------|---------|--------|----------|---------|--------------|");
     for p in &points {
         let delta_str = match p.delta_bpb_vs_fp32 {
             Some(d) => format!("{:+.4}", d),
@@ -270,14 +300,7 @@ fn main() {
         };
         println!(
             "| {:<4} | {:<4.2} | {:<6} | {:<7.0} | {:<6.4} | {:<8.4} | {:<7.4} | {} |",
-            p.arm,
-            p.precision_bits,
-            p.n_params,
-            p.n_eff,
-            p.eff,
-            p.bpb_mean,
-            p.bpb_std,
-            delta_str,
+            p.arm, p.precision_bits, p.n_params, p.n_eff, p.eff, p.bpb_mean, p.bpb_std, delta_str,
         );
     }
 
@@ -294,11 +317,17 @@ fn main() {
             max_delta
         );
     } else {
-        println!("  ✓ max |ΔBPB| = {:.4} — within literature range", max_delta);
+        println!(
+            "  ✓ max |ΔBPB| = {:.4} — within literature range",
+            max_delta
+        );
     }
 
     // Andrew's monotone-chain lower convex hull on (bpw_stored, BPB) plane.
-    let hull_pts: Vec<(f64, f64)> = points.iter().map(|p| (p.precision_bits, p.bpb_mean)).collect();
+    let hull_pts: Vec<(f64, f64)> = points
+        .iter()
+        .map(|p| (p.precision_bits, p.bpb_mean))
+        .collect();
     let hull_idx = lower_convex_hull(&hull_pts);
     for &i in &hull_idx {
         points[i].on_frontier = true;

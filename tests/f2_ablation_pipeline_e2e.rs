@@ -35,8 +35,11 @@ fn ensure_built(name: &str) {
 fn synth_long_csv(path: &str) {
     // Minimal viable: loco (7 fixes × 5 seeds) + pairwise full_stack (5 seeds)
     // + 21 pairs × 5 seeds. Deterministic BPB values keep the assertion stable.
-    let mut buf = String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
-    let fixes = ["rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout"];
+    let mut buf =
+        String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
+    let fixes = [
+        "rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout",
+    ];
     let seeds: [u64; 5] = [42, 43, 44, 45, 46];
     // full_stack baseline.
     for &s in &seeds {
@@ -85,8 +88,11 @@ fn synth_long_csv(path: &str) {
 
 /// Loop 30 fix 5: synthesize triplet + wd_pairwise rows for the extended e2e test.
 fn synth_triplet_csv(path: &str) {
-    let mut buf = String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
-    let fixes = ["rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout"];
+    let mut buf =
+        String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
+    let fixes = [
+        "rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout",
+    ];
     let seeds: [u64; 5] = [42, 43, 44, 45, 46];
     // Triplet full_stack baseline.
     for &s in &seeds {
@@ -106,8 +112,13 @@ fn synth_triplet_csv(path: &str) {
                 for &s in &seeds {
                     buf += &format!(
                         "triplet,triplet_{}_{}_{},{},,{},{:.6},0x0000000000{:06x},0.001\n",
-                        fixes[i], fixes[j], fixes[k], idx, s,
-                        target + 0.001 * (s as f64 - 42.0), idx
+                        fixes[i],
+                        fixes[j],
+                        fixes[k],
+                        idx,
+                        s,
+                        target + 0.001 * (s as f64 - 42.0),
+                        idx
                     );
                 }
                 idx += 1;
@@ -118,7 +129,8 @@ fn synth_triplet_csv(path: &str) {
 }
 
 fn synth_wd_pairwise_csv(path: &str) {
-    let mut buf = String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
+    let mut buf =
+        String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
     let partners = ["rms", "warmup", "gradclip", "clamp", "smooth", "dropout"];
     let wds: [f64; 5] = [0.0, 0.005, 0.01, 0.03, 0.1];
     let seeds: [u64; 5] = [42, 43, 44, 45, 46];
@@ -130,8 +142,12 @@ fn synth_wd_pairwise_csv(path: &str) {
             for &s in &seeds {
                 buf += &format!(
                     "wd_pairwise,wdpair_{}_{:.3},{},,{},{:.6},0x000000000000{:04x},0.001\n",
-                    p, wd, idx, s,
-                    target + 0.001 * (s as f64 - 42.0), idx
+                    p,
+                    wd,
+                    idx,
+                    s,
+                    target + 0.001 * (s as f64 - 42.0),
+                    idx
                 );
             }
             idx += 1;
@@ -235,9 +251,15 @@ fn assert_bpb_close(actual: f64, expected: f64, tol: f64, label: &str) {
 fn ablation_aggregate_preserves_large_seed_ids() {
     ensure_built("f2_ablation_aggregate");
     let tmp = std::env::temp_dir().join("f2_large_seed.csv");
-    let mut buf = String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
+    let mut buf =
+        String::from("mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s\n");
     // Mix of small, medium, large, and near-u64::MAX seeds.
-    let seeds = [42u64, 100_000u64, 9_223_372_036_854_775_807u64, 18_446_744_073_709_551_614u64];
+    let seeds = [
+        42u64,
+        100_000u64,
+        9_223_372_036_854_775_807u64,
+        18_446_744_073_709_551_614u64,
+    ];
     for (i, &s) in seeds.iter().enumerate() {
         buf += &format!(
             "pairwise,full_stack,-1,,{},{:.6},0x{:016x},0.001\n",
@@ -251,7 +273,11 @@ fn ablation_aggregate_preserves_large_seed_ids() {
         .arg(tmp.to_str().unwrap())
         .output()
         .expect("run aggregate");
-    assert!(out.status.success(), "aggregator failed: {}", String::from_utf8_lossy(&out.stderr));
+    assert!(
+        out.status.success(),
+        "aggregator failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
     // The aggregator should at least preserve N=4 (all seeds counted).
     // We grep for the "n,..." column value 4 in the data row.
@@ -263,7 +289,11 @@ fn ablation_aggregate_preserves_large_seed_ids() {
     let parts: Vec<&str> = data_lines[0].split(',').collect();
     // n column position (0-indexed): mode,fix_name,fix_index,bpb_mean,bpb_std,ci95_lo,ci95_hi,n,...
     let n_col: usize = parts[7].parse().unwrap_or(0);
-    assert_eq!(n_col, 4, "expected N=4 (all 4 distinct seeds preserved), got {}", n_col);
+    assert_eq!(
+        n_col, 4,
+        "expected N=4 (all 4 distinct seeds preserved), got {}",
+        n_col
+    );
 }
 
 #[test]
@@ -317,14 +347,27 @@ fn ablation_pipeline_wd_pairwise_baseline_is_partner_specific() {
         .lines()
         .filter(|l| l.contains("_0.000,") && l.starts_with("wd_pairwise,"))
         .collect();
-    assert_eq!(zero_rows.len(), 6, "expected 6 partner baselines, got {}", zero_rows.len());
+    assert_eq!(
+        zero_rows.len(),
+        6,
+        "expected 6 partner baselines, got {}",
+        zero_rows.len()
+    );
     for row in &zero_rows {
         let parts: Vec<&str> = row.split(',').collect();
         let delta: f64 = parts[8].parse().unwrap_or(f64::NAN);
-        assert!(delta.abs() < 1e-9, "wdpair baseline delta should be 0, got {}", delta);
+        assert!(
+            delta.abs() < 1e-9,
+            "wdpair baseline delta should be 0, got {}",
+            delta
+        );
     }
     // No baseline-fallback warning should fire for wd_pairwise.
-    assert!(!stderr.contains("WARN: no canonical baseline"), "unexpected baseline warning: {}", stderr);
+    assert!(
+        !stderr.contains("WARN: no canonical baseline"),
+        "unexpected baseline warning: {}",
+        stderr
+    );
 }
 
 #[test]
@@ -365,7 +408,11 @@ fn ablation_pipeline_aggregate_then_iloco_then_dot() {
 
     // 2) iLOCO score from the long CSV (uses loco + pairwise).
     let iloco = Command::new(bin_path("f2_iloco_score"))
-        .args([long_csv.to_str().unwrap(), "--out", iloco_csv.to_str().unwrap()])
+        .args([
+            long_csv.to_str().unwrap(),
+            "--out",
+            iloco_csv.to_str().unwrap(),
+        ])
         .output()
         .expect("run iloco_score");
     assert!(
@@ -374,15 +421,18 @@ fn ablation_pipeline_aggregate_then_iloco_then_dot() {
         String::from_utf8_lossy(&iloco.stderr)
     );
     let iloco_text = fs::read_to_string(&iloco_csv).unwrap();
-    assert!(iloco_text.starts_with(
-        "rank,fix_a,fix_b,delta_a,delta_b,delta_ab,iloco,kind,p_value,q_value_bh"
-    ));
+    assert!(iloco_text
+        .starts_with("rank,fix_a,fix_b,delta_a,delta_b,delta_ab,iloco,kind,p_value,q_value_bh"));
     // 21 pairs.
     assert_eq!(iloco_text.lines().count(), 1 + 21);
 
     // 3) DOT viz from the iLOCO CSV.
     let dot = Command::new(bin_path("f2_iloco_dot"))
-        .args([iloco_csv.to_str().unwrap(), "--out", dot_out.to_str().unwrap()])
+        .args([
+            iloco_csv.to_str().unwrap(),
+            "--out",
+            dot_out.to_str().unwrap(),
+        ])
         .output()
         .expect("run iloco_dot");
     assert!(
@@ -393,7 +443,9 @@ fn ablation_pipeline_aggregate_then_iloco_then_dot() {
     let dot_text = fs::read_to_string(&dot_out).unwrap();
     assert!(dot_text.contains("graph f2_interactions"));
     // The seven fix node names must appear.
-    for name in ["rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout"] {
+    for name in [
+        "rms", "warmup", "gradclip", "clamp", "smooth", "wd", "dropout",
+    ] {
         assert!(
             dot_text.contains(&format!("\"{}\"", name)),
             "DOT missing node {}",

@@ -68,7 +68,11 @@ struct PseRow {
 /// `None` if no header found. Caller gets `(stratum, header_map, reader)`.
 fn read_header_map(
     path: &Path,
-) -> Option<(String, std::collections::HashMap<String, usize>, BufReader<File>)> {
+) -> Option<(
+    String,
+    std::collections::HashMap<String, usize>,
+    BufReader<File>,
+)> {
     let f = File::open(path).expect("open input CSV");
     let mut r = BufReader::new(f);
     let mut header_line = String::new();
@@ -87,11 +91,7 @@ fn read_header_map(
             // Loop 49: capture stratum if present. Expected form:
             //   `# INPUT STRATUM = warmup0` or `# INPUT STRATUM = warmup0 (Loop 47 audit fix 2)`
             if let Some(rest) = trimmed.strip_prefix("# INPUT STRATUM") {
-                let after_eq = rest
-                    .splitn(2, '=')
-                    .nth(1)
-                    .map(|s| s.trim())
-                    .unwrap_or("");
+                let after_eq = rest.splitn(2, '=').nth(1).map(|s| s.trim()).unwrap_or("");
                 // Take the first whitespace-delimited token (drop trailing
                 // " (Loop 47 audit fix 2)" annotations).
                 if let Some(tok) = after_eq.split_whitespace().next() {
@@ -127,7 +127,12 @@ fn parse_csv(path: &Path) -> (String, Vec<PseRow>) {
         ("NDE", "nde", "ci95_nde_lo", "ci95_nde_hi"),
         ("NIE_M1", "nie_m1", "ci95_nie_m1_lo", "ci95_nie_m1_hi"),
         ("NIE_M2", "nie_m2", "ci95_nie_m2_lo", "ci95_nie_m2_hi"),
-        ("NIE_chain", "nie_chain", "ci95_nie_chain_lo", "ci95_nie_chain_hi"),
+        (
+            "NIE_chain",
+            "nie_chain",
+            "ci95_nie_chain_lo",
+            "ci95_nie_chain_hi",
+        ),
     ];
     let mut line = String::new();
     loop {
@@ -261,8 +266,7 @@ fn compute_envelope(rows: &[PseRow], gamma: f64, lambda: f64) -> Vec<Sensitivity
             let env_hi = r.ci_hi + expansion;
             // Survives iff the envelope still excludes 0 (strict, matches Loop 36
             // "CI excludes zero" verdict semantics).
-            let survives_at_zero = (env_lo > 0.0 && env_hi > 0.0)
-                || (env_lo < 0.0 && env_hi < 0.0);
+            let survives_at_zero = (env_lo > 0.0 && env_hi > 0.0) || (env_lo < 0.0 && env_hi < 0.0);
             SensitivityRow {
                 fix_x: r.fix_x.clone(),
                 pse_name: r.pse_name,
@@ -278,14 +282,31 @@ fn compute_envelope(rows: &[PseRow], gamma: f64, lambda: f64) -> Vec<Sensitivity
         .collect()
 }
 
-fn emit<W: Write>(w: &mut W, rows: &[SensitivityRow], gamma: f64, lambda: f64) -> std::io::Result<()> {
+fn emit<W: Write>(
+    w: &mut W,
+    rows: &[SensitivityRow],
+    gamma: f64,
+    lambda: f64,
+) -> std::io::Result<()> {
     writeln!(
         w,
         "# Bridge-score sensitivity envelope (Ohnishi & Li 2026 arXiv:2605.18724 Theorem 2)"
     )?;
-    writeln!(w, "# Gamma = {:.3} (residual selection ratio); 1.0 = no unmeasured confounding", gamma)?;
-    writeln!(w, "# Lambda = {:.3} (outcome scale residual, BPB units)", lambda)?;
-    writeln!(w, "# Envelope expansion ΓΛ(Γ−1)/Γ = {:.6} BPB", envelope_expansion(gamma, lambda))?;
+    writeln!(
+        w,
+        "# Gamma = {:.3} (residual selection ratio); 1.0 = no unmeasured confounding",
+        gamma
+    )?;
+    writeln!(
+        w,
+        "# Lambda = {:.3} (outcome scale residual, BPB units)",
+        lambda
+    )?;
+    writeln!(
+        w,
+        "# Envelope expansion ΓΛ(Γ−1)/Γ = {:.6} BPB",
+        envelope_expansion(gamma, lambda)
+    )?;
     writeln!(
         w,
         "fix_x,pse_name,estimate,ci95_lo,ci95_hi,envelope_expansion,env_lo,env_hi,survives_at_zero"
@@ -333,9 +354,14 @@ fn parse_lambda_grid(arg: &str) -> Result<Vec<f64>, String> {
         if s.is_empty() {
             continue;
         }
-        let v: f64 = s.parse().map_err(|e| format!("'{}' is not a number: {}", s, e))?;
+        let v: f64 = s
+            .parse()
+            .map_err(|e| format!("'{}' is not a number: {}", s, e))?;
         if !v.is_finite() || v <= 0.0 {
-            return Err(format!("Λ value '{}' must be positive and finite (got {})", s, v));
+            return Err(format!(
+                "Λ value '{}' must be positive and finite (got {})",
+                s, v
+            ));
         }
         out.push(v);
     }
@@ -371,7 +397,10 @@ fn emit_lambda_sweep<W: Write>(
         w,
         "# Tipping region = (Γ ≤ Γ_tip(Λ)): unmeasured confounding strength below this curve preserves the verdict."
     )?;
-    writeln!(w, "fix_x,pse_name,estimate,ci95_lo,ci95_hi,lambda,gamma_tip,robustness")?;
+    writeln!(
+        w,
+        "fix_x,pse_name,estimate,ci95_lo,ci95_hi,lambda,gamma_tip,robustness"
+    )?;
     for r in rows {
         for &lambda in lambda_grid {
             let g_tip = tipping_point_gamma(r.ci_lo, r.ci_hi, lambda);
@@ -404,7 +433,11 @@ fn format_lambda_for_header(lambda: f64) -> String {
     }
     let s = format!("{:.4}", lambda);
     let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-    if trimmed.is_empty() { "0".to_string() } else { trimmed.to_string() }
+    if trimmed.is_empty() {
+        "0".to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Loop 43 fix 5: wide-form pivot of the Λ-sweep.
@@ -465,7 +498,10 @@ fn emit_tipping<W: Write>(w: &mut W, rows: &[PseRow], lambda: f64) -> std::io::R
         w,
         "#   Γ_tip < 1.25 → fragile;  1.25 ≤ Γ_tip < 2.0 → moderate;  Γ_tip ≥ 2.0 → robust"
     )?;
-    writeln!(w, "fix_x,pse_name,estimate,ci95_lo,ci95_hi,gamma_tip,robustness")?;
+    writeln!(
+        w,
+        "fix_x,pse_name,estimate,ci95_lo,ci95_hi,gamma_tip,robustness"
+    )?;
     for r in rows {
         let g_tip = tipping_point_gamma(r.ci_lo, r.ci_hi, lambda);
         let label = robustness_label(g_tip);
@@ -479,7 +515,9 @@ fn emit_tipping<W: Write>(w: &mut W, rows: &[PseRow], lambda: f64) -> std::io::R
 }
 
 fn print_help() {
-    println!("f2_mediation_sensitivity — Loop 40: additive bridge-score envelope on dual-mediation PSEs");
+    println!(
+        "f2_mediation_sensitivity — Loop 40: additive bridge-score envelope on dual-mediation PSEs"
+    );
     println!();
     println!("USAGE: f2_mediation_sensitivity [FLAGS] DUAL_MEDIATION_CSV");
     println!();
@@ -582,16 +620,24 @@ fn main() {
     }
     let (stratum, pse_rows) = parse_csv(Path::new(&input));
     if pse_rows.is_empty() {
-        eprintln!("# ERROR: no PSE rows parsed from {} (is it a f2_dual_mediation output?)", input);
+        eprintln!(
+            "# ERROR: no PSE rows parsed from {} (is it a f2_dual_mediation output?)",
+            input
+        );
         std::process::exit(1);
     }
-    eprintln!("# INPUT STRATUM = {} (propagated from f2_dual_mediation preamble)", stratum);
+    eprintln!(
+        "# INPUT STRATUM = {} (propagated from f2_dual_mediation preamble)",
+        stratum
+    );
     if lambda_sweep_mode {
         // Loop 42 fix 5 + Loop 43 fix 3 (CLI override) + Loop 43 fix 5 (wide form).
         let kind = if wide_form { "wide" } else { "long" };
         eprintln!(
             "# Λ-sweep ({}): {} PSEs × {} Λ values",
-            kind, pse_rows.len(), lambda_grid.len()
+            kind,
+            pse_rows.len(),
+            lambda_grid.len()
         );
         let writer: Box<dyn Write> = if let Some(p) = out_path.as_deref() {
             Box::new(File::create(p).expect("create out CSV"))
@@ -619,7 +665,9 @@ fn main() {
             .count();
         eprintln!(
             "# {} of {} PSEs are robust (Γ_tip ≥ 2.0) at Λ = {}",
-            n_robust, pse_rows.len(), lambda
+            n_robust,
+            pse_rows.len(),
+            lambda
         );
         if let Some(p) = out_path {
             let mut f = File::create(&p).expect("create out CSV");
@@ -638,7 +686,10 @@ fn main() {
     let n_survives = env_rows.iter().filter(|r| r.survives_at_zero).count();
     eprintln!(
         "# {} of {} PSEs survive at zero under (Γ={}, Λ={}) — Loop 36 robustness check",
-        n_survives, env_rows.len(), gamma, lambda
+        n_survives,
+        env_rows.len(),
+        gamma,
+        lambda
     );
     if let Some(p) = out_path {
         let mut f = File::create(&p).expect("create out CSV");
@@ -712,7 +763,10 @@ mod tests {
         assert_eq!(robustness_label(g), "moderate");
 
         // Fragile case: CI [0.05, 2.0], Λ=1.0 → Γ_tip = 1.05.
-        assert_eq!(robustness_label(tipping_point_gamma(0.05, 2.0, 1.0)), "fragile");
+        assert_eq!(
+            robustness_label(tipping_point_gamma(0.05, 2.0, 1.0)),
+            "fragile"
+        );
 
         // CI brackets zero → NaN tipping point → n/a label.
         let g = tipping_point_gamma(-0.5, 0.5, 1.0);
@@ -736,7 +790,11 @@ mod tests {
             .collect::<Vec<_>>()
             .join(",");
         let err = parse_lambda_grid(&big).unwrap_err();
-        assert!(err.contains("max is"), "expected max-size error, got: {}", err);
+        assert!(
+            err.contains("max is"),
+            "expected max-size error, got: {}",
+            err
+        );
     }
 
     #[test]
@@ -759,7 +817,11 @@ mod tests {
         writeln!(f, "# INPUT STRATUM = warmup0 (Loop 47 audit fix 2)").unwrap();
         writeln!(f, "# M1 = wd, M2 = rms").unwrap();
         writeln!(f, "rank,fix_x,n,delta_x,nde,se_nde,ci95_nde_lo,ci95_nde_hi,nie_m1,se_nie_m1,ci95_nie_m1_lo,ci95_nie_m1_hi,nie_m2,se_nie_m2,ci95_nie_m2_lo,ci95_nie_m2_hi,nie_chain,se_nie_chain,ci95_nie_chain_lo,ci95_nie_chain_hi").unwrap();
-        writeln!(f, "1,rms,5,1.0,-4.0,0.2,-4.5,-3.5,5.0,0.2,4.5,5.5,1.0,0.2,0.5,1.5,-1.0,0.2,-1.5,-0.5").unwrap();
+        writeln!(
+            f,
+            "1,rms,5,1.0,-4.0,0.2,-4.5,-3.5,5.0,0.2,4.5,5.5,1.0,0.2,0.5,1.5,-1.0,0.2,-1.5,-0.5"
+        )
+        .unwrap();
         drop(f);
         let (stratum, rows) = parse_csv(&tmp);
         assert_eq!(stratum, "warmup0", "stratum should be captured from banner");
@@ -773,7 +835,11 @@ mod tests {
         let tmp = std::env::temp_dir().join("f2_sens_no_banner.csv");
         let mut f = std::fs::File::create(&tmp).unwrap();
         writeln!(f, "rank,fix_x,n,delta_x,nde,se_nde,ci95_nde_lo,ci95_nde_hi,nie_m1,se_nie_m1,ci95_nie_m1_lo,ci95_nie_m1_hi,nie_m2,se_nie_m2,ci95_nie_m2_lo,ci95_nie_m2_hi,nie_chain,se_nie_chain,ci95_nie_chain_lo,ci95_nie_chain_hi").unwrap();
-        writeln!(f, "1,rms,5,1.0,-4.0,0.2,-4.5,-3.5,5.0,0.2,4.5,5.5,1.0,0.2,0.5,1.5,-1.0,0.2,-1.5,-0.5").unwrap();
+        writeln!(
+            f,
+            "1,rms,5,1.0,-4.0,0.2,-4.5,-3.5,5.0,0.2,4.5,5.5,1.0,0.2,0.5,1.5,-1.0,0.2,-1.5,-0.5"
+        )
+        .unwrap();
         drop(f);
         let (stratum, _) = parse_csv(&tmp);
         assert_eq!(stratum, "canonical");
@@ -785,13 +851,19 @@ mod tests {
         write_stratum_banner(&mut buf, "warmup0").unwrap();
         let s = String::from_utf8(buf).unwrap();
         assert!(s.contains("INPUT STRATUM = warmup0"));
-        assert!(s.contains("Pearl CDE"), "non-canonical banner must include CDE note");
+        assert!(
+            s.contains("Pearl CDE"),
+            "non-canonical banner must include CDE note"
+        );
 
         let mut buf2 = Vec::new();
         write_stratum_banner(&mut buf2, "canonical").unwrap();
         let s2 = String::from_utf8(buf2).unwrap();
         assert!(s2.contains("INPUT STRATUM = canonical"));
-        assert!(!s2.contains("Pearl CDE"), "canonical banner should not include CDE note");
+        assert!(
+            !s2.contains("Pearl CDE"),
+            "canonical banner should not include CDE note"
+        );
     }
 
     #[test]
@@ -807,13 +879,21 @@ mod tests {
     fn format_lambda_for_header_avoids_scientific_notation_at_extremes() {
         // Loop 46 fix 2: Λ ≥ 1e4 must not produce "1.0000e4" headers.
         let s = format_lambda_for_header(10000.0);
-        assert!(!s.contains('e'), "Λ=1e4 produced scientific notation: '{}'", s);
+        assert!(
+            !s.contains('e'),
+            "Λ=1e4 produced scientific notation: '{}'",
+            s
+        );
         assert_eq!(s, "10000");
         // Λ at the threshold (exactly 1e4) goes through the Display branch.
         assert!(!format_lambda_for_header(1e6).contains('e'));
         // Tiny Λ → Display impl gives short form (no scientific until ≤ ~1e-5).
         let small = format_lambda_for_header(1e-4);
-        assert!(!small.contains('e'), "Λ=1e-4 became scientific: '{}'", small);
+        assert!(
+            !small.contains('e'),
+            "Λ=1e-4 became scientific: '{}'",
+            small
+        );
         assert_eq!(small, "0.0001");
     }
 
@@ -821,14 +901,29 @@ mod tests {
     fn wide_form_one_row_per_pse_with_lambda_columns() {
         // Loop 43 fix 5: wide-form pivot.
         let rows = vec![
-            PseRow { fix_x: "rms".into(), pse_name: "NDE", estimate: -4.0, ci_lo: -4.5, ci_hi: -3.5 },
-            PseRow { fix_x: "rms".into(), pse_name: "NIE_M1", estimate: 5.0, ci_lo: 4.5, ci_hi: 5.5 },
+            PseRow {
+                fix_x: "rms".into(),
+                pse_name: "NDE",
+                estimate: -4.0,
+                ci_lo: -4.5,
+                ci_hi: -3.5,
+            },
+            PseRow {
+                fix_x: "rms".into(),
+                pse_name: "NIE_M1",
+                estimate: 5.0,
+                ci_lo: 4.5,
+                ci_hi: 5.5,
+            },
         ];
         let lambdas = &[0.5_f64, 1.0, 2.0];
         let mut buf = Vec::new();
         emit_lambda_sweep_wide(&mut buf, &rows, lambdas).expect("write");
         let s = String::from_utf8(buf).unwrap();
-        let data_rows: Vec<&str> = s.lines().filter(|l| !l.starts_with('#') && !l.starts_with("fix_x,")).collect();
+        let data_rows: Vec<&str> = s
+            .lines()
+            .filter(|l| !l.starts_with('#') && !l.starts_with("fix_x,"))
+            .collect();
         assert_eq!(data_rows.len(), 2, "expected 1 row per PSE = 2 rows");
         // Header should include three gamma_tip_lambda_* columns.
         let header = s.lines().find(|l| l.starts_with("fix_x,")).unwrap();
@@ -839,15 +934,35 @@ mod tests {
     fn lambda_sweep_emits_one_row_per_pse_times_lambda() {
         // Loop 42 fix 5: ensure the long-form sweep emits |PSE| × |Λ_grid| data rows.
         let rows = vec![
-            PseRow { fix_x: "rms".into(), pse_name: "NDE", estimate: -4.0, ci_lo: -4.5, ci_hi: -3.5 },
-            PseRow { fix_x: "rms".into(), pse_name: "NIE_M1", estimate: 5.0, ci_lo: 4.5, ci_hi: 5.5 },
+            PseRow {
+                fix_x: "rms".into(),
+                pse_name: "NDE",
+                estimate: -4.0,
+                ci_lo: -4.5,
+                ci_hi: -3.5,
+            },
+            PseRow {
+                fix_x: "rms".into(),
+                pse_name: "NIE_M1",
+                estimate: 5.0,
+                ci_lo: 4.5,
+                ci_hi: 5.5,
+            },
         ];
         let lambdas = &[0.5_f64, 1.0, 2.0];
         let mut buf = Vec::new();
         emit_lambda_sweep(&mut buf, &rows, lambdas).expect("write");
         let s = String::from_utf8(buf).unwrap();
-        let data_rows: Vec<&str> = s.lines().filter(|l| !l.starts_with('#') && !l.starts_with("fix_x,")).collect();
-        assert_eq!(data_rows.len(), 2 * 3, "expected 2 PSEs × 3 Λ = 6 rows, got {}", data_rows.len());
+        let data_rows: Vec<&str> = s
+            .lines()
+            .filter(|l| !l.starts_with('#') && !l.starts_with("fix_x,"))
+            .collect();
+        assert_eq!(
+            data_rows.len(),
+            2 * 3,
+            "expected 2 PSEs × 3 Λ = 6 rows, got {}",
+            data_rows.len()
+        );
     }
 
     #[test]
@@ -858,7 +973,13 @@ mod tests {
         let small = tipping_point_gamma(lo, hi, 0.1);
         let med = tipping_point_gamma(lo, hi, 1.0);
         let big = tipping_point_gamma(lo, hi, 5.0);
-        assert!(small > med && med > big, "γ_tip not monotone decreasing: {} {} {}", small, med, big);
+        assert!(
+            small > med && med > big,
+            "γ_tip not monotone decreasing: {} {} {}",
+            small,
+            med,
+            big
+        );
     }
 
     #[test]
@@ -885,6 +1006,9 @@ mod tests {
             ci_hi: 2.02,
         }];
         let out = compute_envelope(&pse, 2.0, 1.0);
-        assert!(!out[0].survives_at_zero, "expected zero-crossing at Γ=2, Λ=1");
+        assert!(
+            !out[0].survives_at_zero,
+            "expected zero-crossing at Γ=2, Λ=1"
+        );
     }
 }

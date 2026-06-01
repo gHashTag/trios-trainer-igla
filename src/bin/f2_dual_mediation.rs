@@ -112,8 +112,12 @@ fn lookup_triplet_any_perm<'a>(
     c: &str,
 ) -> Option<&'a Vec<(u64, f64)>> {
     let perms = [
-        (a, b, c), (a, c, b), (b, a, c),
-        (b, c, a), (c, a, b), (c, b, a),
+        (a, b, c),
+        (a, c, b),
+        (b, a, c),
+        (b, c, a),
+        (c, a, b),
+        (c, b, a),
     ];
     // Loop 38 fix 4 → Loop 39 fix 2: stratum-aware lookup uses the registry
     // in race::ablation. Adding a new stratum (e.g. warmup0) requires no
@@ -165,10 +169,7 @@ fn aligned_delta_with_count(
     (out, full_seeds.len())
 }
 
-fn aligned_delta(
-    target_seeds: &[(u64, f64)],
-    full_seeds: &[(u64, f64)],
-) -> Vec<f64> {
+fn aligned_delta(target_seeds: &[(u64, f64)], full_seeds: &[(u64, f64)]) -> Vec<f64> {
     aligned_delta_with_count(target_seeds, full_seeds).0
 }
 
@@ -176,16 +177,16 @@ fn aligned_delta(
 struct DualMediationRow {
     fix_x: String,
     delta_x: f64,
-    nde: f64,           // Δ_{X,M1,M2}
-    nie_m1: f64,        // X → M1 → Y only
-    nie_m2: f64,        // X → M2 → Y only
-    nie_chain: f64,     // X → M1 → M2 → Y
-    sum: f64,           // NDE + NIE_M1 + NIE_M2 + NIE_chain (should ≈ Δ_X)
-    residual: f64,      // Δ_X − sum (sanity for no-interaction assumption)
-    pct_m1: f64,        // NIE_M1 / Δ_X × 100
-    pct_m2: f64,        // NIE_M2 / Δ_X × 100
-    pct_chain: f64,     // NIE_chain / Δ_X × 100
-    pct_nde: f64,       // NDE / Δ_X × 100
+    nde: f64,       // Δ_{X,M1,M2}
+    nie_m1: f64,    // X → M1 → Y only
+    nie_m2: f64,    // X → M2 → Y only
+    nie_chain: f64, // X → M1 → M2 → Y
+    sum: f64,       // NDE + NIE_M1 + NIE_M2 + NIE_chain (should ≈ Δ_X)
+    residual: f64,  // Δ_X − sum (sanity for no-interaction assumption)
+    pct_m1: f64,    // NIE_M1 / Δ_X × 100
+    pct_m2: f64,    // NIE_M2 / Δ_X × 100
+    pct_chain: f64, // NIE_chain / Δ_X × 100
+    pct_nde: f64,   // NDE / Δ_X × 100
     // Loop 35 (Loop 34 Option A): closed-form SEs via per-seed PSE variance.
     // For LINEAR functionals (our case — NDE/NIE_* are linear combos of
     // 4 means), the multivariate delta-method (Miles & Shpitser 2017,
@@ -240,11 +241,7 @@ fn detect_input_stratum(rows: &[LongRow]) -> &'static str {
     }
 }
 
-fn compute_dual_mediation(
-    rows: &[LongRow],
-    m1: &str,
-    m2: &str,
-) -> Vec<DualMediationRow> {
+fn compute_dual_mediation(rows: &[LongRow], m1: &str, m2: &str) -> Vec<DualMediationRow> {
     if !is_canonical_fix(m1) || !is_canonical_fix(m2) {
         eprintln!(
             "# ERROR: mediator(s) must be canonical fix names. Got M1='{}', M2='{}'. Valid: {:?}",
@@ -397,7 +394,13 @@ fn compute_dual_mediation(
         let sum = nde + nie_m1 + nie_m2 + nie_chain;
         let residual = delta_x - sum;
 
-        let pct = |v: f64| if delta_x.abs() > 1e-6 { v / delta_x * 100.0 } else { f64::NAN };
+        let pct = |v: f64| {
+            if delta_x.abs() > 1e-6 {
+                v / delta_x * 100.0
+            } else {
+                f64::NAN
+            }
+        };
 
         out.push(DualMediationRow {
             fix_x: x.to_string(),
@@ -429,7 +432,10 @@ fn compute_dual_mediation(
     }
     // Sort by |Δ_X| descending — biggest total effects first.
     out.sort_by(|a, b| {
-        b.delta_x.abs().partial_cmp(&a.delta_x.abs()).unwrap_or(std::cmp::Ordering::Equal)
+        b.delta_x
+            .abs()
+            .partial_cmp(&a.delta_x.abs())
+            .unwrap_or(std::cmp::Ordering::Equal)
     });
     out
 }
@@ -441,7 +447,10 @@ fn emit<W: Write>(
     m2: &str,
     stratum: &str,
 ) -> std::io::Result<()> {
-    writeln!(w, "# Dual-mediator decomposition (Zhao-Luo 2020 arXiv:2007.16031)")?;
+    writeln!(
+        w,
+        "# Dual-mediator decomposition (Zhao-Luo 2020 arXiv:2007.16031)"
+    )?;
     writeln!(w, "# INPUT STRATUM = {} (Loop 47 audit fix 2)", stratum)?;
     if stratum != "canonical" {
         writeln!(
@@ -462,10 +471,7 @@ fn emit<W: Write>(
         w,
         "# NDE = Δ_{{X,M1,M2}};  NIE_M1 = (Δ_X − Δ_{{X,M1}}) − NIE_chain;"
     )?;
-    writeln!(
-        w,
-        "# NIE_M2 = (Δ_X − Δ_{{X,M2}}) − NIE_chain;"
-    )?;
+    writeln!(w, "# NIE_M2 = (Δ_X − Δ_{{X,M2}}) − NIE_chain;")?;
     writeln!(
         w,
         "# NIE_chain = (Δ_X − Δ_{{X,M1}}) − (Δ_{{X,M2}} − Δ_{{X,M1,M2}})"
@@ -572,7 +578,10 @@ fn main() {
     let stratum = detect_input_stratum(&all_rows);
     eprintln!(
         "# Loaded {} rows; M1='{}', M2='{}'; INPUT STRATUM = {}",
-        all_rows.len(), m1, m2, stratum
+        all_rows.len(),
+        m1,
+        m2,
+        stratum
     );
     let rows = compute_dual_mediation(&all_rows, &m1, &m2);
     if rows.is_empty() {
@@ -602,29 +611,79 @@ mod tests {
         // Δ_{X,M2} = 0.7  (pair rms,warmup = 4.7)
         // Δ_{X,M1,M2} = 0.3 (triplet)
         vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), seed: 1, bpb: 4.5 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_warmup".into(), seed: 1, bpb: 4.7 },
-            LongRow { mode: "triplet".into(), fix_name: "triplet_rms_warmup_wd".into(), seed: 1, bpb: 4.3 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                seed: 1,
+                bpb: 4.5,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_warmup".into(),
+                seed: 1,
+                bpb: 4.7,
+            },
+            LongRow {
+                mode: "triplet".into(),
+                fix_name: "triplet_rms_warmup_wd".into(),
+                seed: 1,
+                bpb: 4.3,
+            },
             // Throw in canonical full_stack from triplet too for resolver coverage.
-            LongRow { mode: "triplet".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
+            LongRow {
+                mode: "triplet".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
         ]
     }
 
     #[test]
     fn dual_mediation_identifies_paths_for_rms() {
         let rows = compute_dual_mediation(&synth_rows(), "wd", "warmup");
-        assert_eq!(rows.len(), 1, "only rms should appear (M1=wd, M2=warmup excluded)");
+        assert_eq!(
+            rows.len(),
+            1,
+            "only rms should appear (M1=wd, M2=warmup excluded)"
+        );
         let r = &rows[0];
         assert!((r.delta_x - 1.0).abs() < 1e-9);
-        assert!((r.nde - 0.3).abs() < 1e-9, "NDE expected 0.3, got {}", r.nde);
+        assert!(
+            (r.nde - 0.3).abs() < 1e-9,
+            "NDE expected 0.3, got {}",
+            r.nde
+        );
         // NIE_chain = (1.0 - 0.5) - (0.7 - 0.3) = 0.5 - 0.4 = 0.1
-        assert!((r.nie_chain - 0.1).abs() < 1e-9, "chain expected 0.1, got {}", r.nie_chain);
+        assert!(
+            (r.nie_chain - 0.1).abs() < 1e-9,
+            "chain expected 0.1, got {}",
+            r.nie_chain
+        );
         // NIE_M1 = (1.0 - 0.5) - 0.1 = 0.4
-        assert!((r.nie_m1 - 0.4).abs() < 1e-9, "M1 expected 0.4, got {}", r.nie_m1);
+        assert!(
+            (r.nie_m1 - 0.4).abs() < 1e-9,
+            "M1 expected 0.4, got {}",
+            r.nie_m1
+        );
         // NIE_M2 = (1.0 - 0.7) - 0.1 = 0.2
-        assert!((r.nie_m2 - 0.2).abs() < 1e-9, "M2 expected 0.2, got {}", r.nie_m2);
+        assert!(
+            (r.nie_m2 - 0.2).abs() < 1e-9,
+            "M2 expected 0.2, got {}",
+            r.nie_m2
+        );
         // Sum = 0.3 + 0.4 + 0.2 + 0.1 = 1.0 = Δ_X (under no-interaction)
         assert!((r.sum - 1.0).abs() < 1e-9);
         assert!(r.residual.abs() < 1e-9);
@@ -638,11 +697,36 @@ mod tests {
         // Add seed=2 and seed=3 with mild jitter so SEs are non-zero.
         for sid in [2u64, 3u64] {
             let jitter = 0.01 * (sid as f64 - 1.0);
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: sid, bpb: 4.0 + jitter });
-            rows.push(LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: sid, bpb: 5.0 + jitter });
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), seed: sid, bpb: 4.5 + jitter });
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_warmup".into(), seed: sid, bpb: 4.7 + jitter });
-            rows.push(LongRow { mode: "triplet".into(), fix_name: "triplet_rms_warmup_wd".into(), seed: sid, bpb: 4.3 + jitter });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: sid,
+                bpb: 4.0 + jitter,
+            });
+            rows.push(LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                seed: sid,
+                bpb: 5.0 + jitter,
+            });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                seed: sid,
+                bpb: 4.5 + jitter,
+            });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_warmup".into(),
+                seed: sid,
+                bpb: 4.7 + jitter,
+            });
+            rows.push(LongRow {
+                mode: "triplet".into(),
+                fix_name: "triplet_rms_warmup_wd".into(),
+                seed: sid,
+                bpb: 4.3 + jitter,
+            });
         }
         let out = compute_dual_mediation(&rows, "wd", "warmup");
         assert_eq!(out.len(), 1);
@@ -655,7 +739,12 @@ mod tests {
             ("se_nie_m2", r.se_nie_m2),
             ("se_nie_chain", r.se_nie_chain),
         ] {
-            assert!(se.is_finite() && se >= 0.0, "{} = {} should be finite ≥ 0", name, se);
+            assert!(
+                se.is_finite() && se >= 0.0,
+                "{} = {} should be finite ≥ 0",
+                name,
+                se
+            );
         }
         // Synth jitter is identical across all 4 series → per-seed PSEs are
         // constant → variance ≈ 0 → SE ≈ 0. Sanity.
@@ -671,7 +760,12 @@ mod tests {
         // Mediator-pair scenario: M1=wd, M2=warmup. Test against rms, gradclip, dropout.
         for sid in [1u64, 2u64, 3u64] {
             let j = 0.001 * (sid as f64);
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: sid, bpb: 5.13 + j });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: sid,
+                bpb: 5.13 + j,
+            });
             for (fix, loco_bpb) in [
                 ("rms", 6.00),
                 ("gradclip", 4.43),
@@ -679,24 +773,39 @@ mod tests {
                 ("wd", 0.07),
                 ("warmup", 4.42),
             ] {
-                rows.push(LongRow { mode: "loco".into(), fix_name: fix.into(), seed: sid, bpb: loco_bpb + j });
+                rows.push(LongRow {
+                    mode: "loco".into(),
+                    fix_name: fix.into(),
+                    seed: sid,
+                    bpb: loco_bpb + j,
+                });
             }
             for (lbl, bpb) in [
                 ("pair_rms_wd", 2.28),
                 ("pair_gradclip_wd", 0.49),
                 ("pair_dropout_wd", 0.63),
-                ("pair_rms_warmup", 5.13),       // sum-of-effects approx
+                ("pair_rms_warmup", 5.13), // sum-of-effects approx
                 ("pair_gradclip_warmup", 4.43),
                 ("pair_warmup_dropout", 4.17),
             ] {
-                rows.push(LongRow { mode: "pairwise".into(), fix_name: lbl.into(), seed: sid, bpb: bpb + j });
+                rows.push(LongRow {
+                    mode: "pairwise".into(),
+                    fix_name: lbl.into(),
+                    seed: sid,
+                    bpb: bpb + j,
+                });
             }
             for (lbl, bpb) in [
                 ("triplet_rms_warmup_wd", 0.26),
                 ("triplet_gradclip_warmup_wd", 0.49),
                 ("triplet_warmup_wd_dropout", 0.63),
             ] {
-                rows.push(LongRow { mode: "triplet".into(), fix_name: lbl.into(), seed: sid, bpb: bpb + j });
+                rows.push(LongRow {
+                    mode: "triplet".into(),
+                    fix_name: lbl.into(),
+                    seed: sid,
+                    bpb: bpb + j,
+                });
             }
         }
         let out = compute_dual_mediation(&rows, "wd", "warmup");
@@ -706,7 +815,8 @@ mod tests {
             assert!(
                 r.residual.abs() < 1e-6,
                 "no-XM-interaction residual must hold (Loop 34 finding): fix_x={}, residual={}",
-                r.fix_x, r.residual
+                r.fix_x,
+                r.residual
             );
         }
     }
@@ -715,22 +825,55 @@ mod tests {
     fn detect_input_stratum_classifies_each_prefix() {
         // Loop 47 audit fix 2: stratum detection.
         let canonical = vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
         ];
         assert_eq!(detect_input_stratum(&canonical), "canonical");
         let wd0 = vec![
-            LongRow { mode: "wd0_pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "wd0_loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+            LongRow {
+                mode: "wd0_pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "wd0_loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
         ];
         assert_eq!(detect_input_stratum(&wd0), "wd0");
-        let warmup0 = vec![
-            LongRow { mode: "warmup0_pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-        ];
+        let warmup0 = vec![LongRow {
+            mode: "warmup0_pairwise".into(),
+            fix_name: "full_stack".into(),
+            seed: 1,
+            bpb: 4.0,
+        }];
         assert_eq!(detect_input_stratum(&warmup0), "warmup0");
         let mixed = vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "wd0_loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "wd0_loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
         ];
         assert_eq!(detect_input_stratum(&mixed), "mixed");
         assert_eq!(detect_input_stratum(&[]), "empty");
@@ -745,11 +888,36 @@ mod tests {
         let mut rows = synth_rows();
         for sid in [2u64, 3u64] {
             let jit = 0.01 * (sid as f64);
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: sid, bpb: 4.0 + jit });
-            rows.push(LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: sid, bpb: 5.0 + jit });
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), seed: sid, bpb: 4.5 + jit });
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_rms_warmup".into(), seed: sid, bpb: 4.7 + jit });
-            rows.push(LongRow { mode: "triplet".into(), fix_name: "triplet_rms_warmup_wd".into(), seed: sid, bpb: 4.3 + jit });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: sid,
+                bpb: 4.0 + jit,
+            });
+            rows.push(LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                seed: sid,
+                bpb: 5.0 + jit,
+            });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                seed: sid,
+                bpb: 4.5 + jit,
+            });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_warmup".into(),
+                seed: sid,
+                bpb: 4.7 + jit,
+            });
+            rows.push(LongRow {
+                mode: "triplet".into(),
+                fix_name: "triplet_rms_warmup_wd".into(),
+                seed: sid,
+                bpb: 4.3 + jit,
+            });
         }
         let a = compute_dual_mediation(&rows, "wd", "warmup");
         let b = compute_dual_mediation(&rows, "warmup", "wd");
@@ -758,13 +926,23 @@ mod tests {
         let ra = &a[0];
         let rb = &b[0];
         // NDE and chain are M1↔M2 symmetric and must be byte-identical.
-        assert!((ra.nde - rb.nde).abs() < 1e-9, "NDE drifted: {} vs {}", ra.nde, rb.nde);
+        assert!(
+            (ra.nde - rb.nde).abs() < 1e-9,
+            "NDE drifted: {} vs {}",
+            ra.nde,
+            rb.nde
+        );
         assert!((ra.nie_chain - rb.nie_chain).abs() < 1e-9);
         // SE for NDE and chain unchanged.
         assert!((ra.se_nde - rb.se_nde).abs() < 1e-9);
         assert!((ra.se_nie_chain - rb.se_nie_chain).abs() < 1e-9);
         // NIE_M1 in run a == NIE_M2 in run b (and vice versa).
-        assert!((ra.nie_m1 - rb.nie_m2).abs() < 1e-9, "NIE_M1↔M2 swap broken: a.M1={}, b.M2={}", ra.nie_m1, rb.nie_m2);
+        assert!(
+            (ra.nie_m1 - rb.nie_m2).abs() < 1e-9,
+            "NIE_M1↔M2 swap broken: a.M1={}, b.M2={}",
+            ra.nie_m1,
+            rb.nie_m2
+        );
         assert!((ra.nie_m2 - rb.nie_m1).abs() < 1e-9);
         // SEs swap too.
         assert!((ra.se_nie_m1 - rb.se_nie_m2).abs() < 1e-9);
@@ -780,11 +958,36 @@ mod tests {
         // (emitted by f2_ablation_sweep --mode wd_stratified) must be
         // discoverable by the lookup helpers without renaming the mode column.
         let rows = vec![
-            LongRow { mode: "wd0_pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "wd0_loco".into(),     fix_name: "rms".into(),         seed: 1, bpb: 5.0 },
-            LongRow { mode: "wd0_pairwise".into(), fix_name: "pair_rms_wd".into(),     seed: 1, bpb: 4.5 },
-            LongRow { mode: "wd0_pairwise".into(), fix_name: "pair_rms_warmup".into(), seed: 1, bpb: 4.7 },
-            LongRow { mode: "wd0_triplet".into(),  fix_name: "triplet_rms_warmup_wd".into(), seed: 1, bpb: 4.3 },
+            LongRow {
+                mode: "wd0_pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "wd0_loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
+            LongRow {
+                mode: "wd0_pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                seed: 1,
+                bpb: 4.5,
+            },
+            LongRow {
+                mode: "wd0_pairwise".into(),
+                fix_name: "pair_rms_warmup".into(),
+                seed: 1,
+                bpb: 4.7,
+            },
+            LongRow {
+                mode: "wd0_triplet".into(),
+                fix_name: "triplet_rms_warmup_wd".into(),
+                seed: 1,
+                bpb: 4.3,
+            },
         ];
         let scores = compute_dual_mediation(&rows, "wd", "warmup");
         assert_eq!(
@@ -816,6 +1019,9 @@ mod tests {
     fn pair_and_triplet_labels_are_canonical_sorted() {
         assert_eq!(pair_label("wd", "rms"), "pair_rms_wd");
         assert_eq!(pair_label("rms", "wd"), "pair_rms_wd");
-        assert_eq!(triplet_label("wd", "rms", "warmup"), "triplet_rms_warmup_wd");
+        assert_eq!(
+            triplet_label("wd", "rms", "warmup"),
+            "triplet_rms_warmup_wd"
+        );
     }
 }

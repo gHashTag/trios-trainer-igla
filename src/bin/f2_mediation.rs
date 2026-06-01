@@ -62,7 +62,9 @@ fn mean(v: &[f64]) -> f64 {
 /// Linear congruential pseudo-random generator for bootstrap resampling.
 /// Same constants as race::multi_seed::lcg for consistency.
 fn lcg_next(state: &mut u64) -> u64 {
-    *state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
     *state
 }
 
@@ -119,10 +121,7 @@ fn bootstrap_ci<F: Fn(&[(f64, f64, f64)]) -> f64>(
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let lo_i = ((alpha / 2.0) * b as f64).floor() as usize;
     let hi_i = ((1.0 - alpha / 2.0) * b as f64).floor() as usize;
-    (
-        vals[lo_i.min(b - 1)],
-        vals[hi_i.min(b - 1)],
-    )
+    (vals[lo_i.min(b - 1)], vals[hi_i.min(b - 1)])
 }
 
 /// Loop 34 fix 6: exhaustive with-replacement resampling at N≤6 (max 46,656 cases).
@@ -150,10 +149,7 @@ fn bootstrap_ci_exact<F: Fn(&[(f64, f64, f64)]) -> f64>(
     let b = vals.len();
     let lo_i = ((alpha / 2.0) * b as f64).floor() as usize;
     let hi_i = ((1.0 - alpha / 2.0) * b as f64).floor() as usize;
-    (
-        vals[lo_i.min(b - 1)],
-        vals[hi_i.min(b - 1)],
-    )
+    (vals[lo_i.min(b - 1)], vals[hi_i.min(b - 1)])
 }
 
 /// Pair-key canonicalizer matching f2_iloco_score.
@@ -225,7 +221,10 @@ fn compute_mediation(rows: &[LongRow], mediator: &str) -> Vec<MediationRow> {
     let _loco_m = match loco.get(mediator) {
         Some(v) => v.clone(),
         None => {
-            eprintln!("# ERROR (mediation): no LOCO row for mediator '{}'.", mediator);
+            eprintln!(
+                "# ERROR (mediation): no LOCO row for mediator '{}'.",
+                mediator
+            );
             return Vec::new();
         }
     };
@@ -326,11 +325,15 @@ fn emit<W: Write>(w: &mut W, rows: &[MediationRow], mediator: &str) -> std::io::
 }
 
 fn print_help() {
-    println!("f2_mediation — Loop 30: WD-as-mediator analysis (Baron-Kenny + percentile bootstrap)");
+    println!(
+        "f2_mediation — Loop 30: WD-as-mediator analysis (Baron-Kenny + percentile bootstrap)"
+    );
     println!();
     println!("USAGE: f2_mediation [FLAGS] CSV...");
     println!();
-    println!("Reads long-form CSVs with loco + pairwise + full_stack rows (from f2_ablation_sweep).");
+    println!(
+        "Reads long-form CSVs with loco + pairwise + full_stack rows (from f2_ablation_sweep)."
+    );
     println!("For each non-mediator fix X, decomposes its total effect Δ_X into:");
     println!("  - Indirect (mediated by M): Δ_X − Δ_{{X,M}}");
     println!("  - Direct (residual):        Δ_X − IE");
@@ -413,14 +416,54 @@ mod tests {
         //   loco warmup = 4.5; pair(warmup,wd) = 0.1 (removing wd dominates).
         //   Δ_warmup = +0.5; Δ_{warmup,wd} = −3.9; IE = +0.5 − (−3.9) = +4.4.
         vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "loco".into(), fix_name: "wd".into(), seed: 1, bpb: 0.1 },
-            LongRow { mode: "loco".into(), fix_name: "warmup".into(), seed: 1, bpb: 4.5 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_warmup_wd".into(), seed: 1, bpb: 0.1 },
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 2, bpb: 4.0 },
-            LongRow { mode: "loco".into(), fix_name: "wd".into(), seed: 2, bpb: 0.1 },
-            LongRow { mode: "loco".into(), fix_name: "warmup".into(), seed: 2, bpb: 4.5 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_warmup_wd".into(), seed: 2, bpb: 0.1 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                seed: 1,
+                bpb: 0.1,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "warmup".into(),
+                seed: 1,
+                bpb: 4.5,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_warmup_wd".into(),
+                seed: 1,
+                bpb: 0.1,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 2,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                seed: 2,
+                bpb: 0.1,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "warmup".into(),
+                seed: 2,
+                bpb: 4.5,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_warmup_wd".into(),
+                seed: 2,
+                bpb: 0.1,
+            },
         ]
     }
 
@@ -431,8 +474,16 @@ mod tests {
         let r = &rows[0];
         assert_eq!(r.fix_x, "warmup");
         assert!((r.delta_x - 0.5).abs() < 1e-9, "Δ_X={}", r.delta_x);
-        assert!((r.delta_x_wd - (-3.9)).abs() < 1e-9, "Δ_X|wd={}", r.delta_x_wd);
-        assert!((r.indirect_effect - 4.4).abs() < 1e-9, "IE={}", r.indirect_effect);
+        assert!(
+            (r.delta_x_wd - (-3.9)).abs() < 1e-9,
+            "Δ_X|wd={}",
+            r.delta_x_wd
+        );
+        assert!(
+            (r.indirect_effect - 4.4).abs() < 1e-9,
+            "IE={}",
+            r.indirect_effect
+        );
     }
 
     #[test]
@@ -447,21 +498,57 @@ mod tests {
         for &s in &seeds {
             let jitter = 0.001 * (s as f64 - 42.0);
             // full_stack mean ≈ 5.13
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: s, bpb: 5.13 + jitter });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: s,
+                bpb: 5.13 + jitter,
+            });
             // LOCO wd ≈ 0.07 (removing wd helps dramatically)
-            rows.push(LongRow { mode: "loco".into(), fix_name: "wd".into(), seed: s, bpb: 0.07 + jitter });
+            rows.push(LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                seed: s,
+                bpb: 0.07 + jitter,
+            });
             // LOCO warmup ≈ 4.42 (slight degradation)
-            rows.push(LongRow { mode: "loco".into(), fix_name: "warmup".into(), seed: s, bpb: 4.42 + jitter });
+            rows.push(LongRow {
+                mode: "loco".into(),
+                fix_name: "warmup".into(),
+                seed: s,
+                bpb: 4.42 + jitter,
+            });
             // LOCO gradclip ≈ 4.43
-            rows.push(LongRow { mode: "loco".into(), fix_name: "gradclip".into(), seed: s, bpb: 4.43 + jitter });
+            rows.push(LongRow {
+                mode: "loco".into(),
+                fix_name: "gradclip".into(),
+                seed: s,
+                bpb: 4.43 + jitter,
+            });
             // pair(warmup, wd) ≈ 0.26
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_warmup_wd".into(), seed: s, bpb: 0.26 + jitter });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_warmup_wd".into(),
+                seed: s,
+                bpb: 0.26 + jitter,
+            });
             // pair(gradclip, wd) ≈ 0.49
-            rows.push(LongRow { mode: "pairwise".into(), fix_name: "pair_gradclip_wd".into(), seed: s, bpb: 0.49 + jitter });
+            rows.push(LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_gradclip_wd".into(),
+                seed: s,
+                bpb: 0.49 + jitter,
+            });
         }
         let out = compute_mediation(&rows, "wd");
-        let warmup = out.iter().find(|r| r.fix_x == "warmup").expect("warmup row");
-        let gradclip = out.iter().find(|r| r.fix_x == "gradclip").expect("gradclip row");
+        let warmup = out
+            .iter()
+            .find(|r| r.fix_x == "warmup")
+            .expect("warmup row");
+        let gradclip = out
+            .iter()
+            .find(|r| r.fix_x == "gradclip")
+            .expect("gradclip row");
         // Δ_X(warmup) ≈ 4.42 − 5.13 = −0.71 (loop 30 had +0.005; difference is the
         // jitter pattern — what matters here is the IE).
         // IE(warmup) = Δ_X − Δ_{X,wd} = (4.42 − 5.13) − (0.26 − 5.13) = 4.16
@@ -503,8 +590,16 @@ mod tests {
         let stat = |s: &[(f64, f64, f64)]| mean(&s.iter().map(|(_, _, i)| *i).collect::<Vec<_>>());
         let (lo_a, hi_a) = bootstrap_ci(&samples, stat, 2000, 0.05, 0xAAAA_AAAA);
         let (lo_b, hi_b) = bootstrap_ci(&samples, stat, 2000, 0.05, 0xBBBB_BBBB);
-        assert_eq!(lo_a.to_bits(), lo_b.to_bits(), "exact CI lower not seed-invariant");
-        assert_eq!(hi_a.to_bits(), hi_b.to_bits(), "exact CI upper not seed-invariant");
+        assert_eq!(
+            lo_a.to_bits(),
+            lo_b.to_bits(),
+            "exact CI lower not seed-invariant"
+        );
+        assert_eq!(
+            hi_a.to_bits(),
+            hi_b.to_bits(),
+            "exact CI upper not seed-invariant"
+        );
         // Sanity: CI brackets the true mean 1.5.
         assert!(lo_a <= 1.5 && 1.5 <= hi_a);
     }
@@ -522,22 +617,67 @@ mod tests {
             (4.0, 2.0, 2.0),
             (5.0, 2.5, 2.5),
         ];
-        let (lo1, hi1) = bootstrap_ci(&samples, |s| mean(&s.iter().map(|(_, _, i)| *i).collect::<Vec<_>>()), 2000, 0.05, 0xDEAD_BEEF);
-        let (lo2, hi2) = bootstrap_ci(&samples, |s| mean(&s.iter().map(|(_, _, i)| *i).collect::<Vec<_>>()), 2000, 0.05, 0xDEAD_BEEF);
-        assert_eq!(lo1.to_bits(), lo2.to_bits(), "bootstrap CI lower not reproducible");
-        assert_eq!(hi1.to_bits(), hi2.to_bits(), "bootstrap CI upper not reproducible");
+        let (lo1, hi1) = bootstrap_ci(
+            &samples,
+            |s| mean(&s.iter().map(|(_, _, i)| *i).collect::<Vec<_>>()),
+            2000,
+            0.05,
+            0xDEAD_BEEF,
+        );
+        let (lo2, hi2) = bootstrap_ci(
+            &samples,
+            |s| mean(&s.iter().map(|(_, _, i)| *i).collect::<Vec<_>>()),
+            2000,
+            0.05,
+            0xDEAD_BEEF,
+        );
+        assert_eq!(
+            lo1.to_bits(),
+            lo2.to_bits(),
+            "bootstrap CI lower not reproducible"
+        );
+        assert_eq!(
+            hi1.to_bits(),
+            hi2.to_bits(),
+            "bootstrap CI upper not reproducible"
+        );
         // Sanity: CI should cover the true mean (1.5).
-        assert!(lo1 <= 1.5 && 1.5 <= hi1, "CI [{}, {}] missed truth 1.5", lo1, hi1);
+        assert!(
+            lo1 <= 1.5 && 1.5 <= hi1,
+            "CI [{}, {}] missed truth 1.5",
+            lo1,
+            hi1
+        );
     }
 
     #[test]
     fn mediation_ratio_equals_one_when_fully_mediated() {
         // Set up Δ_X = IE → ratio = 1.
         let rows = vec![
-            LongRow { mode: "pairwise".into(), fix_name: "full_stack".into(), seed: 1, bpb: 4.0 },
-            LongRow { mode: "loco".into(), fix_name: "wd".into(), seed: 1, bpb: 0.0 },
-            LongRow { mode: "loco".into(), fix_name: "rms".into(), seed: 1, bpb: 5.0 },
-            LongRow { mode: "pairwise".into(), fix_name: "pair_rms_wd".into(), seed: 1, bpb: 0.0 },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "full_stack".into(),
+                seed: 1,
+                bpb: 4.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "wd".into(),
+                seed: 1,
+                bpb: 0.0,
+            },
+            LongRow {
+                mode: "loco".into(),
+                fix_name: "rms".into(),
+                seed: 1,
+                bpb: 5.0,
+            },
+            LongRow {
+                mode: "pairwise".into(),
+                fix_name: "pair_rms_wd".into(),
+                seed: 1,
+                bpb: 0.0,
+            },
         ];
         let out = compute_mediation(&rows, "wd");
         let r = &out[0];

@@ -173,9 +173,15 @@ fn aggregate(rows: &[LongRow]) -> Vec<WideRow> {
                     if let Some((partner, wd_s)) = rest.rsplit_once('_') {
                         if wd_s == "0.000" {
                             Some(format!("wd_pairwise::{}", partner))
-                        } else { None }
-                    } else { None }
-                } else { None }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             }
             _ => None,
         };

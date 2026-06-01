@@ -91,14 +91,28 @@ fn emit_provenance<W: Write>(w: &mut W, mode: &str, steps: usize) -> std::io::Re
         })
         .unwrap_or_else(|| "unknown".into());
     let rustc_v = option_env!("RUSTC_VERSION").unwrap_or(env!("CARGO_PKG_VERSION"));
-    writeln!(w, "# f2_ablation_sweep provenance (W3C PROV / RO-Crate, arXiv:2312.07852)")?;
+    writeln!(
+        w,
+        "# f2_ablation_sweep provenance (W3C PROV / RO-Crate, arXiv:2312.07852)"
+    )?;
     writeln!(w, "# prov:generatedAt = {} (unix seconds UTC)", now_secs)?;
-    writeln!(w, "# prov:wasGeneratedBy = f2_ablation_sweep --mode {} --steps {}", mode, steps)?;
+    writeln!(
+        w,
+        "# prov:wasGeneratedBy = f2_ablation_sweep --mode {} --steps {}",
+        mode, steps
+    )?;
     writeln!(w, "# prov:agent_git_sha = {}", git_sha)?;
     writeln!(w, "# prov:host = {}", host)?;
-    writeln!(w, "# prov:trainer_internals_schema = {}", trios_trainer::race::multi_seed::TRAINER_INTERNALS_SCHEMA)?;
+    writeln!(
+        w,
+        "# prov:trainer_internals_schema = {}",
+        trios_trainer::race::multi_seed::TRAINER_INTERNALS_SCHEMA
+    )?;
     writeln!(w, "# prov:cargo_pkg_version = {}", rustc_v)?;
-    writeln!(w, "# Bump trainer_internals_schema in src/race/multi_seed.rs when LCG/init/forward changes.")?;
+    writeln!(
+        w,
+        "# Bump trainer_internals_schema in src/race/multi_seed.rs when LCG/init/forward changes."
+    )?;
     Ok(())
 }
 

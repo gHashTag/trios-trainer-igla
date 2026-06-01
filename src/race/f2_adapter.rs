@@ -120,10 +120,10 @@ impl F2StrategyRow {
             d_hidden: self.d_hidden,
             label_smoothing: 0.0,
             weight_decay: 0.1,
-        apply_rmsnorm: true,
-        grad_clip_l2: Some(1.0),
-        latent_clamp_max: Some(1.0),
-        dropout_p: 0.1,
+            apply_rmsnorm: true,
+            grad_clip_l2: Some(1.0),
+            latent_clamp_max: Some(1.0),
+            dropout_p: 0.1,
         }
     }
 }
@@ -134,11 +134,26 @@ mod tests {
 
     #[test]
     fn pick_quantizer_dispatches_by_arm_and_precision() {
-        assert_eq!(F2StrategyRow::pick_quantizer(F2Arm::Fp32, 32.0), F2Quantizer::Fp32Baseline);
-        assert_eq!(F2StrategyRow::pick_quantizer(F2Arm::Phi, 1.58), F2Quantizer::ParetoQSeq);
-        assert_eq!(F2StrategyRow::pick_quantizer(F2Arm::Phi, 4.0), F2Quantizer::ParetoQLsq);
-        assert_eq!(F2StrategyRow::pick_quantizer(F2Arm::Zoo, 4.0), F2Quantizer::Int4Rtn);
-        assert_eq!(F2StrategyRow::pick_quantizer(F2Arm::Zoo, 8.0), F2Quantizer::Bf16E4m3);
+        assert_eq!(
+            F2StrategyRow::pick_quantizer(F2Arm::Fp32, 32.0),
+            F2Quantizer::Fp32Baseline
+        );
+        assert_eq!(
+            F2StrategyRow::pick_quantizer(F2Arm::Phi, 1.58),
+            F2Quantizer::ParetoQSeq
+        );
+        assert_eq!(
+            F2StrategyRow::pick_quantizer(F2Arm::Phi, 4.0),
+            F2Quantizer::ParetoQLsq
+        );
+        assert_eq!(
+            F2StrategyRow::pick_quantizer(F2Arm::Zoo, 4.0),
+            F2Quantizer::Int4Rtn
+        );
+        assert_eq!(
+            F2StrategyRow::pick_quantizer(F2Arm::Zoo, 8.0),
+            F2Quantizer::Bf16E4m3
+        );
     }
 
     #[test]
@@ -178,7 +193,11 @@ mod tests {
         let cfg = row.to_multiseed_config();
         assert!(matches!(
             cfg.task_kind,
-            TaskKind::SparseParity { n_bits: 50, k: 5, n_tasks: 128 }
+            TaskKind::SparseParity {
+                n_bits: 50,
+                k: 5,
+                n_tasks: 128
+            }
         ));
         assert_eq!(cfg.d_hidden, 96);
         assert_eq!(cfg.iso_neff_n_target, Some(41152));

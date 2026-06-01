@@ -308,12 +308,18 @@ mod tests {
         cfg.dropout_p = 0.0;
         let n = AblationFix::ALL.len();
         let full = cumulative_config(&cfg, n);
-        assert_eq!(full.warmup_steps_unquantized, 0,
-            "Warmup0 stratum broken: cumulative_config overrode base=0");
-        assert_eq!(full.label_smoothing, 0.0,
-            "LabelSmoothing0 broken: cumulative_config overrode base=0");
-        assert_eq!(full.dropout_p, 0.0,
-            "Dropout0 broken: cumulative_config overrode base=0");
+        assert_eq!(
+            full.warmup_steps_unquantized, 0,
+            "Warmup0 stratum broken: cumulative_config overrode base=0"
+        );
+        assert_eq!(
+            full.label_smoothing, 0.0,
+            "LabelSmoothing0 broken: cumulative_config overrode base=0"
+        );
+        assert_eq!(
+            full.dropout_p, 0.0,
+            "Dropout0 broken: cumulative_config overrode base=0"
+        );
     }
 
     #[test]

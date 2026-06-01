@@ -53,7 +53,11 @@ fn regression_phi_p158_bpb_pin() {
     let r = run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 1.58));
     // Loop 13 baseline (after SEQ scale fix): ~5.62, allow ±0.10 drift.
     assert_within_tolerance(r.mean_val_bpb, 5.62, "phi P=1.58");
-    assert!(r.std_val_bpb < 0.10, "phi P=1.58 std blew up: {}", r.std_val_bpb);
+    assert!(
+        r.std_val_bpb < 0.10,
+        "phi P=1.58 std blew up: {}",
+        r.std_val_bpb
+    );
 }
 
 #[test]
@@ -81,10 +85,22 @@ fn regression_zoo_p400_lower_than_p800_after_int4() {
 #[test]
 fn regression_frontier_must_contain_phi_158_corner() {
     let points: Vec<(f64, f64)> = vec![
-        (1.58, run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 1.58)).mean_val_bpb),
-        (3.00, run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 3.0)).mean_val_bpb),
-        (4.00, run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 4.0)).mean_val_bpb),
-        (8.00, run_multi_seed(&sweep_cfg(LadderKind::FormatZoo, 8.0)).mean_val_bpb),
+        (
+            1.58,
+            run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 1.58)).mean_val_bpb,
+        ),
+        (
+            3.00,
+            run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 3.0)).mean_val_bpb,
+        ),
+        (
+            4.00,
+            run_multi_seed(&sweep_cfg(LadderKind::PhiLadder, 4.0)).mean_val_bpb,
+        ),
+        (
+            8.00,
+            run_multi_seed(&sweep_cfg(LadderKind::FormatZoo, 8.0)).mean_val_bpb,
+        ),
     ];
     let hull = lower_convex_hull(&points);
     // phi P=1.58 is the corner with min bpw → MUST be on the lower hull (left endpoint).

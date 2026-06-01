@@ -39,14 +39,14 @@ pub const DROPOUT_P: f32 = 0.1;
 
 /// FFN forward state: caches all intermediate tensors needed for backward through RMSNorm + ReLU.
 pub struct FfnCache {
-    pub hidden_pre_relu: Vec<f32>,   // [seq_len × d_hidden] BEFORE ReLU
-    pub hidden_post_relu: Vec<f32>,  // [seq_len × d_hidden] AFTER ReLU + Dropout (RMSNorm input for W2)
-    pub norm_emb: Vec<f32>,          // [seq_len × d_model]  RMSNorm output of emb[tok]
-    pub norm_emb_r: Vec<f32>,        // [seq_len] RMSNorm scale for emb per position
-    pub norm_hidden: Vec<f32>,       // [seq_len × d_hidden] RMSNorm output of hidden
-    pub norm_hidden_r: Vec<f32>,     // [seq_len] RMSNorm scale for hidden per position
+    pub hidden_pre_relu: Vec<f32>,  // [seq_len × d_hidden] BEFORE ReLU
+    pub hidden_post_relu: Vec<f32>, // [seq_len × d_hidden] AFTER ReLU + Dropout (RMSNorm input for W2)
+    pub norm_emb: Vec<f32>,         // [seq_len × d_model]  RMSNorm output of emb[tok]
+    pub norm_emb_r: Vec<f32>,       // [seq_len] RMSNorm scale for emb per position
+    pub norm_hidden: Vec<f32>,      // [seq_len × d_hidden] RMSNorm output of hidden
+    pub norm_hidden_r: Vec<f32>,    // [seq_len] RMSNorm scale for hidden per position
     /// Loop 21 EEE: scaled dropout mask (mask/(1-p)). Empty if dropout disabled.
-    pub dropout_scale: Vec<f32>,     // [seq_len × d_hidden] same shape as hidden_post_relu
+    pub dropout_scale: Vec<f32>, // [seq_len × d_hidden] same shape as hidden_post_relu
 }
 
 /// Generate a deterministic dropout mask using a u64 LCG state.
@@ -59,7 +59,11 @@ fn make_dropout_mask(n: usize, p: f32, rng_state: &mut u64) -> Vec<f32> {
                 .wrapping_mul(6364136223846793005)
                 .wrapping_add(1442695040888963407);
             let u = ((*rng_state >> 33) as f32) / (u32::MAX as f32);
-            if u < p { 0.0 } else { inv_keep }
+            if u < p {
+                0.0
+            } else {
+                inv_keep
+            }
         })
         .collect()
 }
@@ -75,9 +79,8 @@ pub fn forward_ffn(
     d_model: usize,
     d_hidden: usize,
 ) -> (Vec<f32>, Vec<f32>) {
-    let (logits, cache) = forward_ffn_with_cache(
-        embeddings, w1, w2, input, vocab_size, d_model, d_hidden,
-    );
+    let (logits, cache) =
+        forward_ffn_with_cache(embeddings, w1, w2, input, vocab_size, d_model, d_hidden);
     // Legacy signature: return logits + post-ReLU hidden (used by old backward path).
     (logits, cache.hidden_post_relu)
 }
@@ -96,7 +99,15 @@ pub fn forward_ffn_with_cache_dropout(
     dropout_rng: Option<&mut u64>,
 ) -> (Vec<f32>, FfnCache) {
     forward_ffn_with_options(
-        embeddings, w1, w2, input, vocab_size, d_model, d_hidden, dropout_rng, true,
+        embeddings,
+        w1,
+        w2,
+        input,
+        vocab_size,
+        d_model,
+        d_hidden,
+        dropout_rng,
+        true,
     )
 }
 
@@ -235,13 +246,11 @@ pub fn backward_ffn(
 ) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
     // For RMSNorm-aware backward we need the FULL cache. Re-run forward to populate it.
     // (Legacy signature passes only post-ReLU hidden; we recompute the cache here.)
-    let (_, cache) = forward_ffn_with_cache(
-        embeddings, w1, w2, input, vocab_size, d_model, d_hidden,
-    );
+    let (_, cache) =
+        forward_ffn_with_cache(embeddings, w1, w2, input, vocab_size, d_model, d_hidden);
     let _ = hidden; // legacy parameter, superseded by cache.hidden_post_relu
     backward_ffn_with_cache(
-        embeddings, w1, w2, logits, &cache, input, targets,
-        vocab_size, d_model, d_hidden,
+        embeddings, w1, w2, logits, &cache, input, targets, vocab_size, d_model, d_hidden,
     )
 }
 
@@ -405,7 +414,10 @@ mod tests {
             assert!(
                 err < 0.01,
                 "rms_norm gradient mismatch at i={}: analytical={:.4}, numerical={:.4}, err={:.4}",
-                i, dx_analytical[i], dx_numerical, err
+                i,
+                dx_analytical[i],
+                dx_numerical,
+                err
             );
         }
     }
@@ -421,12 +433,10 @@ mod tests {
         let w2: Vec<f32> = (0..v * h).map(|i| 0.05 - 0.09 * i as f32).collect();
         let input = vec![1.0_f32, 2.0];
 
-        let (logits_with_norm, _) = forward_ffn_with_options(
-            &emb, &w1, &w2, &input, v, d, h, None, true,
-        );
-        let (logits_without_norm, _) = forward_ffn_with_options(
-            &emb, &w1, &w2, &input, v, d, h, None, false,
-        );
+        let (logits_with_norm, _) =
+            forward_ffn_with_options(&emb, &w1, &w2, &input, v, d, h, None, true);
+        let (logits_without_norm, _) =
+            forward_ffn_with_options(&emb, &w1, &w2, &input, v, d, h, None, false);
         // RMSNorm renormalizes embeddings before W1 → different downstream logits
         let total_diff: f32 = logits_with_norm
             .iter()
@@ -453,7 +463,10 @@ mod tests {
         let (_, cache) = forward_ffn_with_options(&emb, &w1, &w2, &input, v, d, h, None, false);
         // Sentinel: norm_emb_r and norm_hidden_r should be 0.0 when RMSNorm bypassed.
         assert_eq!(cache.norm_emb_r[0], 0.0, "norm_emb_r sentinel should be 0");
-        assert_eq!(cache.norm_hidden_r[0], 0.0, "norm_hidden_r sentinel should be 0");
+        assert_eq!(
+            cache.norm_hidden_r[0], 0.0,
+            "norm_hidden_r sentinel should be 0"
+        );
     }
 
     #[test]
@@ -476,9 +489,8 @@ mod tests {
         for h_idx in 0..h {
             cache.dropout_scale[h_idx] = 0.0;
         }
-        let (_, d_w1_all_dropped, _) = backward_ffn_with_cache(
-            &emb, &w1, &w2, &logits, &cache, &input, &targets, v, d, h,
-        );
+        let (_, d_w1_all_dropped, _) =
+            backward_ffn_with_cache(&emb, &w1, &w2, &logits, &cache, &input, &targets, v, d, h);
         let max_w1_zero: f32 = d_w1_all_dropped.iter().map(|g| g.abs()).fold(0.0, f32::max);
         assert!(
             max_w1_zero < 1e-5,
@@ -490,9 +502,8 @@ mod tests {
         for h_idx in 0..h {
             cache.dropout_scale[h_idx] = 2.0;
         }
-        let (_, d_w1_survivors, _) = backward_ffn_with_cache(
-            &emb, &w1, &w2, &logits, &cache, &input, &targets, v, d, h,
-        );
+        let (_, d_w1_survivors, _) =
+            backward_ffn_with_cache(&emb, &w1, &w2, &logits, &cache, &input, &targets, v, d, h);
         let max_w1_survivor: f32 = d_w1_survivors.iter().map(|g| g.abs()).fold(0.0, f32::max);
         assert!(
             max_w1_survivor > 1e-4,
@@ -537,9 +548,8 @@ mod tests {
         let input = vec![0.0_f32, 1.0];
         let targets = vec![1, 2];
         let (logits, hidden) = forward_ffn(&emb, &w1, &w2, &input, v, d, h);
-        let (d_emb, d_w1, d_w2) = backward_ffn(
-            &emb, &w1, &w2, &logits, &hidden, &input, &targets, v, d, h,
-        );
+        let (d_emb, d_w1, d_w2) =
+            backward_ffn(&emb, &w1, &w2, &logits, &hidden, &input, &targets, v, d, h);
         assert_eq!(d_emb.len(), emb.len());
         assert_eq!(d_w1.len(), w1.len());
         assert_eq!(d_w2.len(), w2.len());
@@ -551,10 +561,12 @@ mod tests {
         let d = 2;
         let h = 2;
         // Set W1 so that hidden[0] = positive, hidden[1] = negative pre-ReLU
-        let emb = vec![1.0_f32, 1.0, /* tok 0 */];
+        let emb = vec![1.0_f32, 1.0 /* tok 0 */];
         let emb_full = vec![1.0_f32; v * d];
-        let w1 = vec![1.0, 1.0,    // h=0: positive sum
-                      -1.0, -1.0]; // h=1: negative sum → ReLU zeros
+        let w1 = vec![
+            1.0, 1.0, // h=0: positive sum
+            -1.0, -1.0,
+        ]; // h=1: negative sum → ReLU zeros
         let w2 = vec![0.0_f32; v * h];
         let _ = emb;
         let input = vec![0.0_f32];

@@ -5,7 +5,7 @@
 
 use crate::backward::cross_entropy_loss;
 use crate::optimizer::{AdamWCpu, OptimizerKind};
-use crate::pipeline::{bpb_from_loss, forward_f32_embeddings, backward_f32_embeddings};
+use crate::pipeline::{backward_f32_embeddings, bpb_from_loss, forward_f32_embeddings};
 use crate::race::bpb::BpbTracker;
 use crate::race::format_ladder::{
     apply_format_zoo, apply_format_zoo_grads, apply_phi_ladder, ConversionCounter, LadderKind,
@@ -89,7 +89,11 @@ pub enum TaskKind {
     Counter,
     /// Sparse parity per Michaud 2023. input = concat(task_id_one_hot[n_tasks], bits[n_bits]),
     /// target = XOR of k bits at task-specific positions.
-    SparseParity { n_bits: usize, k: usize, n_tasks: usize },
+    SparseParity {
+        n_bits: usize,
+        k: usize,
+        n_tasks: usize,
+    },
 }
 
 impl Default for MultiSeedConfig {
@@ -128,7 +132,12 @@ pub use crate::race::f2_ffn::LABEL_SMOOTHING_EPS;
 
 /// Last-position cross-entropy with configurable label smoothing (Loop 17 + 20 + 22 GGG).
 /// L = -(1-ε)·log p_target - (ε/V)·Σ log p_y. ε passed by caller (from MultiSeedConfig).
-fn last_position_ce_loss_eps(logits: &[f32], targets: &[usize], vocab_size: usize, eps: f32) -> f32 {
+fn last_position_ce_loss_eps(
+    logits: &[f32],
+    targets: &[usize],
+    vocab_size: usize,
+    eps: f32,
+) -> f32 {
     if targets.is_empty() || logits.len() < vocab_size {
         return 0.0;
     }
@@ -201,7 +210,9 @@ pub fn sparse_parity_sample(
     rng_state: &mut u64,
 ) -> (Vec<f32>, Vec<usize>) {
     let mut lcg = |s: &mut u64| -> u64 {
-        *s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        *s = s
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         *s >> 33
     };
     // Generate k task-specific positions deterministically per task_id (fixed across calls).
@@ -216,9 +227,7 @@ pub fn sparse_parity_sample(
         }
     }
     // Generate random bit string of length n_bits.
-    let bits: Vec<u8> = (0..n_bits)
-        .map(|_| (lcg(rng_state) & 1) as u8)
-        .collect();
+    let bits: Vec<u8> = (0..n_bits).map(|_| (lcg(rng_state) & 1) as u8).collect();
     // Compute XOR of task-specific positions.
     let parity: u8 = positions.iter().fold(0u8, |acc, &p| acc ^ bits[p]);
 
@@ -342,7 +351,8 @@ impl ZClipTracker {
             }
         }
         let prev_mean = corrected_mean;
-        self.grad_ema_mean = self.ema_alpha * self.grad_ema_mean + (1.0 - self.ema_alpha) * grad_norm;
+        self.grad_ema_mean =
+            self.ema_alpha * self.grad_ema_mean + (1.0 - self.ema_alpha) * grad_norm;
         let dev = grad_norm - prev_mean;
         self.grad_ema_var = self.ema_alpha * self.grad_ema_var + (1.0 - self.ema_alpha) * dev * dev;
 
@@ -350,8 +360,12 @@ impl ZClipTracker {
         if self.loss_window.len() >= self.window_max && self.loss_window.len() >= 10 {
             let n = self.loss_window.len() as f64;
             let mean: f64 = self.loss_window.iter().sum::<f64>() / n;
-            let var: f64 =
-                self.loss_window.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0);
+            let var: f64 = self
+                .loss_window
+                .iter()
+                .map(|x| (x - mean).powi(2))
+                .sum::<f64>()
+                / (n - 1.0);
             let sigma = var.sqrt();
             if loss > mean + 3.0 * sigma {
                 metrics.loss_spike_count += 1;
@@ -590,7 +604,8 @@ pub fn aggregate_verdict(
             } else {
                 (
                     F2AggregatedVerdict::InsufficientEvidence,
-                    "primary=PHI but secondary or Bayes disagree: insufficient evidence".to_string(),
+                    "primary=PHI but secondary or Bayes disagree: insufficient evidence"
+                        .to_string(),
                 )
             }
         }
@@ -640,10 +655,14 @@ pub fn lower_convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
     }
     let mut indexed: Vec<(usize, (f64, f64))> = points.iter().copied().enumerate().collect();
     indexed.sort_by(|a, b| {
-        a.1.0
-            .partial_cmp(&b.1.0)
+        a.1 .0
+            .partial_cmp(&b.1 .0)
             .unwrap_or(core::cmp::Ordering::Equal)
-            .then(a.1.1.partial_cmp(&b.1.1).unwrap_or(core::cmp::Ordering::Equal))
+            .then(
+                a.1 .1
+                    .partial_cmp(&b.1 .1)
+                    .unwrap_or(core::cmp::Ordering::Equal),
+            )
     });
     let cross = |o: (f64, f64), a: (f64, f64), b: (f64, f64)| -> f64 {
         (a.0 - o.0) * (b.1 - o.1) - (a.1 - o.1) * (b.0 - o.0)
@@ -667,10 +686,7 @@ pub fn lower_convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
     hull
 }
 
-pub fn verdict_pareto_adjusted(
-    phi: &MultiSeedReport,
-    zoo: &MultiSeedReport,
-) -> ParetoVerdict {
+pub fn verdict_pareto_adjusted(phi: &MultiSeedReport, zoo: &MultiSeedReport) -> ParetoVerdict {
     let eff_phi = kumar_efficiency(
         phi.pareto.n_params,
         phi.pareto.bits_per_weight_stored,
@@ -684,8 +700,16 @@ pub fn verdict_pareto_adjusted(
         zoo.pareto.bits_per_weight_stored,
     );
 
-    let bpb_norm_phi = if eff_phi > 0.0 { phi.mean_val_bpb / eff_phi } else { f64::NAN };
-    let bpb_norm_zoo = if eff_zoo > 0.0 { zoo.mean_val_bpb / eff_zoo } else { f64::NAN };
+    let bpb_norm_phi = if eff_phi > 0.0 {
+        phi.mean_val_bpb / eff_phi
+    } else {
+        f64::NAN
+    };
+    let bpb_norm_zoo = if eff_zoo > 0.0 {
+        zoo.mean_val_bpb / eff_zoo
+    } else {
+        f64::NAN
+    };
     let diff_norm = bpb_norm_phi - bpb_norm_zoo;
 
     let verdict = if !diff_norm.is_finite() {
@@ -741,7 +765,11 @@ pub fn pareto_for_arm(n_params: u64, kind: LadderKind) -> ParetoMetrics {
         LadderKind::FormatZoo => (8.0, 8.0, 8.0, 8.0),
     };
     let n_eff = kumar_n_eff(n_params, p_w, p_a, p_kv);
-    let bpw_effective = if n_params > 0 { n_eff.log2() / (n_params as f64).log2() * bpw_stored } else { 0.0 };
+    let bpw_effective = if n_params > 0 {
+        n_eff.log2() / (n_params as f64).log2() * bpw_stored
+    } else {
+        0.0
+    };
     ParetoMetrics {
         n_params,
         bits_per_weight_stored: bpw_stored,
@@ -798,7 +826,12 @@ pub fn welch_mde(sigma: f64, alpha: f64, n: usize, target_power: f64) -> f64 {
 
 /// Power matrix: for a range of effect sizes δ, what N is required to hit target_power?
 /// Used in harness to give "you need N seeds for MDE=0.05" hint.
-pub fn power_matrix(sigma: f64, alpha: f64, deltas: &[f64], target_power: f64) -> Vec<(f64, usize)> {
+pub fn power_matrix(
+    sigma: f64,
+    alpha: f64,
+    deltas: &[f64],
+    target_power: f64,
+) -> Vec<(f64, usize)> {
     deltas
         .iter()
         .map(|&delta| {
@@ -907,12 +940,16 @@ fn regularized_incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
     // Lentz's continued fraction
     let bt = ((a * x.ln()) + (b * (1.0 - x).ln())
         - (lngamma(a + b).neg_lift(lngamma(a)) - lngamma(b)))
-        .exp();
+    .exp();
     let symm = x < (a + 1.0) / (a + b + 2.0);
     let (xx, aa, bb) = if symm { (x, a, b) } else { (1.0 - x, b, a) };
     let cf = betacf(xx, aa, bb);
     let val = bt * cf / aa;
-    if symm { val } else { 1.0 - val }
+    if symm {
+        val
+    } else {
+        1.0 - val
+    }
 }
 
 trait NegLift {
@@ -1011,12 +1048,16 @@ pub fn welch_power_exact(
     let se = (var_a + var_b).sqrt();
     let num = (var_a + var_b).powi(2);
     let den = var_a.powi(2) / (n_a as f64 - 1.0) + var_b.powi(2) / (n_b as f64 - 1.0);
-    let nu = if den > 0.0 { num / den } else { (n_a + n_b - 2) as f64 };
+    let nu = if den > 0.0 {
+        num / den
+    } else {
+        (n_a + n_b - 2) as f64
+    };
     let ncp = delta.abs() / se;
     // Critical t at level α (two-sided) via normal-approx for inverse — adequate at df≥4
     let z_alpha = normal_inv_cdf(1.0 - alpha / 2.0);
     let t_crit = z_alpha; // df-correction is small at ν≈8; close to z
-    // Power = P(|T| > t_crit | ncp)
+                          // Power = P(|T| > t_crit | ncp)
     let cdf_pos = noncentral_t_cdf(t_crit, nu, ncp);
     let cdf_neg = noncentral_t_cdf(-t_crit, nu, ncp);
     let power = 1.0 - cdf_pos + cdf_neg;
@@ -1144,8 +1185,16 @@ pub fn verdict_pareto_welch(
         zoo.pareto.bits_per_weight_stored,
     );
 
-    let norm_phi: Vec<f64> = phi.runs.iter().map(|r| r.val_bpb / eff_phi.max(1e-9)).collect();
-    let norm_zoo: Vec<f64> = zoo.runs.iter().map(|r| r.val_bpb / eff_zoo.max(1e-9)).collect();
+    let norm_phi: Vec<f64> = phi
+        .runs
+        .iter()
+        .map(|r| r.val_bpb / eff_phi.max(1e-9))
+        .collect();
+    let norm_zoo: Vec<f64> = zoo
+        .runs
+        .iter()
+        .map(|r| r.val_bpb / eff_zoo.max(1e-9))
+        .collect();
 
     let mean = |xs: &[f64]| xs.iter().sum::<f64>() / xs.len() as f64;
     let var = |xs: &[f64], m: f64| {
@@ -1163,9 +1212,13 @@ pub fn verdict_pareto_welch(
 
     let (t, df) = if se > 0.0 {
         let num = (s2_phi / n_phi + s2_zoo / n_zoo).powi(2);
-        let den = (s2_phi / n_phi).powi(2) / (n_phi - 1.0)
-            + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
-        let df = if den > 0.0 { num / den } else { (n_phi + n_zoo - 2.0).max(1.0) };
+        let den =
+            (s2_phi / n_phi).powi(2) / (n_phi - 1.0) + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
+        let df = if den > 0.0 {
+            num / den
+        } else {
+            (n_phi + n_zoo - 2.0).max(1.0)
+        };
         (mean_diff / se, df)
     } else if mean_diff.abs() < f64::EPSILON {
         (0.0, n_phi + n_zoo - 2.0)
@@ -1235,9 +1288,13 @@ pub fn bayesian_credible_diff(
     let mut diffs = Vec::with_capacity(b);
 
     for _ in 0..b {
-        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng = rng
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let u1 = ((rng >> 33) as f64 / (u32::MAX as f64)).clamp(1e-12, 1.0 - 1e-12);
-        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        rng = rng
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let u2 = ((rng >> 33) as f64 / (u32::MAX as f64)).clamp(1e-12, 1.0 - 1e-12);
 
         // Box-Muller for two normals
@@ -1293,8 +1350,16 @@ pub fn bayesian_credible_normalized(
         zoo_report.pareto.bits_per_weight_stored,
     )
     .max(1e-9);
-    let phi_norm: Vec<f64> = phi_report.runs.iter().map(|r| r.val_bpb / eff_phi).collect();
-    let zoo_norm: Vec<f64> = zoo_report.runs.iter().map(|r| r.val_bpb / eff_zoo).collect();
+    let phi_norm: Vec<f64> = phi_report
+        .runs
+        .iter()
+        .map(|r| r.val_bpb / eff_phi)
+        .collect();
+    let zoo_norm: Vec<f64> = zoo_report
+        .runs
+        .iter()
+        .map(|r| r.val_bpb / eff_zoo)
+        .collect();
     bayesian_credible_diff(&phi_norm, &zoo_norm, credibility_level, seed)
 }
 
@@ -1311,11 +1376,7 @@ pub struct PermutationReport {
     pub alpha: f64,
 }
 
-pub fn permutation_test(
-    phi_samples: &[f64],
-    zoo_samples: &[f64],
-    alpha: f64,
-) -> PermutationReport {
+pub fn permutation_test(phi_samples: &[f64], zoo_samples: &[f64], alpha: f64) -> PermutationReport {
     let n1 = phi_samples.len();
     let n2 = zoo_samples.len();
     let mean_phi: f64 = phi_samples.iter().sum::<f64>() / n1 as f64;
@@ -1401,9 +1462,7 @@ pub fn paired_bca_bootstrap(
         return (f64::NAN, f64::NAN, f64::NAN);
     }
     // Per-seed paired deltas (assumes seeds aligned across arms)
-    let deltas: Vec<f64> = (0..n)
-        .map(|i| phi_samples[i] - zoo_samples[i])
-        .collect();
+    let deltas: Vec<f64> = (0..n).map(|i| phi_samples[i] - zoo_samples[i]).collect();
     let theta_hat: f64 = deltas.iter().sum::<f64>() / n as f64;
 
     let b = 10_000_usize;
@@ -1412,7 +1471,9 @@ pub fn paired_bca_bootstrap(
     for _ in 0..b {
         let mut sum = 0.0;
         for _ in 0..n {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let idx = (rng >> 33) as usize % n;
             sum += deltas[idx];
         }
@@ -1433,8 +1494,14 @@ pub fn paired_bca_bootstrap(
         jack_means.push(jack);
     }
     let jack_mean: f64 = jack_means.iter().sum::<f64>() / n as f64;
-    let num: f64 = jack_means.iter().map(|&j| (jack_mean - j).powi(3)).sum::<f64>();
-    let den_inner: f64 = jack_means.iter().map(|&j| (jack_mean - j).powi(2)).sum::<f64>();
+    let num: f64 = jack_means
+        .iter()
+        .map(|&j| (jack_mean - j).powi(3))
+        .sum::<f64>();
+    let den_inner: f64 = jack_means
+        .iter()
+        .map(|&j| (jack_mean - j).powi(2))
+        .sum::<f64>();
     let a_hat = if den_inner > 0.0 {
         num / (6.0 * den_inner.powf(1.5))
     } else {
@@ -1506,13 +1573,17 @@ pub fn bootstrap_t_ci_diff(
         // Sample with replacement from each arm
         let s1: Vec<f64> = (0..n1)
             .map(|_| {
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 phi_samples[(rng >> 33) as usize % n1]
             })
             .collect();
         let s2: Vec<f64> = (0..n2)
             .map(|_| {
-                rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                rng = rng
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
                 zoo_samples[(rng >> 33) as usize % n2]
             })
             .collect();
@@ -1582,9 +1653,13 @@ pub fn verdict_welch(phi: &MultiSeedReport, zoo: &MultiSeedReport, alpha: f64) -
     let (t_stat, df) = if se > 0.0 {
         let t = mean_diff / se;
         let num = (s2_phi / n_phi + s2_zoo / n_zoo).powi(2);
-        let den = (s2_phi / n_phi).powi(2) / (n_phi - 1.0)
-            + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
-        let df = if den > 0.0 { num / den } else { (n_phi + n_zoo - 2.0).max(1.0) };
+        let den =
+            (s2_phi / n_phi).powi(2) / (n_phi - 1.0) + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
+        let df = if den > 0.0 {
+            num / den
+        } else {
+            (n_phi + n_zoo - 2.0).max(1.0)
+        };
         (t, df)
     } else if mean_diff.abs() < f64::EPSILON {
         (0.0, n_phi + n_zoo - 2.0)
@@ -1597,7 +1672,11 @@ pub fn verdict_welch(phi: &MultiSeedReport, zoo: &MultiSeedReport, alpha: f64) -
 
     // Cohen's d with pooled variance.
     let s_pooled = ((s2_phi + s2_zoo) / 2.0).sqrt();
-    let cohens_d = if s_pooled > 0.0 { mean_diff / s_pooled } else { 0.0 };
+    let cohens_d = if s_pooled > 0.0 {
+        mean_diff / s_pooled
+    } else {
+        0.0
+    };
 
     let verdict = if p_two_sided >= alpha {
         F2Verdict::Tie
@@ -1665,9 +1744,12 @@ pub fn verdict_tost(
     }
 
     let num = (s2_phi / n_phi + s2_zoo / n_zoo).powi(2);
-    let den = (s2_phi / n_phi).powi(2) / (n_phi - 1.0)
-        + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
-    let df = if den > 0.0 { num / den } else { (n_phi + n_zoo - 2.0).max(1.0) };
+    let den = (s2_phi / n_phi).powi(2) / (n_phi - 1.0) + (s2_zoo / n_zoo).powi(2) / (n_zoo - 1.0);
+    let df = if den > 0.0 {
+        num / den
+    } else {
+        (n_phi + n_zoo - 2.0).max(1.0)
+    };
 
     // Lower test: H₀_L: μ_phi − μ_zoo ≤ −Δ  →  t_L = (Δ_obs − (−Δ)) / SE
     // Reject when t_L is large positive.
@@ -1707,7 +1789,9 @@ pub fn honest_val_split(total_len: usize, train_ratio: f64, seed: u64) -> (Vec<u
     let mut indices: Vec<usize> = (0..total_len).collect();
     let mut state = seed.wrapping_add(0x9E3779B97F4A7C15);
     for i in (1..total_len).rev() {
-        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        state = state
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         let j = (state >> 33) as usize % (i + 1);
         indices.swap(i, j);
     }
@@ -1763,10 +1847,13 @@ pub fn config_fingerprint(config: &MultiSeedConfig) -> u64 {
     feed(&mut h, config.d_model as u64);
     feed(&mut h, config.steps as u64);
     feed(&mut h, config.lr.to_bits());
-    feed(&mut h, match config.ladder_kind {
-        LadderKind::PhiLadder => 1,
-        LadderKind::FormatZoo => 2,
-    });
+    feed(
+        &mut h,
+        match config.ladder_kind {
+            LadderKind::PhiLadder => 1,
+            LadderKind::FormatZoo => 2,
+        },
+    );
     feed(&mut h, config.warmup_steps_unquantized as u64);
     for &s in &config.spike_injection_steps {
         feed(&mut h, s as u64);
@@ -1792,10 +1879,13 @@ pub fn config_fingerprint(config: &MultiSeedConfig) -> u64 {
     // Loop 28 ZZZ: hash corpus + task_kind + iso_neff target to prevent silent cache
     // collisions when CSVs mix Synthetic vs BytesFile, Counter vs other tasks, or
     // different N_eff targets at identical hyperparameters.
-    feed(&mut h, match &config.corpus {
-        CorpusKind::Synthetic => 1,
-        CorpusKind::BytesFile(_) => 2,
-    });
+    feed(
+        &mut h,
+        match &config.corpus {
+            CorpusKind::Synthetic => 1,
+            CorpusKind::BytesFile(_) => 2,
+        },
+    );
     // Variant tag for task_kind; payload hashed separately to avoid borrow conflict.
     let (task_tag, task_payload) = match &config.task_kind {
         TaskKind::Counter => (1u64, None),
@@ -1897,9 +1987,8 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
 
         // Loop 22 GGG: WD from config (default 0.1 per BitNet 2B4T arXiv:2504.12285 §4.2).
         let wd = config.weight_decay;
-        let mut optimizer = OptimizerKind::AdamW(AdamWCpu::with_params(
-            n_params, config.lr, 0.9, 0.999, wd,
-        ));
+        let mut optimizer =
+            OptimizerKind::AdamW(AdamWCpu::with_params(n_params, config.lr, 0.9, 0.999, wd));
         let mut w1_opt = if config.use_ffn {
             Some(OptimizerKind::AdamW(AdamWCpu::with_params(
                 w1_size, config.lr, 0.9, 0.999, wd,
@@ -1964,9 +2053,13 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                             .collect();
                         (inp, tgt)
                     }
-                    TaskKind::SparseParity { n_bits, k, n_tasks } => {
-                        sparse_parity_sample(*n_bits, *k, *n_tasks, config.vocab_size, &mut task_rng)
-                    }
+                    TaskKind::SparseParity { n_bits, k, n_tasks } => sparse_parity_sample(
+                        *n_bits,
+                        *k,
+                        *n_tasks,
+                        config.vocab_size,
+                        &mut task_rng,
+                    ),
                 }
             };
 
@@ -1980,22 +2073,40 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                 if let Some(p_w) = config.paretoq_precision {
                     match config.ladder_kind {
                         LadderKind::PhiLadder => {
-                            crate::race::format_ladder::apply_paretoq(&mut working, p_w, &mut counter);
+                            crate::race::format_ladder::apply_paretoq(
+                                &mut working,
+                                p_w,
+                                &mut counter,
+                            );
                             if config.use_ffn {
-                                crate::race::format_ladder::apply_paretoq(&mut working_w1, p_w, &mut counter);
-                                crate::race::format_ladder::apply_paretoq(&mut working_w2, p_w, &mut counter);
+                                crate::race::format_ladder::apply_paretoq(
+                                    &mut working_w1,
+                                    p_w,
+                                    &mut counter,
+                                );
+                                crate::race::format_ladder::apply_paretoq(
+                                    &mut working_w2,
+                                    p_w,
+                                    &mut counter,
+                                );
                             }
                         }
                         LadderKind::FormatZoo => {
                             crate::race::format_ladder::apply_zoo_at_precision(
-                                &mut working, p_w, &mut counter,
+                                &mut working,
+                                p_w,
+                                &mut counter,
                             );
                             if config.use_ffn {
                                 crate::race::format_ladder::apply_zoo_at_precision(
-                                    &mut working_w1, p_w, &mut counter,
+                                    &mut working_w1,
+                                    p_w,
+                                    &mut counter,
                                 );
                                 crate::race::format_ladder::apply_zoo_at_precision(
-                                    &mut working_w2, p_w, &mut counter,
+                                    &mut working_w2,
+                                    p_w,
+                                    &mut counter,
                                 );
                             }
                         }
@@ -2031,21 +2142,32 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                     None
                 };
                 let (l, full_cache) = crate::race::f2_ffn::forward_ffn_with_options(
-                    &working, &working_w1, &working_w2, &input, config.vocab_size, d_model, d_hidden,
-                    drop_rng_opt, config.apply_rmsnorm,
+                    &working,
+                    &working_w1,
+                    &working_w2,
+                    &input,
+                    config.vocab_size,
+                    d_model,
+                    d_hidden,
+                    drop_rng_opt,
+                    config.apply_rmsnorm,
                 );
                 (l, Some(full_cache))
             } else {
-                let l: Vec<f32> = forward_f32_embeddings(
-                    &working, &input, config.vocab_size, d_model,
-                );
+                let l: Vec<f32> =
+                    forward_f32_embeddings(&working, &input, config.vocab_size, d_model);
                 (l, None)
             };
             // Loop 17 critical fix: for sparse parity, use last-position-only CE per Michaud convention.
             // Otherwise (counter/corpus) average across all NTP positions as before.
             let use_last_only = matches!(config.task_kind, TaskKind::SparseParity { .. });
             let loss = if use_last_only {
-                last_position_ce_loss_eps(&logits, &targets, config.vocab_size, config.label_smoothing)
+                last_position_ce_loss_eps(
+                    &logits,
+                    &targets,
+                    config.vocab_size,
+                    config.label_smoothing,
+                )
             } else {
                 cross_entropy_loss(&logits, &targets)
             };
@@ -2084,8 +2206,16 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                 // Loop 18 VV + 21 EEE: backward uses training-mode cache (with dropout mask)
                 // for consistent gradient flow.
                 let (d_emb, mut d_w1, mut d_w2) = crate::race::f2_ffn::backward_ffn_with_cache(
-                    &working, &working_w1, &working_w2, &logits, cache, &input, &masked_targets,
-                    config.vocab_size, d_model, d_hidden,
+                    &working,
+                    &working_w1,
+                    &working_w2,
+                    &logits,
+                    cache,
+                    &input,
+                    &masked_targets,
+                    config.vocab_size,
+                    d_model,
+                    d_hidden,
                 );
                 // Loop 19: BitNet LLaMA hyperparams — global L2 grad clip = 1.0.
                 // Loop 24 MMM: runtime-flagged grad clip + latent clamp (was always-on).
@@ -2107,13 +2237,20 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                     opt.step(&mut w2, &d_w2);
                 }
                 if let Some(clamp_max) = config.latent_clamp_max {
-                    w1.iter_mut().for_each(|w| *w = w.clamp(-clamp_max, clamp_max));
-                    w2.iter_mut().for_each(|w| *w = w.clamp(-clamp_max, clamp_max));
+                    w1.iter_mut()
+                        .for_each(|w| *w = w.clamp(-clamp_max, clamp_max));
+                    w2.iter_mut()
+                        .for_each(|w| *w = w.clamp(-clamp_max, clamp_max));
                 }
                 d_emb
             } else {
                 backward_f32_embeddings(
-                    &working, &logits, &input, &targets, config.vocab_size, d_model,
+                    &working,
+                    &logits,
+                    &input,
+                    &targets,
+                    config.vocab_size,
+                    d_model,
                 )
             };
             if step >= config.warmup_steps_unquantized
@@ -2165,20 +2302,34 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
                     LadderKind::PhiLadder => {
                         crate::race::format_ladder::apply_paretoq(&mut working, p_w, &mut counter);
                         if config.use_ffn {
-                            crate::race::format_ladder::apply_paretoq(&mut working_w1, p_w, &mut counter);
-                            crate::race::format_ladder::apply_paretoq(&mut working_w2, p_w, &mut counter);
+                            crate::race::format_ladder::apply_paretoq(
+                                &mut working_w1,
+                                p_w,
+                                &mut counter,
+                            );
+                            crate::race::format_ladder::apply_paretoq(
+                                &mut working_w2,
+                                p_w,
+                                &mut counter,
+                            );
                         }
                     }
                     LadderKind::FormatZoo => {
                         crate::race::format_ladder::apply_zoo_at_precision(
-                            &mut working, p_w, &mut counter,
+                            &mut working,
+                            p_w,
+                            &mut counter,
                         );
                         if config.use_ffn {
                             crate::race::format_ladder::apply_zoo_at_precision(
-                                &mut working_w1, p_w, &mut counter,
+                                &mut working_w1,
+                                p_w,
+                                &mut counter,
                             );
                             crate::race::format_ladder::apply_zoo_at_precision(
-                                &mut working_w2, p_w, &mut counter,
+                                &mut working_w2,
+                                p_w,
+                                &mut counter,
                             );
                         }
                     }
@@ -2204,14 +2355,19 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
             let val_logits = if config.use_ffn {
                 // Loop 25 PPP: val pass respects apply_rmsnorm flag.
                 let (l, _) = crate::race::f2_ffn::forward_ffn_with_options(
-                    &working, &working_w1, &working_w2, &val_input, config.vocab_size, d_model, d_hidden,
-                    None, config.apply_rmsnorm,
+                    &working,
+                    &working_w1,
+                    &working_w2,
+                    &val_input,
+                    config.vocab_size,
+                    d_model,
+                    d_hidden,
+                    None,
+                    config.apply_rmsnorm,
                 );
                 l
             } else {
-                forward_f32_embeddings(
-                    &working, &val_input, config.vocab_size, d_model,
-                )
+                forward_f32_embeddings(&working, &val_input, config.vocab_size, d_model)
             };
             let val_loss = cross_entropy_loss(&val_logits, &val_targets);
             if use_honest_bpb {
@@ -2240,7 +2396,11 @@ pub fn run_multi_seed(config: &MultiSeedConfig) -> MultiSeedReport {
 
     let n = runs.len() as f64;
     let mean_val_bpb = runs.iter().map(|r| r.val_bpb).sum::<f64>() / n;
-    let variance = runs.iter().map(|r| (r.val_bpb - mean_val_bpb).powi(2)).sum::<f64>() / (n - 1.0);
+    let variance = runs
+        .iter()
+        .map(|r| (r.val_bpb - mean_val_bpb).powi(2))
+        .sum::<f64>()
+        / (n - 1.0);
     let std_val_bpb = variance.sqrt();
     let mc_error = std_val_bpb / n.sqrt();
     let total_lossy = runs.iter().map(|r| r.lossy_conversions).sum();
@@ -2346,7 +2506,11 @@ mod tests {
     fn noncentral_t_cdf_reduces_to_central_at_ncp_zero() {
         // At ncp=0, noncentral t = central t.
         let cdf = noncentral_t_cdf(0.0, 8.0, 0.0);
-        assert!((cdf - 0.5).abs() < 1e-3, "F(0; ν=8, ncp=0) should be 0.5, got {}", cdf);
+        assert!(
+            (cdf - 0.5).abs() < 1e-3,
+            "F(0; ν=8, ncp=0) should be 0.5, got {}",
+            cdf
+        );
     }
 
     #[test]
@@ -2402,7 +2566,10 @@ mod tests {
         // Loop 12: DEMOTE OR-branch threshold is now 1.0 - (1.0 - 0.95)/2 = 0.975
         // (Bonferroni for k=2 in disjunction).
         // Verified at module level by inspection — runtime check via aggregate_verdict:
-        let phi_cfg = MultiSeedConfig { steps: 20, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 20,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -2477,7 +2644,10 @@ mod tests {
 
     #[test]
     fn bayesian_normalized_uses_eff_scaled_bpb() {
-        let phi_cfg = MultiSeedConfig { steps: 10, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 10,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -2530,7 +2700,12 @@ mod tests {
         let phi = vec![3.5, 3.51, 3.49, 3.52, 3.48];
         let zoo = vec![3.5, 3.51, 3.49, 3.52, 3.48];
         let (lo, hi, _) = paired_bca_bootstrap(&phi, &zoo, 0.95, 1);
-        assert!(lo <= 0.0 && hi >= 0.0, "CI [{},{}] should bracket 0", lo, hi);
+        assert!(
+            lo <= 0.0 && hi >= 0.0,
+            "CI [{},{}] should bracket 0",
+            lo,
+            hi
+        );
     }
 
     #[test]
@@ -2598,7 +2773,10 @@ mod tests {
         let agg = aggregate_verdict(&welch, &perm, &pareto_welch, &bayes);
         // Should be a strong signal: phi has higher BPB → zoo wins everywhere
         assert!(
-            matches!(agg.verdict, F2AggregatedVerdict::DemoteMoat | F2AggregatedVerdict::InsufficientEvidence),
+            matches!(
+                agg.verdict,
+                F2AggregatedVerdict::DemoteMoat | F2AggregatedVerdict::InsufficientEvidence
+            ),
             "got {:?} rationale={}",
             agg.verdict,
             agg.rationale
@@ -2649,7 +2827,11 @@ mod tests {
         let n_eff_phi = kumar_n_eff(n_phi, 1.58, 1.58, 1.58);
         let n_eff_zoo = kumar_n_eff(8192, 8.0, 8.0, 8.0);
         let drift = (n_eff_phi - n_eff_zoo).abs() / n_eff_zoo;
-        assert!(drift < 0.01, "iso_neff rounding drift {:.3}% > 1%", drift * 100.0);
+        assert!(
+            drift < 0.01,
+            "iso_neff rounding drift {:.3}% > 1%",
+            drift * 100.0
+        );
     }
 
     #[test]
@@ -2679,7 +2861,10 @@ mod tests {
 
     #[test]
     fn pareto_welch_returns_p_value() {
-        let phi_cfg = MultiSeedConfig { steps: 30, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 30,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -2698,7 +2883,10 @@ mod tests {
         let r = bayesian_credible_diff(&phi, &zoo, 0.95, 42);
         let observed_diff = 3.70 - 3.584;
         assert!(r.credible_lo < observed_diff && observed_diff < r.credible_hi);
-        assert!(r.probability_phi_lower < 0.05, "phi should be very unlikely lower");
+        assert!(
+            r.probability_phi_lower < 0.05,
+            "phi should be very unlikely lower"
+        );
     }
 
     #[test]
@@ -2716,7 +2904,11 @@ mod tests {
         let phi = vec![3.5, 3.51, 3.49, 3.52, 3.48];
         let zoo = vec![3.5, 3.49, 3.51, 3.48, 3.52];
         let r = permutation_test(&phi, &zoo, 0.05);
-        assert!(r.p_value > 0.05, "no effect should give large p, got {}", r.p_value);
+        assert!(
+            r.p_value > 0.05,
+            "no effect should give large p, got {}",
+            r.p_value
+        );
         assert_eq!(r.verdict, F2Verdict::Tie);
     }
 
@@ -2766,19 +2958,29 @@ mod tests {
             ..Default::default()
         };
         let r = run_multi_seed(&cfg);
-        assert!(r.effective_d_model >= 128, "d_eff = {}", r.effective_d_model);
+        assert!(
+            r.effective_d_model >= 128,
+            "d_eff = {}",
+            r.effective_d_model
+        );
     }
 
     #[test]
     fn report_includes_config_fingerprint() {
-        let cfg = MultiSeedConfig { steps: 5, ..Default::default() };
+        let cfg = MultiSeedConfig {
+            steps: 5,
+            ..Default::default()
+        };
         let r = run_multi_seed(&cfg);
         assert_eq!(r.config_fingerprint, config_fingerprint(&cfg));
     }
 
     #[test]
     fn report_serializes_to_json() {
-        let cfg = MultiSeedConfig { steps: 5, ..Default::default() };
+        let cfg = MultiSeedConfig {
+            steps: 5,
+            ..Default::default()
+        };
         let r = run_multi_seed(&cfg);
         let json = serde_json::to_string(&r).expect("must serialize");
         assert!(json.contains("\"mean_val_bpb\""));
@@ -2833,12 +3035,21 @@ mod tests {
         let zoo = vec![3.58, 3.59, 3.57, 3.60, 3.58];
         let (lo, hi) = bootstrap_t_ci_diff(&phi, &zoo, 0.95, 42);
         let mean_diff = 3.70 - 3.584;
-        assert!(lo < mean_diff && mean_diff < hi, "CI [{}, {}] should bracket {}", lo, hi, mean_diff);
+        assert!(
+            lo < mean_diff && mean_diff < hi,
+            "CI [{}, {}] should bracket {}",
+            lo,
+            hi,
+            mean_diff
+        );
     }
 
     #[test]
     fn pareto_verdict_runs_on_real_arms() {
-        let phi_cfg = MultiSeedConfig { steps: 20, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 20,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -2899,7 +3110,11 @@ mod tests {
             "TRAINER_INTERNALS_SCHEMA should start with 'trainer_internals_v', got '{}'",
             s
         );
-        assert!(s.len() >= 25, "schema constant should be at least 'trainer_internals_v1_YYYY_MM_DD', got '{}'", s);
+        assert!(
+            s.len() >= 25,
+            "schema constant should be at least 'trainer_internals_v1_YYYY_MM_DD', got '{}'",
+            s
+        );
 
         // (b) The constant participates in the hash. Compute fingerprint as-is, then
         // a "phantom" fingerprint that omits the trailing schema mixin. They must
@@ -2937,10 +3152,17 @@ mod tests {
         };
         let parts: Vec<&str> = ymd.split('_').collect();
         if parts.len() < 3 {
-            eprintln!("# ADVISORY: schema YMD '{}' malformed (expected YYYY_MM_DD).", ymd);
+            eprintln!(
+                "# ADVISORY: schema YMD '{}' malformed (expected YYYY_MM_DD).",
+                ymd
+            );
             return;
         }
-        let (y, m, d) = (parts[0].parse::<i64>().ok(), parts[1].parse::<i64>().ok(), parts[2].parse::<i64>().ok());
+        let (y, m, d) = (
+            parts[0].parse::<i64>().ok(),
+            parts[1].parse::<i64>().ok(),
+            parts[2].parse::<i64>().ok(),
+        );
         let (Some(y), Some(m), Some(d)) = (y, m, d) else {
             eprintln!("# ADVISORY: schema YMD '{}' not all numeric.", ymd);
             return;
@@ -2973,7 +3195,10 @@ mod tests {
                 days_ahead, ymd
             );
         } else {
-            eprintln!("# OK: src/transformer.rs not modified after schema date '{}'.", ymd);
+            eprintln!(
+                "# OK: src/transformer.rs not modified after schema date '{}'.",
+                ymd
+            );
         }
     }
 
@@ -2991,7 +3216,9 @@ mod tests {
                 *h = h.wrapping_mul(FNV_PRIME);
             }
         };
-        for &s in &config.seeds { feed(&mut h, s); }
+        for &s in &config.seeds {
+            feed(&mut h, s);
+        }
         feed(&mut h, config.train_ratio.to_bits());
         feed(&mut h, config.vocab_size as u64);
         feed(&mut h, config.d_model as u64);
@@ -3013,7 +3240,11 @@ mod tests {
             ..Default::default()
         };
         let r = run_multi_seed(&cfg);
-        let total_spikes: u64 = r.runs.iter().map(|run| run.stability.grad_norm_spike_count).sum();
+        let total_spikes: u64 = r
+            .runs
+            .iter()
+            .map(|run| run.stability.grad_norm_spike_count)
+            .sum();
         assert!(total_spikes > 0, "synthetic ×100 spikes must trigger ZClip");
     }
 
@@ -3052,7 +3283,10 @@ mod tests {
 
     #[test]
     fn cohens_d_reported_in_verdict() {
-        let phi_cfg = MultiSeedConfig { steps: 20, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 20,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -3107,7 +3341,10 @@ mod tests {
 
     #[test]
     fn tost_rejects_equivalence_when_means_far_apart() {
-        let phi_cfg = MultiSeedConfig { steps: 30, ..Default::default() };
+        let phi_cfg = MultiSeedConfig {
+            steps: 30,
+            ..Default::default()
+        };
         let zoo_cfg = MultiSeedConfig {
             ladder_kind: LadderKind::FormatZoo,
             ..phi_cfg.clone()
@@ -3160,7 +3397,10 @@ mod tests {
 
     #[test]
     fn run_multi_seed_populates_stability() {
-        let cfg = MultiSeedConfig { steps: 30, ..Default::default() };
+        let cfg = MultiSeedConfig {
+            steps: 30,
+            ..Default::default()
+        };
         let r = run_multi_seed(&cfg);
         for seed_run in &r.runs {
             // worst_grad_norm should be non-negative finite

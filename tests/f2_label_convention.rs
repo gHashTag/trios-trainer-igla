@@ -24,7 +24,11 @@ fn canonical_pair_labels() -> Vec<String> {
     let mut out = Vec::new();
     for i in 0..all.len() {
         for j in (i + 1)..all.len() {
-            out.push(format!("pair_{}_{}", all[i].short_name(), all[j].short_name()));
+            out.push(format!(
+                "pair_{}_{}",
+                all[i].short_name(),
+                all[j].short_name()
+            ));
         }
     }
     out
@@ -58,7 +62,11 @@ fn dual_mediation_finds_rows_when_labels_use_all_order() {
     let tmp = std::env::temp_dir().join("f2_label_e2e.csv");
     let mut f = File::create(&tmp).unwrap();
     // Header + minimal provenance.
-    writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+    writeln!(
+        f,
+        "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s"
+    )
+    .unwrap();
     // Single seed, simple BPB pattern.
     writeln!(f, "pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
     // LOCO rows for every fix.

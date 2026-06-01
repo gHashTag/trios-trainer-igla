@@ -74,8 +74,14 @@ fn arms_produce_divergent_lossy_counts() {
     // Both arms must record nonzero lossy conversions once dispatch is wired.
     let phi = run_multi_seed(&micro_config(LadderKind::PhiLadder));
     let zoo = run_multi_seed(&micro_config(LadderKind::FormatZoo));
-    assert!(phi.total_lossy_conversions > 0, "phi-ladder must record lossy ops");
-    assert!(zoo.total_lossy_conversions > 0, "format-zoo must record lossy ops");
+    assert!(
+        phi.total_lossy_conversions > 0,
+        "phi-ladder must record lossy ops"
+    );
+    assert!(
+        zoo.total_lossy_conversions > 0,
+        "format-zoo must record lossy ops"
+    );
 }
 
 #[test]
@@ -89,7 +95,8 @@ fn arms_produce_divergent_bpb() {
     assert!(
         gap > combined_mc,
         "arms must diverge beyond MC-error: gap={:.4} combined_mc={:.4}",
-        gap, combined_mc
+        gap,
+        combined_mc
     );
 }
 

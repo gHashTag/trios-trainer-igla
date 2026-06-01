@@ -92,16 +92,28 @@ fn emit_mermaid<W: Write>(
             "redundant" => "red",
             _ => "ind",
         };
-        writeln!(w, "    linkStyle {} stroke:{}", edge_idx, match class {
-            "comp" => "#C0392B,stroke-width:3px",
-            "red" => "#2E86AB,stroke-width:3px",
-            _ => "#95A5A6,stroke-width:1px",
-        })?;
+        writeln!(
+            w,
+            "    linkStyle {} stroke:{}",
+            edge_idx,
+            match class {
+                "comp" => "#C0392B,stroke-width:3px",
+                "red" => "#2E86AB,stroke-width:3px",
+                _ => "#95A5A6,stroke-width:1px",
+            }
+        )?;
         edge_idx += 1;
     }
     writeln!(w)?;
-    writeln!(w, "    %% Legend: comp(red)=+iLOCO, red(blue)=-iLOCO; * = q<{:.2}", alpha)?;
-    writeln!(w, "    %% Render: pastes directly into GitHub-flavored Markdown.")?;
+    writeln!(
+        w,
+        "    %% Legend: comp(red)=+iLOCO, red(blue)=-iLOCO; * = q<{:.2}",
+        alpha
+    )?;
+    writeln!(
+        w,
+        "    %% Render: pastes directly into GitHub-flavored Markdown."
+    )?;
     Ok(())
 }
 
@@ -125,7 +137,10 @@ fn emit_dot<W: Write>(
         .max(1e-9);
 
     writeln!(w, "graph f2_interactions {{")?;
-    writeln!(w, "  graph [layout=neato, overlap=false, splines=true, bgcolor=\"#FAFAFA\"];")?;
+    writeln!(
+        w,
+        "  graph [layout=neato, overlap=false, splines=true, bgcolor=\"#FAFAFA\"];"
+    )?;
     writeln!(
         w,
         "  node  [shape=ellipse, style=\"filled,rounded\", fillcolor=\"#FFFFFF\", \
@@ -236,7 +251,10 @@ fn main() {
             }
             format = args[i + 1].clone();
             if format != "dot" && format != "mermaid" {
-                eprintln!("# ERROR: unknown --format '{}' (use 'dot' or 'mermaid')", format);
+                eprintln!(
+                    "# ERROR: unknown --format '{}' (use 'dot' or 'mermaid')",
+                    format
+                );
                 std::process::exit(2);
             }
             i += 2;
@@ -261,10 +279,16 @@ fn main() {
         let mut f = File::create(path).expect("create output file");
         if format == "mermaid" {
             emit_mermaid(&mut f, &rows, alpha, show_independent, min_iloco).expect("write");
-            eprintln!("# Wrote Mermaid graph to {} — paste into GitHub Markdown", path);
+            eprintln!(
+                "# Wrote Mermaid graph to {} — paste into GitHub Markdown",
+                path
+            );
         } else {
             emit_dot(&mut f, &rows, alpha, show_independent, min_iloco).expect("write");
-            eprintln!("# Wrote DOT to {} — render with: dot -Tpng {} -o out.png", path, path);
+            eprintln!(
+                "# Wrote DOT to {} — render with: dot -Tpng {} -o out.png",
+                path, path
+            );
         }
     } else {
         let stdout = std::io::stdout();
@@ -365,7 +389,7 @@ mod tests {
         let mut buf = Vec::new();
         emit_dot(&mut buf, &rows, 0.10, true, 0.5).unwrap();
         let s = String::from_utf8(buf).unwrap();
-        assert!(s.contains("\"wd\" -- \"rms\""));            // 0.82 > 0.5
-        assert!(!s.contains("\"warmup\" -- \"wd\""));        // 0.33 < 0.5
+        assert!(s.contains("\"wd\" -- \"rms\"")); // 0.82 > 0.5
+        assert!(!s.contains("\"warmup\" -- \"wd\"")); // 0.33 < 0.5
     }
 }
