@@ -1541,9 +1541,9 @@ respectively.
 
 ### E. Reviewer-grade tooling catalogue
 
-The §3.5.5 discipline is operationalized through six auxiliary
-scripts under `papers/scripts/` that a reviewer can run to verify
-each invariant mechanically:
+The §3.5.1–§3.5.4 discipline (cf. §3.5.5) is operationalized through
+six auxiliary scripts under `papers/scripts/` that a reviewer can run
+to verify each invariant mechanically:
 
 - **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
   enumerate every test in the crate (lib + per-binary + integration)
