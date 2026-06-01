@@ -56,8 +56,8 @@ verification status reviewable on its own line.
 
 | Key | Authors / venue | Cited in | Status |
 |---|---|---|---|
-| `arxiv:2312.07852` | Sefton et al. 2023, "RO-Crate" provenance convention | §3.5.1 preamble | **CONFIRMED-VENUE** (arXiv ID format verified) |
-| `arxiv:2011.04216` | Sharma & Kıcıman 2020, "DoWhy" | §3.5; §9.1 JSONL convention | **CONFIRMED-VENUE** (DoWhy is widely cited; arXiv ID format verified) |
+| `arxiv:2312.07852` | Leo, Soiland-Reyes et al. 2024, "Workflow Run RO-Crate", PLoS ONE 19(9) | §3.5.1 preamble | **VERIFIED** Loop 80 (corrected first-author "Sefton" → Leo + Soiland-Reyes lead, 18-author group; venue confirmed PLoS ONE 2024) |
+| `arxiv:2011.04216` | Sharma & Kıcıman 2020, "DoWhy: An End-to-End Library for Causal Inference" | §3.5; §9.1 JSONL convention | **VERIFIED** Loop 80 (4-step workflow + EconML/CausalML integration confirmed) |
 
 ### Quantization (champion-scale motivation)
 
@@ -65,9 +65,9 @@ verification status reviewable on its own line.
 |---|---|---|---|
 | `arxiv:2402.17764` | Ma et al. 2024, "The Era of 1-bit LLMs: BitNet b1.58" | §5.2 wd=0 framing; §9.4 | **VERIFIED** Loop 55 (corrected vs arXiv:2504.12285 conflation) |
 | `arxiv:2504.12285` | Microsoft 2025, "BitNet b1.58 2B4T" Technical Report | §9.4 | **VERIFIED** Loop 55 (separate paper from 2402.17764) |
-| `arxiv:2502.05003` | Panferov et al. 2025, "QuEST: Quantization scaling laws" | §9.4 | **CONFIRMED-VENUE** Loop 55 (arXiv ID format verified) |
-| `arxiv:2509.22536` | NVIDIA et al. 2025, "MXFP8 training recipe (InfiR2)" | §9.4 FP8 reference | **CONFIRMED-VENUE** |
-| `arxiv:2511.01921` | Schmidt-Mengin et al. 2025, "Fibbinary / golden-ratio quantization" | §9.4 phi-format anchor | **CONFIRMED-VENUE** |
+| `arxiv:2502.05003` | Panferov, Chen, Tabesh, Castro, Nikdan, Alistarh 2025, "QuEST: Stable Training of LLMs with 1-Bit Weights and Activations" | §9.4 | **VERIFIED** Loop 80 (6-author list + title confirmed; corrected description from "scaling laws" to "stable 1-bit training") |
+| `arxiv:2509.22536` | "InfiR2: A Comprehensive FP8 Training Recipe for Reasoning-Enhanced Language Models", 2025 | §9.4 FP8 historical reference | **VERIFIED-WITHDRAWN** Loop 80 (paper withdrawn 2025-10-17 by authors due to data-processing bug; F2 §9.4 now explicitly flags the withdrawal) |
+| `arxiv:2511.01921` | Fiandaca & Gomony 2025, "Fibbinary-Based Compression and Quantization for Efficient Neural Radio Receivers" | §9.4 phi-format anchor | **VERIFIED** Loop 80 (corrected attribution from "Schmidt-Mengin et al." which was fabricated; corrected description — paper is about neural radio receivers, not transformer LLMs; §9.4 narrative rewritten) |
 
 ### Pre-AdamW weight-decay history (§5.2)
 
@@ -82,8 +82,9 @@ verification status reviewable on its own line.
 ## Summary statistics
 
 - Total entries: **25**
-- VERIFIED: **19** (76%)
-- CONFIRMED-VENUE: **6** (24%)
+- VERIFIED: **24** (96%)
+- VERIFIED-WITHDRAWN: **1** (4%) — arXiv:2509.22536 (InfiR2)
+- CONFIRMED-VENUE: **0** (0%)
 - UNVERIFIED: **0** (0%)
 
 ## Audit history
@@ -96,6 +97,7 @@ verification status reviewable on its own line.
 | Loop 60 | Switched primary attribution Gao-Li-Luo → Daniel et al. 2015 (foundational two-mediator) |
 | Loop 77 | Verified Vaswani 2017 NeurIPS + Loshchilov ICLR 2019 (Loop 76 bib additions) |
 | Loop 79 | Verified Ohnishi-Li bridge-score paper. **Caught and fixed AblationBench mis-description**: paper is about LM-agent ablation *planning*, not about wide-form/Welch/Cohen's-d analysis. §2.3 and §9.1 rewritten. Authors corrected "Abramovich et al." → "Abramovich & Chechik". |
+| Loop 80 | Verified the remaining 6 CONFIRMED-VENUE entries (RO-Crate, DoWhy, ABLATOR, QuEST, MXFP8, Fibbinary). Caught FOUR additional issues: (1) RO-Crate first-author "Sefton" was fabricated — actually Leo + Soiland-Reyes lead an 18-author group; (2) **arXiv:2509.22536 (InfiR2 FP8) has been WITHDRAWN** by authors 2025-10-17 due to data-processing bug — §9.4 explicitly flags this; (3) Fibbinary paper attribution "Schmidt-Mengin et al." was fabricated — actually Fiandaca & Gomony, and the paper is about neural radio receivers (not transformer LLMs); (4) QuEST description "scaling laws" was incorrect — actual title is "Stable Training of LLMs with 1-Bit Weights and Activations". §9.4 narrative rewritten; CITATIONS.md ledger updated 19/6 → 24/0 VERIFIED/CONFIRMED-VENUE, with 1 VERIFIED-WITHDRAWN. |
 
 Next audit due if more citations are added or if the paper is
 revised post-acceptance.

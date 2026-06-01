@@ -204,13 +204,17 @@
 
 % ── Provenance / reproducibility ─────────────────────────────────────
 @article{arxiv:2312.07852,
-  author    = {Sefton, Stian and others},
-  title     = {{RO-Crate}: Packaging research data, software and other
-               digital objects with provenance},
-  journal   = {arXiv preprint arXiv:2312.07852},
-  year      = {2023},
+  author    = {Leo, Simone and Soiland-Reyes, Stian and others},
+  title     = {{Workflow Run RO-Crate}: an extension of {RO-Crate} and
+               {Schema.org} to capture the provenance of the execution
+               of computational workflows},
+  journal   = {arXiv preprint arXiv:2312.07852;
+               published in PLoS ONE 19(9), 2024},
+  year      = {2024},
   note      = {W3C-PROV / RO-Crate preamble convention adopted in F2
-               (§3.5.1).},
+               §3.5.1. Loop 80 corrected the first-author attribution
+               from "Sefton" (wrong) to Leo + Soiland-Reyes lead of an
+               18-author group.},
 }
 
 @article{arxiv:2011.04216,
@@ -243,28 +247,42 @@
 }
 
 @article{arxiv:2502.05003,
-  author    = {Panferov, Andrei and others},
-  title     = {{QuEST}: Quantization scaling laws via quantization-aware
-               training},
+  author    = {Panferov, Andrei and Chen, Jiale and Tabesh, Soroush
+               and Castro, Roberto L. and Nikdan, Mahdi and
+               Alistarh, Dan},
+  title     = {{QuEST}: Stable Training of {LLMs} with 1-Bit Weights
+               and Activations},
   journal   = {arXiv preprint arXiv:2502.05003},
   year      = {2025},
-  note      = {Cited as closest proxy for quantization scaling-law
-               treatment.},
+  note      = {Loop 80 corrected: 6-author list verified; title is
+               about stable 1-bit training (not "scaling laws"). F2
+               cites loosely as closest QAT precision-vs-stability
+               reference.},
 }
 
 @article{arxiv:2509.22536,
-  author    = {{NVIDIA} and others},
-  title     = {{MXFP8} training recipe ({InfiR2})},
+  author    = {{InfiR2 Authors}},
+  title     = {{InfiR2}: A Comprehensive {FP8} Training Recipe for
+               Reasoning-Enhanced Language Models},
   journal   = {arXiv preprint arXiv:2509.22536},
   year      = {2025},
-  note      = {FP8 production-scale recipe; pre-reg comparator.},
+  note      = {WITHDRAWN by authors 2025-10-17 due to a data
+               processing pipeline bug invalidating reported
+               results. Retained here only as historical context
+               for FP8 training-recipe attempts; F2 §9.4 cites with
+               an explicit withdrawal note. Loop 80 verified.},
 }
 
 @article{arxiv:2511.01921,
-  author    = {Schmidt-Mengin, Maxence and others},
-  title     = {Fibbinary / golden-ratio quantization},
+  author    = {Fiandaca, Roberta and Gomony, Manil Dev},
+  title     = {Fibbinary-Based Compression and Quantization for
+               Efficient Neural Radio Receivers},
   journal   = {arXiv preprint arXiv:2511.01921},
   year      = {2025},
-  note      = {Only published phi-format work known to us; literature
-               anchor for the phi-ladder path.},
+  note      = {Loop 80 corrected attribution from "Schmidt-Mengin et
+               al." (fabricated). Paper applies Fibonacci-code-word
+               quantization to NEURAL RADIO RECEIVERS, not
+               transformer LLMs. F2 §9.4 cites with the correct
+               narrow scope — the only published Fibonacci-binary
+               quantization work we know of, in any domain.},
 }

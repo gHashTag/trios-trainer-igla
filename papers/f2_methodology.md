@@ -1273,13 +1273,21 @@ For context on the format-zoo competitors, the key references are:
   characterizes the precision-vs-scale frontier as a side effect of
   proposing a new training recipe; we cite it loosely as the closest
   available proxy for a dedicated scaling-law treatment.
-- **FP8 at production scale**, see the NVIDIA Nemotron MXFP8 recipe
-  reports and the InfiR2 training pipeline (arXiv:2509.22536).
-- **Fibbinary / golden-ratio quantization** (Schmidt-Mengin et al.,
-  2025, arXiv:2511.01921) is the only published phi-format work we are
-  aware of; the authors openly acknowledge that aggressive ternary phi
-  encoding requires incremental QAT to recover accuracy. This is the
-  literature anchor for the phi-ladder path under study.
+- **FP8 at production scale**, see the published NVIDIA Nemotron
+  MXFP8 recipe reports. We previously also cited InfiR2
+  (arXiv:2509.22536) here, but that paper was withdrawn by its
+  authors on 2025-10-17 due to a data-processing pipeline bug
+  invalidating the reported results; we keep the citation for
+  historical context only.
+- **Fibonacci-code-word quantization** (Fiandaca & Gomony, 2025,
+  arXiv:2511.01921, "Fibbinary-Based Compression and Quantization
+  for Efficient Neural Radio Receivers") is the only published
+  Fibonacci-binary quantization work we are aware of in any
+  domain. It applies to neural radio receivers, not transformer
+  LLMs; we cite it as a methodological anchor — Fibonacci-style
+  encodings have at least one published precedent outside
+  transformers — but not as evidence that phi-style training is
+  established practice for language models.
 
 ---
 
