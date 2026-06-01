@@ -293,3 +293,11 @@ path = "src/bin/matrix_runner.rs"
 name = "matrix_ledger"
 path = "src/bin/matrix_ledger.rs"
 
+
+[[bin]]
+name = "code_binarize"
+path = "src/bin/code_binarize.rs"
+
+[[bin]]
+name = "igla_coder_v1"
+path = "src/bin/igla_coder_v1.rs"
