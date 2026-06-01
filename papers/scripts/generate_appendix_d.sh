@@ -41,6 +41,7 @@ INT_TESTS=(
     f2_dual_mediation_preamble
     f2_label_convention
     f2_provenance_check_exit_codes
+    f2_three_stratum_pipeline_e2e
     f2_warmup_stratified_e2e
     f2_wd_stratified_e2e
 )
