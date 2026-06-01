@@ -7,11 +7,14 @@
 #   (1) cross_reference_audit.py — §X.Y refs + arXiv format + file paths
 #   (2) verify_paper_metadata.py — title parity, test count, BibTeX,
 #       figure files
-#   (3) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
-#   (4) compile_tmlr_test.sh     — xelatex compile all 3 variants
+#   (3) check_no_fabricated_shas.py — git cat-file -e per SHA-like token
+#   (4) lint_paper_md.py         — Markdown lint (6 checks, upstream of
+#       LaTeX render)
+#   (5) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
+#   (6) compile_tmlr_test.sh     — xelatex compile all 3 variants
 #       (non-anon, anon, real TMLR class)
-#   (5) figure_regen.sh          — regenerate all 6 figures
-#   (6) pack_supplementary.sh    — bundle supplementary zip (which
+#   (7) figure_regen.sh          — regenerate all 6 figures
+#   (8) pack_supplementary.sh    — bundle supplementary zip (which
 #       itself runs the 3-stage pre-flight from Loop 72)
 #
 # Output: PASS/FAIL summary on stdout. Exit 0 if every stage passes,
@@ -20,8 +23,16 @@
 # Use:
 #   papers/scripts/run_all_checks.sh
 #
-# Approx total wall time: ~30 s (no trainer invocation; figure regen
-# is the largest component at ~10 s).
+# Approx total wall time:
+#   - WARM (prior cargo build of f2_to_jsonl + f2_mediation_sensitivity
+#     + f2_provenance_check; prior cargo test --no-run for lib + 10 F2
+#     bins + 7 integration suites; TeX Live + Python deps installed):
+#     ~30–60 s.
+#   - COLD CLONE (no cargo cache, no warm target/): 15–30 minutes,
+#     dominated by Rust compilation of a 38-binary workspace.
+#
+# Required external tools: xelatex, bibtex, pdftotext (poppler);
+# python3 with matplotlib + numpy; zip; cargo (Rust toolchain).
 
 set -euo pipefail
 

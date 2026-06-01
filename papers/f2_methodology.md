@@ -543,15 +543,14 @@ fingerprint mixin in `src/race/multi_seed.rs` (`config_fingerprint`);
 checker in `src/bin/f2_provenance_check.rs`; stratum banner in
 `src/bin/f2_dual_mediation.rs` (`detect_input_stratum`) and
 `src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
-
-**3.5.5 Reviewer-grade tooling.** The §3.5.1–§3.5.4 discipline is
-operationalized through six auxiliary scripts under
-`papers/scripts/` that a reviewer can run to verify each invariant
-mechanically. The complete catalogue (script name, purpose,
-runtime) is given in Appendix E; the headline is that a single-shot
-CI gate (`papers/scripts/run_all_checks.sh`, ~30 s end-to-end)
-chains every check and `pack_supplementary.sh`, exiting 0 only if
-all stages pass.
+The four disciplines above (§3.5.1–§3.5.4) are operationalized
+through eight auxiliary scripts under `papers/scripts/` that a
+reviewer can run to verify each invariant mechanically; the
+complete catalogue and its required external tools are given in
+Appendix E. The headline is a single-shot CI gate
+(`papers/scripts/run_all_checks.sh`, ~60 s warm and 15–30 min
+cold-clone) that chains every check plus `pack_supplementary.sh`,
+exiting 0 only if all stages pass.
 
 ---
 
@@ -1541,34 +1540,55 @@ respectively.
 
 ### E. Reviewer-grade tooling catalogue
 
-The §3.5.1–§3.5.4 discipline (cf. §3.5.5) is operationalized through
-six auxiliary scripts under `papers/scripts/` that a reviewer can run
-to verify each invariant mechanically:
+The §3.5.1–§3.5.4 discipline (cf. §3.5.4 closing paragraph) is
+operationalized through eight auxiliary scripts under
+`papers/scripts/` that a reviewer can run to verify each invariant
+mechanically. Wall-clock figures below assume a **warm cargo cache**
+(prior `cargo build --release` of `f2_to_jsonl`,
+`f2_mediation_sensitivity`, `f2_provenance_check` and prior
+`cargo test --no-run` for the lib + 10 F2 bins + 7 integration
+suites). **Cold-clone first run is 15–30 minutes**, dominated by
+Rust compilation of a 38-binary, 157-dependency workspace; on
+subsequent invocations the cache is warm and the numbers below hold.
 
-- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
-  enumerate every test in the crate (lib + per-binary + integration)
-  via `cargo test --list`; emit the Appendix D inventory.
-- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
-  every paper-internal §X.Y reference resolves to a header, every
-  arXiv citation is well-formed, every backtick file/binary
+**Required external tools**: `xelatex`, `bibtex`, `pdftotext` (from
+poppler); `python3` with `matplotlib` + `numpy`; `zip`; the Rust
+toolchain (`cargo`). The CI gate aborts on the first missing
+dependency; we do not stub any of them.
+
+- **`papers/scripts/cross_reference_audit.py`** (< 1 s warm) —
+  verify every paper-internal §X.Y reference resolves to a header,
+  every arXiv citation is well-formed, every backtick file/binary
   mention points at a real path under `src/bin/` or `tests/`.
-- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
-  the LaTeX body from the Markdown source; run xelatex + BibTeX
-  3-pass to verify the paper compiles cleanly to PDF.
-- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
-  CSVs from `data/loop49/` and `data/loop49_swap/` through
-  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
-  six paper figures.
-- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
-  drift gate covering title parity, test-count parity, BibTeX
-  completeness, and figure-file existence.
-- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
-  CI gate chaining all five scripts above plus
-  `pack_supplementary.sh`; exits 0 only if every stage passes.
+- **`papers/scripts/verify_paper_metadata.py`** (< 1 s warm) —
+  CI-style drift gate covering title parity, test-count parity,
+  BibTeX completeness, and figure-file existence.
+- **`papers/scripts/check_no_fabricated_shas.py`** (< 1 s warm) —
+  for every SHA-like token in the paper, run `git cat-file -e`;
+  any unresolvable SHA fails the gate.
+- **`papers/scripts/lint_paper_md.py`** (< 1 s warm) — Markdown
+  lint with six checks (heading depth, multi-line bold, table
+  width, bullet flow, code-block fences, U+FFFD); upstream of
+  the LaTeX render.
+- **`papers/scripts/generate_appendix_d.sh`** (~10 s warm) —
+  enumerate every test in the crate (lib + per-binary + integration)
+  via `cargo test --list`; emit the Appendix D inventory. **Cold:
+  10–20 min** (debug-profile build of the workspace).
+- **`papers/scripts/compile_tmlr_test.sh`** (~30 s warm) —
+  regenerate the LaTeX body from the Markdown source; run xelatex
+  + BibTeX 3-pass × 3 variants (non-anon, anon, real TMLR class).
+- **`papers/scripts/figure_regen.sh`** (~10 s warm) — stage
+  committed CSVs from `data/loop49/` and `data/loop49_swap/`
+  through `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate
+  all six paper figures. **Cold: 3–8 min** (release-profile build
+  of two F2 bins).
+- **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
+  cold**) — single-shot CI gate chaining all seven scripts above
+  plus `pack_supplementary.sh`; exits 0 only if every stage passes.
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +
 `papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
 before building the supplementary zip; any single failure aborts
 the pack. The intent is that no supplementary artifact ever ships
-without all five invariants verified at bundle time.
+without all invariants verified at bundle time.

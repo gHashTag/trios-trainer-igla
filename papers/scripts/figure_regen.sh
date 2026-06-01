@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# figure_regen.sh — regenerate all 4 paper figures from committed data
-# in data/loop49/.
+# figure_regen.sh — regenerate all 6 paper figures from committed data
+# in data/loop49/ and data/loop49_swap/.
 #
 # Each figure script (papers/figures/figN_*.py) has its own --input
 # default pointing at /tmp/ paths from earlier loops. This wrapper
 # pipes the committed CSVs through f2_to_jsonl into temp JSONL files,
 # then invokes each figure script with the correct --input pointer.
 #
-# Output: papers/figures/figN_*.png (4 files), overwritten in place.
+# Output: papers/figures/figN_*.png (6 files), overwritten in place.
 # Exit: 0 on success, 1 on any figure failure.
 #
 # Required: python3 with matplotlib + numpy; cargo (release builds of
