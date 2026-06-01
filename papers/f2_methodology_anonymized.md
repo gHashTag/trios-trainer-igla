@@ -313,7 +313,7 @@ The lock test
 `dual_mediation_no_interaction_residual_lock` (§8.2) certifies the
 equivalence numerically: the residual
 `Δ_X − (NDE + NIE_{M_1} + NIE_{M_2} + NIE_{chain})` is below
-`1×10⁻⁶` in our regime, which empirically confirms the no-interaction
+$1 \times 10^{-6}$ in our regime, which empirically confirms the no-interaction
 collapse.
 
 In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
@@ -338,7 +338,7 @@ $$
 \text{CI}_{95\%}(\widehat{\text{PSE}}) \;=\; \widehat{\text{PSE}} \;\pm\; t_{0.975, N-1} \cdot \text{SE}
 $$
 
-At `N = 5`, `t_{0.975, 4} ≈ 2.776`. We deliberately avoid BCa bootstrap:
+At $N = 5$, $t_{0.975, 4} \approx 2.776$. We deliberately avoid BCa bootstrap:
 Owen (2025, arXiv:2508.10083, "Better bootstrap-t confidence intervals
 for the mean") motivates skepticism of BCa at small N by proposing a
 Beta-weighted bootstrap alternative; the empirical small-N coverage
@@ -667,7 +667,7 @@ Three reasons we deliberately chose the small configuration:
    if it holds at sandbox scale, the same decomposition formulas apply
    at champion scale (only the numerical magnitudes change). The
    `dual_mediation_no_interaction_residual_lock` test confirms
-   the linearity assumption holds in our regime to within `10⁻⁶`.
+   the linearity assumption holds in our regime to within $10^{-6}$.
 
 3. **Sign-flip demonstration value.** The headline finding (RmsNorm NDE
    flips sign across strata) is qualitative, not quantitative. A reviewer
@@ -706,7 +706,7 @@ Table 1 (Figure 3) shows the 5×4 PSE matrix:
 | clamp | −4.87 | +4.87 | +0.32 | −0.33 |
 | smooth | −4.87 | +4.87 | +0.32 | −0.33 |
 
-(BPB units; per-row sum recovers `Δ_X` to within `10⁻⁶`.)
+(BPB units; per-row sum recovers `Δ_X` to within $10^{-6}$.)
 
 The NIE_M1 column (effect mediated through WD) is uniformly ≈+5 BPB; the
 NDE column is uniformly ≈−5 BPB. **The net total effect `Δ_X` is small
@@ -832,7 +832,7 @@ which evaluates from the same pair/triplet sweep rows regardless
 of the stratum's baseline-config choice when the mediator-pinning
 does not interact with the rms-mediated pathway. The
 `dual_mediation_no_interaction_residual_lock` test (§8.2) validates
-the residual at `< 10⁻⁶` for the canonical parameterization;
+the residual at $< 10^{-6}$ for the canonical parameterization;
 Phase 0 confirms the equivalence empirically holds under swap.
 We interpret this row narrowly as evidence that **the rms-mediated
 NIE-via-WD for the wd fix specifically is the only PSE whose
@@ -1026,16 +1026,15 @@ marking the warmup row's full invariance.
 
 ## 7. Limitations
 
-We list six limitations the paper's claims are subject to. Each is
-acknowledged here so a future reader can verify the framework is being
-applied within its valid scope. The six items group into four
-clusters: **scope/external validity** (items 1, 4), **statistical
-power** (item 2), **identification assumptions** (items 3, 6), and
-**framework scope** (item 5).
+We list six limitations the paper's claims are subject to,
+grouped into four clusters: scope/external validity, statistical
+power, identification assumptions, and framework scope. Each is
+acknowledged here so a future reader can verify the framework is
+being applied within its valid scope.
 
 ### 7.1 Scope and external validity
 
-1. **Sandbox-scale only.** The 200-step, ~8K-parameter, single-batch
+**Sandbox-scale only.** The 200-step, ~8K-parameter, single-batch
    configuration of §4 is a stress test for the methodology, not a
    champion-scale claim. The headline result (RmsNorm CDE sign flip)
    surfaces a *qualitative* phenomenon (suppression by WD) that we
@@ -1045,12 +1044,12 @@ power** (item 2), **identification assumptions** (items 3, 6), and
 
 ### 7.2 Statistical power
 
-2. **Five seeds is small.** Owen (2025, arXiv:2508.10083) and a related
+**Five seeds is small.** Owen (2025, arXiv:2508.10083) and a related
    literature on N≤5 inference (see §3.2) argue that Student-t intervals
    at df=4 are the most defensible default in this regime. We adopt this
    choice deliberately, but report all numerical results in §5 with the
    understanding that the minimum-detectable effect at N=5 is bounded
-   below by `t_{0.975, 4} · SE ≈ 2.776 · SE`. For the wd0 CDE of +0.43
+   below by $t_{0.975, 4} \cdot \mathrm{SE} \approx 2.776 \cdot \mathrm{SE}$. For the wd0 CDE of +0.43
    BPB with SE ≈ 0.15, the lower CI endpoint is +0.01 BPB; the result
    excludes zero by 0.01 BPB, a 7% margin. A larger seed budget would
    yield tighter CIs and might or might not preserve the sign-flip
@@ -1058,18 +1057,18 @@ power** (item 2), **identification assumptions** (items 3, 6), and
 
 ### 7.3 Identification assumptions
 
-3. **No exposure-mediator interaction is assumed.** The Daniel et al.
+**No exposure-mediator interaction is assumed.** The Daniel et al.
    identification result (§3.2) requires both sequential ignorability
    and a no-interaction assumption between the exposure `X` and the
    mediators `(M_1, M_2)`. The latter is testable: we report empirically
    that the residual
-   `Δ_X − (NDE + NIE_M1 + NIE_M2 + NIE_chain)` is below `10⁻⁶` in our
+   `Δ_X − (NDE + NIE_M1 + NIE_M2 + NIE_chain)` is below $10^{-6}$ in our
    regime, validated by the
    `dual_mediation_no_interaction_residual_lock` test . We do
    not test sequential ignorability directly; the bridge-score envelope
    (§3.3) is our defense against unmeasured confounding.
 
-4. **Synthetic counter task is not a language model.** The training task
+**Synthetic counter task is not a language model.** The training task
    we use is a deterministic counter: the target at each step is a
    simple function of the running token count. This is an
    analytical-tractability choice that gives a clean signal at small
@@ -1079,7 +1078,7 @@ power** (item 2), **identification assumptions** (items 3, 6), and
 
 ### 7.4 Framework scope
 
-5. **The framework supports two-mediator decomposition only.** Adding a
+**The framework supports two-mediator decomposition only.** Adding a
    third mediator requires reworking the identification arithmetic; we
    have not done so. We currently work around this by re-running the
    analysis with different `(M_1, M_2)` choices (the (internal ref) swap in
@@ -1087,7 +1086,7 @@ power** (item 2), **identification assumptions** (items 3, 6), and
    evidence of structural effects. A formal three-mediator extension
    is left as future work.
 
-6. **No post-treatment / intermediate confounders.** The Daniel et al.
+**No post-treatment / intermediate confounders.** The Daniel et al.
    identification (§3.2) assumes that any confounder of the mediators
    `(M_1, M_2)` is *pre-treatment* — measured before the intervention
    `X` is applied. If a mediator is itself caused by `X` and also
@@ -1364,50 +1363,21 @@ should consider it a default first step before reporting seed means.
 
 ### 10.2 Venue calibration
 
-We map the track / workshop options against the contribution profile of
-the paper. Calibration was updated in (internal ref) against the NeurIPS 2026
-call schedule.
+We map four candidate venues against the contribution profile:
 
-- **NeurIPS 2026 MLRC (Reproducibility) — official track.** Best
-  primary fit. Importantly for 2026, MLRC has been promoted from a
-  workshop to an official NeurIPS track, with submission via TMLR.
-  Soft deadline for "intent to submit" is **2026-06-04 AOE**; the hard
-  TMLR decision deadline is **2026-09-30 AOE**, with author
-  notifications **2026-10-07**. Our W3C-PROV preamble discipline (§3.5.1),
-  formula-locking regression tests (§8.2), commit-anchored claim table,
-  and §3.5.4 reviewer reproducibility checklist are exactly the
-  artifacts this track catalogues. The publication path is: submit
-  the paper to TMLR via OpenReview within the eligibility window
-  (≥ 2025-06-20 AOE), then file the MLRC EOI via the Google Form at
-  `forms.gle/bvYxagcRjKSmYhUM7` once the paper is under TMLR review;
-  MLRC consideration follows TMLR acceptance, with in-person
-  presentation at NeurIPS 2026 (Sydney, December 6–13). Path:
-  TMLR (OpenReview) → MLRC EOI Google Form → MLRC track.
+| Venue | Fit | Required artifacts |
+|-------|-----|---------------------|
+| NeurIPS MLRC (reproducibility track) | **Primary** | W3C-PROV preambles (§3.5.1), formula-locking regression tests (§8.2), reviewer reproducibility checklist (§3.5.4) |
+| NeurIPS Causal-ML Workshop | Fallback | A version re-balanced to lead with §3.2 (Daniel et al.) and §3.3 (bridge-score) and de-emphasize §3.5 (provenance) |
+| ICML main track | Future | Either a successful Phase 1 champion-scale sweep per `docs/F2_PRE_REG.md`, or F2 re-applied to a second publicly-debated ablation finding |
+| Stat journals (Biometrics, Stat. Med., JCI) | Aspirational | Stat-grade simulation study or domain co-author; the methodological bar is set by recent work such as Guo et al. (2026, *Statistics in Medicine*, doi:10.1002/sim.70548) |
 
-- **NeurIPS 2026 Causal-ML Workshop.** Strong secondary fit, retained
-  as a fall-back. The audience cares more about identification theory
-  than reproducibility infrastructure; a re-balanced submission would
-  lead with §3.2 (Daniel et al.) and §3.3 (bridge-score) and de-emphasize
-  §3.5 (provenance). The workshop application deadline for organizers
-  is 2026-06-06 AOE; the call-for-papers deadline historically lands in
-  late September / early October per the NeurIPS workshop cycle.
-
-- **ICML 2027 main track.** The current paper is track-grade for MLRC
-  because it lacks champion-scale empirical validation. Submission to
-  a main track requires either (a) the Phase 1 sweep of
-  `docs/F2_PRE_REG.md` completing successfully, or (b) re-applying the
-  framework to a second, publicly-debated ablation finding from another
-  paper. Either path is outside the (internal ref) scope and is the natural
-  next experimental milestone if MLRC acceptance lands.
-
-- **Stat journals (Biometrics, Stat. Med., JCI).** The methodological
-  contribution is real, but ML methodology in stat journals is a hard
-  sell to ML readers; a stat-journal submission would need either a
-  stat-grade simulation study or a domain co-author. Statistics in
-  Medicine 45 (2026) includes Guo et al.'s sensitivity-analysis-with-
-  unmeasured-confounding paper (doi:10.1002/sim.70548) in our adjacent
-  area, which sets the methodological bar for a credible stat-journal
-  submission. Unlikely as a primary venue for the 2026 cycle.
+The primary target is the MLRC reproducibility track because the
+paper's load-bearing contribution is the reproducibility-grade
+discipline around stratified Pearl-CDE analysis; the secondary and
+future tracks are listed for completeness. Submission logistics
+(deadlines, forms, registration paths) are tracked separately in
+`papers/SUBMISSION_CHECKLIST.md`.
 
 ### 10.3 Acknowledgments + funding disclosure
 
