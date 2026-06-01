@@ -507,11 +507,114 @@ interaction with the format choice."
 
 ---
 
-## DRAFT notes (Loops 98–101)
+## 5. Reproducibility artifacts
 
-§1 (Loop 98), §2 (Loop 99), §3 (Loop 100), §4 (Loop 101) drafted.
-Remaining sections:
-- §5 — Reproducibility artifacts
+The protocol commits, at the end of the run, **93 CSVs** and **6
+post-run reports** to a single subtree of the repository
+(`data/issue1021/<batch>/`). The exact artifact list, schemas, and
+the scripts a reviewer can run for sanity-check reproduction are
+specified below.
+
+### 5.1 Artifact inventory
+
+| Count | File pattern | Schema | Producer |
+|------:|--------------|--------|----------|
+| 80 | `cell_<stratum>_<config>_<seed>.csv` | per-cell long-form (val_bpb, train_bpb, wall_s, peak_mem_mb, lossy_conversions + W3C-PROV preamble) | `f2_ablation_sweep` |
+| 2 | `aggregate_<stratum>.csv` | per-config mean ± SE on val_bpb (4 cols × 8 configs) | `f2_ablation_aggregate` |
+| 1 | `pairwise_canonical.csv` | 16 (phi-config, zoo-config) pairs × {diff, p-value, BH-adjusted-p} | `f2_pairwise_perm` |
+| 1 | `pairwise_wd0.csv` | same schema, wd0 stratum | `f2_pairwise_perm` |
+| 1 | `stratum_compare.csv` | 16 pairs × `stable_across_strata` flag | `f2_stratum_compare` |
+| 8 | `sensitivity_<phi-config>_vs_<zoo-config>.csv` | bridge-score envelope per pair that survives the perm test | `f2_mediation_sensitivity` |
+
+Total: 80 + 2 + 1 + 1 + 1 + 8 = **93 CSVs**. Each CSV has the
+F2 W3C-PROV preamble (timestamp, anchor commit, config_hash,
+seed, training-token-budget), parseable by
+`f2_provenance_check`.
+
+The 6 post-run reports:
+
+| File | Content |
+|------|---------|
+| `report_h0_equivalence.md` | Per-pair H0 verdict (equivalence within ±0.05 BPB) |
+| `report_h1_superiority.md` | Per-pair H1 verdict (≥0.10 BPB lower at p < 0.05) |
+| `report_h2_dominance.md` | Per-phi-config H2 verdict (dominates over all zoo) |
+| `report_stratum_diff.md` | Canonical-vs-wd0 verdict per pair |
+| `report_bridge_envelope.md` | Γ_tip(Λ=1.0) per surviving pair |
+| `report_secondary_outcomes.md` | wall-clock + peak-memory tabulated per (config, stratum) |
+
+The protocol commits all 6 reports as static markdown in the same
+subtree; they are not regenerated after the run. Subsequent
+loops may add subsidiary analyses but **not** edit these six.
+
+### 5.2 Reproducibility commands
+
+A reviewer who has cloned the repository can reproduce every
+quantitative claim in the paper via the following:
+
+```bash
+# Anchor the run
+git checkout <anchor-commit>  # supplied at submission
+
+# Cold-clone build (15–30 min per the F2 companion §3.5)
+cargo build --release \
+  --bin f2_ablation_sweep \
+  --bin f2_ablation_aggregate \
+  --bin f2_pairwise_perm \
+  --bin f2_stratum_compare \
+  --bin f2_mediation_sensitivity \
+  --bin f2_provenance_check
+
+# Per-cell rerun (single seed × single config) — sanity check
+# Wall-clock budget: ~3 hours on 8×A100 for one cell.
+cargo run --release --bin f2_ablation_sweep -- \
+  --config GFTernary --stratum canonical --seed 42 \
+  --output data/issue1021/sanity/cell_canonical_GFTernary_42.csv
+
+# Compare against committed expected:
+diff data/issue1021/sanity/cell_canonical_GFTernary_42.csv \
+     data/issue1021/run0/cell_canonical_GFTernary_42.csv
+```
+
+The seed-by-seed determinism of the F2 framework (every config
+has a `config_hash` that is byte-stable across reruns at the same
+commit) means a reviewer can reproduce *any* single cell and
+expect byte-identical val_bpb to within 5 significant figures.
+Per-cell wall-clock at full scale is ~3 hours on 8×A100; the
+full 80-run matrix is **~240 GPU-hours**.
+
+### 5.3 Snapshot manifest
+
+The paper commits a `papers/issue1021/expected_test_compile_tmlr.pdftotext`
+snapshot at submission. The companion paper's `compile_tmlr_test.sh
+--diff` machinery (Loop 98) is reused unchanged: any future commit
+that changes the rendered PDF's textual content fails the
+regression suite. The snapshot captures the post-numeric-fill
+manuscript, so post-hoc edits to the empirical numbers will be
+caught and require an explicit `--update-snapshot` to refresh.
+
+### 5.4 CI gate
+
+The 9-stage CI gate from the companion paper (Loop 99) is
+extended with three new stages for this run:
+
+- `verify_run_completeness.py` — checks all 93 CSVs are present
+  in `data/issue1021/run0/` and each parses against the schema in §5.1.
+- `verify_report_consistency.py` — checks each report's numeric
+  claims against the source CSVs (a generalization of the
+  per-table CSV-grounding script from Loop 99).
+- `verify_provenance.sh` — runs `f2_provenance_check` against
+  every CSV; aborts if any preamble is missing or malformed.
+
+The full CI gate (12 stages total: 9 from F2 + 3 from this paper)
+must exit 0 on the anchor commit before any draft is exported
+for submission.
+
+---
+
+## DRAFT notes (Loops 98–102)
+
+§1 (Loop 98), §2 (Loop 99), §3 (Loop 100), §4 (Loop 101), §5
+(Loop 102) drafted. Remaining sections:
 - §6 — Scope/limitations
 - §7 — EOI
 

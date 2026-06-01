@@ -723,21 +723,23 @@ no (CI
 no (ma
 no (ma
 
-The wd0 stratum has two stories. Only RmsNorm crosses zero: the
-canonical ”removing rms helps BPB by 4.12” estimate is, under Pearl CDE
-at WD=0, ”removing rms hurts BPB by 0.43” — and the 95% CI excludes
-zero by 0.01 BPB (Γ_tip(Λ=1.0) = 1.43 per section 5.4, moderate per
-the section 3.3 reporting convention). But all four non-rms fixes also
+The wd0 stratum has two stories. Only RmsNorm crosses zero:
+the canonical ”removing rms helps BPB by 4.12” estimate is, under Pearl
+CDE at WD=0, ”removing rms hurts BPB by 0.43” — and the 95% CI
+excludes zero by only 0.01 BPB (Γ_tip(Λ=1.0) = 1.01 per section 5.4,
+fragile per the section 3.3 reporting convention — the wd0 finding’s sign
+is well-determined but its robustness to unmeasured confounding is essentially the same as the CI margin itself). But all four non-rms fixes also
 collapse in magnitude at wd0 — the canonical −4.5 to −4.9 BPB direct
 effect drops to between −0.01 and −0.32 BPB. Two of the four (dropout,
 gradclip) have 95% CIs that now bracket zero; the other two (clamp, smooth)
 have small but distinguishable negative effects. The wd0 stratum is therefore
-a structural attenuator on the entire NDE column, not just a sign-flipper for
-RmsNorm; what distinguishes RmsNorm is that the attenuation overshoots
-into positive territory.
+
 17
 
-The warmup0 stratum, by contrast, reproduces the canonical NDE column almost line-by-line — every fix’s warmup0 estimate is within 0.05 BPB
+a structural attenuator on the entire NDE column, not just a sign-flipper for
+RmsNorm; what distinguishes RmsNorm is that the attenuation overshoots
+into positive territory.
+The warmup0 stratum, by contrast, reproduces the canonical NDE column almost line-by-line — every fix’s warmup0 estimate is within 0.05 BPB
 of its canonical estimate. This rules out ”any non-default stratum flips the
 sign” as an explanation; the wd0 finding is specifically tied to weight decay’s
 structural role, not to stratification per se.
@@ -765,12 +767,12 @@ This is the headline finding of the paper. Figure 4 visualizes the three
 NDE values for rms (canonical, wd0, warmup0) with error bars. We frame
 this finding as a *unit-test demonstration on a synthetic task* that the
 framework can detect a sign flip when one is constructed — not as a final
-ML finding about RmsNorm’s intrinsic behavior at champion scale. See
-section 1.2 and section 10.1 for venue calibration.
-
 18
 
-5.3
+ML finding about RmsNorm’s intrinsic behavior at champion scale. See
+section 1.2 and section 10.1 for venue calibration.
+
+5.3
 
 Cross-stratum stability flag
 
@@ -803,12 +805,12 @@ What this empirically demonstrates is the comparator’s plumbing, not
 a substantive finding: the comparator surfaces stratum-induced disagreement loudly, and the analyst reads the flag with knowledge of why each
 disagreement exists. The substantive cross-stratum result emerges from the
 swap parameterization below, where one row (wd x NIE_M1 via rms) survives identical across all three strata for non-trivial reasons.
-Swap parameterization — Phase 0 result . A natural followup analysis re-runs the four-PSE decomposition with (M_1 = rms, M_2 =
-warmup) instead, to obtain an NIE_M1 estimate that quantifies ”the part of
 
 19
 
-X’s effect mediated by rms” for each non-mediator X. Pre-registered in section 4.5 of docs/F2_PRE_REG.md and executed in (internal ref) against the
+Swap parameterization — Phase 0 result . A natural followup analysis re-runs the four-PSE decomposition with (M_1 = rms, M_2 =
+warmup) instead, to obtain an NIE_M1 estimate that quantifies ”the part of
+X’s effect mediated by rms” for each non-mediator X. Pre-registered in section 4.5 of docs/F2_PRE_REG.md and executed in (internal ref) against the
 regenerated --mode all canonical sweep plus the two committed stratified
 sweeps; outputs are committed at data/loop49_swap/. Of the 20 rows in
 data/loop49_swap/3stratum_swap.csv, 5 are flagged stable_across_strata
@@ -845,11 +847,11 @@ byte-identical pattern depends on the specific M_2 = warmup choice in the
 swap parameterization. section 6.4 reports the full M_2 sensitivity sweep
 across all five candidate mediators. The headline result moved there: the
 invariance is conditional on M_2 matching the warmup0 stratum’s
-pinned variable; under the four alternative M_2 choices, the weaker
-canonical = wd0 invariance still holds in every case (a structural consequence of wd being target X, not a mediator on the rms-M_2 path), but
 20
 
-the full triple-stratum invariance does not.
+pinned variable; under the four alternative M_2 choices, the weaker
+canonical = wd0 invariance still holds in every case (a structural consequence of wd being target X, not a mediator on the rms-M_2 path), but
+the full triple-stratum invariance does not.
 
 5.4
 
@@ -878,12 +880,52 @@ wd0 CDE for rms (+0.43)
 
 4.55
 5.42
-1.43
+1.01
 
 robust
 robust
-moderate
+fragile
 
+Full canonical-stratum envelope (all 20 PSEs). The headline table
+above gives the three highest-relevance estimates; we classify every PSE in
+the canonical stratum against the same envelope at Λ = 1.0, grouped by
+classification tier:
+Robust (Γ_tip ≥ 2.0) — the 10 NDE + NIE_M1 rows survive substantial unmeasured confounding:
+• rms NDE: −4.12 [−4.68, −3.55], Γ_tip = 4.55
+• rms NIE_M1: +4.99 [+4.42, +5.56], Γ_tip = 5.42
+• dropout NDE: −4.55 [−4.89, −4.22], Γ_tip = 5.22
+• dropout NIE_M1: +4.46 [+4.10, +4.82], Γ_tip = 5.10
+21
+
+• gradclip NDE: −4.74 [−5.00, −4.49], Γ_tip = 5.49
+• gradclip NIE_M1: +4.73 [+4.48, +4.99], Γ_tip = 5.48
+• clamp NDE: −4.87 [−4.88, −4.86], Γ_tip = 5.86
+• clamp NIE_M1: +4.87 [+4.84, +4.91], Γ_tip = 5.84
+• smooth NDE: −4.87 [−4.88, −4.86], Γ_tip = 5.86
+• smooth NIE_M1: +4.87 [+4.84, +4.91], Γ_tip = 5.84
+Moderate (1.25 ≤ Γ_tip < 2.0):
+• rms NIE_M2: +1.27 [+0.51, +2.02], Γ_tip = 1.51
+• rms NIE_chain: −1.27 [−2.02, −0.51], Γ_tip = 1.51
+Fragile (Γ_tip < 1.25):
+• dropout NIE_M2: +0.06 [−0.43, +0.54] (CI brackets 0), Γ_tip = 1.00
+• dropout NIE_chain: −0.05 [−0.56, +0.46] (CI brackets 0), Γ_tip =
+1.00
+• gradclip NIE_M2: +0.11 [−0.34, +0.56] (CI brackets 0), Γ_tip = 1.00
+• gradclip NIE_chain: −0.11 [−0.55, +0.34] (CI brackets 0), Γ_tip =
+1.00
+• clamp NIE_M2: +0.32 [+0.04, +0.61], Γ_tip = 1.04
+• clamp NIE_chain: −0.33 [−0.62, −0.04], Γ_tip = 1.04
+• smooth NIE_M2: +0.32 [+0.04, +0.61], Γ_tip = 1.04
+• smooth NIE_chain: −0.33 [−0.62, −0.04], Γ_tip = 1.04
+The headline pattern: the NDE and NIE_M1 rows are uniformly
+robust (Γ_tip > 5 for every fix), reinforcing the section 5.2 reading that the
+suppression structure is uniform across the ablation column. The NIE_M2
+and NIE_chain rows are uniformly fragile (Γ_tip near 1.0), which is
+the bridge-score envelope confirming what the section 5.3 cross-stratum comparator surfaced as small-effect bracketing-zero artifacts. The full canonical
+envelope thus sharpens the section 5.3 reading: the small-effect rows are not
+22
+
+just small under naive CI inspection, they are also fragile under unmeasuredconfounding stress at Λ = 1.0.
 Figure 2 plots the full Γ_tip(Λ) hyperbolae for rms’s four PSEs over
 Λ in [0.1, 5.0] BPB. The crossover at Λ {̃} 1.5 is where the NIE_M2
 and NIE_chain estimates leave the moderate range and become fragile.
@@ -891,14 +933,20 @@ The honest reading: the canonical NIE_M1 (”WD as mediator”)
 result is robust under E-value-style stress testing — Γ_tip > 5 means any
 unmeasured confounder would have to be substantially stronger than typical
 training-recipe correlates to overturn the verdict. The wd0 NDE (”rmsintrinsic-effect-under-WD-pinning”) result is the more fragile claim, with
-Γ_tip = 1.43 placing it in the moderate range. The sign-flip across strata is
-the qualitatively interesting finding; the wd0 magnitude itself should be read
-as ”directionally consistent with positive effect, fragile to moderate-strength
-unmeasured confounding”.
+Γ_tip = 1.01 placing it firmly in the fragile tier: the bridge-score envelope
+reaches zero almost immediately, reflecting the empirical reality that the
+95% CI on this estimate excludes zero by only 0.01 BPB. The sign-flip
+across strata is the qualitatively interesting finding; the wd0 magnitude
+itself should be read as ”sign well-determined, magnitude fragile under any
+unmeasured-confounder stress test of the bridge-score envelope at Λ ≥ 0.01
+BPB”.
+On the prior 1.43 reported in earlier drafts. Drafts prior to (internal ref) reported the wd0 row as Γ_tip = 1.43, computed using the point estimate (+0.43) instead of the closer CI endpoint (+0.01) in the section 3.3 envelope inversion. The section 3.3 formula Γ_tip(Λ) = 1 + min(|CI_lo|,
+|CI_hi|) / Λ mandates the CI endpoint, not the point estimate; the correct
+value at Λ = 1.0 is 1 + 0.01 / 1.0 = 1.01. The prior 1.43 was discovered by the 25th adversarial pass and corrected in the same loop. The implementation in src/bin/f2_mediation_sensitivity.rs:236 has always
+used the CI-endpoint convention; the discrepancy was in the manuscript
+table, not the code.
 
-21
-
-6
+6
 
 Sensitivity to choices
 
@@ -914,7 +962,9 @@ Mediator pair (M_1, M_2)
 The default decomposition uses M_1 = wd, M_2 = warmup, motivated by
 prior mediation analyses in this framework that identified WD and warmup
 as the two strongest mediators in the canonical ablation matrix. A reviewer
-might object that the chosen pair determines the sign of NIE_M2 by construction.
+23
+
+might object that the chosen pair determines the sign of NIE_M2 by construction.
 To address this, the swap parameterization M_1 = rms, M_2 = warmup
 is the natural replication: RmsNorm itself becomes the candidate mediator,
 and the question becomes ”what fraction of each non-mediator fix’s effect
@@ -938,10 +988,7 @@ exact under exchangeability but provides only one significant digit of
 resolution. We use permutation tests for the iLOCO module but not
 for the dual-mediation PSEs because the resolution is too coarse for
 tipping-point analysis.
-
-22
-
-• BCa bootstrap. Bias-corrected and accelerated bootstrap at N=5 is
+• BCa bootstrap. Bias-corrected and accelerated bootstrap at N=5 is
 well known to under-cover empirically (the motivating evidence in the
 Owen 2025 reference we cited in section 3.2). We do not use BCa for
 any reported result.
@@ -951,7 +998,10 @@ alternative we are aware of, but it requires simulation calibration per
 estimand. At our sandbox scale we judged the additional complexity
 unjustified; for the champion-scale follow-up in docs/F2_PRE_REG.md
 we plan to add it as an alternative CI.
-The Student-t choice is conservative-leaning at small N: it widens the
+
+24
+
+The Student-t choice is conservative-leaning at small N: it widens the
 CI relative to a Gaussian approximation, which makes the wd0 NDE result
 (+0.43 [+0.01, +0.84]) harder to obtain. A skeptical reviewer should
 read ”this CI excludes zero under Student-t” as a stronger claim than the
@@ -977,9 +1027,8 @@ mediators that produce the cleanest sign-flip story.” We do not deny that
 incentive exists; we cite the cross-stratum invariant in section 5.3 (invariant
 under both parameterizations) as the structural result that is independent
 of which particular mediator pair was chosen.
-23
 
-6.4
+6.4
 
 M_2 robustness — full sweep
 
@@ -990,7 +1039,10 @@ warmup). A natural follow-up is whether the invariance depends on M_2
 = m) for every non-mediator candidate m in {gradclip, clamp, smooth,
 dropout} across all three strata; outputs committed at data/loop49_swap/{canonical,wd0,warmup0}
 (12 new CSVs). Result for X = wd, NIE_M1 via rms:
-M_2 = …
+The pattern across all five M_2 alternatives is exactly what no-XMinteraction predicts:
+25
+
+M_2 = …
 
 canonical
 
@@ -1022,7 +1074,6 @@ dropout
 −0.751 [−1.325, −0.177]
 −0.400 [−0.787, −0.014]
 
-The pattern across all five M_2 alternatives is exactly what no-XMinteraction predicts:
 1. wd0 = canonical in every row. The wd0 stratum pins a variable (weight_decay) that is the outcome target X for this row, not a
 mediator on the rms-M_2 path. Removing wd does not constrain
 the rms-mediated indirect effect, so the per-seed pair_X_M_2 and
@@ -1037,9 +1088,7 @@ NIE_M1 estimate diverges.
 The narrow scoping is therefore: the wd × NIE_M1 via rms row is
 byte-identical across all three strata only when the swap parameterization’s M_2 is precisely the variable pinned by the warmup0
 stratum. Under the four alternative M_2 choices, the weaker invariance
-24
-
-(canonical = wd0) holds in 4 of 4 cases, but the full-triple-stratum invariance does not. Figure 6 visualizes the full 5 × 3 landscape with thick row
+(canonical = wd0) holds in 4 of 4 cases, but the full-triple-stratum invariance does not. Figure 6 visualizes the full 5 × 3 landscape with thick row
 outline marking the warmup row’s full invariance.
 
 7
@@ -1050,7 +1099,9 @@ We list six limitations the paper’s claims are subject to, grouped into four
 clusters: scope/external validity, statistical power, identification assumptions, and framework scope. Each is acknowledged here so a future reader
 can verify the framework is being applied within its valid scope.
 
-7.1
+26
+
+7.1
 
 Scope and external validity
 
@@ -1080,9 +1131,7 @@ No exposure-mediator interaction is assumed. The Daniel et al. identification re
 M_2). The latter is testable: we report empirically that the residual Δ_X
 − (NDE + NIE_M1 + NIE_M2 + NIE_chain) is below 10−6 in our regime,
 validated by the dual_mediation_no_interaction_residual_lock test .
-25
-
-We do not test sequential ignorability directly; the bridge-score envelope
+We do not test sequential ignorability directly; the bridge-score envelope
 (section 3.3) is our defense against unmeasured confounding.
 Synthetic counter task is not a language model. The training
 task we use is a deterministic counter: the target at each step is a simple
@@ -1091,7 +1140,9 @@ that gives a clean signal at small scale. The pattern of WD suppression and
 RmsNorm sign-flip could in principle be specific to this task. The preregistered FineWeb validation in docs/F2_PRE_REG.md is the appropriate
 next step.
 
-7.4
+27
+
+7.4
 
 Framework scope
 
@@ -1115,9 +1166,7 @@ et al., 2023)) for the post-treatment sensitivity analysis they would impose
 instead, or Díaz et al. (2021, (Díaz et al., 2021)) for the interventionaleffects framework that point-identifies a related estimand without the nopost-treatment assumption. We leave a formal post-treatment extension of
 F2 as future work.
 
-26
-
-8
+8
 
 Software
 
@@ -1131,7 +1180,9 @@ Binaries
 
 Ten F2 binaries form a Unix-style pipeline over the long-form CSV contract documented in section 3.5.2. Each binary reads zero or more CSVs,
 emits one CSV, and validates W3C-PROV preambles on entry. The full
-index, including per-binary CLI synopses, lives in docs/F2_BINARIES.md;
+28
+
+index, including per-binary CLI synopses, lives in docs/F2_BINARIES.md;
 the binaries cited in section 5 are:
 • f2_ablation_sweep — run a single ablation sweep at one stratum;
 write a long-form CSV with ModeKind × Stratum tagged rows.
@@ -1152,9 +1203,7 @@ f2_iloco_score, f2_mediation) cover aggregation, ILOCO scoring, and
 the single-mediator legacy path; they are documented for completeness in
 the binaries index.
 
-27
-
-8.2
+8.2
 
 Tests
 
@@ -1167,7 +1216,9 @@ et al. residual closure under our no-interaction assumption against the
 four-path estimator; if the residual term Δ_X − (NDE + NIE_{M_1} +
 NIE_{M_2} + NIE_chain) ever exceeds a fixed tolerance (1 × 10−6 ),
 the test fails and forces a retraction of the delta-method SE formula.
-The lock certifies algebraic equivalence to the Daniel et al. decomposition only; the Miles-Shpitser single-pathway EIF (section 2.1) is
+29
+
+The lock certifies algebraic equivalence to the Daniel et al. decomposition only; the Miles-Shpitser single-pathway EIF (section 2.1) is
 invoked as motivational, not as a target the lock verifies against.
 • trainer_internals_schema_is_load_bearing — locks the TRAINER_INTERNALS_SCHEMA
 constant into the config-fingerprint hash, so any internal schema bump
@@ -1190,9 +1241,7 @@ in the directory’s README.md. Reproducing section 5 byte-for-byte requires
 nothing beyond a git checkout of the anchor commit and the commands
 listed in section 3.5.4.
 
-28
-
-9
+9
 
 Related work
 
@@ -1209,7 +1258,10 @@ ABLATOR (Fostiropoulos & Itti, 2023) is the closest infrastructure work:
 a tool for running multi-seed ablation studies at scale with result aggregation. ABLATOR stops at multi-seed ranking; it does not attempt mediation
 decomposition or stratified CDE analysis. F2 extends the multi-seed-ranking
 workflow by adding causal-inference-grade reasoning over the seeds.
-AblationBench (Abramovich & Chechik, 2025, (Abramovich and Chechik,
+
+30
+
+AblationBench (Abramovich & Chechik, 2025, (Abramovich and Chechik,
 2025)) provides a benchmark suite for the upstream question of whether
 language-model agents can plan the right ablations for a paper (their best
 system identifies only 38% of original ablations on average). F2 is orthogonal
@@ -1228,9 +1280,8 @@ applied as-is to long-form CSVs with the contract in section 3.5.1; the case
 study illustrates what F2 would surface against the Peri-LN Table 1 ablation
 if per-seed data were available, and explicitly catalogues the methodological
 gap F2 is designed to close.
-29
 
-9.2
+9.2
 
 Causal mediation
 
@@ -1242,7 +1293,9 @@ Gao, Li & Luo (2020, (Gao et al., 2020), ”Decomposition of the Total Effect fo
 Gao-Li-Luo (no-interaction collapse) in a (internal ref) validation pass.
 The delta-method linearization we use to derive per-PSE SEs is in the
 spirit of the eﬀicient-influence-function treatment of Miles & Shpitser
-(2017, (Miles et al., 2017)). Their section 3 derives the EIF for a singlepathway PSE in the presence of mediator-outcome confounding; we adapt
+31
+
+(2017, (Miles et al., 2017)). Their section 3 derives the EIF for a singlepathway PSE in the presence of mediator-outcome confounding; we adapt
 the linearization logic to our two-mediator no-interaction decomposition. We
 do not claim algebraic equality with their EIF — the lock test dual_mediation_no_interaction_resid
 (section 8.2) certifies only the Daniel et al. residual closure, not equivalence
@@ -1266,10 +1319,7 @@ The bridge-score additive envelope in section 3.3 is from Ohnishi
 & Li (2026, (Ohnishi and Li, 2026)) Theorem 2. We use the additive scale
 (their Eq. 6) directly; BPB is on the additive scale by construction, so no
 log/risk-ratio translation is required.
-
-30
-
-The most recent sensitivity-analysis paper in our adjacent literature is
+The most recent sensitivity-analysis paper in our adjacent literature is
 Guo et al. (2026), ”Sensitivity Analysis for Unmeasured Confounding in
 Causal Mediation Analysis With Survival Outcome”, Statistics in Medicine
 45 (2026), doi:10.1002/sim.70548. They extend mediation sensitivity analysis to survival outcomes without the rare-outcome assumption that has
@@ -1277,7 +1327,9 @@ constrained prior work, and address both mediator-outcome and exposureconfounder
 conditional distribution. Their exposure-confounding axis is conceptually
 adjacent to our section 3.3 bridge-score Γ parameter; their setting (epidemiology / survival) does not overlap with ML ablation, but a future statjournal-grade extension of F2 would borrow their conditional-distribution
 simulation in place of the additive bridge-score.
-We are not aware of prior work that combines E-value-style robustness classification with mediator stratification, four-path decomposition, and
+We are not aware of prior work that combines E-value-style robust32
+
+ness classification with mediator stratification, four-path decomposition, and
 reproducibility-grade infrastructure in a single framework. The F2 contribution is the integration plus the headline empirical demonstration.
 
 9.4
@@ -1298,9 +1350,7 @@ et al., 2025, (Panferov et al., 2025)) — a QAT method that characterizes the p
 training recipe; we cite it loosely as the closest available proxy for a
 dedicated scaling-law treatment.
 • FP8 at production scale, see the published NVIDIA Nemotron
-31
-
-MXFP8 recipe reports. We previously also cited InfiR2 ((InfiR2 Authors, 2025)) here, but that paper was withdrawn by its authors on
+MXFP8 recipe reports. We previously also cited InfiR2 ((InfiR2 Authors, 2025)) here, but that paper was withdrawn by its authors on
 2025-10-17 due to a data-processing pipeline bug invalidating the reported results; we keep the citation for historical context only.
 • Fibonacci-code-word quantization (Fiandaca & Gomony, 2025,
 (Fiandaca and Gomony, 2025), ”Fibbinary-Based Compression and
@@ -1309,8 +1359,9 @@ cite it as a methodological anchor — Fibonacci-style encodings have
 at least one published precedent outside transformers — but not as
 evidence that phi-style training is established practice for language
 models.
+33
 
-10 Conclusion + venue calibration
+10 Conclusion + venue calibration
 10.1
 
 Conclusion
@@ -1333,9 +1384,7 @@ we do claim is that any ablation paper proposing a methodology
 change without checking for suppression is publishing a number
 that could be off by a factor of 10 in magnitude or wrong in sign.
 The framework is open-source under MIT; reviewers and follow-up authors
-32
-
-should consider it a default first step before reporting seed means.
+should consider it a default first step before reporting seed means.
 
 10.2
 
@@ -1348,7 +1397,9 @@ Required artifacts: W3C-PROV preambles (section 3.5.1), formulalocking regressio
 matches this track’s mission.
 • NeurIPS Causal-ML Workshop — fallback. A re-balanced version would lead with section 3.2 (Daniel et al. four-PSE) and section 3.3 (bridge-score) and de-emphasize section 3.5 (provenance),
 shifting focus from infrastructure to identification theory.
-• ICML main track — future. Requires either a successful Phase 1
+34
+
+• ICML main track — future. Requires either a successful Phase 1
 champion-scale sweep per docs/F2_PRE_REG.md, or F2 re-applied to
 a second publicly-debated ablation finding. Either path is outside the
 present submission scope.
@@ -1372,9 +1423,7 @@ Every numerical claim in section 5 and every figure in section 5 regenerates
 from the anchor commit [anchor] (or any descendant on the [branch]
 branch) with the commands below. The data files referenced are committed
 to data/loop49/ and verified with MD5 checksums in data/loop49/README.md.
-33
-
-A.1 Setup (one-time per reviewer machine):
+A.1 Setup (one-time per reviewer machine):
 git clone <repo-url> && cd trios-trainer-igla
 git checkout [anchor] # or descendant on [branch]
 cargo test --lib # exits 0 with 710 passing tests (§8.2)
@@ -1386,7 +1435,10 @@ cargo run --release --bin f2_ablation_sweep -- \
 cargo run --release --bin f2_ablation_sweep -- \
 --mode warmup_stratified --steps 200 \
 --csv data/loop49/loop47_warmup_stratified.csv
-# WD-stratified Pearl CDE (weight_decay = 0.0)
+
+35
+
+# WD-stratified Pearl CDE (weight_decay = 0.0)
 cargo run --release --bin f2_ablation_sweep -- \
 --mode wd_stratified --steps 200 \
 --csv data/loop49/loop49_wd_stratified.csv
@@ -1404,10 +1456,7 @@ cargo run --release --bin f2_stratum_compare -- \
 --warmup0 data/loop49/loop49_warmup0_dual.csv \
 --out data/loop49/loop49_3stratum.csv
 A.5 Render Figure 4 (RmsNorm sign-flip bar chart):
-
-34
-
-cargo run --release --bin f2_to_jsonl -- \
+cargo run --release --bin f2_to_jsonl -- \
 data/loop49/loop49_3stratum.csv --out /tmp/3strat.jsonl
 python3 papers/figures/fig4_rms_nde_signflip.py \
 --input /tmp/3strat.jsonl --output papers/figures/fig4_rms_nde_signflip.png
@@ -1425,7 +1474,9 @@ B
 Provenance preamble format
 
 Every CSV emitted by an F2 binary opens with a W3C-PROV / ROCrate preamble of the form documented in section 3.5.1. The full record
-is six lines of # prov:* keys plus optional auxiliary fields. The validator in
+36
+
+is six lines of # prov:* keys plus optional auxiliary fields. The validator in
 src/bin/f2_provenance_check.rs enforces the contract.
 B.1 Required keys:
 Key
@@ -1454,9 +1505,7 @@ the form:
 # INPUT STRATUM = wd0 (Pearl CDE on weight_decay)
 # INPUT STRATUM = warmup0 (Pearl CDE on warmup_steps_unquantized)
 # INPUT STRATUM = mixed (concatenated; causally undefined)
-35
-
-A mixed banner causes downstream binaries to refuse to emit a verdict;
+A mixed banner causes downstream binaries to refuse to emit a verdict;
 see section 3.5.3.
 B.3 Validation exit codes (f2_provenance_check):
 • Exit 0 — PASS. All required keys present, schema string matches
@@ -1471,8 +1520,9 @@ cannot be vouched for.
 predates the provenance discipline; quarantine.
 The exit codes are locked by the f2_provenance_check_exit_codes
 integration suite (six tests covering the four codes + boundary cases).
+37
 
-C
+C
 
 Code-to-paper crosswalk
 
@@ -1486,9 +1536,7 @@ tipping_point_gamma).
 cis_overlap).
 • section 5.2 — docs/F2_RMS_CDE.md (empirical reproduction).
 
-36
-
-D Test inventory
+D Test inventory
 The full test inventory (805 tests across src/lib.rs, 10 F2 binaries, and 7
 integration suites) is auto-generated by papers/scripts/generate_appendix_d.sh
 and committed at papers/appendix_d_test_inventory.md. The generator runs cargo test --list against each target and emits a Markdown
@@ -1509,7 +1557,9 @@ is operationalized through eight auxiliary scripts under papers/scripts/
 that a reviewer can run to verify each invariant mechanically. Wall-clock
 figures below assume a warm cargo cache (prior cargo build --release
 of f2_to_jsonl, f2_mediation_sensitivity, f2_provenance_check and
-prior cargo test --no-run for the lib + 10 F2 bins + 7 integration suites).
+38
+
+prior cargo test --no-run for the lib + 10 F2 bins + 7 integration suites).
 Cold-clone first run is 15–30 minutes, dominated by Rust compilation
 of a 38-binary, 157-dependency workspace; on subsequent invocations the
 cache is warm and the numbers below hold.
@@ -1521,9 +1571,7 @@ every paper-internal §X.Y reference resolves to a header, every arXiv
 citation is well-formed, every backtick file/binary mention points at a
 real path under src/bin/ or tests/.
 • papers/scripts/verify_paper_metadata.py (< 1 s warm) — CIstyle drift gate covering title parity, test-count parity, BibTeX completeness, and figure-file existence.
-37
-
-• papers/scripts/check_no_fabricated_shas.py (< 1 s warm) —
+• papers/scripts/check_no_fabricated_shas.py (< 1 s warm) —
 for every SHA-like token in the paper, run git cat-file -e; any
 unresolvable SHA fails the gate.
 • papers/scripts/lint_paper_md.py (< 1 s warm) — Markdown lint
@@ -1542,8 +1590,9 @@ and f2_mediation_sensitivity; regenerate all six paper figures. Cold:
 • papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold)
 — single-shot CI gate chaining all seven scripts above plus pack_supplementary.sh;
 exits 0 only if every stage passes.
+39
 
-papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
+papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
 + f2_provenance_check + papers/scripts/verify_paper_metadata.py
 as a three-stage pre-flight before building the supplementary zip; any single
 failure aborts the pack. The intent is that no supplementary artifact ever
@@ -1556,9 +1605,7 @@ system identifies 38% of original ablations). Orthogonal to F2’s analysisof-gi
 Iván Díaz, Nima S. Hejazi, Kara E. Rudolph, and Mark J. van der Laan.
 Non-parametric eﬀicient causal mediation with intermediate confounders.
 Biometrika, 108(3):627–641, 2021. arXiv:1912.09936 preprint.
-38
-
-Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
+Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
 arXiv:2511.01921, 2025. Loop 80 corrected attribution from ”SchmidtMengin et al.” (fabricated). Paper applies Fibonacci-code-word quantization to NEURAL RADIO RECEIVERS, not transformer LLMs. F2 §9.4
 cites with the correct narrow scope — the only published Fibonacci-binary
 quantization work we know of, in any domain.
@@ -1571,7 +1618,10 @@ Guanglei Hong, Fan Yang, and Xu Qin. Posttreatment confounding in
 causal mediation studies: A cutting-edge problem and a novel solution
 via sensitivity analysis. Biometrics, 2023. doi: 10.1111/biom.13705.
 arXiv:2107.11014 preprint.
-InfiR2 Authors. InfiR2: A comprehensive FP8 training recipe for reasoningenhanced language models. arXiv preprint arXiv:2509.22536, 2025.
+
+40
+
+InfiR2 Authors. InfiR2: A comprehensive FP8 training recipe for reasoningenhanced language models. arXiv preprint arXiv:2509.22536, 2025.
 WITHDRAWN by authors 2025-10-17 due to a data processing pipeline
 bug invalidating reported results. Retained here only as historical context
 for FP8 training-recipe attempts; F2 §9.4 cites with an explicit withdrawal
@@ -1583,10 +1633,7 @@ preamble convention adopted in F2 §3.5.1. Loop 80 corrected the firstauthor att
 an 18-author group.
 Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101, 2017. Pre-ICLR preprint of
 loshchilov2019adamw.
-
-39
-
-Shuming Ma et al. The era of 1-bit LLMs: All large language models are in
+Shuming Ma et al. The era of 1-bit LLMs: All large language models are in
 1.58 bits. arXiv preprint arXiv:2402.17764, 2024. Original BitNet b1.58
 paper.
 Microsoft.
@@ -1604,7 +1651,9 @@ arXiv:2605.18724, 2026. arXiv title corrected against the live arXiv record
 at Loop 97 (was previously paraphrased as ”Additive bridge- score sensitivity envelopes for path-specific effects”, which conflated the framing
 in our §3.3 with the source title). Theorem 2 / Eq. (5) supplies the additive bound we use in F2 §3.3; uniform-scalar reduction Γ := sup γa ,
 Λ := sup ηa described in §3.3.
-Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv
+41
+
+Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv
 preprint arXiv:2508.10083, 2025. Motivates Student-t default over BCa
 at N=5 by documenting BCa undercoverage.
 Andrei Panferov, Jiale Chen, Soroush Tabesh, Roberto L. Castro, Mahdi
@@ -1618,5 +1667,6 @@ mediation effects under intermediate confounding and monotonicity constraints. B
 preprint.
 Amit Sharma and Emre Kıcıman. DoWhy: An end-to-end library for
 causal inference. arXiv preprint arXiv:2011.04216, 2020. Flat-recordper-estimate JSONL convention adopted by f2_to_jsonl.
-40
+
+42
 

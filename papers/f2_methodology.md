@@ -734,8 +734,10 @@ wd0, warmup0):
 The wd0 stratum has two stories. **Only RmsNorm crosses zero**: the
 canonical "removing rms helps BPB by 4.12" estimate is, under Pearl
 CDE at WD=0, "removing rms hurts BPB by 0.43" — and the 95% CI
-excludes zero by 0.01 BPB (`Γ_tip(Λ=1.0) = 1.43` per §5.4, moderate
-per the §3.3 reporting convention). But **all four non-rms fixes
+excludes zero by only 0.01 BPB (`Γ_tip(Λ=1.0) = 1.01` per §5.4,
+**fragile** per the §3.3 reporting convention — the wd0 finding's
+sign is well-determined but its robustness to unmeasured confounding
+is essentially the same as the CI margin itself). But **all four non-rms fixes
 also collapse in magnitude** at wd0 — the canonical ~−4.5 to −4.9
 BPB direct effect drops to between −0.01 and −0.32 BPB. Two of the
 four (dropout, gradclip) have 95% CIs that now bracket zero; the
@@ -903,7 +905,53 @@ VanderWeele-Ding classification for each headline estimate:
 |--------------------------------------------|-------------:|----------|
 | Canonical NDE for rms (−4.12)              | 4.55         | robust   |
 | Canonical NIE_M1 via WD (+4.99)            | 5.42         | robust   |
-| wd0 CDE for rms (+0.43)                    | 1.43         | moderate |
+| wd0 CDE for rms (+0.43)                    | 1.01         | fragile  |
+
+**Full canonical-stratum envelope (all 20 PSEs).** The headline
+table above gives the three highest-relevance estimates; we
+classify every PSE in the canonical stratum against the same
+envelope at Λ = 1.0, grouped by classification tier:
+
+**Robust** (Γ_tip ≥ 2.0) — the 10 NDE + NIE_M1 rows survive
+substantial unmeasured confounding:
+
+- rms NDE: −4.12 [−4.68, −3.55], Γ_tip = 4.55
+- rms NIE_M1: +4.99 [+4.42, +5.56], Γ_tip = 5.42
+- dropout NDE: −4.55 [−4.89, −4.22], Γ_tip = 5.22
+- dropout NIE_M1: +4.46 [+4.10, +4.82], Γ_tip = 5.10
+- gradclip NDE: −4.74 [−5.00, −4.49], Γ_tip = 5.49
+- gradclip NIE_M1: +4.73 [+4.48, +4.99], Γ_tip = 5.48
+- clamp NDE: −4.87 [−4.88, −4.86], Γ_tip = 5.86
+- clamp NIE_M1: +4.87 [+4.84, +4.91], Γ_tip = 5.84
+- smooth NDE: −4.87 [−4.88, −4.86], Γ_tip = 5.86
+- smooth NIE_M1: +4.87 [+4.84, +4.91], Γ_tip = 5.84
+
+**Moderate** (1.25 ≤ Γ_tip < 2.0):
+
+- rms NIE_M2: +1.27 [+0.51, +2.02], Γ_tip = 1.51
+- rms NIE_chain: −1.27 [−2.02, −0.51], Γ_tip = 1.51
+
+**Fragile** (Γ_tip < 1.25):
+
+- dropout NIE_M2: +0.06 [−0.43, +0.54] (CI brackets 0), Γ_tip = 1.00
+- dropout NIE_chain: −0.05 [−0.56, +0.46] (CI brackets 0), Γ_tip = 1.00
+- gradclip NIE_M2: +0.11 [−0.34, +0.56] (CI brackets 0), Γ_tip = 1.00
+- gradclip NIE_chain: −0.11 [−0.55, +0.34] (CI brackets 0), Γ_tip = 1.00
+- clamp NIE_M2: +0.32 [+0.04, +0.61], Γ_tip = 1.04
+- clamp NIE_chain: −0.33 [−0.62, −0.04], Γ_tip = 1.04
+- smooth NIE_M2: +0.32 [+0.04, +0.61], Γ_tip = 1.04
+- smooth NIE_chain: −0.33 [−0.62, −0.04], Γ_tip = 1.04
+
+The headline pattern: **the NDE and NIE_M1 rows are uniformly
+robust** (Γ_tip > 5 for every fix), reinforcing the §5.2 reading
+that the suppression structure is uniform across the ablation
+column. The **NIE_M2 and NIE_chain rows are uniformly fragile**
+(Γ_tip near 1.0), which is the bridge-score envelope confirming
+what the §5.3 cross-stratum comparator surfaced as small-effect
+bracketing-zero artifacts. The full canonical envelope thus
+sharpens the §5.3 reading: the small-effect rows are not just
+small under naive CI inspection, they are also fragile under
+unmeasured-confounding stress at Λ = 1.0.
 
 **Figure 2** plots the full `Γ_tip(Λ)` hyperbolae for rms's four PSEs
 over `Λ ∈ [0.1, 5.0]` BPB. The crossover at `Λ ≈ 1.5` is where the
@@ -915,11 +963,26 @@ is robust under E-value-style stress testing — Γ_tip > 5 means any
 unmeasured confounder would have to be substantially stronger than
 typical training-recipe correlates to overturn the verdict. The
 **wd0 NDE** ("rms-intrinsic-effect-under-WD-pinning") result is the
-more fragile claim, with Γ_tip = 1.43 placing it in the moderate
-range. The sign-flip *across* strata is the qualitatively
-interesting finding; the wd0 magnitude itself should be read as
-"directionally consistent with positive effect, fragile to
-moderate-strength unmeasured confounding".
+more fragile claim, with Γ_tip = 1.01 placing it firmly in the
+**fragile** tier: the bridge-score envelope reaches zero almost
+immediately, reflecting the empirical reality that the 95% CI on
+this estimate excludes zero by only 0.01 BPB. The sign-flip
+*across* strata is the qualitatively interesting finding; the wd0
+magnitude itself should be read as "sign well-determined,
+magnitude fragile under any unmeasured-confounder stress test of
+the bridge-score envelope at Λ ≥ 0.01 BPB".
+
+**On the prior 1.43 reported in earlier drafts.** Drafts prior to
+Loop 102 reported the wd0 row as `Γ_tip = 1.43`, computed using
+the *point estimate* (+0.43) instead of the *closer CI endpoint*
+(+0.01) in the §3.3 envelope inversion. The §3.3 formula
+`Γ_tip(Λ) = 1 + min(|CI_lo|, |CI_hi|) / Λ` mandates the CI
+endpoint, not the point estimate; the correct value at Λ = 1.0
+is `1 + 0.01 / 1.0 = 1.01`. The prior 1.43 was discovered by the
+25th adversarial pass (Loop 102) and corrected in the same loop.
+The implementation in `src/bin/f2_mediation_sensitivity.rs:236`
+has always used the CI-endpoint convention; the discrepancy was
+in the manuscript table, not the code.
 
 ---
 
