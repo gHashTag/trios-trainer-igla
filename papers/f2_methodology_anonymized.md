@@ -187,16 +187,28 @@ between the estimate and its sensitivity envelope.
 
 ### 2.3 ML ablation practice
 
-The ML-side closest to F2 is **AblationBench** (Abramovich et al.,
-2025, arXiv:2507.08038), which benchmarks ablation methodology across
-recent NLP papers. Their wide-form CSV schema combined with paired
-Welch tests and Cohen's-`d` standardized effect sizes is the median
-practice; F2 generalizes the schema to long-form with W3C-PROV
-preambles and replaces paired Welch with stratified CDE plus
-bridge-score sensitivity. **ABLATOR** (Fostiropoulos & Itti, 2023) is
-the closest infrastructure work — a tool for running multi-seed
-ablation studies at scale with result aggregation — but stops at
-multi-seed ranking without mediation decomposition or stratified CDE.
+**AblationBench** (Abramovich & Chechik, 2025, arXiv:2507.08038,
+"Evaluating Automated Planning of Ablations in Empirical AI
+Research") is the closest *evaluation* benchmark on the
+ML-ablation methodology side. AblationBench studies whether
+language-model agents can *plan* the right ablations for a paper
+(their best system identifies only 38% of original ablations on
+average); F2 is orthogonal to this question — assuming the
+ablation matrix is already chosen, we ask how to analyze the
+resulting per-seed BPB measurements without misattributing
+effects to mediator-confounded knobs.
+
+**ABLATOR** (Fostiropoulos & Itti, 2023) is the closest
+infrastructure work — a tool for running multi-seed ablation
+studies at scale with result aggregation — but stops at multi-seed
+ranking without mediation decomposition or stratified CDE.
+
+A representative median-practice analysis pipeline in recent
+ablation papers combines a wide-form CSV table (one row per
+config × seed-summary statistic) with paired Welch t-tests and
+Cohen's `d` standardized effect sizes. F2 generalizes the schema
+to long-form with W3C-PROV preambles (§3.5.1) and replaces paired
+Welch with stratified Pearl-CDE + bridge-score sensitivity.
 
 A parallel line of causal-mediation work in ML interpretability is
 typified by **ROME** (Meng et al., 2022) and **activation patching**
@@ -1152,11 +1164,14 @@ attempt mediation decomposition or stratified CDE analysis. F2 extends
 the multi-seed-ranking workflow by adding causal-inference-grade
 reasoning over the seeds.
 
-**AblationBench** (Abramovich et al., 2025, arXiv:2507.08038) provides
-a benchmark suite for ablation methodology. Their wide-form CSV schema
-and paired-Welch + Cohen's-d statistics are the median ML-paper
-practice; F2 generalizes the schema to long-form with W3C-PROV preambles
-and replaces paired-Welch with stratified CDE + bridge-score sensitivity.
+**AblationBench** (Abramovich & Chechik, 2025, arXiv:2507.08038)
+provides a benchmark suite for the *upstream* question of whether
+language-model agents can plan the right ablations for a paper
+(their best system identifies only 38% of original ablations on
+average). F2 is orthogonal to that question: given that the
+ablation matrix is already chosen, we ask how to analyze the
+resulting per-seed measurements without misattributing effects to
+mediator-confounded knobs.
 
 **Inferential reproducibility** (Hagmann, Meier & Riezler, 2023,
 arXiv:2302.04054, "Towards Inferential Reproducibility of Machine

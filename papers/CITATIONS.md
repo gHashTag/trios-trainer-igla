@@ -41,14 +41,14 @@ verification status reviewable on its own line.
 | `vanderweele2017evalue` | VanderWeele & Ding 2017, *Annals of Internal Medicine* 167:268-274, [10.7326/M16-2607](https://doi.org/10.7326/M16-2607) | §2.2; §3.3 threshold context | **VERIFIED** Loop 59 (corrected attribution of `< 1.25 / ≥ 2.0` thresholds) |
 | `haneuse2019jama` | Haneuse, VanderWeele & Arterburn 2019, *JAMA* 321:602-603, [10.1001/jama.2018.21554](https://doi.org/10.1001/jama.2018.21554), PMID 30676631 | §3.3 reporting-tier attribution | **VERIFIED** Loop 59 (author list + JAMA Guide series confirmed) |
 | `guo2026sim` | Guo et al. 2026, *Statistics in Medicine* 45:e70548, [10.1002/sim.70548](https://doi.org/10.1002/sim.70548) | §9.3 most-recent sensitivity-analysis | **VERIFIED** Loop 57 (DOI + venue + 2026 publication confirmed via Wiley) |
-| `arxiv:2605.18724` | Ohnishi & Li 2026, "Additive bridge-score sensitivity envelopes" | §3.3 envelope formula | **CONFIRMED-VENUE** Loop 59 (paper exists; symbols γ_a/η_a confirmed; full author institutional affiliations not re-fetched this loop) |
+| `arxiv:2605.18724` | Ohnishi & Li, "Sensitivity analysis for causal mediation: bridge score, sharp sensitivity bounds, and calibration" | §3.3 envelope formula | **VERIFIED** Loop 79 (authors Yuki Ohnishi + Fan Li confirmed; bridge-score concept confirmed via arXiv abstract) |
 | `arxiv:2508.10083` | Owen 2025, "Better bootstrap-t confidence intervals for the mean" | §3.2 small-N CI motivation | **VERIFIED** Loop 55, Loop 59 (corrected from "BCa undercoverage" framing to "Beta-weighted bootstrap-t alternative") |
 
 ### ML ablation methodology
 
 | Key | Authors / venue | Cited in | Status |
 |---|---|---|---|
-| `arxiv:2507.08038` | Abramovich et al. 2025, "AblationBench" | §2.3; §9.1 | **CONFIRMED-VENUE** (arXiv ID format verified; full author list not re-fetched) |
+| `arxiv:2507.08038` | Abramovich & Chechik 2025, "AblationBench: Evaluating Automated Planning of Ablations in Empirical AI Research" | §2.3; §9.1 | **VERIFIED** Loop 79 (authors Talor Abramovich + Gal Chechik confirmed; **§2.3 and §9.1 rewritten** — the paper is about LM agents *planning* ablations, not about wide-form/Welch/Cohen's-d methodology as earlier drafts mis-described) |
 | `fostiropoulos2023ablator` | Fostiropoulos & Itti 2023, "ABLATOR", AutoML 2023 | §2.3; §9.1 | **CONFIRMED-VENUE** Loop 61 (BibTeX entry added with conference attribution) |
 | `arxiv:2302.04054` | Hagmann, Meier & Riezler 2023, "Towards Inferential Reproducibility of ML Research" | §9.1 | **VERIFIED** Loop 55 (corrected attribution from "Semmelrock" — caught in Loop 55 hygiene pass) |
 
@@ -82,8 +82,8 @@ verification status reviewable on its own line.
 ## Summary statistics
 
 - Total entries: **25**
-- VERIFIED: **17** (68%)
-- CONFIRMED-VENUE: **8** (32%)
+- VERIFIED: **19** (76%)
+- CONFIRMED-VENUE: **6** (24%)
 - UNVERIFIED: **0** (0%)
 
 ## Audit history
@@ -95,6 +95,33 @@ verification status reviewable on its own line.
 | Loop 59 | Derivation audit: corrected Miles & Shpitser → 5-author list; corrected `< 1.25 / ≥ 2.0` threshold attribution VW-D → Haneuse-VW-Arterburn 2019; removed smoking-cancer benchmark comparison |
 | Loop 60 | Switched primary attribution Gao-Li-Luo → Daniel et al. 2015 (foundational two-mediator) |
 | Loop 77 | Verified Vaswani 2017 NeurIPS + Loshchilov ICLR 2019 (Loop 76 bib additions) |
+| Loop 79 | Verified Ohnishi-Li bridge-score paper. **Caught and fixed AblationBench mis-description**: paper is about LM-agent ablation *planning*, not about wide-form/Welch/Cohen's-d analysis. §2.3 and §9.1 rewritten. Authors corrected "Abramovich et al." → "Abramovich & Chechik". |
 
 Next audit due if more citations are added or if the paper is
 revised post-acceptance.
+
+---
+
+## Pre-submission CI gate benchmark (Loop 79)
+
+`papers/scripts/run_all_checks.sh` per-stage wall time on the
+Loop 79 anchor commit (M-series macOS, local TeX Live install):
+
+| Stage | Wall time | Notes |
+|---|---:|---|
+| (1) cross-ref audit | 235 ms | Python regex over the paper |
+| (2) metadata verify | 57 ms | Python regex over paper + EOI |
+| (3) no fabricated SHAs | 450 ms | `git cat-file -e` per token (20 SHAs × ~22 ms) |
+| (4) test inventory regen | 18.9 s | `cargo test --list` per binary (slowest stage) |
+| (5) xelatex 3-variant compile | 13.2 s | 3 variants × ~4 s each (xelatex + bibtex) |
+| (6) figure regen | 13.1 s | 6 figures + 2 cargo runs (f2_to_jsonl + f2_mediation_sensitivity) |
+| (7) supplementary pack | varies | Includes provenance check + skip-regen mode |
+| **Total** | **~46 s** | End-to-end on warm caches |
+
+The slowest stage is the test inventory regen at ~19 s. Cold runs
+on CI can extend this to several minutes due to `cargo build`
+warm-up + texlive package install (see
+`.github/workflows/paper-checks.yml`). Sub-second pre-commit
+benchmark is achievable for stages 1-3 only (~750 ms total); 4-6
+require Rust + xelatex + matplotlib and are reserved for the full
+CI gate.
