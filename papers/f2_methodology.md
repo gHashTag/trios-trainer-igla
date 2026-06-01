@@ -131,6 +131,13 @@ positions the contribution against the closest ML ablation, causal
 mediation, and sensitivity-analysis work. §10 concludes and
 calibrates the contribution against four candidate publication venues.
 
+**Note on figures.** Figures 1–6 are committed at
+`papers/figures/*.png` and bundled in the supplementary zip; we
+reference them by number throughout §3, §5 and §6.4 but the body
+PDF intentionally keeps the camera-ready figure inclusions for the
+camera-ready pass. A reviewer can build any figure locally via
+`papers/scripts/figure_regen.sh`.
+
 ---
 
 ## 2. Background
@@ -498,8 +505,8 @@ reads this banner from its dual_mediation input and re-emits it in its own
 output, so the stratum context survives every downstream pipeline step:
 
 ```
-sweep CSV ─► f2_dual_mediation ─► dual CSV ─► f2_mediation_sensitivity ─► sens CSV
-            (# INPUT STRATUM)                 (# INPUT STRATUM)
+sweep CSV --> f2_dual_mediation --> dual CSV --> f2_mediation_sensitivity --> sens CSV
+              (# INPUT STRATUM)                  (# INPUT STRATUM)
 ```
 
 If a stratified CSV's PSE values are mis-interpreted as marginal effects,
@@ -542,14 +549,26 @@ discipline is operationalized through five auxiliary scripts under
 `papers/scripts/` that a reviewer can run to verify each invariant
 mechanically:
 
-| Script | Purpose | Run-time |
-|--------|---------|----------|
-| `papers/scripts/generate_appendix_d.sh` | Enumerate every test in the crate (lib + per-binary + integration) via `cargo test --list`; emit `papers/appendix_d_test_inventory.md`. | ~30 s |
-| `papers/scripts/cross_reference_audit.py` | Verify every paper-internal §X.Y reference resolves to a header, every `arXiv:NNNN.NNNNN` is well-formed, every backtick file/binary mention points at a real path under `src/bin/` or `tests/`. | < 1 s |
-| `papers/scripts/compile_tmlr_test.sh` | Regenerate the LaTeX body from the Markdown source, run xelatex + BibTeX 3-pass to verify the paper compiles cleanly to PDF. | ~10 s |
-| `papers/scripts/figure_regen.sh` | Stage committed CSVs from `data/loop49/` and `data/loop49_swap/` through `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all 6 paper figures. | ~10 s |
-| `papers/scripts/verify_paper_metadata.py` | CI-style drift gate: title parity (paper H1 = EOI Title), test-count parity (paper claims = inventory counts), BibTeX completeness (every cite has an entry), figure files exist for every "Figure N" reference. | < 1 s |
-| `papers/scripts/run_all_checks.sh` | Single-shot CI gate chaining all five scripts above plus `papers/tmlr_submission_kit/pack_supplementary.sh`; exits 0 only if every stage passes. | ~30 s |
+- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
+  enumerate every test in the crate (lib + per-binary + integration)
+  via `cargo test --list`; emit the Appendix D inventory.
+- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
+  every paper-internal §X.Y reference resolves to a header, every
+  arXiv citation is well-formed, every backtick file/binary
+  mention points at a real path under `src/bin/` or `tests/`.
+- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
+  the LaTeX body from the Markdown source; run xelatex + BibTeX
+  3-pass to verify the paper compiles cleanly to PDF.
+- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
+  CSVs from `data/loop49/` and `data/loop49_swap/` through
+  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
+  six paper figures.
+- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
+  drift gate covering title parity, test-count parity, BibTeX
+  completeness, and figure-file existence.
+- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
+  CI gate chaining all five scripts above plus
+  `pack_supplementary.sh`; exits 0 only if every stage passes.
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +
@@ -1094,14 +1113,23 @@ emits one CSV, and validates W3C-PROV preambles on entry. The full
 index, including per-binary CLI synopses, lives in `docs/F2_BINARIES.md`;
 the binaries cited in §5 are:
 
-| Binary | Role |
-|--------|------|
-| `f2_ablation_sweep` | Run a single ablation sweep at one stratum, write long-form CSV with ModeKind × Stratum tagged rows. |
-| `f2_dual_mediation` | Apply the Daniel et al. 4-PSE decomposition (§3.2) to a sweep CSV, emit per-PSE estimates + `t`-CIs. |
-| `f2_mediation_sensitivity` | Compute the bridge-score envelope (§3.3) with `--lambda-grid` / `--tipping-point` / `--wide-form` modes. |
-| `f2_stratum_compare` | Take the canonical, wd0, and warmup0 CSVs and emit the cross-stratum comparison with `stable_across_strata` flags (§3.4). |
-| `f2_to_jsonl` | Stream-convert a CSV to JSON Lines for matplotlib + downstream tooling. |
-| `f2_provenance_check` | Validate that a CSV's W3C-PROV preamble matches the current `TRAINER_INTERNALS_SCHEMA`; exit codes drive CI. |
+- **`f2_ablation_sweep`** — run a single ablation sweep at one
+  stratum; write a long-form CSV with ModeKind × Stratum tagged
+  rows.
+- **`f2_dual_mediation`** — apply the Daniel et al. 4-PSE
+  decomposition (§3.2) to a sweep CSV; emit per-PSE estimates +
+  `t`-CIs.
+- **`f2_mediation_sensitivity`** — compute the bridge-score
+  envelope (§3.3) with `--lambda-grid` / `--tipping-point` /
+  `--wide-form` modes.
+- **`f2_stratum_compare`** — take the canonical, wd0, and warmup0
+  CSVs; emit the cross-stratum comparison with
+  `stable_across_strata` flags (§3.4).
+- **`f2_to_jsonl`** — stream-convert a CSV to JSON Lines for
+  matplotlib and downstream tooling.
+- **`f2_provenance_check`** — validate that a CSV's W3C-PROV
+  preamble matches the current `TRAINER_INTERNALS_SCHEMA`; exit
+  codes drive CI.
 
 The remaining four binaries (`f2_ablation_aggregate`, `f2_iloco_dot`,
 `f2_iloco_score`, `f2_mediation`) cover aggregation, ILOCO scoring,

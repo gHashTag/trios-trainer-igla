@@ -108,6 +108,9 @@ else
         # Patterns that should NEVER appear in a clean PDF body.
         # Loop 86 — patterns for `grep -F` (fixed-string match) to avoid
         # regex misinterpretation of `*`, `\`, `(`, etc.
+        # Loop 87 — extended set: catches more LaTeX-leak classes
+        # (double-backslash, leaked sectioning commands, missing-
+        # citation markers, raw unicode replacement char).
         for pattern in \
             '<!-- ' \
             'ANONYMIZED VARIANT' \
@@ -115,10 +118,21 @@ else
             '\{}Lambda' \
             '\{}Delta' \
             '\{}widehat' \
+            '\{}widetilde' \
+            '\{}mathrm' \
+            '\{}mathbb' \
             '\{}text{' \
             'textbackslash' \
+            '\section{' \
+            '\subsection{' \
+            '\textbf{' \
+            '\emph{' \
+            '\href{' \
             '**' \
-            '(?)' ; do
+            '(?)' \
+            ' ~~' \
+            'ï¿½' \
+            '�' ; do
             if grep -q -F -- "$pattern" "$text_file" 2>/dev/null; then
                 echo "  FAIL  $pdf.pdf contains rendering bug: $pattern" >&2
                 FAIL=1

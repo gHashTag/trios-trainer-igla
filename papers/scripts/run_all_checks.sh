@@ -32,6 +32,7 @@ STAGES=(
     "cross-ref audit:papers/scripts/cross_reference_audit.py"
     "metadata verify:python3 papers/scripts/verify_paper_metadata.py"
     "no fabricated SHAs:python3 papers/scripts/check_no_fabricated_shas.py"
+    "markdown lint:python3 papers/scripts/lint_paper_md.py"
     "test inventory regen:papers/scripts/generate_appendix_d.sh"
     "xelatex 3-variant compile:papers/scripts/compile_tmlr_test.sh"
     "figure regen:papers/scripts/figure_regen.sh"
