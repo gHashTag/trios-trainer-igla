@@ -90,6 +90,41 @@ fn lookup_field<'a>(prov: &'a Provenance, canonical: &str, aliases: &[&str]) -> 
     None
 }
 
+/// Loop 43 fix 6 → Loop 44 fix 2: probe the CSV's first data column for known
+/// stratum prefixes. Derives the prefix list from `race::ablation::Stratum::ALL`
+/// so adding a new variant (e.g. `Stratum::ClampZero`) auto-extends detection
+/// without touching this binary.
+///
+/// Returns a sorted/deduped list of stratum identifiers (e.g. `["wd0", "warmup0"]`)
+/// when stratified rows are detected. Returns `Some([])` for canonical-only CSVs.
+fn detect_strata_in_data(path: &str) -> Option<Vec<String>> {
+    use trios_trainer::race::ablation::Stratum;
+    let f = File::open(path).ok()?;
+    let r = BufReader::new(f);
+    let mut found: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    // Build the prefix list from Stratum::ALL, skipping Canonical (empty prefix
+    // would match every mode).
+    let known_strata: Vec<&'static str> = Stratum::ALL
+        .iter()
+        .filter_map(|s| {
+            let p = s.prefix();
+            if p.is_empty() { None } else { Some(p) }
+        })
+        .collect();
+    for line in r.lines().flatten() {
+        if line.is_empty() || line.starts_with('#') || line.starts_with("mode,") {
+            continue;
+        }
+        let mode = line.split(',').next().unwrap_or("");
+        for &prefix in &known_strata {
+            if mode.starts_with(prefix) {
+                found.insert(prefix.trim_end_matches('_').to_string());
+            }
+        }
+    }
+    Some(found.into_iter().collect())
+}
+
 fn check(prov: &Provenance) -> Vec<(Severity, String, String)> {
     let mut out = Vec::new();
 
@@ -255,6 +290,14 @@ fn main() {
             exit = exit.max(3);
             continue;
         }
+        // Loop 43 fix 6: scan data section for stratum prefixes and emit an
+        // informational banner. Helps users understand "this CSV is a stratified
+        // sweep" without having to grep modes by hand.
+        if let Some(strata) = detect_strata_in_data(path) {
+            if !strata.is_empty() {
+                println!("INFO  {:30}  contains stratified rows: {}", "stratum", strata.join(", "));
+            }
+        }
         let checks = check(&prov);
         for (sev, key, msg) in &checks {
             let tag = match sev {
@@ -418,6 +461,35 @@ mod tests {
             .expect("spawn binary");
         let code = status.code().unwrap_or(-1);
         assert_eq!(code, 2, "expected exit code 2 (FAIL), got {}", code);
+    }
+
+    #[test]
+    fn detect_strata_in_data_finds_known_prefixes() {
+        // Loop 43 fix 6: scans data column for stratum prefixes.
+        let tmp = std::env::temp_dir().join("f2_prov_stratum_detect.csv");
+        let mut f = File::create(&tmp).unwrap();
+        writeln!(f, "# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01").unwrap();
+        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(f, "wd0_pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
+        writeln!(f, "warmup0_loco,rms,0,,42,5.0,0xdead,0.1").unwrap();
+        writeln!(f, "pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
+        drop(f);
+        let strata = detect_strata_in_data(tmp.to_str().unwrap()).unwrap();
+        assert!(strata.contains(&"wd0".to_string()));
+        assert!(strata.contains(&"warmup0".to_string()));
+        assert_eq!(strata.len(), 2);
+    }
+
+    #[test]
+    fn detect_strata_in_data_empty_for_canonical_only() {
+        let tmp = std::env::temp_dir().join("f2_prov_stratum_canonical.csv");
+        let mut f = File::create(&tmp).unwrap();
+        writeln!(f, "mode,fix_name,fix_index,cumulative_n,seed,bpb,config_hash,wall_s").unwrap();
+        writeln!(f, "pairwise,full_stack,-1,,42,4.0,0xdead,0.1").unwrap();
+        writeln!(f, "loco,rms,0,,42,5.0,0xdead,0.1").unwrap();
+        drop(f);
+        let strata = detect_strata_in_data(tmp.to_str().unwrap()).unwrap();
+        assert!(strata.is_empty());
     }
 
     #[test]

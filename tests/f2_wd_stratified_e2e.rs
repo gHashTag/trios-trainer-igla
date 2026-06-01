@@ -30,11 +30,34 @@ fn write_csv(path: &std::path::Path) {
     // Synth: full_stack at 4.0, LOCO_rms at 5.0, all other LOCOs at 4.5,
     // pair_*_wd at 0.5 (wd removal helps), other pairs at 4.0,
     // triplet_rms_wd_warmup at 0.5, etc.
+    // Loop 41 fix 5: row-distinct jitter so PSE linear combos retain per-seed
+    // variance. A single per-seed offset would cancel in `Δ = target − full`,
+    // producing zero SE. Use per-(seed, row-class) noise via a small LCG.
+    fn noise(seed: u64, kind: u8) -> f64 {
+        // FNV-1a-style hash on (seed, kind) — strong avalanche on every byte
+        // of input. Naive LCG composition (Loop 41 first attempt) produced
+        // constant noise(sid, k200) − noise(sid, 0) across seeds because the
+        // additive injection of `kind` left the high bits cancelable.
+        const FNV_OFFSET: u64 = 14695981039346656037;
+        const FNV_PRIME: u64 = 1099511628211;
+        let mut h = FNV_OFFSET;
+        for byte in seed.to_le_bytes() {
+            h ^= byte as u64;
+            h = h.wrapping_mul(FNV_PRIME);
+        }
+        h ^= kind as u64;
+        h = h.wrapping_mul(FNV_PRIME);
+        // Use middle bits of the hash to avoid LCG correlation patterns.
+        let bits = (h >> 17) & ((1u64 << 32) - 1);
+        let u = bits as f64 / ((1u64 << 32) as f64);
+        // Centered around 0 with ±0.5 BPB amplitude — guarantees per-seed
+        // variance large enough to exercise sample_se measurably (>0.001 BPB).
+        (u - 0.5) * 1.0
+    }
     for &sid in &[1u64, 2, 3, 4, 5] {
-        let jit = 0.01 * (sid as f64 - 1.0);
-        writeln!(f, "{},full_stack,-1,,{},{:.6},0xdead,0.1", pairwise, sid, 4.0 + jit).unwrap();
-        for name in CANONICAL_FIX_NAMES {
-            let v = if *name == "rms" { 5.0 } else { 4.5 } + jit;
+        writeln!(f, "{},full_stack,-1,,{},{:.6},0xdead,0.1", pairwise, sid, 4.0 + noise(sid, 0)).unwrap();
+        for (i, name) in CANONICAL_FIX_NAMES.iter().enumerate() {
+            let v = if *name == "rms" { 5.0 } else { 4.5 } + noise(sid, 1 + i as u8);
             writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", loco, name, sid, v).unwrap();
         }
         // Pairwise rows in AblationFix::ALL order — every pair containing wd is helpful.
@@ -48,8 +71,8 @@ fn write_csv(path: &std::path::Path) {
             "pair_smooth_wd", "pair_smooth_dropout",
             "pair_wd_dropout",
         ];
-        for lbl in pairs {
-            let v = if lbl.contains("_wd") { 0.5 } else { 4.0 } + jit;
+        for (i, lbl) in pairs.iter().enumerate() {
+            let v = if lbl.contains("_wd") { 0.5 } else { 4.0 } + noise(sid, 100 + i as u8);
             writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", pairwise, lbl, sid, v).unwrap();
         }
         // Triplet rows — enough to cover the rms × wd × warmup case dual_mediation needs.
@@ -58,8 +81,8 @@ fn write_csv(path: &std::path::Path) {
             "triplet_warmup_gradclip_wd", "triplet_warmup_clamp_wd",
             "triplet_warmup_smooth_wd", "triplet_warmup_wd_dropout",
         ];
-        for lbl in triplets {
-            let v = if lbl.contains("_wd") { 0.4 } else { 4.0 } + jit;
+        for (i, lbl) in triplets.iter().enumerate() {
+            let v = if lbl.contains("_wd") { 0.4 } else { 4.0 } + noise(sid, 200 + i as u8);
             writeln!(f, "{},{},0,,{},{:.6},0xdead,0.1", triplet, lbl, sid, v).unwrap();
         }
     }
@@ -93,4 +116,13 @@ fn dual_mediation_runs_end_to_end_on_wd_stratified_rows() {
     let rms_row = data_rows.iter().find(|l| l.contains(",rms,")).unwrap();
     let parts: Vec<&str> = rms_row.split(',').collect();
     assert!(parts.len() >= 18, "expected ≥18 columns in dual_mediation output, got {}", parts.len());
+
+    // Loop 41 fix 5: variance path exercised. SE for NDE (col 5 in Loop 36 schema)
+    // must be strictly positive — proves sample_se ran on real per-seed variance.
+    let se_nde: f64 = parts[5].parse().expect("parse se_nde");
+    assert!(
+        se_nde > 0.001,
+        "se_nde={} too small — variance path not exercised (expected >0.001 BPB with realistic jitter)",
+        se_nde
+    );
 }

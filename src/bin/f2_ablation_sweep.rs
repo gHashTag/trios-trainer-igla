@@ -12,6 +12,13 @@ use trios_trainer::race::multi_seed::{
     config_fingerprint, run_multi_seed, CorpusKind, MultiSeedConfig, TaskKind,
 };
 
+/// Canonical "ablation" base configuration.
+///
+/// Loop 43 fix 4 note: this differs intentionally from
+/// `f2_pareto_sweep::base_config` (warmup_steps=200, label_smoothing=0.0).
+/// Pareto sweeps target a longer-training regime (1000 steps) while ablation
+/// targets a short-iteration sandbox (default 200 steps). Both are valid base
+/// recipes; downstream callers must not assume cross-binary equivalence.
 fn base_config(steps: usize) -> MultiSeedConfig {
     MultiSeedConfig {
         seeds: vec![42, 43, 44, 45, 46],
@@ -460,40 +467,41 @@ fn main() {
     // (intermediate-confounding triggers re-stratification when mediator dominates
     // ≥80% of total effect; Loop 30 observed 70-95%). Tag every row with the
     // _wd0 suffix so downstream tooling can distinguish from default-WD runs.
+    // Loop 41 fix 3: the prefix comes from `Stratum::Wd0.prefix()` so adding a
+    // new stratum (e.g. Warmup0) requires no edits here.
     if mode == "wd_stratified" || mode == "all" {
         eprintln!("# Running WD-stratified ablation (Loop 31, CDE at WD=0.0)...");
         let mut wd0_base = base.clone();
         wd0_base.weight_decay = 0.0;
-        let cumulative_wd0 = run_cumulative(&wd0_base)
-            .into_iter()
-            .map(|mut r| {
-                let leaked: &'static str = Box::leak(format!("wd0_{}", r.mode).into_boxed_str());
-                r.mode = leaked;
-                r
-            });
-        all_rows.extend(cumulative_wd0);
-        let loco_wd0 = run_loco(&wd0_base).into_iter().map(|mut r| {
-            let leaked: &'static str = Box::leak(format!("wd0_{}", r.mode).into_boxed_str());
+        let prefix = trios_trainer::race::ablation::Stratum::Wd0.prefix();
+        let tag = |mut r: CsvRow| -> CsvRow {
+            let leaked: &'static str = Box::leak(format!("{}{}", prefix, r.mode).into_boxed_str());
             r.mode = leaked;
             r
-        });
-        all_rows.extend(loco_wd0);
-        let pairwise_wd0 = run_pairwise(&wd0_base).into_iter().map(|mut r| {
-            let leaked: &'static str = Box::leak(format!("wd0_{}", r.mode).into_boxed_str());
-            r.mode = leaked;
-            r
-        });
-        all_rows.extend(pairwise_wd0);
+        };
+        all_rows.extend(run_cumulative(&wd0_base).into_iter().map(tag));
+        all_rows.extend(run_loco(&wd0_base).into_iter().map(tag));
+        all_rows.extend(run_pairwise(&wd0_base).into_iter().map(tag));
         // Loop 37 fix 5: add triplet rows at WD=0 so f2_dual_mediation can run
-        // its full 4-PSE decomposition on the WD=0 stratum (iterated CDE pattern
-        // per Zhou arXiv:2011.12751). Without these the chain path's Δ_{X,M1,M2}
-        // is unidentifiable from a wd_stratified CSV alone.
-        let triplet_wd0 = run_triplet(&wd0_base).into_iter().map(|mut r| {
-            let leaked: &'static str = Box::leak(format!("wd0_{}", r.mode).into_boxed_str());
+        // its full 4-PSE decomposition on the WD=0 stratum.
+        all_rows.extend(run_triplet(&wd0_base).into_iter().map(tag));
+    }
+    // Loop 41 fix 3: Warmup0 stratified ablation (Pearl CDE on warmup, after
+    // Loop 33 identified warmup as the 2nd dominant mediator).
+    if mode == "warmup_stratified" || mode == "all" {
+        eprintln!("# Running Warmup-stratified ablation (Loop 41, CDE at warmup_steps=0)...");
+        let mut wmu0_base = base.clone();
+        wmu0_base.warmup_steps_unquantized = 0;
+        let prefix = trios_trainer::race::ablation::Stratum::Warmup0.prefix();
+        let tag = |mut r: CsvRow| -> CsvRow {
+            let leaked: &'static str = Box::leak(format!("{}{}", prefix, r.mode).into_boxed_str());
             r.mode = leaked;
             r
-        });
-        all_rows.extend(triplet_wd0);
+        };
+        all_rows.extend(run_cumulative(&wmu0_base).into_iter().map(tag));
+        all_rows.extend(run_loco(&wmu0_base).into_iter().map(tag));
+        all_rows.extend(run_pairwise(&wmu0_base).into_iter().map(tag));
+        all_rows.extend(run_triplet(&wmu0_base).into_iter().map(tag));
     }
 
     if let Some(path) = csv_path.as_deref() {

@@ -336,3 +336,12 @@ path = "src/bin/f2_dual_mediation.rs"
 name = "f2_mediation_sensitivity"
 path = "src/bin/f2_mediation_sensitivity.rs"
 
+# Loop 44 -- Long-form CSV to JSON Lines adapter for notebook consumption
+[[bin]]
+name = "f2_to_jsonl"
+path = "src/bin/f2_to_jsonl.rs"
+
+# Loop 48 -- Cross-stratum PSE comparator (canonical / wd0 / warmup0)
+[[bin]]
+name = "f2_stratum_compare"
+path = "src/bin/f2_stratum_compare.rs"
