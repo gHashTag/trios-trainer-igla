@@ -100,6 +100,116 @@ If both strata agree on H1/H2, conclude.
 If they disagree, report both estimates and frame the canonical result as
 "likely confounded by WD" per Loop 49 precedent.
 
+## 4.5 Phase 0 deliverable: swap-parameterization CSV (Loop 63)
+
+Prior to the champion-scale sweep above, F2 has an outstanding
+sandbox-scale deliverable: a three-stratum dual-mediation CSV under
+the **swap parameterization** `M_1 = rms, M_2 = warmup`. The current
+committed evidence in `data/loop49/` uses `M_1 = wd, M_2 = warmup`
+only; the swap parameterization was described in early draft text of
+the F2 paper but never anchored against committed data. The §5.3
+honest-rewrite in Loop 62 removed the unanchored claim; this section
+pre-registers the run that would close the gap.
+
+### Exact commands
+
+```bash
+# Anchor: descendant of 5367bde on f2-methodology branch.
+# Outputs land in data/loop49_swap/ (NEW subdir, force-add against
+# the parent .gitignore /data/ rule).
+
+mkdir -p data/loop49_swap/
+
+# Re-run dual_mediation with M1=rms, M2=warmup on each of the three
+# existing committed sweep CSVs:
+cargo run --release --bin f2_dual_mediation -- \
+  --m1 rms --m2 warmup data/loop49/loop36_dual.csv \
+  --out data/loop49_swap/canonical_swap_dual.csv
+
+cargo run --release --bin f2_dual_mediation -- \
+  --m1 rms --m2 warmup data/loop49/loop49_wd_stratified.csv \
+  --out data/loop49_swap/wd0_swap_dual.csv
+
+cargo run --release --bin f2_dual_mediation -- \
+  --m1 rms --m2 warmup data/loop49/loop47_warmup_stratified.csv \
+  --out data/loop49_swap/warmup0_swap_dual.csv
+
+# Cross-stratum compare:
+cargo run --release --bin f2_stratum_compare -- \
+  --canonical data/loop49_swap/canonical_swap_dual.csv \
+  --wd0       data/loop49_swap/wd0_swap_dual.csv \
+  --warmup0   data/loop49_swap/warmup0_swap_dual.csv \
+  --out       data/loop49_swap/3stratum_swap.csv
+```
+
+### Expected output
+
+- 3 dual-mediation CSVs in `data/loop49_swap/` (canonical, wd0, warmup0)
+- 1 stratum-compare CSV `3stratum_swap.csv`
+- Total file count: 4; estimated total size: ~10 KB
+- Compute cost: < 1 second wall time (analytical re-aggregation of
+  existing per-seed BPB values; no new training)
+
+### Success criteria (Phase 0, binary)
+
+1. All four binaries produce non-empty CSVs with valid W3C-PROV preambles
+2. `f2_provenance_check` exits 0 (PASS) on each
+3. The `3stratum_swap.csv` populates the `stable_across_strata` column
+   with parseable boolean values
+
+### Pre-registered prediction
+
+Under no-XM-interaction (validated by the
+`dual_mediation_no_interaction_residual_lock` test on the canonical
+parameterization), the NIE_M1 via rms in the swap parameterization
+should be approximately constant across the wd0 stratum (since
+pinning wd does not directly constrain the rms-mediated pathway).
+We pre-register: **we expect the per-row NIE_M1 estimate for at
+least 3 of the 5 non-mediator fixes to land within 0.5 BPB of the
+canonical-stratum value, across both Pearl-CDE strata**.
+
+If this prediction holds, the §5.3 "framework predicts invariance"
+claim becomes empirically supported. If it fails, the §5.3 framing
+is wrong and the paper must be revised.
+
+### Phase 0 partial result (Loop 63, 2026-06-01)
+
+The two stratified sweeps already in `data/loop49/` were
+re-processed with `--m1 rms --m2 warmup`. Outputs are committed at
+`data/loop49_swap/wd0_swap_dual.csv` and
+`data/loop49_swap/warmup0_swap_dual.csv` (5 rows each, < 1s
+runtime). The canonical-stratum swap output is **deferred** because
+the canonical-stratum *sweep* CSV is not committed (only the
+canonical-stratum *dual* CSV `loop49/loop36_dual.csv` is).
+Regenerating the canonical sweep requires ~25 min of trainer wall
+time.
+
+**Empirical observation from the partial run**: for fixes where the
+LOCO row is missing in the stratified sweep (Δ_X = 0), the
+swap-parameterization NIE_M1 formula degenerates to
+`d_xm2 − d_xm1m2`, which is identical across all such fixes in the
+same stratum. This produces **byte-identical** NIE_M1 values across
+several (fix, stratum) rows — but the identity is a **structural
+artifact of LOCO coverage**, not a substantive cross-stratum
+invariance. Specifically:
+
+- `wd0_swap_dual.csv`: clamp, smooth, wd all show NIE_M1 =
+  −0.751 [−1.325, −0.177] (delta_x = 0 in all three).
+- `warmup0_swap_dual.csv`: clamp, smooth show NIE_M1 =
+  −0.868 [−0.896, −0.840] (delta_x = 0 in both).
+
+The original §5.3 draft mis-interpreted this artifact as an
+empirical cross-stratum invariance. The Loop 62 rewrite of §5.3
+already removes the claim; this Phase 0 partial run confirms the
+underlying mechanism.
+
+### Anchor
+
+This Phase 0 deliverable was pre-registered in Loop 63
+(2026-06-01) and partially executed in the same loop. The
+remaining work (canonical-sweep regeneration → canonical-swap dual)
+is scheduled with Phase 1 compute.
+
 ## 5. Success criteria (binary)
 
 The sweep is declared **successful** iff ALL three hold:

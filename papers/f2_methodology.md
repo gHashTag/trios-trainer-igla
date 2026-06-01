@@ -1036,6 +1036,18 @@ operationalizes. Hagmann et al. argue that seed nondeterminism alone
 can flip baseline-vs-SOTA orderings; F2's `f2_provenance_check` + lock
 tests are direct responses to this concern at the framework level.
 
+**Applicability survey** (`papers/case_study_published_ablations.md`).
+We survey three recent transformer-architecture ablation papers
+(NormFormer 2021, BitNet b1.58 2024, Peri-LN 2025) and find that
+the multi-seed-with-data-release norm is not yet established in
+this literature: two of the three publish single-run tables and the
+third reports multi-seed summary statistics without per-seed CSVs.
+F2 can be applied as-is to long-form CSVs with the contract in
+§3.5.1; the case study illustrates what F2 *would* surface against
+the Peri-LN Table 1 ablation if per-seed data were available, and
+explicitly catalogues the methodological gap F2 is designed to
+close.
+
 ### 9.2 Causal mediation
 
 The four-path decomposition we use in §3.2 is from **Gao, Li & Luo**
