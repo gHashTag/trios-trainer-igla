@@ -521,6 +521,27 @@ checker in `src/bin/f2_provenance_check.rs`; stratum banner in
 `src/bin/f2_dual_mediation.rs` (`detect_input_stratum`) and
 `src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
 
+**3.5.5 Reviewer-grade tooling catalogue.** The §3.5.1–§3.5.4
+discipline is operationalized through five auxiliary scripts under
+`papers/scripts/` that a reviewer can run to verify each invariant
+mechanically:
+
+| Script | Purpose | Run-time |
+|--------|---------|----------|
+| `papers/scripts/generate_appendix_d.sh` | Enumerate every test in the crate (lib + per-binary + integration) via `cargo test --list`; emit `papers/appendix_d_test_inventory.md`. | ~30 s |
+| `papers/scripts/cross_reference_audit.py` | Verify every paper-internal §X.Y reference resolves to a header, every `arXiv:NNNN.NNNNN` is well-formed, every backtick file/binary mention points at a real path under `src/bin/` or `tests/`. | < 1 s |
+| `papers/scripts/compile_tmlr_test.sh` | Regenerate the LaTeX body from the Markdown source, run xelatex + BibTeX 3-pass to verify the paper compiles cleanly to PDF. | ~10 s |
+| `papers/scripts/figure_regen.sh` | Stage committed CSVs from `data/loop49/` and `data/loop49_swap/` through `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all 6 paper figures. | ~10 s |
+| `papers/scripts/verify_paper_metadata.py` | CI-style drift gate: title parity (paper H1 = EOI Title), test-count parity (paper claims = inventory counts), BibTeX completeness (every cite has an entry), figure files exist for every "Figure N" reference. | < 1 s |
+
+`papers/tmlr_submission_kit/pack_supplementary.sh` chains
+`papers/scripts/figure_regen.sh` + `f2_provenance_check` +
+`papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
+before building the supplementary zip;
+any single failure aborts the pack. The intent is that no
+supplementary artifact ever ships without all five invariants
+verified at bundle time.
+
 ---
 
 ## 4. Sandbox ablation matrix

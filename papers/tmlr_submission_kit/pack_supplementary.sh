@@ -39,13 +39,13 @@ OUT="$KIT/f2_methodology_supp.zip"
 
 # Pre-flight 1: regenerate figures from committed CSVs.
 if [[ -z "$SKIP_REGEN" ]]; then
-    echo "# pre-flight (1/2): regenerating figures from committed CSVs"
+    echo "# pre-flight (1/3): regenerating figures from committed CSVs"
     papers/scripts/figure_regen.sh > /dev/null
-    echo "# pre-flight (1/2): OK (5 figures regenerated)"
+    echo "# pre-flight (1/3): OK (6 figures regenerated)"
 fi
 
 # Pre-flight 2: run f2_provenance_check on every committed sweep CSV.
-echo "# pre-flight (2/2): provenance check on committed sweep CSVs"
+echo "# pre-flight (2/3): provenance check on committed sweep CSVs"
 cargo build --release --bin f2_provenance_check > /dev/null 2>&1
 PROV_ERRORS=0
 for csv in data/loop49/loop49_wd_stratified.csv \
@@ -72,7 +72,19 @@ if [[ $PROV_ERRORS -gt 0 ]]; then
     echo "        zip containing unverifiable CSVs." >&2
     exit 1
 fi
-echo "# pre-flight (2/2): OK"
+echo "# pre-flight (2/3): OK"
+
+# Pre-flight 3: paper metadata drift check (title parity, test count,
+# BibTeX completeness, figure files). Abort on any drift.
+echo "# pre-flight (3/3): paper metadata verifier"
+if ! python3 papers/scripts/verify_paper_metadata.py > /tmp/meta_check_$$.log 2>&1; then
+    echo "# ABORT: paper metadata drift detected" >&2
+    grep "FAIL " /tmp/meta_check_$$.log >&2 || cat /tmp/meta_check_$$.log >&2
+    rm -f /tmp/meta_check_$$.log
+    exit 1
+fi
+rm -f /tmp/meta_check_$$.log
+echo "# pre-flight (3/3): OK (title/tests/bib/figures parity verified)"
 
 # Stage tree per manifest.md
 mkdir -p \
