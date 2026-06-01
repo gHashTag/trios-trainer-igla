@@ -469,7 +469,7 @@ preamble (arXiv:2312.07852) of the form:
 ```
 # prov:generatedAt = 1717205400 (unix seconds UTC)
 # prov:wasGeneratedBy = f2_ablation_sweep --mode wd_stratified --steps 200
-# prov:agent_git_sha = <anchor commit>
+# prov:agent_git_sha = [anchor]
 # prov:host = host.example
 # prov:trainer_internals_schema = trainer_internals_v1_2026_06_01
 # prov:cargo_pkg_version = 0.1.0
@@ -519,13 +519,13 @@ emit a verdict.
 
 **3.5.4 Reproducibility checklist (for reviewers).** A reviewer wishing to
 reproduce any number in §5 or §6.4 should perform the following.
-We pin the anchor commit at `<anchor commit>` because it is the earliest
-commit on `<branch>` at which every empirical CSV referenced
+We pin the anchor commit at `[anchor]` because it is the earliest
+commit on `[branch]` at which every empirical CSV referenced
 in the paper is committed (six files under `data/loop49/` plus 16
 under `data/loop49_swap/`); any descendant on the branch is also a
 valid anchor.
 
-1. `git checkout <anchor commit>` (or any descendant of `<branch>`).
+1. `git checkout [anchor]` (or any descendant of `[branch]`).
 2. `cargo test --lib` exits 0 with 710 passing tests .
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
@@ -546,45 +546,14 @@ checker in `src/bin/f2_provenance_check.rs`; stratum banner in
 `src/bin/f2_dual_mediation.rs` (`detect_input_stratum`) and
 `src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
 
-**3.5.5 Reviewer-grade tooling catalogue.** The §3.5.1–§3.5.4
-discipline is operationalized through six auxiliary scripts under
+**3.5.5 Reviewer-grade tooling.** The §3.5.1–§3.5.4 discipline is
+operationalized through six auxiliary scripts under
 `papers/scripts/` that a reviewer can run to verify each invariant
-mechanically:
-
-- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
-  enumerate every test in the crate (lib + per-binary + integration)
-  via `cargo test --list`; emit the Appendix D inventory.
-- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
-  every paper-internal §X.Y reference resolves to a header, every
-  arXiv citation is well-formed, every backtick file/binary
-  mention points at a real path under `src/bin/` or `tests/`.
-- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
-  the LaTeX body from the Markdown source; run xelatex + BibTeX
-  3-pass to verify the paper compiles cleanly to PDF.
-- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
-  CSVs from `data/loop49/` and `data/loop49_swap/` through
-  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
-  six paper figures.
-- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
-  drift gate covering title parity, test-count parity, BibTeX
-  completeness, and figure-file existence.
-- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
-  CI gate chaining all five scripts above plus
-  `pack_supplementary.sh`; exits 0 only if every stage passes.
-
-`papers/tmlr_submission_kit/pack_supplementary.sh` chains
-`papers/scripts/figure_regen.sh` + `f2_provenance_check` +
-`papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
-before building the supplementary zip;
-any single failure aborts the pack. The intent is that no
-supplementary artifact ever ships without all five invariants
-verified at bundle time.
-
-For one-shot pre-submission verification, `papers/scripts/run_all_checks.sh`
-chains every script in this catalogue plus the supplementary-pack
-into a six-stage CI gate (~30 s end-to-end). The gate exits 0
-only if all stages pass; any drift surfaces before submission rather
-than after.
+mechanically. The complete catalogue (script name, purpose,
+runtime) is given in Appendix E; the headline is that a single-shot
+CI gate (`papers/scripts/run_all_checks.sh`, ~30 s end-to-end)
+chains every check and `pack_supplementary.sh`, exiting 0 only if
+all stages pass.
 
 ---
 
@@ -1113,7 +1082,7 @@ being applied within its valid scope.
 ## 8. Software
 
 The F2 framework is implemented as a Rust 1.82 crate, MIT-licensed and
-single-process. The codebase is anchored at commit `<anchor commit>` for every
+single-process. The codebase is anchored at commit `[anchor]` for every
 empirical result in §5; the test inventory in Appendix D is
 auto-generated from that anchor commit.
 
@@ -1396,7 +1365,7 @@ the manuscript body.
 ### A. Reproducible commands
 
 Every numerical claim in §5 and every figure in §5 regenerates from the
-anchor commit `<anchor commit>` (or any descendant on the `<branch>`
+anchor commit `[anchor]` (or any descendant on the `[branch]`
 branch) with the commands below. The data files referenced are
 committed to `data/loop49/` and verified with MD5 checksums in
 `data/loop49/README.md`.
@@ -1404,7 +1373,7 @@ committed to `data/loop49/` and verified with MD5 checksums in
 **A.1 Setup (one-time per reviewer machine):**
 ```bash
 git clone <repo-url> && cd trios-trainer-igla
-git checkout <anchor commit> # or descendant on <branch>
+git checkout [anchor] # or descendant on [branch]
 cargo test --lib # exits 0 with 710 passing tests (§8.2)
 ```
 
@@ -1548,3 +1517,37 @@ Two load-bearing regression locks are highlighted in §8.2:
 Appendix D under their respective binary sections and back the §3.2
 identification reduction and §3.5.2 schema-drift discipline,
 respectively.
+
+### E. Reviewer-grade tooling catalogue
+
+The §3.5.5 discipline is operationalized through six auxiliary
+scripts under `papers/scripts/` that a reviewer can run to verify
+each invariant mechanically:
+
+- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
+  enumerate every test in the crate (lib + per-binary + integration)
+  via `cargo test --list`; emit the Appendix D inventory.
+- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
+  every paper-internal §X.Y reference resolves to a header, every
+  arXiv citation is well-formed, every backtick file/binary
+  mention points at a real path under `src/bin/` or `tests/`.
+- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
+  the LaTeX body from the Markdown source; run xelatex + BibTeX
+  3-pass to verify the paper compiles cleanly to PDF.
+- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
+  CSVs from `data/loop49/` and `data/loop49_swap/` through
+  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
+  six paper figures.
+- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
+  drift gate covering title parity, test-count parity, BibTeX
+  completeness, and figure-file existence.
+- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
+  CI gate chaining all five scripts above plus
+  `pack_supplementary.sh`; exits 0 only if every stage passes.
+
+`papers/tmlr_submission_kit/pack_supplementary.sh` chains
+`papers/scripts/figure_regen.sh` + `f2_provenance_check` +
+`papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
+before building the supplementary zip; any single failure aborts
+the pack. The intent is that no supplementary artifact ever ships
+without all five invariants verified at bundle time.

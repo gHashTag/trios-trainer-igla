@@ -7,8 +7,8 @@ Substitutions follow the anonymization checklist at
 papers/tmlr_submission_kit/anonymization_checklist.md:
 
   - Loop NN references          → "(internal ref)"
-  - Specific git SHAs           → "<anchor commit>"
-  - Branch name `f2-methodology` → "<branch>"
+  - Specific git SHAs           → "[anchor]"
+  - Branch name `f2-methodology` → "[branch]"
   - §10.3 Acknowledgments body  → "[OMITTED FOR DOUBLE-BLIND REVIEW]"
   - "primary maintainer" / "autonomous-research agent" phrases → stripped
 
@@ -47,9 +47,9 @@ def anonymize(text: str) -> str:
     text = re.sub(r"\bLoops? \d+(?:[ ,-]+\d+)*\b", "(internal ref)", text)
     # Specific known SHAs.
     for sha in KNOWN_SHAS:
-        text = text.replace(sha, "<anchor commit>")
+        text = text.replace(sha, "[anchor]")
     # Branch name.
-    text = re.sub(r"\bf2-methodology\b", "<branch>", text)
+    text = re.sub(r"\bf2-methodology\b", "[branch]", text)
     text = re.sub(r"`f2-methodology`", "`<branch>`", text)
     # Repo path traces that may leak through.
     text = text.replace("gHashTag/trios-trainer-igla", "<anonymous-repo>")

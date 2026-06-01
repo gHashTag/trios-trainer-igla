@@ -544,45 +544,14 @@ checker in `src/bin/f2_provenance_check.rs`; stratum banner in
 `src/bin/f2_dual_mediation.rs` (`detect_input_stratum`) and
 `src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
 
-**3.5.5 Reviewer-grade tooling catalogue.** The §3.5.1–§3.5.4
-discipline is operationalized through six auxiliary scripts under
+**3.5.5 Reviewer-grade tooling.** The §3.5.1–§3.5.4 discipline is
+operationalized through six auxiliary scripts under
 `papers/scripts/` that a reviewer can run to verify each invariant
-mechanically:
-
-- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
-  enumerate every test in the crate (lib + per-binary + integration)
-  via `cargo test --list`; emit the Appendix D inventory.
-- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
-  every paper-internal §X.Y reference resolves to a header, every
-  arXiv citation is well-formed, every backtick file/binary
-  mention points at a real path under `src/bin/` or `tests/`.
-- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
-  the LaTeX body from the Markdown source; run xelatex + BibTeX
-  3-pass to verify the paper compiles cleanly to PDF.
-- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
-  CSVs from `data/loop49/` and `data/loop49_swap/` through
-  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
-  six paper figures.
-- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
-  drift gate covering title parity, test-count parity, BibTeX
-  completeness, and figure-file existence.
-- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
-  CI gate chaining all five scripts above plus
-  `pack_supplementary.sh`; exits 0 only if every stage passes.
-
-`papers/tmlr_submission_kit/pack_supplementary.sh` chains
-`papers/scripts/figure_regen.sh` + `f2_provenance_check` +
-`papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
-before building the supplementary zip;
-any single failure aborts the pack. The intent is that no
-supplementary artifact ever ships without all five invariants
-verified at bundle time.
-
-For one-shot pre-submission verification, `papers/scripts/run_all_checks.sh`
-chains every script in this catalogue plus the supplementary-pack
-into a six-stage CI gate (~30 s end-to-end). The gate exits 0
-only if all stages pass; any drift surfaces before submission rather
-than after.
+mechanically. The complete catalogue (script name, purpose,
+runtime) is given in Appendix E; the headline is that a single-shot
+CI gate (`papers/scripts/run_all_checks.sh`, ~30 s end-to-end)
+chains every check and `pack_supplementary.sh`, exiting 0 only if
+all stages pass.
 
 ---
 
@@ -1569,3 +1538,37 @@ Two load-bearing regression locks are highlighted in §8.2:
 Appendix D under their respective binary sections and back the §3.2
 identification reduction and §3.5.2 schema-drift discipline,
 respectively.
+
+### E. Reviewer-grade tooling catalogue
+
+The §3.5.5 discipline is operationalized through six auxiliary
+scripts under `papers/scripts/` that a reviewer can run to verify
+each invariant mechanically:
+
+- **`papers/scripts/generate_appendix_d.sh`** (~30 s) —
+  enumerate every test in the crate (lib + per-binary + integration)
+  via `cargo test --list`; emit the Appendix D inventory.
+- **`papers/scripts/cross_reference_audit.py`** (< 1 s) — verify
+  every paper-internal §X.Y reference resolves to a header, every
+  arXiv citation is well-formed, every backtick file/binary
+  mention points at a real path under `src/bin/` or `tests/`.
+- **`papers/scripts/compile_tmlr_test.sh`** (~10 s) — regenerate
+  the LaTeX body from the Markdown source; run xelatex + BibTeX
+  3-pass to verify the paper compiles cleanly to PDF.
+- **`papers/scripts/figure_regen.sh`** (~10 s) — stage committed
+  CSVs from `data/loop49/` and `data/loop49_swap/` through
+  `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all
+  six paper figures.
+- **`papers/scripts/verify_paper_metadata.py`** (< 1 s) — CI-style
+  drift gate covering title parity, test-count parity, BibTeX
+  completeness, and figure-file existence.
+- **`papers/scripts/run_all_checks.sh`** (~30 s) — single-shot
+  CI gate chaining all five scripts above plus
+  `pack_supplementary.sh`; exits 0 only if every stage passes.
+
+`papers/tmlr_submission_kit/pack_supplementary.sh` chains
+`papers/scripts/figure_regen.sh` + `f2_provenance_check` +
+`papers/scripts/verify_paper_metadata.py` as a three-stage pre-flight
+before building the supplementary zip; any single failure aborts
+the pack. The intent is that no supplementary artifact ever ships
+without all five invariants verified at bundle time.
