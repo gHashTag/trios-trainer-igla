@@ -226,11 +226,39 @@ Loop 63 note), and it is also *not* an unanchored overclaim — the
 result is now in `data/loop49_swap/3stratum_swap.csv` and
 reviewable.
 
+### Phase 0 robustness — full M_2 swap (Loop 68, 2026-06-01)
+
+A reviewer-flag risk surfaced in Loop 61 ("invariance is
+suspiciously exact") was closed in Loop 68 by re-running the swap
+analysis with every candidate M_2 ∈ {gradclip, clamp, smooth,
+dropout} in addition to the original M_2 = warmup. Twelve new CSVs
+are committed at `data/loop49_swap/{canonical,wd0,warmup0}_swap_m2{m}.csv`
+for the four alternatives, plus the three original M_2 = warmup
+files = 15 (M_2, stratum) cells total for the (X = wd, NIE_M1 via
+rms) row.
+
+Result (verified empirically, see paper §5.3 + Figure 6):
+
+| M_2      | canonical = wd0? | warmup0 = canonical? |
+|----------|-------------------|----------------------|
+| warmup   | yes (−0.751)      | **yes** (all 3 identical) |
+| gradclip | yes (−1.781)      | no (−0.626)          |
+| clamp    | yes (−1.693)      | no (−0.751)          |
+| smooth   | yes (−1.693)      | no (−0.751)          |
+| dropout  | yes (−1.625)      | no (−0.400)          |
+
+The full-triple-stratum invariance is **conditional** on
+M_2 = warmup (the warmup0 stratum's pinned variable). The weaker
+invariance (canonical = wd0) holds in **5 of 5** M_2 choices, as
+predicted by the no-XM-interaction property (the wd0 stratum
+pins X, not a mediator, so it does not constrain the rms-M_2
+path). The §5.3 paper text now reports this scoping explicitly.
+
 ### Anchor
 
 Phase 0 pre-registered Loop 63 (2026-06-01), completed Loop 64
-(2026-06-01), anchored at branch HEAD `be9b4c4` (or descendant on
-`f2-methodology`).
+(2026-06-01), robustness-extended Loop 68 (2026-06-01), anchored
+at branch HEAD `be9b4c4` or descendant on `f2-methodology`.
 
 ## 5. Success criteria (binary)
 

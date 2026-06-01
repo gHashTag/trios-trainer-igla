@@ -34,7 +34,8 @@ DST = CRATE_ROOT / "papers" / "f2_methodology_anonymized.md"
 KNOWN_SHAS = (
     "5367bde", "ae48fd5", "19d032e", "a092d5e", "be9b4c4",
     "2904108", "5c33083", "5f32933", "43d5d33", "77d1218",
-    "ccbf52b", "05f37cd", "2969bdf", "76048b5",
+    "ccbf52b", "05f37cd", "2969bdf", "76048b5", "dea2723",
+    "583b417", "6f20c90",
 )
 
 
