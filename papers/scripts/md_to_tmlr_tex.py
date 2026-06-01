@@ -522,13 +522,15 @@ def main() -> int:
                         k += 1
                     if k < len(src) and (
                         re.match(r"^(\s*)([-*]|\d+\.)\s+", src[k])
-                        or src[k].startswith("   ")
+                        or src[k].startswith("  ")
                     ):
                         list_lines.append(("blank", ""))
                         j += 1
                         continue
                     break
-                if lj.startswith("   ") or lj.startswith("\t"):
+                # Loop 91 — accept 2-space indent (Markdown standard for
+                # bullet continuation) as well as 3+ spaces or tab.
+                if lj.startswith("  ") or lj.startswith("\t"):
                     list_lines.append(("cont", lj.lstrip()))
                     j += 1
                     continue

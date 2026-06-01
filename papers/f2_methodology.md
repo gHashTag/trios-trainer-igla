@@ -593,9 +593,9 @@ than after.
 The empirical demonstration in §5 uses a deliberately small training
 configuration: enough to surface the suppression structure cleanly, small
 enough to fit a 5-seed × 80-cell sweep in ~25 minutes of wall time per
-stratum on a single laptop. The full configuration is in Table 3.
+stratum on a single laptop. The full configuration is in Table 1.
 
-**Table 3: sandbox configuration.**
+**Table 1: sandbox configuration.**
 
 | Parameter                        | Value                                  |
 |----------------------------------|----------------------------------------|

@@ -33,22 +33,33 @@ papers/scripts/run_all_checks.sh
 If any stage fails, the failure log is on stderr and a `/tmp/run_all_checks_N.log`
 file remains for inspection.
 
-## Submit the paper
+## Submit the paper — one command
+
+`papers/scripts/preflight_submission.sh` orchestrates the full
+submission-day workflow in a single invocation:
 
 ```bash
-# 1. Open the checklist
-$EDITOR papers/SUBMISSION_CHECKLIST.md
+papers/scripts/preflight_submission.sh
+# 1. Runs the 8-stage CI gate (~46 s)
+# 2. Stages anonymized PDF + supplementary zip at /tmp/tmlr_submission_$$
+# 3. Echoes the EOI Google Form text (and copies it to clipboard via pbcopy)
+# 4. Echoes the Issue #1021 status comment + post command
+```
 
-# 2. Run the gate
-papers/scripts/run_all_checks.sh
+After preflight, the manual steps are: upload PDF + zip to
+`openreview.net/group?id=TMLR`, wait for TMLR submission ID, then
+paste the EOI text into `forms.gle/bvYxagcRjKSmYhUM7`, then run
+`papers/scripts/post_issue_1021.sh` to update GitHub.
 
-# 3. Anonymize and recompile
-python3 papers/scripts/anonymize_paper.py
-papers/scripts/compile_tmlr_test.sh
+For finer-grained control, the individual scripts are:
 
-# 4. Copy paste-ready texts
-cat papers/tmlr_submission_kit/eoi_form_text.md       # → MLRC EOI Google Form (after TMLR submission)
-cat papers/tmlr_submission_kit/issue_1021_comment.md  # → GitHub issue #1021
+```bash
+papers/scripts/run_all_checks.sh                   # 8-stage CI gate
+papers/scripts/submit_tmlr.sh                      # stage submission artifacts
+papers/scripts/post_issue_1021.sh                  # post #1021 comment
+papers/scripts/post_issue_1021.sh --dry-run        # extract body only
+cat papers/tmlr_submission_kit/eoi_form_text.md    # EOI Google Form text
+$EDITOR papers/SUBMISSION_CHECKLIST.md             # go/no-go checklist
 ```
 
 ## Directory structure
