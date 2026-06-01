@@ -224,7 +224,10 @@ NIE into exactly these four pieces; the broader interaction-effect framework of 
 et al., 2020), ”Decomposition of the Total Effect for Two Mediators: A Natural Counterfactual Interaction
 Effect Framework”) supplies the companion no-interaction reduction we adopt below — under no exposuremediator interaction, every Gao-Li-Luo interaction term vanishes and the residual decomposition collapses
 onto the Daniel et al. four-PSE form.
-Under sequential ignorability and no exposure-mediator interaction, each PSE is identified by the counterfactual difference
+Under sequential ignorability (Imai, Keele & Tingley 2010, Psychological Methods 15(4): 309–334: the
+standard mediation- identifying assumption that no unmeasured confounders affect both the mediator and
+the outcome, conditional on the exposure) and no exposure-mediator interaction, each PSE is identified by
+the counterfactual difference
 ∆S ≡ E[Y (remove S)] − E[Y (full stack)]
 for every S subseteq {X, M_1, M_2}. This Δ_S notation is the computational representation we use in
 f2_dual_mediation; it is algebraically equivalent to the Daniel et al. nested-counterfactual expressions
@@ -243,7 +246,6 @@ eﬀicient-influence-function derivation of Miles, Shpitser, Kanki, Meloni & Tch
 et al., 2017), ”On semiparametric estimation of a path-specific effect in the presence of mediator-outcome
 confounding”); we adapt the EIF logic from their one-mediator setting to our two-mediator no-interaction
 decomposition. The resulting per-PSE variance is:
-
 1
 d =
 d PSE)
@@ -262,13 +264,13 @@ i=1
 We report SE =
 
 p
-d
-Var for each PSE.
+d for each PSE.
+Var
 
 For confidence intervals at small N, we use the Student-t critical value t_{0.975, N-1}:
-CI95% ( d
-PSE) = d
-PSE ± t0.975,N −1 · SE
+d = PSE
+d ± t0.975,N −1 · SE
+CI95% (PSE)
 At N = 5, t0.975,4 ≈ 2.776. We deliberately avoid BCa bootstrap: Owen (2025, (Owen, 2025), ”Better
 bootstrap-t confidence intervals for the mean”) motivates skepticism of BCa at small N by proposing a Betaweighted bootstrap alternative; the empirical small-N coverage deficits of BCa it documents (as the baseline
 that motivates the new method) are the relevant evidence for our purposes. The Student-t adjustment we

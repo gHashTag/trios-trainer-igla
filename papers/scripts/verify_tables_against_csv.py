@@ -70,6 +70,17 @@ def near(a: float, b: float) -> bool:
     return abs(a - b) <= ABS_TOL
 
 
+def csv_lookup_multi(path: Path, key_cols: dict[str, str]) -> dict[str, str]:
+    """Like csv_lookup but matches on multiple (column, value) pairs."""
+    with path.open() as fh:
+        lines = [ln for ln in fh if not ln.startswith("#")]
+    reader = csv.DictReader(lines)
+    for row in reader:
+        if all(row.get(k) == v for k, v in key_cols.items()):
+            return row
+    raise KeyError(f"{key_cols} not matched in {path}")
+
+
 # Each entry is a self-describing table validator. The "anchor" is a
 # unique substring that locates the table's header line; the validator
 # walks data rows under that header.
@@ -119,6 +130,151 @@ TABLE_REGISTRY = [
         ],
     },
 ]
+
+
+# Tables 3 + 4 (Loop 100) — single CSV row, multiple stratum columns
+# (Table 3) and per-M_2 CSVs (Table 4). Different topology from the
+# tables above, handled by their own validators below.
+STRATUM_TABLE_REGISTRY = [
+    {
+        "id": "table_3_swap_nie_m1_3stratum",
+        "anchor": "| stratum     | X = wd, NIE_M1 via rms (95% CI)",
+        "csv": "data/loop49_swap/3stratum_swap.csv",
+        "row_filter": {"fix_x": "wd", "pse_name": "NIE_M1"},
+        # (markdown row label, csv estimate field, ci_lo field, ci_hi field)
+        "stratum_rows": [
+            ("canonical", "estimate_canonical", "ci95_lo_canonical", "ci95_hi_canonical"),
+            ("wd0",       "estimate_wd0",       "ci95_lo_wd0",       "ci95_hi_wd0"),
+            ("warmup0",   "estimate_warmup0",   "ci95_lo_warmup0",   "ci95_hi_warmup0"),
+        ],
+    },
+]
+
+# Table 4 (M_2 robustness grid): rows are M_2 alternative names; the
+# warmup row sources from 3stratum_swap.csv (single CSV, stratum
+# columns), the other 4 rows source from per-M_2 CSV files (one per
+# stratum × M_2 = 12 CSVs total).
+PER_M2_TABLE_REGISTRY = [
+    {
+        "id": "table_4_m2_robustness",
+        "anchor": "| M_2 = …    | canonical",
+        "rows": {
+            # M_2 = warmup uses the 3stratum CSV with stratum-suffixed cols
+            "warmup": {
+                "csv_per_stratum": {
+                    "canonical": ("data/loop49_swap/3stratum_swap.csv",
+                                  {"fix_x": "wd", "pse_name": "NIE_M1"},
+                                  "estimate_canonical", "ci95_lo_canonical", "ci95_hi_canonical"),
+                    "wd0":      ("data/loop49_swap/3stratum_swap.csv",
+                                  {"fix_x": "wd", "pse_name": "NIE_M1"},
+                                  "estimate_wd0", "ci95_lo_wd0", "ci95_hi_wd0"),
+                    "warmup0":  ("data/loop49_swap/3stratum_swap.csv",
+                                  {"fix_x": "wd", "pse_name": "NIE_M1"},
+                                  "estimate_warmup0", "ci95_lo_warmup0", "ci95_hi_warmup0"),
+                },
+            },
+            # M_2 ∈ {gradclip, clamp, smooth, dropout} use per-stratum
+            # per-M2 CSV files (canonical_swap_m2{m}.csv etc.) with the
+            # standard dual-mediation schema (nie_m1 + CI fields).
+            **{
+                m: {
+                    "csv_per_stratum": {
+                        "canonical": (f"data/loop49_swap/canonical_swap_m2{m}.csv",
+                                      {"fix_x": "wd"},
+                                      "nie_m1", "ci95_nie_m1_lo", "ci95_nie_m1_hi"),
+                        "wd0":      (f"data/loop49_swap/wd0_swap_m2{m}.csv",
+                                      {"fix_x": "wd"},
+                                      "nie_m1", "ci95_nie_m1_lo", "ci95_nie_m1_hi"),
+                        "warmup0":  (f"data/loop49_swap/warmup0_swap_m2{m}.csv",
+                                      {"fix_x": "wd"},
+                                      "nie_m1", "ci95_nie_m1_lo", "ci95_nie_m1_hi"),
+                    },
+                }
+                for m in ("gradclip", "clamp", "smooth", "dropout")
+            },
+        },
+        "stratum_order": ["canonical", "wd0", "warmup0"],
+    },
+]
+
+
+def validate_stratum_table(spec: dict) -> list[str]:
+    md = PAPER.read_text().splitlines()
+    csv_row = csv_lookup_multi(CRATE_ROOT / spec["csv"], spec["row_filter"])
+    row_labels = [r[0] for r in spec["stratum_rows"]]
+    table = extract_table_rows(md, spec["anchor"], row_labels)
+    mismatches: list[str] = []
+    for row_label, est_field, lo_field, hi_field in spec["stratum_rows"]:
+        if row_label not in table:
+            mismatches.append(f"{spec['id']}: row {row_label!r} missing")
+            continue
+        cells = table[row_label]
+        if not cells:
+            mismatches.append(f"{spec['id']}: row {row_label!r} empty")
+            continue
+        try:
+            pt, lo, hi = parse_cell(cells[0])
+        except ValueError as e:
+            mismatches.append(f"{spec['id']}: {row_label!r}: {e}")
+            continue
+        csv_pt = float(csv_row[est_field])
+        csv_lo = float(csv_row[lo_field])
+        csv_hi = float(csv_row[hi_field])
+        if not near(pt, csv_pt):
+            mismatches.append(
+                f"{spec['id']}: {row_label!r} estimate paper={pt:+.3f} csv={csv_pt:+.3f}")
+        if lo is not None and not near(lo, csv_lo):
+            mismatches.append(
+                f"{spec['id']}: {row_label!r} CI_lo paper={lo:+.3f} csv={csv_lo:+.3f}")
+        if hi is not None and not near(hi, csv_hi):
+            mismatches.append(
+                f"{spec['id']}: {row_label!r} CI_hi paper={hi:+.3f} csv={csv_hi:+.3f}")
+    return mismatches
+
+
+def validate_per_m2_table(spec: dict) -> list[str]:
+    md = PAPER.read_text().splitlines()
+    row_labels = list(spec["rows"].keys())
+    table = extract_table_rows(md, spec["anchor"], row_labels)
+    mismatches: list[str] = []
+    for row_label in row_labels:
+        if row_label not in table:
+            mismatches.append(f"{spec['id']}: row {row_label!r} missing")
+            continue
+        cells = table[row_label]
+        row_cfg = spec["rows"][row_label]
+        for col_idx, stratum in enumerate(spec["stratum_order"]):
+            if col_idx >= len(cells):
+                mismatches.append(
+                    f"{spec['id']}: {row_label!r} missing col {stratum}")
+                continue
+            try:
+                pt, lo, hi = parse_cell(cells[col_idx])
+            except ValueError as e:
+                mismatches.append(f"{spec['id']}: {row_label!r}/{stratum}: {e}")
+                continue
+            csv_path, filt, est_f, lo_f, hi_f = row_cfg["csv_per_stratum"][stratum]
+            try:
+                csv_row = csv_lookup_multi(CRATE_ROOT / csv_path, filt)
+            except KeyError as e:
+                mismatches.append(f"{spec['id']}: {row_label!r}/{stratum}: {e}")
+                continue
+            csv_pt = float(csv_row[est_f])
+            csv_lo = float(csv_row[lo_f])
+            csv_hi = float(csv_row[hi_f])
+            if not near(pt, csv_pt):
+                mismatches.append(
+                    f"{spec['id']}: {row_label!r}/{stratum} estimate "
+                    f"paper={pt:+.3f} csv={csv_pt:+.3f}")
+            if lo is not None and not near(lo, csv_lo):
+                mismatches.append(
+                    f"{spec['id']}: {row_label!r}/{stratum} CI_lo "
+                    f"paper={lo:+.3f} csv={csv_lo:+.3f}")
+            if hi is not None and not near(hi, csv_hi):
+                mismatches.append(
+                    f"{spec['id']}: {row_label!r}/{stratum} CI_hi "
+                    f"paper={hi:+.3f} csv={csv_hi:+.3f}")
+    return mismatches
 
 
 def extract_table_rows(md_lines: list[str], anchor: str,
@@ -195,7 +351,9 @@ def validate_table(spec: dict) -> list[str]:
 
 def main() -> int:
     all_mismatches: list[str] = []
+    total_tables = 0
     for spec in TABLE_REGISTRY:
+        total_tables += 1
         ms = validate_table(spec)
         if ms:
             all_mismatches.extend(ms)
@@ -205,12 +363,33 @@ def main() -> int:
         else:
             print(f"# {spec['id']}: OK ({len(spec['rows'])} rows × "
                   f"{len(spec['cols'])} cols verified)")
+    for spec in STRATUM_TABLE_REGISTRY:
+        total_tables += 1
+        ms = validate_stratum_table(spec)
+        if ms:
+            all_mismatches.extend(ms)
+            print(f"# {spec['id']}: FAIL ({len(ms)} mismatches)", file=sys.stderr)
+            for m in ms:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            print(f"# {spec['id']}: OK ({len(spec['stratum_rows'])} "
+                  f"stratum rows verified)")
+    for spec in PER_M2_TABLE_REGISTRY:
+        total_tables += 1
+        ms = validate_per_m2_table(spec)
+        if ms:
+            all_mismatches.extend(ms)
+            print(f"# {spec['id']}: FAIL ({len(ms)} mismatches)", file=sys.stderr)
+            for m in ms:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            n_cells = len(spec["rows"]) * len(spec["stratum_order"])
+            print(f"# {spec['id']}: OK ({n_cells} M_2 × stratum cells verified)")
     if all_mismatches:
         print(f"# verify_tables_against_csv.py — {len(all_mismatches)} "
-              f"mismatches across {len(TABLE_REGISTRY)} tables",
-              file=sys.stderr)
+              f"mismatches across {total_tables} tables", file=sys.stderr)
         return 1
-    print(f"# verify_tables_against_csv.py — {len(TABLE_REGISTRY)} "
+    print(f"# verify_tables_against_csv.py — {total_tables} "
           f"tables verified, 0 mismatches")
     return 0
 

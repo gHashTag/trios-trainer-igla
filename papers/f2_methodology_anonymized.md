@@ -305,8 +305,12 @@ no exposure-mediator interaction, every Gao-Li-Luo interaction term
 vanishes and the residual decomposition collapses onto the Daniel et
 al. four-PSE form.
 
-Under sequential ignorability and no exposure-mediator interaction,
-each PSE is identified by the **counterfactual difference**
+Under **sequential ignorability** (Imai, Keele & Tingley 2010,
+*Psychological Methods* 15(4): 309–334: the standard mediation-
+identifying assumption that no unmeasured confounders affect both
+the mediator and the outcome, conditional on the exposure) and no
+exposure-mediator interaction, each PSE is identified by the
+**counterfactual difference**
 
 $$
 \Delta_S \;\equiv\; \mathbb{E}\!\left[Y(\text{remove } S)\right] - \mathbb{E}\!\left[Y(\text{full stack})\right]

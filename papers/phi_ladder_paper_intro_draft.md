@@ -290,12 +290,133 @@ codebase.
 
 ---
 
-## DRAFT notes (Loops 98–99)
+## 3. Pre-registered protocol
 
-§1 (Loop 98) and §2 (Loop 99) drafted. Sections to write in
-subsequent loops:
-- §3 — Protocol (sources from `docs/F2_PRE_REG.md` §3-§4, expanded
-  with the F2-companion connection points)
+This section locks the protocol. Every choice below was made before
+any FineWeb token was consumed. Any deviation from the plan during
+execution will be reported with the originally-planned alternative
+clearly labeled.
+
+### 3.1 Sweep matrix
+
+Eight configurations × two strata × five seeds = **80 runs**.
+
+| Config slot | Family | Specification |
+|---|---|---|
+| `GFTernary` | phi-ladder | weights in $\{-\phi, 0, +\phi\}$; activations bf16 |
+| `GF8`       | phi-ladder | 8-bit phi-encoded weights; activations bf16 |
+| `GF16`      | phi-ladder | 16-bit phi-encoded weights; activations bf16 |
+| `GF32`      | phi-ladder | 32-bit phi-encoded weights (intra-family baseline) |
+| `BitNet-1.58` | integer | ternary weights per arXiv:2402.17764; 8-bit activations |
+| `INT4-W4A8` | integer  | 4-bit weights + 8-bit activations per arXiv:2310.16836 |
+| `FP8`       | floating-point | E4M3 weights + E5M2 gradients per arXiv:2209.05433 |
+| `bf16`      | floating-point | bf16 weights + bf16 activations (gold-standard baseline) |
+
+**Strata**: `canonical` (default WD = 0.1, all seven F2 fixes
+enabled) and `wd0` (WD pinned to 0.0, otherwise identical). The
+wd0 stratum is the Pearl Controlled Direct Effect on weight decay
+that the companion F2 paper's §5.2 demonstrates is informative.
+
+**Seeds**: `[42, 43, 44, 45, 46]` per (config, stratum) cell. The
+seed set matches the companion paper's `F2_PRE_REG.md` convention
+and the deterministic per-seed LOCO sweep that backs F2's `N = 5`
+small-sample machinery.
+
+### 3.2 Training-time configuration (locked)
+
+- **Architecture**: dense transformer, 1B parameters
+  (24 layers × 16 heads × `d_model = 2048` × `d_hidden = 8192`).
+- **Sequence length**: 2048 tokens.
+- **Tokenizer**: GPT-2 BPE (50257-token vocabulary) for parity
+  with the FineWeb-Edu reference recipe.
+- **Data**: FineWeb-Edu 10B subset (Soldaini et al. 2024,
+  arXiv:2406.17557, *FineWeb-Edu* — to be added to the §2 bib);
+  training token budget **50B**.
+- **Held-out validation**: 100M tokens from a disjoint FineWeb
+  shard (`shard 100`), held out before training begins.
+- **Optimizer**: AdamW (Loshchilov & Hutter 2019, ICLR);
+  $\beta_1 = 0.9$, $\beta_2 = 0.95$, $\epsilon = 10^{-8}$.
+  Weight decay at canonical = 0.1; at wd0 stratum = 0.0.
+- **Learning rate**: linear warmup over 2000 steps to a peak of
+  $3 \times 10^{-4}$, cosine decay to $3 \times 10^{-5}$ at
+  step ~12k (50B tokens / 4M tokens/step at batch 1024).
+- **Batch**: 1024 sequences × 2048 tokens = 2.1M tokens/step.
+
+The above configuration is the **same training recipe across all
+eight configs**; only the weight/activation numeric format
+changes. This is a structural commitment of the protocol — we are
+isolating the format effect, not testing a family of training
+recipes.
+
+### 3.3 Analysis machinery (sourced from F2 companion)
+
+The same 10 F2 binaries that back the companion paper run this
+study unmodified at the per-cell level:
+
+- **Per-cell BPB recording**: `f2_ablation_sweep --config <slot>
+  --stratum <s> --seed <i> --output cell_<s>_<slot>_<i>.csv`.
+  Each cell emits a single-record CSV with `val_bpb`,
+  `train_bpb`, `wall_s`, `peak_memory_mb`, `lossy_conversions`,
+  and a W3C-PROV preamble.
+- **Per-stratum aggregation**: `f2_ablation_aggregate` reads the
+  40 per-stratum cells and emits a long-form CSV with
+  per-config mean ± SE on validation BPB.
+- **Pairwise testing**: `f2_pairwise_perm` runs the exact
+  Zmigrod-Vieira-Cotterell paired-permutation test on each
+  (phi-config, zoo-config) pair within a stratum. With 5 seeds
+  the exact test enumerates $2^5 = 32$ sign-flip vectors,
+  producing exact p-values.
+- **BH correction**: `f2_pairwise_perm --bh` BH-corrects across
+  the 4 pairwise comparisons within each phi-config (vs the 4
+  zoo-config alternatives).
+- **Cross-stratum stability**: `f2_stratum_compare` takes the
+  canonical and wd0 long-form CSVs and emits a
+  `stable_across_strata` flag per (phi-config, zoo-config) pair.
+- **Bridge-score envelope**: `f2_mediation_sensitivity --lambda
+  1.0` is run on each pair that survives the permutation test;
+  the envelope is calibrated against the VanderWeele-Ding E-value
+  for fragility/robustness reporting.
+
+The five F2 binaries above each produce a long-form CSV with
+W3C-PROV preamble per `f2_provenance_check`'s schema. The 80-cell
+matrix produces **80 + 2 + 1 + 1 + 1 + 8 = 93 CSVs** total. Every
+CSV is committed at run time to `data/issue1021/<batch>/`.
+
+### 3.4 Connection to the F2 framework
+
+The protocol uses the F2 framework's identification machinery
+unchanged: the four-PSE decomposition of `f2_dual_mediation`
+applied with `X = format_choice`, `M_1 = lossy_conversions`, and
+`M_2 = wall_clock_s`. The hypothesis that phi-ladder configurations
+yield lower validation BPB factors through both mediators
+($M_1$ captures quantization-noise accumulation; $M_2$ captures
+the multiplicative-basis overhead) and a remaining direct path.
+The pre-registered question is whether the direct path itself
+favors phi-ladder, controlling for both mediators.
+
+The wd0 stratum is the Pearl CDE that the companion paper
+demonstrates can flip signs. If quantization-format × WD
+interaction exists at the same magnitude as the companion paper's
+RmsNorm × WD interaction, we expect the wd0 stratum to either
+strengthen or weaken the phi-ladder advantage. The protocol
+explicitly admits both outcomes and reports both.
+
+### 3.5 Reporting discipline
+
+Every cell of the 80-run matrix is reported in the manuscript,
+including cells that produce non-finite BPB (NaN or +Inf — the
+protocol does not exclude these but flags them in a separate
+diagnostic table). The bridge-score envelope is reported at
+**Λ = 1.0 BPB** (the same scale-of-effect that the F2 companion
+adopts as its reporting baseline). Any cell whose `Γ_tip(Λ=1.0)
+< 1.25` is flagged as fragile in the bridge-score column.
+
+---
+
+## DRAFT notes (Loops 98–100)
+
+§1 (Loop 98), §2 (Loop 99), §3 (Loop 100) drafted. Sections to
+write in subsequent loops:
 - §4 — Pre-registered hypotheses with falsification tests
 - §5 — Reproducibility artifacts
 - §6 — Scope/limitations
