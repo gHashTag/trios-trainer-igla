@@ -3,7 +3,9 @@
 //!
 //! CPU-only, mirrors the Railway champion path. Reuses repo `AdamWCpu` with two
 //! arms. This supersedes igla_coder_v1: attention Q/K/V/O are now fully trained
-//! (no deferred path), multi-head, multi-layer, with pre-norm residual blocks.
+//! (no deferred path), multi-head, multi-layer, with pre-norm RMSNorm residual
+//! blocks (two per block + a final pre-logit norm; learnable per-norm gains) and
+//! trainable positional embeddings. All new params are gradcheck-covered.
 //!
 //! Honesty: code BPB is NOT comparable to tiny_shakespeare champion BPB=2.2111.
 //! The champion config is the STANDARD AdamW arm; phi is a falsifiable prior.
@@ -58,6 +60,8 @@ struct Layer {
     wo: Vec<f32>,
     w1: Vec<f32>, // d*dff
     w2: Vec<f32>, // dff*d
+    n1: Vec<f32>, // d  -- RMSNorm gain, pre-attention
+    n2: Vec<f32>, // d  -- RMSNorm gain, pre-mlp
 }
 
 #[derive(Clone)]
@@ -67,17 +71,22 @@ struct Model {
     dff: usize,
     emb: Vec<f32>, // VOCAB*d (tied head)
     pos: Vec<f32>, // MAXSEQ*d
+    nf: Vec<f32>,  // d  -- final RMSNorm gain before logits
     layers: Vec<Layer>,
 }
 
 struct Grads {
     emb: Vec<f32>,
+    pos: Vec<f32>,
+    nf: Vec<f32>,
     layers: Vec<Layer>, // reuse Layer as gradient container
 }
 
 fn zeros_like(m: &Model) -> Grads {
     Grads {
         emb: vec![0.0; m.emb.len()],
+        pos: vec![0.0; m.pos.len()],
+        nf: vec![0.0; m.nf.len()],
         layers: m
             .layers
             .iter()
@@ -88,9 +97,64 @@ fn zeros_like(m: &Model) -> Grads {
                 wo: vec![0.0; l.wo.len()],
                 w1: vec![0.0; l.w1.len()],
                 w2: vec![0.0; l.w2.len()],
+                n1: vec![0.0; l.n1.len()],
+                n2: vec![0.0; l.n2.len()],
             })
             .collect(),
     }
+}
+
+// RMSNorm forward: y_j = x_j / rms * g_j, rms = sqrt(mean_j x_j^2 + eps).
+// Returns (y, inv_rms) where inv_rms = 1/rms (cached for backward).
+fn rmsnorm_fwd(x: &[f32], g: &[f32], d: usize) -> (Vec<f32>, Vec<f32>) {
+    let t = x.len() / d;
+    let eps = 1e-5f32;
+    let mut y = vec![0.0f32; t * d];
+    let mut inv = vec![0.0f32; t];
+    for i in 0..t {
+        let mut ss = 0.0f32;
+        for j in 0..d {
+            let v = x[i * d + j];
+            ss += v * v;
+        }
+        let ir = 1.0 / (ss / d as f32 + eps).sqrt();
+        inv[i] = ir;
+        for j in 0..d {
+            y[i * d + j] = x[i * d + j] * ir * g[j];
+        }
+    }
+    (y, inv)
+}
+
+// RMSNorm backward. Given upstream grad gy (t*d), the cached x, gain g, inv_rms,
+// accumulates the gain grad into gg (d) and returns grad wrt x (t*d).
+// For row x with n = x*ir (ir = 1/rms): y = n .* g.
+//   dL/dg_j += sum_i gy_ij * n_ij
+//   dL/dx_ij = ir * g_j * gy_ij - (ir/d) * x_ij * sum_k (gy_ik * g_k * x_ik) * ir^2
+fn rmsnorm_bwd(
+    gy: &[f32],
+    x: &[f32],
+    g: &[f32],
+    inv: &[f32],
+    d: usize,
+    gg: &mut [f32],
+) -> Vec<f32> {
+    let t = x.len() / d;
+    let mut gx = vec![0.0f32; t * d];
+    for i in 0..t {
+        let ir = inv[i];
+        // dot = sum_k gy_ik * g_k * x_ik
+        let mut dot = 0.0f32;
+        for k in 0..d {
+            dot += gy[i * d + k] * g[k] * x[i * d + k];
+        }
+        let coef = ir * ir * ir / d as f32;
+        for j in 0..d {
+            gg[j] += gy[i * d + j] * (x[i * d + j] * ir);
+            gx[i * d + j] = ir * g[j] * gy[i * d + j] - coef * x[i * d + j] * dot;
+        }
+    }
+    gx
 }
 
 fn xavier(rng: &mut StdRng, n: usize, fan: usize) -> Vec<f32> {
@@ -110,6 +174,8 @@ impl Model {
                 wo: xavier(rng, d * d, d),
                 w1: xavier(rng, d * dff, d),
                 w2: xavier(rng, dff * d, dff),
+                n1: vec![1.0; d],
+                n2: vec![1.0; d],
             })
             .collect();
         Model {
@@ -118,6 +184,7 @@ impl Model {
             dff,
             emb: xavier(rng, VOCAB * d, d),
             pos: xavier(rng, MAXSEQ * d, d),
+            nf: vec![1.0; d],
             layers: ls,
         }
     }
@@ -125,11 +192,19 @@ impl Model {
     fn param_count(&self) -> usize {
         self.emb.len()
             + self.pos.len()
+            + self.nf.len()
             + self
                 .layers
                 .iter()
                 .map(|l| {
-                    l.wq.len() + l.wk.len() + l.wv.len() + l.wo.len() + l.w1.len() + l.w2.len()
+                    l.wq.len()
+                        + l.wk.len()
+                        + l.wv.len()
+                        + l.wo.len()
+                        + l.w1.len()
+                        + l.w2.len()
+                        + l.n1.len()
+                        + l.n2.len()
                 })
                 .sum::<usize>()
     }
@@ -203,12 +278,16 @@ fn dgelu(x: f32) -> f32 {
 // Per-layer forward cache for backprop.
 struct LayerCache {
     h_in: Vec<f32>, // t*d (block input == residual base for attn)
+    xn1: Vec<f32>,  // t*d  RMSNorm(h_in, n1) -- attention input
+    inv1: Vec<f32>, // t    inv_rms for pre-attn norm
     q: Vec<f32>,
     k: Vec<f32>,
     v: Vec<f32>,
     attn: Vec<Vec<f32>>, // per-position softmax weights (len i+1)
     ctx: Vec<f32>,       // t*d
     r1: Vec<f32>,        // t*d after attn residual
+    xn2: Vec<f32>,       // t*d  RMSNorm(r1, n2) -- mlp input
+    inv2: Vec<f32>,      // t    inv_rms for pre-mlp norm
     pre: Vec<f32>,       // t*dff
     act: Vec<f32>,       // t*dff
 }
@@ -232,12 +311,14 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
 
     let mut caches: Vec<LayerCache> = Vec::with_capacity(m.layers.len());
 
-    // ---- forward through layers ----
+    // ---- forward through layers (pre-norm residual blocks) ----
     for layer in &m.layers {
         let h_in = x.clone();
-        let q = matmul(&x, &layer.wq, t, d, d);
-        let k = matmul(&x, &layer.wk, t, d, d);
-        let v = matmul(&x, &layer.wv, t, d, d);
+        // pre-attention RMSNorm
+        let (xn1, inv1) = rmsnorm_fwd(&h_in, &layer.n1, d);
+        let q = matmul(&xn1, &layer.wq, t, d, d);
+        let k = matmul(&xn1, &layer.wk, t, d, d);
+        let v = matmul(&xn1, &layer.wv, t, d, d);
         let mut ctx = vec![0.0f32; t * d];
         let mut attn_all: Vec<Vec<f32>> = Vec::with_capacity(t);
         // per query position
@@ -279,7 +360,9 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
         for idx in 0..t * d {
             r1[idx] = h_in[idx] + attn_out[idx];
         }
-        let pre = matmul(&r1, &layer.w1, t, d, dff);
+        // pre-mlp RMSNorm
+        let (xn2, inv2) = rmsnorm_fwd(&r1, &layer.n2, d);
+        let pre = matmul(&xn2, &layer.w1, t, d, dff);
         let mut act = vec![0.0f32; t * dff];
         for idx in 0..t * dff {
             act[idx] = gelu(pre[idx]);
@@ -291,20 +374,25 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
         }
         caches.push(LayerCache {
             h_in,
+            xn1,
+            inv1,
             q,
             k,
             v,
             attn: attn_all,
             ctx,
             r1,
+            xn2,
+            inv2,
             pre,
             act,
         });
         x = r2; // output of block feeds next
     }
 
-    // ---- LM head (tied) + loss, grad wrt final x ----
-    let final_x = x; // t*d
+    // ---- final RMSNorm before LM head ----
+    let (final_x, inv_f) = rmsnorm_fwd(&x, &m.nf, d); // t*d
+    let pre_norm_x = x; // keep for backward through final norm
     let mut g_x = vec![0.0f32; t * d];
     let mut total = 0.0f32;
     let mut counted = 0usize;
@@ -350,6 +438,10 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
         };
     }
 
+    // ---- backward through final RMSNorm: g_x is wrt final_x (post-norm) ----
+    // convert to grad wrt pre_norm_x (the layer-loop output) and accumulate g.nf
+    g_x = rmsnorm_bwd(&g_x, &pre_norm_x, &m.nf, &inv_f, d, &mut g.nf);
+
     // ---- backward through layers (reverse) ----
     for li in (0..m.layers.len()).rev() {
         let layer = &m.layers[li];
@@ -369,15 +461,16 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
         for idx in 0..t * dff {
             g_pre[idx] = g_act[idx] * dgelu(c.pre[idx]);
         }
-        // pre = r1 @ w1
-        let gw1 = matmul_at_g(&c.r1, &g_pre, t, d, dff);
+        // pre = xn2 @ w1   (mlp input is the pre-mlp-normed xn2, not r1)
+        let gw1 = matmul_at_g(&c.xn2, &g_pre, t, d, dff);
         for (a, b) in gl.w1.iter_mut().zip(gw1.iter()) {
             *a += b;
         }
-        // pre = r1 @ w1 with r1[t,d], w1[d,dff], pre[t,dff]; so g_r1 = g_pre @ w1^T
-        // -> matmul_g_wt(g, w, m=t, k=d, n=dff). (Earlier (t,dff,d) transposed k/n.)
-        let g_r1_from_mlp = matmul_g_wt(&g_pre, &layer.w1, t, d, dff); // t*d
-                                                                       // g_r1 total = g_x (residual) + g_r1_from_mlp
+        // g_xn2 = g_pre @ w1^T  -> matmul_g_wt(g, w, m=t, k=d, n=dff)
+        let g_xn2 = matmul_g_wt(&g_pre, &layer.w1, t, d, dff); // t*d
+                                                               // through pre-mlp RMSNorm: g_xn2 -> g_r1_from_mlp, accumulate gl.n2
+        let g_r1_from_mlp = rmsnorm_bwd(&g_xn2, &c.r1, &layer.n2, &c.inv2, d, &mut gl.n2);
+        // g_r1 total = g_x (residual) + g_r1_from_mlp
         let mut g_r1 = vec![0.0f32; t * d];
         for idx in 0..t * d {
             g_r1[idx] = g_x[idx] + g_r1_from_mlp[idx];
@@ -429,10 +522,10 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
                 }
             }
         }
-        // q = h_in @ wq, etc.
-        let gwq = matmul_at_g(&c.h_in, &g_q, t, d, d);
-        let gwk = matmul_at_g(&c.h_in, &g_k, t, d, d);
-        let gwv = matmul_at_g(&c.h_in, &g_v, t, d, d);
+        // q = xn1 @ wq, etc.  (attention input is the pre-attn-normed xn1, not h_in)
+        let gwq = matmul_at_g(&c.xn1, &g_q, t, d, d);
+        let gwk = matmul_at_g(&c.xn1, &g_k, t, d, d);
+        let gwv = matmul_at_g(&c.xn1, &g_v, t, d, d);
         for (a, b) in gl.wq.iter_mut().zip(gwq.iter()) {
             *a += b;
         }
@@ -442,24 +535,31 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
         for (a, b) in gl.wv.iter_mut().zip(gwv.iter()) {
             *a += b;
         }
-        let g_hin_q = matmul_g_wt(&g_q, &layer.wq, t, d, d);
-        let g_hin_k = matmul_g_wt(&g_k, &layer.wk, t, d, d);
-        let g_hin_v = matmul_g_wt(&g_v, &layer.wv, t, d, d);
+        // qkv input grads flow to xn1, then through the pre-attn RMSNorm to h_in
+        let g_xn1_q = matmul_g_wt(&g_q, &layer.wq, t, d, d);
+        let g_xn1_k = matmul_g_wt(&g_k, &layer.wk, t, d, d);
+        let g_xn1_v = matmul_g_wt(&g_v, &layer.wv, t, d, d);
+        let mut g_xn1 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            g_xn1[idx] = g_xn1_q[idx] + g_xn1_k[idx] + g_xn1_v[idx];
+        }
+        // through pre-attn RMSNorm: g_xn1 -> g_hin_from_attn, accumulate gl.n1
+        let g_hin_from_attn = rmsnorm_bwd(&g_xn1, &c.h_in, &layer.n1, &c.inv1, d, &mut gl.n1);
 
-        // g_h_in total = g_r1 (residual) + qkv input grads
+        // g_h_in total = g_r1 (residual) + attn-path input grad
         let mut g_hin = vec![0.0f32; t * d];
         for idx in 0..t * d {
-            g_hin[idx] = g_r1[idx] + g_hin_q[idx] + g_hin_k[idx] + g_hin_v[idx];
+            g_hin[idx] = g_r1[idx] + g_hin_from_attn[idx];
         }
         // becomes g_x for the previous layer (or the embedding)
         g_x = g_hin;
     }
 
-    // embedding + positional input: x_in = emb[tok] + pos[i]
+    // embedding + positional input: x_in = emb[tok] + pos[i] (both trainable)
     for (i, &tok) in tokens.iter().enumerate() {
         for j in 0..d {
             g.emb[tok * d + j] += g_x[i * d + j];
-            // positional treated as fixed in v-series (not trained), so skip g.pos
+            g.pos[i * d + j] += g_x[i * d + j];
         }
     }
 
@@ -473,7 +573,9 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
 // ---------------- optimizer wiring ----------------
 struct Opt {
     emb: AdamWCpu,
-    per_layer: Vec<[AdamWCpu; 6]>, // wq,wk,wv,wo,w1,w2
+    pos: AdamWCpu,
+    nf: AdamWCpu,
+    per_layer: Vec<[AdamWCpu; 8]>, // wq,wk,wv,wo,w1,w2,n1,n2
 }
 
 fn make_arm(arm: &str, n: usize, lr: f64) -> AdamWCpu {
@@ -485,6 +587,10 @@ fn make_arm(arm: &str, n: usize, lr: f64) -> AdamWCpu {
     match arm {
         // phi prior: beta1 = phi^-1 ~ 0.618, weight_decay = phi^-3 ~ 0.2361
         "phi" => AdamWCpu::with_params(n, lr, 1.0 / phi, 0.999, 1.0 / (phi * phi * phi)),
+        // diagnostic: phi beta1 only (standard weight_decay) -- isolates the momentum anchor
+        "phi_b1" => AdamWCpu::with_params(n, lr, 1.0 / phi, 0.999, 0.04),
+        // diagnostic: phi weight_decay only (standard beta1) -- isolates the decay anchor
+        "phi_wd" => AdamWCpu::with_params(n, lr, 0.9, 0.999, 1.0 / (phi * phi * phi)),
         // standard tuned AdamW control
         _ => AdamWCpu::with_params(n, lr, 0.9, 0.999, 0.04),
     }
@@ -493,6 +599,8 @@ fn make_arm(arm: &str, n: usize, lr: f64) -> AdamWCpu {
 fn make_opt(m: &Model, arm: &str, lr: f64) -> Opt {
     Opt {
         emb: make_arm(arm, m.emb.len(), lr),
+        pos: make_arm(arm, m.pos.len(), lr),
+        nf: make_arm(arm, m.nf.len(), lr),
         per_layer: m
             .layers
             .iter()
@@ -504,6 +612,8 @@ fn make_opt(m: &Model, arm: &str, lr: f64) -> Opt {
                     make_arm(arm, l.wo.len(), lr),
                     make_arm(arm, l.w1.len(), lr),
                     make_arm(arm, l.w2.len(), lr),
+                    make_arm(arm, l.n1.len(), lr),
+                    make_arm(arm, l.n2.len(), lr),
                 ]
             })
             .collect(),
@@ -512,6 +622,8 @@ fn make_opt(m: &Model, arm: &str, lr: f64) -> Opt {
 
 fn opt_step(m: &mut Model, o: &mut Opt, g: &Grads) {
     o.emb.step(&mut m.emb, &g.emb);
+    o.pos.step(&mut m.pos, &g.pos);
+    o.nf.step(&mut m.nf, &g.nf);
     for (li, layer) in m.layers.iter_mut().enumerate() {
         o.per_layer[li][0].step(&mut layer.wq, &g.layers[li].wq);
         o.per_layer[li][1].step(&mut layer.wk, &g.layers[li].wk);
@@ -519,6 +631,8 @@ fn opt_step(m: &mut Model, o: &mut Opt, g: &Grads) {
         o.per_layer[li][3].step(&mut layer.wo, &g.layers[li].wo);
         o.per_layer[li][4].step(&mut layer.w1, &g.layers[li].w1);
         o.per_layer[li][5].step(&mut layer.w2, &g.layers[li].w2);
+        o.per_layer[li][6].step(&mut layer.n1, &g.layers[li].n1);
+        o.per_layer[li][7].step(&mut layer.n2, &g.layers[li].n2);
     }
 }
 
@@ -526,9 +640,15 @@ fn accum_scale(g: &mut Grads, s: f32) {
     for x in g.emb.iter_mut() {
         *x *= s;
     }
+    for x in g.pos.iter_mut() {
+        *x *= s;
+    }
+    for x in g.nf.iter_mut() {
+        *x *= s;
+    }
     for l in g.layers.iter_mut() {
         for v in [
-            &mut l.wq, &mut l.wk, &mut l.wv, &mut l.wo, &mut l.w1, &mut l.w2,
+            &mut l.wq, &mut l.wk, &mut l.wv, &mut l.wo, &mut l.w1, &mut l.w2, &mut l.n1, &mut l.n2,
         ] {
             for x in v.iter_mut() {
                 *x *= s;
@@ -624,11 +744,28 @@ fn fwd_loss_f64(m: &Model, tokens: &[usize]) -> f64 {
         }
         o
     };
+    // f64 RMSNorm mirror of rmsnorm_fwd (eps = 1e-5).
+    let rmsn = |x: &[f64], g: &[f32], d: usize| -> Vec<f64> {
+        let t = x.len() / d;
+        let mut y = vec![0.0f64; t * d];
+        for i in 0..t {
+            let mut ss = 0.0f64;
+            for j in 0..d {
+                ss += x[i * d + j] * x[i * d + j];
+            }
+            let ir = 1.0 / (ss / d as f64 + 1e-5).sqrt();
+            for j in 0..d {
+                y[i * d + j] = x[i * d + j] * ir * g[j] as f64;
+            }
+        }
+        y
+    };
     for layer in &m.layers {
         let h_in = x.clone();
-        let q = mm(&x, &layer.wq, t, d, d);
-        let k = mm(&x, &layer.wk, t, d, d);
-        let v = mm(&x, &layer.wv, t, d, d);
+        let xn1 = rmsn(&h_in, &layer.n1, d);
+        let q = mm(&xn1, &layer.wq, t, d, d);
+        let k = mm(&xn1, &layer.wk, t, d, d);
+        let v = mm(&xn1, &layer.wv, t, d, d);
         let mut ctx = vec![0.0f64; t * d];
         for i in 0..t {
             for head in 0..h {
@@ -664,7 +801,8 @@ fn fwd_loss_f64(m: &Model, tokens: &[usize]) -> f64 {
         for idx in 0..t * d {
             r1[idx] = h_in[idx] + attn_out[idx];
         }
-        let pre = mm(&r1, &layer.w1, t, d, dff);
+        let xn2 = rmsn(&r1, &layer.n2, d);
+        let pre = mm(&xn2, &layer.w1, t, d, dff);
         let mut act = vec![0.0f64; t * dff];
         for idx in 0..t * dff {
             let xv = pre[idx];
@@ -681,7 +819,7 @@ fn fwd_loss_f64(m: &Model, tokens: &[usize]) -> f64 {
         }
         x = r2;
     }
-    let final_x = x;
+    let final_x = rmsn(&x, &m.nf, d);
     let mut total = 0.0f64;
     for i in 0..t - 1 {
         let target = tokens[i + 1];
@@ -809,6 +947,46 @@ fn gradcheck_cfg(dd: usize, hh: usize, ll: usize) {
             30000 + i,
             &|m: &Model| m.layers[0].wo[i],
             &|m: &mut Model, v: f32| m.layers[0].wo[i] = v,
+            a,
+        );
+    }
+    // trainable positional embeddings
+    for &i in &[0usize, 9, 21] {
+        let a = g.pos[i];
+        probe(
+            35000 + i,
+            &|m: &Model| m.pos[i],
+            &|m: &mut Model, v: f32| m.pos[i] = v,
+            a,
+        );
+    }
+    // final RMSNorm gain
+    for &i in &[0usize, 2] {
+        let a = g.nf[i];
+        probe(
+            40000 + i,
+            &|m: &Model| m.nf[i],
+            &|m: &mut Model, v: f32| m.nf[i] = v,
+            a,
+        );
+    }
+    // pre-attention RMSNorm gain (layer 0)
+    for &i in &[0usize, 3] {
+        let a = g.layers[0].n1[i];
+        probe(
+            45000 + i,
+            &|m: &Model| m.layers[0].n1[i],
+            &|m: &mut Model, v: f32| m.layers[0].n1[i] = v,
+            a,
+        );
+    }
+    // pre-mlp RMSNorm gain (layer 0)
+    for &i in &[0usize, 3] {
+        let a = g.layers[0].n2[i];
+        probe(
+            50000 + i,
+            &|m: &Model| m.layers[0].n2[i],
+            &|m: &mut Model, v: f32| m.layers[0].n2[i] = v,
             a,
         );
     }
