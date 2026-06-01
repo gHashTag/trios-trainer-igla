@@ -16,11 +16,11 @@ into the issue comment composer.
 This issue has been silent while methodology infra has been built up
 on PR #185 (`f2-methodology` branch). Short status:
 
-**What's ready**
+**What's ready (as of Loop 66, 2026-06-01)**
 - 10 F2 binaries with stable long-form CSV contract
   (`docs/F2_BINARIES.md`)
 - Pearl-style stratification framework: canonical / wd0 / warmup0
-- Zhao-Luo / Daniel et al. 2015 four-PSE decomposition with
+- Daniel et al. 2015 / Gao-Li-Luo 2020 four-PSE decomposition with
   delta-method SE valid at N=5 seeds
 - Ohnishi-Li bridge-score sensitivity envelope (additive scale, BPB)
 - Cross-stratum stability flag via CI overlap
@@ -28,13 +28,28 @@ on PR #185 (`f2-methodology` branch). Short status:
   (`dual_mediation_no_interaction_residual_lock`,
   `trainer_internals_schema_is_load_bearing`)
 - W3C-PROV preamble + `TRAINER_INTERNALS_SCHEMA` integrity lock
-- Workshop-grade paper draft at `papers/f2_methodology.md` (1300+
-  lines, end-to-end prose with 4 figures)
-- TMLR submission kit at `papers/tmlr_submission_kit/` (template,
-  EOI form text, anonymization checklist, supplementary-bundle script)
-- Empirical anchor: `data/loop49/` (6 CSVs, MD5-checksummed)
-  documenting the sandbox-scale RmsNorm × WD sign-flip
-  (canonical NDE −4.12 BPB → wd0 CDE +0.43 BPB)
+- Paper draft at `papers/f2_methodology.md` (~1500 lines, end-to-end
+  prose with 5 figures, compiles cleanly to 35-page xelatex PDF)
+- TMLR submission kit at `papers/tmlr_submission_kit/`
+  (template.tex, eoi_form_text.md, anonymization checklist,
+  pack_supplementary.sh, f2_methodology.bib with 22 verified entries)
+- Empirical anchor: `data/loop49/` (6 CSVs, MD5-checksummed) +
+  `data/loop49_swap/` (4 additional swap-parameterization CSVs from
+  Loop 64 Phase 0)
+- **Two findings, both sandbox-scale (5 seeds, ~8K params, 200 steps)**:
+  - RmsNorm × WD sign-flip: canonical NDE −4.12 BPB → wd0 Pearl CDE
+    +0.43 BPB, both CIs excluding zero. Framed as unit-test
+    demonstration that the framework detects a sign flip when one
+    is constructed (per Loop 61 hostile-reviewer screen).
+  - Swap-parameterization invariant: the rms-mediated indirect effect
+    of weight decay is byte-identical −0.751 [−1.325, −0.177] across
+    all three strata — the only PSE row in our matrix that survives
+    intact across canonical, wd0, and warmup0 reference points
+    (Loop 64 Phase 0 result).
+- **9-paper survey** of recent transformer ablation papers
+  (NormFormer, OPT, Switch Transformer, Pythia, Mamba, Llama,
+  BitNet b1.58, Peri-LN, nanoGPT): 7 single-run / 2 multi-seed
+  summary / 0 per-seed CSVs released. Illustrates the gap F2 closes.
 
 **Pre-registration** (`docs/F2_PRE_REG.md`)
 - 8 configs × 2 strata × 5 seeds = 80 runs
@@ -53,12 +68,14 @@ on PR #185 (`f2-methodology` branch). Short status:
 Until those land, the pre-reg stays *draft-protocol, non-binding*.
 
 **MLRC 2026 venue**
-- Soft EOI deadline: **2026-06-04 AOE** (3 days from this comment)
+- Soft EOI deadline: **2026-06-04 AOE** (~21h from Loop 66 push)
 - Hard TMLR decision deadline: **2026-09-30 AOE**
+- Author notifications: 2026-10-07; in-person presentation
+  NeurIPS Sydney 2026-12-06–13
 - Whether or not the champion-scale run happens, the methodology
   paper itself is publishable as-is at MLRC 2026 (sandbox-scale
-  proof-of-concept). Submission decision is a separate question
-  from compute decision.
+  proof-of-concept + 9-paper applicability survey). Submission
+  decision is a separate question from compute decision.
 
 PR #185 stays Draft until either champion-scale data lands OR the
 methodology-paper-only path is taken explicitly.

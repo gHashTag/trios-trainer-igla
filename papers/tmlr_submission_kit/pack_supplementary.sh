@@ -1,17 +1,32 @@
 #!/usr/bin/env bash
 # pack_supplementary.sh — bundle TMLR supplementary materials.
 #
-# Reads from the repo (data/loop49/, papers/figures/, papers/appendix_d_*)
-# and produces papers/tmlr_submission_kit/f2_methodology_supp.zip.
+# Reads from the repo (data/loop49/, data/loop49_swap/, papers/figures/,
+# papers/appendix_d_*) and produces
+# papers/tmlr_submission_kit/f2_methodology_supp.zip.
+#
+# Loop 66 update: pre-flight runs figure_regen.sh + provenance check on
+# every committed sweep CSV before bundling. Any provenance failure
+# (FAIL exit code 2 or 3) aborts the pack. Reviewer-grade discipline.
 #
 # Layout matches papers/tmlr_submission_kit/manifest.md.
 #
 # Usage:
 #   papers/tmlr_submission_kit/pack_supplementary.sh
+#   papers/tmlr_submission_kit/pack_supplementary.sh --skip-regen
+#                                                    (skip figure regen)
 #
 # No arguments. Idempotent — re-running rebuilds the zip from scratch.
 
 set -euo pipefail
+
+SKIP_REGEN=""
+for a in "$@"; do
+    case "$a" in
+        --skip-regen) SKIP_REGEN=1 ;;
+        *) echo "# WARN: unknown flag: $a" >&2 ;;
+    esac
+done
 
 CRATE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$CRATE_ROOT"
@@ -21,6 +36,43 @@ STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
 OUT="$KIT/f2_methodology_supp.zip"
+
+# Pre-flight 1: regenerate figures from committed CSVs.
+if [[ -z "$SKIP_REGEN" ]]; then
+    echo "# pre-flight (1/2): regenerating figures from committed CSVs"
+    papers/scripts/figure_regen.sh > /dev/null
+    echo "# pre-flight (1/2): OK (5 figures regenerated)"
+fi
+
+# Pre-flight 2: run f2_provenance_check on every committed sweep CSV.
+echo "# pre-flight (2/2): provenance check on committed sweep CSVs"
+cargo build --release --bin f2_provenance_check > /dev/null 2>&1
+PROV_ERRORS=0
+for csv in data/loop49/loop49_wd_stratified.csv \
+           data/loop49/loop47_warmup_stratified.csv \
+           data/loop49_swap/canonical_sweep.csv; do
+    if [[ -f "$csv" ]]; then
+        if target/release/f2_provenance_check "$csv" \
+                > /tmp/prov_check_$$.log 2>&1; then
+            echo "  PASS  $csv"
+        else
+            rc=$?
+            if [[ $rc -eq 1 ]]; then
+                echo "  WARN  $csv (exit 1; older git SHA, schema OK)"
+            else
+                echo "  FAIL  $csv (exit $rc)"
+                PROV_ERRORS=$((PROV_ERRORS + 1))
+            fi
+        fi
+    fi
+done
+rm -f /tmp/prov_check_$$.log
+if [[ $PROV_ERRORS -gt 0 ]]; then
+    echo "# ABORT: $PROV_ERRORS provenance failures; refusing to pack a" >&2
+    echo "        zip containing unverifiable CSVs." >&2
+    exit 1
+fi
+echo "# pre-flight (2/2): OK"
 
 # Stage tree per manifest.md
 mkdir -p \
@@ -79,6 +131,15 @@ fi
 if [[ -d "data/loop49" ]]; then
     for csv in data/loop49/*.csv; do
         [[ -f "$csv" ]] && cp "$csv" "$STAGE/f2_methodology_supp/data/"
+    done
+fi
+# Loop 66: include Phase 0 swap-parameterization data alongside the
+# canonical loop49 set.
+if [[ -d "data/loop49_swap" ]]; then
+    mkdir -p "$STAGE/f2_methodology_supp/data/loop49_swap"
+    for csv in data/loop49_swap/*.csv; do
+        [[ -f "$csv" ]] && cp "$csv" \
+            "$STAGE/f2_methodology_supp/data/loop49_swap/"
     done
 fi
 

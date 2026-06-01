@@ -778,6 +778,14 @@ value survives identical across all three stratum reference
 points** — a real result, but a much narrower claim than an
 "all PSEs invariant" assertion.
 
+**Figure 5** visualizes the swap-parameterization NIE_M1 matrix
+across the three strata. The byte-identical wd row at the bottom
+is the only fully-invariant row; the other four fixes show
+variation in the wd0 column (the WD-pinned stratum) while
+canonical and warmup0 columns match each other — a structural
+pattern consistent with the wd0 stratum being the only one that
+constrains the wd path.
+
 ### 5.4 Sensitivity envelope
 
 Per §3.3, we report tipping-point `Γ_tip(Λ=1.0)` and the
