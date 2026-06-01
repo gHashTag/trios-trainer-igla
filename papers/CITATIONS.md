@@ -98,16 +98,18 @@ verification status reviewable on its own line.
 | Loop 77 | Verified Vaswani 2017 NeurIPS + Loshchilov ICLR 2019 (Loop 76 bib additions) |
 | Loop 79 | Verified Ohnishi-Li bridge-score paper. **Caught and fixed AblationBench mis-description**: paper is about LM-agent ablation *planning*, not about wide-form/Welch/Cohen's-d analysis. §2.3 and §9.1 rewritten. Authors corrected "Abramovich et al." → "Abramovich & Chechik". |
 | Loop 80 | Verified the remaining 6 CONFIRMED-VENUE entries (RO-Crate, DoWhy, ABLATOR, QuEST, MXFP8, Fibbinary). Caught FOUR additional issues: (1) RO-Crate first-author "Sefton" was fabricated — actually Leo + Soiland-Reyes lead an 18-author group; (2) **arXiv:2509.22536 (InfiR2 FP8) has been WITHDRAWN** by authors 2025-10-17 due to data-processing bug — §9.4 explicitly flags this; (3) Fibbinary paper attribution "Schmidt-Mengin et al." was fabricated — actually Fiandaca & Gomony, and the paper is about neural radio receivers (not transformer LLMs); (4) QuEST description "scaling laws" was incorrect — actual title is "Stable Training of LLMs with 1-Bit Weights and Activations". §9.4 narrative rewritten; CITATIONS.md ledger updated 19/6 → 24/0 VERIFIED/CONFIRMED-VENUE, with 1 VERIFIED-WITHDRAWN. |
+| Loop 85 | First PDF visual inspection across 80+ loops surfaced TWO SEV-5 rendering bugs that no citation/derivation/cross-ref audit could have caught: (1) HTML anonymizer banner `<!-- ANONYMIZED VARIANT -->` rendering as prose at top of abstract; (2) math symbols `Γ`/`Λ`/`Δ` rendering as literal `\{}Gamma`/`\{}Lambda` text inside `\texttt{}` blocks. Root cause: `unicode_to_latex` ran BEFORE backtick capture, so `Γ` → `$\Gamma$` then texttt-escape turned `\` into `\textbackslash{}`. Fixed by reordering (carve backticks first → unicode after) and adding `BT_UNICODE_FALLBACK` ASCII map for typewriter-font-missing chars (≥→>=, ×→x, →→->, etc.). |
 
 Next audit due if more citations are added or if the paper is
 revised post-acceptance.
 
 ---
 
-## Pre-submission CI gate benchmark (Loop 79)
+## Pre-submission CI gate benchmark (Loops 79, 86)
 
-`papers/scripts/run_all_checks.sh` per-stage wall time on the
-Loop 79 anchor commit (M-series macOS, local TeX Live install):
+`papers/scripts/run_all_checks.sh` per-stage wall time on M-series
+macOS, local TeX Live install. The 3-variant compile stage also
+runs an embedded pdftotext sanity grep (Loop 86 addition):
 
 | Stage | Wall time | Notes |
 |---|---:|---|
@@ -115,7 +117,7 @@ Loop 79 anchor commit (M-series macOS, local TeX Live install):
 | (2) metadata verify | 57 ms | Python regex over paper + EOI |
 | (3) no fabricated SHAs | 450 ms | `git cat-file -e` per token (20 SHAs × ~22 ms) |
 | (4) test inventory regen | 18.9 s | `cargo test --list` per binary (slowest stage) |
-| (5) xelatex 3-variant compile | 13.2 s | 3 variants × ~4 s each (xelatex + bibtex) |
+| (5) xelatex 3-variant compile + pdftotext grep | 13.2 s | 3 variants × ~4 s + Loop 86 PDF-rendering sanity grep on `<!-- ` / `\{}Gamma` / `\textbackslash` / etc. |
 | (6) figure regen | 13.1 s | 6 figures + 2 cargo runs (f2_to_jsonl + f2_mediation_sensitivity) |
 | (7) supplementary pack | varies | Includes provenance check + skip-regen mode |
 | **Total** | **~46 s** | End-to-end on warm caches |
@@ -127,3 +129,12 @@ warm-up + texlive package install (see
 benchmark is achievable for stages 1-3 only (~750 ms total); 4-6
 require Rust + xelatex + matplotlib and are reserved for the full
 CI gate.
+
+**Loop 86 update — PDF rendering sanity grep**: stage 5 now
+extracts text from each compiled PDF via `pdftotext` and greps
+for a curated list of telltale rendering-bug strings (HTML
+comments, `\{}Gamma` escape leaks, raw `\textbackslash`, leaked
+`\citep{` / `\cref{` macros, leaked `\begin{itemize}` /
+`\begin{enumerate}` markers). Any match aborts the compile step.
+This permanently closes the class of bug Loop 85 caught only
+because the PDF was finally opened by a human after 84 loops.

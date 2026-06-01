@@ -107,18 +107,42 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–86)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them:
+caught before reviewers saw them. **Eleven** independent passes:
 
-- Loop 59 derivation audit: re-attributed Miles-Shpitser citation
-  (5 authors, not 2), explicit Γ/Λ uniform-scalar reduction,
-  removed unsupported smoking-cancer benchmark comparison.
-- Loop 61 hostile-reviewer screen: surfaced 3 desk-reject risks
+- **Loop 59** derivation audit: re-attributed Miles-Shpitser
+  citation (5 authors, not 2), explicit Γ/Λ uniform-scalar
+  reduction, removed unsupported smoking-cancer benchmark
+  comparison.
+- **Loop 61** hostile-reviewer screen: 3 desk-reject risks
   (synthetic counter framing, wd=0 pathological-state
   counter-reading, MLRC reproducibility-track fit). All three
   closed by Loops 62, 62, 63 respectively.
+- **Loop 75** anchor SHA cleanup: replaced `5367bde` (Loop 55, no
+  empirical CSVs committed) with `583b417` (Loop 68, full data
+  anchor).
+- **Loop 76** 8-issue sweep: §6.1 ↔ §5.3 self-contradiction
+  (closest single fix); Zhao-Luo → Daniel et al. bulk rename;
+  EOI count drift; abstract acronym expansion.
+- **Loop 77** Vaswani/Loshchilov verification; "Daniel et al.'s
+  identification" possessive cleanup.
+- **Loop 79** AblationBench mis-description caught (paper is about
+  LM-agent ablation *planning*, not Welch/Cohen's-d analysis).
+- **Loop 80** four citation hygiene catches in one pass: RO-Crate
+  authorship, InfiR2 paper withdrawn, Fibbinary author
+  fabrication, QuEST title correction.
+- **Loop 82** submission-flow correction: MLRC EOI is a Google
+  Form (not OpenReview); requires prior TMLR submission.
+- **Loop 83** 9 additional EOI/OpenReview leaks across docs.
+- **Loop 84** SUBMISSION_CHECKLIST decision-tree fix.
+- **Loop 85** PDF visual inspection: TWO SEV-5 rendering bugs
+  invisible in 84 prior loops because the PDF was never opened.
+  HTML anonymizer banner rendering as prose in abstract; math
+  symbols Γ/Λ/Δ rendering as literal `\{}Gamma` text. Both fixed
+  in the converter; `compile_tmlr_test.sh` extended with a
+  pdftotext-grep stage to catch this class permanently (Loop 86).
 
 ### 8. Case study survey (Loops 63–64)
 

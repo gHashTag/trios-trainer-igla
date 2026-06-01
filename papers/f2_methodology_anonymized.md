@@ -310,7 +310,7 @@ equivalence numerically: the residual
 collapse.
 
 In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
-within-seed difference `Y_i(\text{remove } S) − Y_i(\text{full stack})`. Each
+within-seed difference $Y_i(\text{remove } S) - Y_i(\text{full stack})$. Each
 PSE then has a per-seed estimator that is a **linear combination** of these
 seed-level differences. Linearity is the crucial property: the multivariate
 delta-method reduces (Miles, Shpitser, Kanki, Meloni & Tchetgen Tchetgen
@@ -322,7 +322,7 @@ $$
 \widehat{\text{Var}}(\widehat{\text{PSE}}) \;=\; \tfrac{1}{N(N-1)} \sum_{i=1}^N \left(\text{PSE}_i - \overline{\text{PSE}}\right)^2
 $$
 
-We report `SE = sqrt(\widehat{\text{Var}})` for each PSE.
+We report $\mathrm{SE} = \sqrt{\widehat{\mathrm{Var}}}$ for each PSE.
 
 For confidence intervals at small `N`, we use the Student-t critical value
 `t_{0.975, N-1}`:

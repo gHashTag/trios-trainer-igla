@@ -182,13 +182,66 @@ def transform_inline(line: str) -> str:
             "…": "...",
             "—": "--",
             "–": "-",
-            # Combining macron / acute / etc. — strip; the base char remains.
+            # Set membership / sets
+            "∈": "in",
+            "∉": "notin",
+            "⊆": "subseteq",
+            "⊂": "subset",
+            "∪": "U",
+            "∩": "n",
+            "∞": "inf",
+            "∀": "forall",
+            "∃": "exists",
+            # Greek lowercase (typewriter font lacks these via fontspec)
+            "α": "alpha",
+            "β": "beta",
+            "γ": "gamma",
+            "δ": "delta",
+            "ε": "epsilon",
+            "ζ": "zeta",
+            "η": "eta",
+            "θ": "theta",
+            "ι": "iota",
+            "κ": "kappa",
+            "λ": "lambda",
+            "μ": "mu",
+            "ν": "nu",
+            "ξ": "xi",
+            "π": "pi",
+            "ρ": "rho",
+            "σ": "sigma",
+            "τ": "tau",
+            "φ": "phi",
+            "χ": "chi",
+            "ψ": "psi",
+            "ω": "omega",
+            # Superscripts (10⁻⁶ etc.)
+            "⁰": "^0",
+            "¹": "^1",
+            "²": "^2",
+            "³": "^3",
+            "⁴": "^4",
+            "⁵": "^5",
+            "⁶": "^6",
+            "⁷": "^7",
+            "⁸": "^8",
+            "⁹": "^9",
+            "⁻": "^-",
+            "₀": "_0",
+            "₁": "_1",
+            "₂": "_2",
+            "₃": "_3",
+            "₄": "_4",
+            # Combining marks — strip; the base char remains.
             "̄": "",
             "́": "",
             "̀": "",
             "̃": "",
             "̂": "",
             "̈": "",
+            "̇": "",
+            "̆": "",
+            "̌": "",
         }
 
         def _bt(m: re.Match) -> str:
@@ -270,6 +323,34 @@ def main() -> int:
     # Strip HTML comments (e.g. the anonymizer banner). They render as
     # prose in xelatex if left in.
     raw = re.sub(r"<!--.*?-->", "", raw, flags=re.DOTALL)
+    # Pre-process: Markdown **bold** that spans multiple lines within a
+    # paragraph is invisible to the per-line transform_inline. Process
+    # each paragraph separately (split on `\n\n+`), running the multi-
+    # line bold regex within each. This prevents bold from accidentally
+    # spanning across paragraph or table-cell boundaries.
+    paragraphs = re.split(r"(\n\n+)", raw)
+    for idx in range(0, len(paragraphs), 2):
+        para = paragraphs[idx]
+        if "**" not in para or "\n" not in para:
+            continue
+        # Bold whose content contains a `\n` (i.e. truly multi-line).
+        # Don't match if the inner contains a backtick or markdown table
+        # row separator `\n|`.
+        def _multiline_bold(m: re.Match) -> str:
+            inner = re.sub(r"\s*\n\s*", " ", m.group(1))
+            return f"\\textbf{{{inner}}}"
+
+        # Markdown-spec boundary rules for bold:
+        # - Opening `**` must be followed by a non-whitespace char.
+        # - Closing `**` must be preceded by a non-whitespace char.
+        # This prevents matching the closing `**` of a single-line
+        # bold as if it were an opening `**` for a multi-line one.
+        paragraphs[idx] = re.sub(
+            r"\*\*(\S[^*|]*\n[^*|]+\S)\*\*",
+            _multiline_bold,
+            para,
+        )
+    raw = "".join(paragraphs)
     src = raw.splitlines()
 
     body: list[str] = []
