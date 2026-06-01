@@ -67,8 +67,39 @@ on PR #185 (`f2-methodology` branch). Short status:
 
 Until those land, the pre-reg stays *draft-protocol, non-binding*.
 
+**Citation hygiene history** (6 catches across the paper's loops)
+- Loop 55 — corrected Gao-Li-Luo attribution (paper had said "Zhao &
+  Luo"); corrected Hagmann/Riezler (paper had said "Semmelrock");
+  corrected BitNet 2402.17764 vs 2504.12285 conflation; removed
+  unverifiable Alvarez-Bartolo & MacKinnon entry
+- Loop 59 — corrected Miles & Shpitser to the full 5-author list
+  (Miles, Shpitser, Kanki, Meloni, Tchetgen Tchetgen); corrected the
+  Γ_tip < 1.25 / ≥ 2.0 threshold attribution from VanderWeele-Ding
+  to Haneuse-VanderWeele-Arterburn (JAMA 2019)
+- Loop 60 — switched primary attribution Gao-Li-Luo → Daniel et al.
+  2015 (foundational two-mediator decomposition)
+- Loop 77 — verified Vaswani 2017 NeurIPS + Loshchilov ICLR 2019
+  citations for the §5.2 wd=0 defense
+- Loop 79 — corrected AblationBench mis-description (paper is about
+  LM-agent ablation *planning*, not wide-form / paired Welch / Cohen's
+  d analysis); corrected author "Abramovich et al." → "Abramovich &
+  Chechik"
+- Loop 80 — caught FOUR additional issues in one pass: (i) RO-Crate
+  first author "Sefton" was fabricated (actually Leo + Soiland-Reyes,
+  PLoS ONE 2024); (ii) **InfiR2 FP8 paper (arXiv:2509.22536) was
+  withdrawn 2025-10-17 by authors due to a data-processing pipeline
+  bug** — §9.4 now explicitly flags this; (iii) Fibbinary paper
+  attribution "Schmidt-Mengin et al." was fabricated (actually
+  Fiandaca & Gomony, and the paper is about neural radio receivers,
+  not transformer LLMs); (iv) QuEST title was wrong
+
+`papers/CITATIONS.md` documents each entry's verification status.
+Current ledger: **24 VERIFIED + 1 VERIFIED-WITHDRAWN (96%), 0
+CONFIRMED-VENUE**.
+
 **MLRC 2026 venue**
-- Soft EOI deadline: **2026-06-04 AOE** (~21h from Loop 66 push)
+- Soft EOI deadline: **2026-06-04 AOE** (single-digit hours from
+  Loop 81 push)
 - Hard TMLR decision deadline: **2026-09-30 AOE**
 - Author notifications: 2026-10-07; in-person presentation
   NeurIPS Sydney 2026-12-06–13
