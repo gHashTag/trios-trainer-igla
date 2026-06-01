@@ -62,11 +62,16 @@ For OpenReview TMLR submission:
       `test_compile_tmlr.tex`, `figures/*.png`
 - [ ] OpenReview author profile complete (anonymous during review)
 
-For MLRC 2026 EOI form:
+For MLRC 2026 EOI Google Form (loop 82 correction — NOT OpenReview):
 
-- [ ] EOI text from `papers/tmlr_submission_kit/eoi_form_text.md`
-      pasted into OpenReview EOI form
-- [ ] EOI deadline: **2026-06-04 AOE** (soft)
+- [ ] Paper submitted to TMLR via OpenReview FIRST (within window
+      2025-06-20 ≤ submit ≤ 2026-09-30 AOE) — see
+      [openreview.net/group?id=TMLR](https://openreview.net/group?id=TMLR)
+- [ ] EOI Google Form filled at
+      [forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7)
+      using the text from `papers/tmlr_submission_kit/eoi_form_text.md`
+- [ ] EOI soft deadline: **2026-06-04 AOE**
+- [ ] TMLR hard decision deadline: **2026-09-30 AOE**
 
 For GitHub Issue #1021:
 

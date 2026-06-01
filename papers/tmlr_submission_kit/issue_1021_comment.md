@@ -121,10 +121,23 @@ methodology-paper-only path is taken explicitly.
 
 ## How to post (when authenticated)
 
-```bash
-gh issue comment 1021 --repo gHashTag/trios \
-    --body-file papers/tmlr_submission_kit/issue_1021_comment.md
-```
+The file's outer scaffold (top H1 + this "When/How to post" tail) is
+for local reference only. The ready-to-post body is the content
+between the `\`\`\`markdown` fence on line 13 and the closing
+`\`\`\`` on line 113. Extract it to a separate file before posting:
 
-(Strip the markdown fence wrapper; the file's outer scaffold is for
-local reference only.)
+```bash
+# Extract body between markdown fences:
+awk '/^```markdown/,/^```$/' \
+    papers/tmlr_submission_kit/issue_1021_comment.md \
+  | sed '1d;$d' \
+  > /tmp/issue_1021_body.md
+
+# Verify auth, then post:
+gh auth status
+gh issue comment 1021 --repo gHashTag/trios \
+    --body-file /tmp/issue_1021_body.md
+
+# Verify it landed:
+gh issue view 1021 --repo gHashTag/trios --comments | tail -30
+```

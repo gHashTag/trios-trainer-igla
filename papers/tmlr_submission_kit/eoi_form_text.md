@@ -1,8 +1,20 @@
 # MLRC 2026 "Intent to submit" — paste-ready form text
 
-**Submission target**: OpenReview MLRC 2026 EOI form
-(https://reproml.org/call_for_papers/), **soft deadline 2026-06-04
-AOE**.
+**Submission target**: MLRC 2026 EOI **Google Form**
+([forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7))
+linked from [reproml.org/call_for_papers/](https://reproml.org/call_for_papers/),
+**soft deadline 2026-06-04 AOE**.
+
+**Important — submission flow (Loop 82 catch)**: The MLRC EOI is
+*not* the actual paper submission. The flow is:
+1. **First** submit the paper to TMLR via OpenReview
+   ([openreview.net TMLR group](https://openreview.net/group?id=TMLR))
+   within the eligibility window (2025-06-20 ≤ submission ≤ 2026-09-30 AOE).
+2. **Then** fill out the Google Form to express interest in MLRC
+   consideration. The form text below goes into the Google Form
+   fields, not into OpenReview.
+3. Once the paper is TMLR-accepted, update the Google Form with the
+   acceptance details for camera-ready.
 
 **How to use this file**: open the EOI OpenReview form, paste each
 field below into the matching form field. The Abstract has been
