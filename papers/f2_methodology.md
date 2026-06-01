@@ -733,26 +733,102 @@ applied within its valid scope.
 
 ## 9. Related work
 
+We situate F2 against three adjacent literatures: ML ablation
+methodology, causal mediation theory, and sensitivity analysis. We also
+briefly catalogue the quantization literature that motivates the
+champion-scale follow-up in `docs/F2_PRE_REG.md`.
+
 ### 9.1 ML ablation methodology
-- ABLATOR (PMLR 2023, Fostiropoulos et al.)
-- AblationBench (arXiv:2507.08038)
-- Reproducibility in ML (arXiv:2302.04054, Semmelrock 2025)
+
+**ABLATOR** (Fostiropoulos & Itti, 2023) is the closest infrastructure
+work: a tool for running multi-seed ablation studies at scale with
+result aggregation. ABLATOR stops at multi-seed ranking; it does not
+attempt mediation decomposition or stratified CDE analysis. F2 extends
+the multi-seed-ranking workflow by adding causal-inference-grade
+reasoning over the seeds.
+
+**AblationBench** (Abramovich et al., 2025, arXiv:2507.08038) provides
+a benchmark suite for ablation methodology. Their wide-form CSV schema
+and paired-Welch + Cohen's-d statistics are the median ML-paper
+practice; F2 generalizes the schema to long-form with W3C-PROV preambles
+and replaces paired-Welch with stratified CDE + bridge-score sensitivity.
+
+**Inferential reproducibility** (Hagmann, Meier & Riezler, 2023,
+arXiv:2302.04054, "Towards Inferential Reproducibility of Machine
+Learning Research") motivates the seed-stability discipline that F2
+operationalizes. Hagmann et al. argue that seed nondeterminism alone
+can flip baseline-vs-SOTA orderings; F2's `f2_provenance_check` + lock
+tests are direct responses to this concern at the framework level.
 
 ### 9.2 Causal mediation
-- Zhao & Luo (2020), arXiv:2007.16031
-- Miles & Shpitser (2017), arXiv:1710.02011
-- DoWhy (arXiv:2011.04216), CMAverse (R package)
+
+The four-path decomposition we use in §3.2 is from **Gao, Li & Luo**
+(2020, arXiv:2007.16031, "Decomposition of the Total Effect for Two
+Mediators: A Natural Counterfactual Interaction Effect Framework"). We
+deliberately attribute the result to its actual authors after a
+validation pass in Loop 55; an earlier draft of this paper conflated
+their result with a different Zhao-Luo work.
+
+The delta-method linearization we use to derive per-PSE SEs reduces to
+the **efficient influence function** treatment of Miles & Shpitser
+(2017, arXiv:1710.02011) under our no-interaction assumption. Their §3
+provides the formal derivation; we cite it as the theoretical basis for
+the reduction.
+
+**DoWhy** (Sharma & Kıcıman, 2020, arXiv:2011.04216) is the closest
+Python-side toolkit; we adopt its flat-record-per-estimate JSON
+convention for `f2_to_jsonl` output. **CMAverse** (Shi, Liao, Aerts &
+VanderWeele, available via CRAN) is the R-side reference; we adopt its
+long-form CSV convention for sensitivity sweeps. Neither toolkit
+implements the Pearl-CDE-style stratum pinning that F2's mediator-
+stratified sweep modes provide.
 
 ### 9.3 Sensitivity analysis
-- VanderWeele & Ding (2017): E-value
-- Ohnishi & Li (2026): bridge-score Theorem 2 (arXiv:2605.18724)
-- Alvarez-Bartolo & MacKinnon (2025): tipping-point curves for mediation
 
-### 9.4 Quantization (only as motivation for our ablation study)
-- BitNet b1.58 2B4T (arXiv:2402.17764)
-- Quantization scaling laws (arXiv:2502.05003)
-- The original phi-ladder vs format-zoo question (Issue #1021) is the
-  motivating ablation, deferred to champion-scale follow-up
+The **E-value** convention (VanderWeele & Ding, Annals of Internal
+Medicine, 2017, "Sensitivity Analysis in Observational Research: Introducing
+the E-Value") establishes the `Γ < 1.25` / `Γ ≥ 2.0` fragility/robustness
+thresholds we adopt for the `Γ_tip` classification in §3.3 and §5.4.
+
+The **bridge-score additive envelope** in §3.3 is from Ohnishi & Li
+(2026, arXiv:2605.18724) Theorem 2. We use the additive scale (their
+Eq. 6) directly; BPB is on the additive scale by construction, so no
+log/risk-ratio translation is required.
+
+We are not aware of prior work that combines E-value-style robustness
+classification with mediator stratification, four-path decomposition,
+and reproducibility-grade infrastructure in a single framework. The
+F2 contribution is the integration plus the headline empirical
+demonstration.
+
+### 9.4 Quantization (motivation for the champion-scale follow-up)
+
+The original research question that motivated this framework
+(`Issue #1021`) was a head-to-head BPB comparison between a phi-ladder
+quantization path (GFTernary → GF8 → GF16 → GF32) and the mainstream
+format-zoo (BitNet b1.58, INT4, FP8, bf16). The methodology work in
+this paper was a by-product of preparing the analysis tooling for that
+comparison; the comparison itself is deferred to the pre-registered
+follow-up in `docs/F2_PRE_REG.md`.
+
+For context on the format-zoo competitors, the key references are:
+- **BitNet b1.58** (Ma et al., 2024, arXiv:2402.17764, "The Era of
+  1-bit LLMs: All Large Language Models are in 1.58 Bits"), establishing
+  the ternary `{−1, 0, +1}` weights baseline; and the follow-up
+  **BitNet b1.58 2B4T Technical Report** (Microsoft, 2025,
+  arXiv:2504.12285) demonstrating the recipe at 2B params on 4T tokens.
+- **Quantization scaling laws**, partially addressed in QuEST
+  (Panferov et al., 2025, arXiv:2502.05003) — a QAT method that
+  characterizes the precision-vs-scale frontier as a side effect of
+  proposing a new training recipe; we cite it loosely as the closest
+  available proxy for a dedicated scaling-law treatment.
+- **FP8 at production scale**, see the NVIDIA Nemotron MXFP8 recipe
+  reports and the InfiR2 training pipeline (arXiv:2509.22536).
+- **Fibbinary / golden-ratio quantization** (Schmidt-Mengin et al.,
+  2025, arXiv:2511.01921) is the only published phi-format work we are
+  aware of; the authors openly acknowledge that aggressive ternary phi
+  encoding requires incremental QAT to recover accuracy. This is the
+  literature anchor for the phi-ladder path under study.
 
 ---
 
