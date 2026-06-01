@@ -94,16 +94,26 @@ For GitHub Issue #1021:
                   ┌─────────┴─────────┐
                   │NO                YES
                   ▼                   ▼
-        Debug locally vs CI    Is the EOI deadline
-                                still in the future?
+        Debug locally vs CI    Has the HARD TMLR
+                                decision deadline
+                                (2026-09-30 AOE) passed?
                                        │
                               ┌────────┴────────┐
-                              │NO              YES
+                              │YES             NO
                               ▼                 ▼
-                  Skip MLRC 2026 cycle;   Submit MLRC EOI
-                  pivot to Causal-ML       + post #1021
-                  workshop (Oct deadline)   status comment
+                  Skip MLRC 2026 cycle;   Submit paper to TMLR
+                  pivot to Causal-ML      (openreview.net/group?id=TMLR);
+                  workshop (Oct deadline) THEN fill MLRC EOI Google
+                                          Form (forms.gle/bvYxagcRjKSmYhUM7);
+                                          THEN post #1021 status comment
 ```
+
+**Note on the soft 2026-06-04 EOI deadline**: this is a soft date.
+The EOI is filed *after* the paper enters TMLR review, so missing
+this specific date does not require skipping MLRC. The binding date
+is the hard TMLR decision deadline 2026-09-30 AOE. Loops 82-84
+corrected the earlier framing that treated the soft date as
+blocking.
 
 ## 6. Post-submission
 
