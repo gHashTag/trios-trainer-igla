@@ -57,14 +57,14 @@ fn load_bin(path: &str) -> Vec<usize> {
 
 struct Model {
     d: usize,
-    emb: Vec<f32>,   // VOCAB * d  (also used as LM head, tied)
-    pos: Vec<f32>,   // MAXSEQ * d
-    wq: Vec<f32>,    // d * d
+    emb: Vec<f32>, // VOCAB * d  (also used as LM head, tied)
+    pos: Vec<f32>, // MAXSEQ * d
+    wq: Vec<f32>,  // d * d
     wk: Vec<f32>,
     wv: Vec<f32>,
     wo: Vec<f32>,
-    w1: Vec<f32>,    // d * (4d)
-    w2: Vec<f32>,    // (4d) * d
+    w1: Vec<f32>, // d * (4d)
+    w2: Vec<f32>, // (4d) * d
 }
 
 const MAXSEQ: usize = 512;
@@ -91,8 +91,14 @@ impl Model {
 
     fn flat_mut(&mut self) -> Vec<&mut [f32]> {
         vec![
-            &mut self.emb, &mut self.pos, &mut self.wq, &mut self.wk,
-            &mut self.wv, &mut self.wo, &mut self.w1, &mut self.w2,
+            &mut self.emb,
+            &mut self.pos,
+            &mut self.wq,
+            &mut self.wk,
+            &mut self.wv,
+            &mut self.wo,
+            &mut self.w1,
+            &mut self.w2,
         ]
     }
 }
@@ -264,7 +270,9 @@ fn forward_backward(
             let t1 = (2.0 / std::f32::consts::PI).sqrt() * (x + 0.044715 * x * x * x);
             let th = t1.tanh();
             let dgelu = 0.5 * (1.0 + th)
-                + 0.5 * x * (1.0 - th * th)
+                + 0.5
+                    * x
+                    * (1.0 - th * th)
                     * (2.0 / std::f32::consts::PI).sqrt()
                     * (1.0 + 3.0 * 0.044715 * x * x);
             let g_pre = g_act[kk] * dgelu;
@@ -290,20 +298,34 @@ fn forward_backward(
 }
 
 fn arg(args: &[String], key: &str) -> Option<String> {
-    args.iter().position(|a| a == key).and_then(|i| args.get(i + 1).cloned())
+    args.iter()
+        .position(|a| a == key)
+        .and_then(|i| args.get(i + 1).cloned())
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let train_path = arg(&args, "--train").unwrap_or_else(|| "data/code_train.bin".into());
     let val_path = arg(&args, "--val").unwrap_or_else(|| "data/code_val.bin".into());
-    let d: usize = arg(&args, "--hidden").and_then(|s| s.parse().ok()).unwrap_or(128);
-    let seq: usize = arg(&args, "--seq").and_then(|s| s.parse().ok()).unwrap_or(64);
-    let steps: usize = arg(&args, "--steps").and_then(|s| s.parse().ok()).unwrap_or(2000);
-    let batch: usize = arg(&args, "--batch").and_then(|s| s.parse().ok()).unwrap_or(8);
-    let lr: f64 = arg(&args, "--lr").and_then(|s| s.parse().ok()).unwrap_or(0.001);
+    let d: usize = arg(&args, "--hidden")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(128);
+    let seq: usize = arg(&args, "--seq")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(64);
+    let steps: usize = arg(&args, "--steps")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(2000);
+    let batch: usize = arg(&args, "--batch")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(8);
+    let lr: f64 = arg(&args, "--lr")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0.001);
     let opt_arm = arg(&args, "--optimizer").unwrap_or_else(|| "standard".into());
-    let seed: u64 = arg(&args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(42);
+    let seed: u64 = arg(&args, "--seed")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(42);
 
     println!("=== IGLA-Coder v1 (CPU) ===");
     println!("anchor: phi^2 + phi^-2 = 3");
@@ -353,7 +375,10 @@ fn main() {
         if step % 100 == 0 || step == steps - 1 {
             let nats = loss_acc / batch as f32;
             let bpb = nats / std::f32::consts::LN_2; // byte-level: 1 token == 1 byte
-            println!("step={:>5} train_loss_nats={:.4} train_bpb={:.4}", step, nats, bpb);
+            println!(
+                "step={:>5} train_loss_nats={:.4} train_bpb={:.4}",
+                step, nats, bpb
+            );
         }
     }
 
@@ -367,9 +392,15 @@ fn main() {
     while i + seq + 1 < val.len() && windows < 64 {
         let toks = &val[i..i + seq + 1];
         // forward only: reuse fwd/bwd but discard grads
-        for g in dummy_e.iter_mut() { *g = 0.0; }
-        for g in dummy_2.iter_mut() { *g = 0.0; }
-        for g in dummy_1.iter_mut() { *g = 0.0; }
+        for g in dummy_e.iter_mut() {
+            *g = 0.0;
+        }
+        for g in dummy_2.iter_mut() {
+            *g = 0.0;
+        }
+        for g in dummy_1.iter_mut() {
+            *g = 0.0;
+        }
         val_nats += forward_backward(&model, toks, &mut dummy_e, &mut dummy_2, &mut dummy_1);
         windows += 1;
         i += seq;

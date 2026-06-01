@@ -145,7 +145,11 @@ fn main() -> std::io::Result<()> {
     }
 
     // Deterministic split: every Nth doc to val.
-    let stride = if val_frac > 0.0 { (1.0 / val_frac).round() as usize } else { 0 };
+    let stride = if val_frac > 0.0 {
+        (1.0 / val_frac).round() as usize
+    } else {
+        0
+    };
     let mut train_tokens: Vec<u16> = Vec::new();
     let mut val_tokens: Vec<u16> = Vec::new();
     for (i, d) in docs.iter().enumerate() {
@@ -166,7 +170,11 @@ fn main() -> std::io::Result<()> {
     write_bin(&val_path, &val_tokens)?;
 
     println!("docs={} vocab_size={}", docs.len(), VOCAB_SIZE);
-    println!("train_tokens={} -> {}", train_tokens.len(), train_path.display());
+    println!(
+        "train_tokens={} -> {}",
+        train_tokens.len(),
+        train_path.display()
+    );
     println!("val_tokens={} -> {}", val_tokens.len(), val_path.display());
     Ok(())
 }
