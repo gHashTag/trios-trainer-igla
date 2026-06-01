@@ -13,7 +13,7 @@ declined and the paper is redirected to Causal-ML Workshop or ICML
 
 | Date | Event | Notes |
 |------|-------|-------|
-| **2026-06-04 AOE** | MLRC "intent to submit" soft deadline | OpenReview EOI form opens earlier |
+| **2026-06-04 AOE** | MLRC "intent to submit" soft deadline | Google Form [forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7); requires prior TMLR submission |
 | **2026-09-30 AOE** | Hard TMLR decision deadline | Paper must be TMLR-accepted by this date to be MLRC-eligible |
 | **2026-10-07** | MLRC author notifications | Acceptance / rejection at this point |
 | **2026-12-06 – 12-13** | NeurIPS 2026 Sydney | In-person presentation if accepted |
@@ -21,11 +21,14 @@ declined and the paper is redirected to Causal-ML Workshop or ICML
 ## Submission path: TMLR → MLRC
 
 1. Submit anonymized paper PDF + supplementary materials to TMLR via
-   OpenReview (TMLR LaTeX template, see `template.tex`).
-2. Once accepted (with no or minor revisions), submit the OpenReview
-   self-nomination form to MLRC 2026.
-3. On MLRC acceptance, update camera-ready info and prepare a Sydney
-   in-person presentation.
+   OpenReview ([openreview.net/group?id=TMLR](https://openreview.net/group?id=TMLR);
+   TMLR LaTeX template, see `template.tex`).
+2. Once the paper is under TMLR review, fill the MLRC EOI Google Form
+   ([forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7))
+   using `eoi_form_text.md`.
+3. On TMLR acceptance (no or minor revisions), update the same
+   Google Form with the acceptance details for MLRC camera-ready.
+4. On MLRC acceptance, prepare a Sydney in-person presentation.
 
 ## Kit contents
 
@@ -38,8 +41,9 @@ declined and the paper is redirected to Causal-ML Workshop or ICML
 - `template.tex` — TMLR LaTeX skeleton ready to receive the body of
   `papers/f2_methodology.md`. Not auto-generated; the conversion is
   manual (Markdown → LaTeX) and tracked separately.
-- `eoi_form_text.md` — draft "intent to submit" text for the MLRC EOI
-  OpenReview form
+- `eoi_form_text.md` — paste-ready text for the MLRC EOI
+  **Google Form** (NOT OpenReview;
+  [forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7))
 - `anonymization_checklist.md` — items to verify before upload
 
 ## What this kit does NOT do

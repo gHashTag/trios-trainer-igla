@@ -148,7 +148,8 @@ into CI on every push touching `papers/`. PR #185 turns from
 - Paste-ready Issue #1021 update:
   `papers/tmlr_submission_kit/issue_1021_comment.md`
 - Submission action items:
-  - User: submit EOI to OpenReview
+  - User: submit paper to TMLR via OpenReview, then fill MLRC EOI
+    Google Form ([forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7))
   - User: post #1021 comment
   - System: PDF + supplementary zip auto-built by
     `.github/workflows/paper-checks.yml` artifacts on push

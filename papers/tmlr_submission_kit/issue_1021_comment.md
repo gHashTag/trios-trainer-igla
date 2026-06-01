@@ -98,8 +98,11 @@ Current ledger: **24 VERIFIED + 1 VERIFIED-WITHDRAWN (96%), 0
 CONFIRMED-VENUE**.
 
 **MLRC 2026 venue**
-- Soft EOI deadline: **2026-06-04 AOE** (single-digit hours from
-  Loop 81 push)
+- Soft EOI deadline: **2026-06-04 AOE** (soft only — the EOI is the
+  MLRC Google Form `forms.gle/bvYxagcRjKSmYhUM7` filed *after* the
+  paper enters TMLR review, so there is no specific tonight-deadline;
+  the binding date is the hard TMLR decision deadline at 2026-09-30
+  AOE)
 - Hard TMLR decision deadline: **2026-09-30 AOE**
 - Author notifications: 2026-10-07; in-person presentation
   NeurIPS Sydney 2026-12-06–13

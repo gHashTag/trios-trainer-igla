@@ -16,7 +16,9 @@ linked from [reproml.org/call_for_papers/](https://reproml.org/call_for_papers/)
 3. Once the paper is TMLR-accepted, update the Google Form with the
    acceptance details for camera-ready.
 
-**How to use this file**: open the EOI OpenReview form, paste each
+**How to use this file**: open the MLRC EOI Google Form
+([forms.gle/bvYxagcRjKSmYhUM7](https://forms.gle/bvYxagcRjKSmYhUM7)),
+paste each
 field below into the matching form field. The Abstract has been
 revised in Loop 63 to reflect the §5 reframing as a unit-test
 demonstration (per Loop 61 reviewer screen Top-1 closest-fix).

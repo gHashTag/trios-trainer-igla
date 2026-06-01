@@ -1335,10 +1335,13 @@ call schedule.
   notifications **2026-10-07**. Our W3C-PROV preamble discipline (§3.5.1),
   formula-locking regression tests (§8.2), commit-anchored claim table,
   and §3.5.4 reviewer reproducibility checklist are exactly the
-  artifacts this track catalogues. The publication path is: submit to
-  TMLR within the eligibility window (≥ 2025-06-20 AOE), self-nominate
-  to MLRC on acceptance, present in person at NeurIPS 2026 (Sydney,
-  December 6–13). Path: TMLR → MLRC.
+  artifacts this track catalogues. The publication path is: submit
+  the paper to TMLR via OpenReview within the eligibility window
+  (≥ 2025-06-20 AOE), then file the MLRC EOI via the Google Form at
+  `forms.gle/bvYxagcRjKSmYhUM7` once the paper is under TMLR review;
+  MLRC consideration follows TMLR acceptance, with in-person
+  presentation at NeurIPS 2026 (Sydney, December 6–13). Path:
+  TMLR (OpenReview) → MLRC EOI Google Form → MLRC track.
 
 - **NeurIPS 2026 Causal-ML Workshop.** Strong secondary fit, retained
   as a fall-back. The audience cares more about identification theory
