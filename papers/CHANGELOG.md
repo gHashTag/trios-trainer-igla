@@ -172,11 +172,30 @@ source) and acted on the findings. Catches by loop:
   leads (no list numbering). §10.2 venue calibration cleaned —
   rewrote 4 long bullets (URLs, dates, city/date strings) as a
   4-row table + 2 sentences.
+- **Loop 90** — 15th pass surfaced FOUR more SEV-5/SEV-4 blockers
+  that would have failed desk-screen: §10.2 table truncation,
+  Appendix C structural orphan (table appeared under wrong
+  heading), §B.3 exit-codes table truncation, and **7 body
+  citations had no rendered bib entry** (Daniel et al. 2015 the
+  primary attribution, VanderWeele-Ding cited 8+ times, Vaswani,
+  Loshchilov, Haneuse, Guo, Fostiropoulos). Fixed by converting
+  the 3 tables to bullets and adding `\nocite{}` directive to
+  test_compile_tmlr.tex. Bib gained 2 new entries (meng2022rome,
+  wang2023activation).
+- **Loop 91** — Loop 90 regression catch (SEV 2): the converted
+  bullets in §10.2 / §B.3 / Appendix C broke prose continuation
+  into separate paragraphs because the converter's list-
+  continuation detection required 3-space indent (`lj.startswith
+  ("   ")`) but Markdown spec is 2-space. Relaxed to 2-space;
+  bullets now flow inline. Table renumber 3→1 to restore reading
+  order. README updated with preflight_submission.sh as the
+  one-command entry point.
 
 Net effect: 7-stage CI gate → 8-stage CI gate (added markdown
 lint). pdftotext-grep added to xelatex stage with ~20 patterns.
 PDF renders cleanly with math symbols, multi-line bold, tables
-without truncation, four-cluster §7. From 14 adversarial reviews.
+without truncation, four-cluster §7, bullet flow, complete
+bibliography. **From 16 adversarial reviews.**
 
 ### 8. Case study survey (Loops 63–64)
 
