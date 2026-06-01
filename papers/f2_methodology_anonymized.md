@@ -533,6 +533,7 @@ mechanically:
 | `papers/scripts/compile_tmlr_test.sh` | Regenerate the LaTeX body from the Markdown source, run xelatex + BibTeX 3-pass to verify the paper compiles cleanly to PDF. | ~10 s |
 | `papers/scripts/figure_regen.sh` | Stage committed CSVs from `data/loop49/` and `data/loop49_swap/` through `f2_to_jsonl` and `f2_mediation_sensitivity`; regenerate all 6 paper figures. | ~10 s |
 | `papers/scripts/verify_paper_metadata.py` | CI-style drift gate: title parity (paper H1 = EOI Title), test-count parity (paper claims = inventory counts), BibTeX completeness (every cite has an entry), figure files exist for every "Figure N" reference. | < 1 s |
+| `papers/scripts/run_all_checks.sh` | Single-shot CI gate chaining all five scripts above plus `pack_supplementary.sh`; exits 0 only if every stage passes. | ~30 s |
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +
@@ -541,6 +542,12 @@ before building the supplementary zip;
 any single failure aborts the pack. The intent is that no
 supplementary artifact ever ships without all five invariants
 verified at bundle time.
+
+For one-shot pre-submission verification, `papers/scripts/run_all_checks.sh`
+chains every script in this catalogue plus the supplementary-pack
+into a six-stage CI gate (~30 s end-to-end). The gate exits 0
+only if all stages pass; any drift surfaces before submission rather
+than after.
 
 ---
 
