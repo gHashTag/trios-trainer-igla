@@ -44,12 +44,65 @@ OUT = CRATE_ROOT / "papers" / "tmlr_submission_kit" / "f2_methodology_body.tex"
 HEADER_2_RE = re.compile(r"^##\s+(\d+)\.\s+(.*)$")
 HEADER_3_RE = re.compile(r"^###\s+(\d+\.\d+(?:\.\d+)?)\s+(.*)$")
 APPENDIX_HEADER_RE = re.compile(r"^###\s+([A-Z])\.\s+(.*)$")
+INLINE_SUBSUB_RE = re.compile(r"^\*\*(\d+\.\d+\.\d+)\s+(.+?)\.\*\*\s*(.*)$")
 SECTION_REF_RE = re.compile(r"§(\d+(?:\.\d+){0,2})")
 ARXIV_RE = re.compile(r"arXiv:(\d{4}\.\d{4,5})")
 BACKTICK_RE = re.compile(r"`([^`]+)`")
 BOLD_RE = re.compile(r"\*\*([^*]+)\*\*")
 ITALIC_RE = re.compile(r"\*([^*]+)\*")
 LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+
+# Unicode characters that pdflatex with utf8inputenc cannot render. We
+# substitute LaTeX equivalents in the prose segments (math segments are
+# unaffected — their contents pass through to math-mode rendering, which
+# handles these natively).
+UNICODE_PROSE_MAP = {
+    "−": "$-$",       # U+2212 minus sign (vs. ASCII hyphen-minus)
+    "—": "---",       # U+2014 em dash
+    "–": "--",        # U+2013 en dash
+    "…": "\\dots{}",  # U+2026 horizontal ellipsis
+    "×": "$\\times$", # U+00D7
+    "≥": "$\\geq$",   # U+2265
+    "≤": "$\\leq$",   # U+2264
+    "≈": "$\\approx$",# U+2248
+    "→": "$\\to$",    # U+2192
+    "±": "$\\pm$",    # U+00B1
+    "·": "$\\cdot$",  # U+00B7
+    "≪": "$\\ll$",    # U+226A
+    "≫": "$\\gg$",    # U+226B
+    "∞": "$\\infty$", # U+221E
+    "ε": "$\\varepsilon$",  # U+03B5
+    "θ": "$\\theta$",
+    "λ": "$\\lambda$",
+    "Λ": "$\\Lambda$",
+    "γ": "$\\gamma$",
+    "Γ": "$\\Gamma$",
+    "Δ": "$\\Delta$",
+    "Σ": "$\\Sigma$",
+    "σ": "$\\sigma$",
+    "μ": "$\\mu$",
+    "π": "$\\pi$",
+    "η": "$\\eta$",
+    "φ": "$\\varphi$",
+    "²": "$^2$",      # superscript 2
+    "³": "$^3$",      # superscript 3
+    "⁻": "$^{-}$",
+    "⁶": "$^6$",
+    "₁": "$_1$",
+    "₂": "$_2$",
+    "⊆": "$\\subseteq$",
+    "∈": "$\\in$",
+    "∀": "$\\forall$",
+    "∃": "$\\exists$",
+}
+
+
+def unicode_to_latex(text: str) -> str:
+    """Replace UTF-8 prose specials with LaTeX equivalents."""
+    for ch, repl in UNICODE_PROSE_MAP.items():
+        text = text.replace(ch, repl)
+    return text
 
 
 def latex_escape(text: str) -> str:
@@ -125,12 +178,32 @@ def transform_inline(line: str) -> str:
             )
             return f"\\texttt{{{inner}}}"
 
-        payload = BACKTICK_RE.sub(_bt, payload)
+        payload = unicode_to_latex(payload)
+        # First carve out backtick content (which has its own escaping
+        # rules) so we don't double-escape inside it.
+        bt_placeholders: list[str] = []
+        def _bt_capture(m: re.Match) -> str:
+            bt_placeholders.append(_bt(m))
+            return f"\x00BT{len(bt_placeholders) - 1}\x00"
+        payload = BACKTICK_RE.sub(_bt_capture, payload)
+        # Now escape LaTeX specials in the surviving prose. `_` and `^`
+        # are illegal in text mode (subscript/superscript triggers); we
+        # escape them everywhere outside backtick blocks.
+        payload = re.sub(r"(?<!\\)([&%#])", r"\\\1", payload)
+        payload = re.sub(r"(?<!\\)_", r"\\_", payload)
+        payload = re.sub(r"(?<!\\)\^", r"\\^{}", payload)
+        # Markdown transforms (operate on escaped prose; the escapes survive).
         payload = BOLD_RE.sub(r"\\textbf{\1}", payload)
         payload = ITALIC_RE.sub(r"\\emph{\1}", payload)
         payload = SECTION_REF_RE.sub(r"\\cref{sec:\1}", payload)
+        # arXiv id format like "2007.16031" contains a `.` (safe) but our
+        # earlier `_` escape may have hit it; ARXIV_RE is anchored on the
+        # literal "arXiv:" prefix which we have not modified, so this is fine.
         payload = ARXIV_RE.sub(r"\\citep{arxiv:\1}", payload)
         payload = LINK_RE.sub(r"\\href{\2}{\1}", payload)
+        # Restore backtick blocks
+        for k, repl in enumerate(bt_placeholders):
+            payload = payload.replace(f"\x00BT{k}\x00", repl)
         out.append(payload)
     return "".join(out)
 
@@ -215,6 +288,18 @@ def main() -> int:
             body.append("")
             i += 1
             continue
+        m = INLINE_SUBSUB_RE.match(line)
+        if m:
+            num, title, tail = m.group(1), m.group(2), m.group(3)
+            body.append("")
+            body.append(
+                f"\\subsubsection{{{transform_inline(title)}}}\\label{{sec:{num}}}"
+            )
+            body.append("")
+            if tail.strip():
+                body.append(transform_inline(tail))
+            i += 1
+            continue
         m = APPENDIX_HEADER_RE.match(line)
         if m:
             letter, title = m.group(1), m.group(2)
@@ -277,34 +362,56 @@ def main() -> int:
                 table_buf = []
             # Fall through to prose handling
 
-        # List items
+        # List items — buffer the whole list (items + indented
+        # continuation lines + blank separator lines) into one chunk.
         m = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", line)
         if m:
-            indent, marker, content = m.group(1), m.group(2), m.group(3)
-            # Skip elaborate list nesting — flat itemize / enumerate only.
+            marker = m.group(2)
             kind = "enumerate" if re.match(r"\d+\.", marker) else "itemize"
-            # Look-back: if previous non-empty body line is not \begin{kind},
-            # open the environment. Look-ahead: if next non-blank line is
-            # not a list item or continuation, close it.
-            if not body or not body[-1].startswith(f"\\begin{{{kind}}}") and not any(
-                b.startswith("\\item")
-                and not (body[-1].startswith("\\end") if body else True)
-                for b in body[-3:]
-            ):
-                # Heuristic open
-                if not body or not (
-                    body[-1].endswith("\\item")
-                    or (body[-1].lstrip().startswith("\\item"))
-                ):
-                    body.append(f"\\begin{{{kind}}}")
-            body.append(f"\\item {transform_inline(content)}")
-            # Lookahead: if next line is not list, close.
-            j = i + 1
-            while j < len(src) and not src[j].strip():
-                j += 1
-            if j >= len(src) or not re.match(r"^\s*([-*]|\d+\.)\s+", src[j]):
-                body.append(f"\\end{{{kind}}}")
-            i += 1
+            list_lines: list[tuple[str, str]] = []  # (role, content)
+            j = i
+            while j < len(src):
+                lj = src[j]
+                mi = re.match(r"^(\s*)([-*]|\d+\.)\s+(.*)$", lj)
+                if mi:
+                    list_lines.append(("item", mi.group(3)))
+                    j += 1
+                    continue
+                if not lj.strip():
+                    # blank — peek ahead: if next non-blank is item or
+                    # indented continuation, treat as separator; else stop
+                    k = j + 1
+                    while k < len(src) and not src[k].strip():
+                        k += 1
+                    if k < len(src) and (
+                        re.match(r"^(\s*)([-*]|\d+\.)\s+", src[k])
+                        or src[k].startswith("   ")
+                    ):
+                        list_lines.append(("blank", ""))
+                        j += 1
+                        continue
+                    break
+                if lj.startswith("   ") or lj.startswith("\t"):
+                    list_lines.append(("cont", lj.lstrip()))
+                    j += 1
+                    continue
+                break
+            body.append(f"\\begin{{{kind}}}")
+            current: list[str] = []
+            for role, content in list_lines:
+                if role == "item":
+                    if current:
+                        body.append("\\item " + " ".join(current))
+                        current = []
+                    current.append(transform_inline(content))
+                elif role == "cont":
+                    current.append(transform_inline(content))
+                elif role == "blank":
+                    pass
+            if current:
+                body.append("\\item " + " ".join(current))
+            body.append(f"\\end{{{kind}}}")
+            i = j
             continue
 
         # Blank line → preserve as paragraph break

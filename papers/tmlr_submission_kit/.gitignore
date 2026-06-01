@@ -1,2 +1,12 @@
 # Re-generable artifacts
 f2_methodology_supp.zip
+
+# xelatex build artifacts
+test_compile.pdf
+test_compile.aux
+test_compile.log
+test_compile.bbl
+test_compile.blg
+test_compile.out
+test_compile.toc
+test_compile.xelatex.log

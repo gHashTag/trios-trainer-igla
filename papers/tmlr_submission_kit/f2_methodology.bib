@@ -1,0 +1,237 @@
+% f2_methodology.bib — bibliography for F2 methodology paper.
+%
+% All 16 arXiv citations + 7 verified-publication entries cited in
+% papers/f2_methodology.md. Entries cross-checked via WebFetch/WebSearch
+% in Loops 55, 58, 59, 60, 61. Where the paper has a journal version
+% later than the arXiv preprint, both fields are preserved so reviewers
+% can verify either.
+%
+% Entry keys use the form `arxiv:NNNN.NNNNN` for arXiv entries (matches
+% the auto-converter's `\citep{arxiv:NNNN.NNNNN}` output). Journal/PMC-
+% only entries use first-author-year keys.
+
+% ── Two-mediator causal mediation (foundational) ─────────────────────
+@article{daniel2015biom,
+  author    = {Daniel, R. M. and De Stavola, B. L. and Cousens, S. N. and Vansteelandt, S.},
+  title     = {Causal mediation analysis with multiple mediators},
+  journal   = {Biometrics},
+  year      = {2015},
+  volume    = {71},
+  number    = {1},
+  pages     = {1--14},
+  doi       = {10.1111/biom.12248},
+  pmid      = {25351114},
+}
+
+@article{arxiv:2007.16031,
+  author    = {Gao, Yi and Li, Fang and Luo, Sheng},
+  title     = {Decomposition of the Total Effect for Two Mediators:
+               {A} Natural Counterfactual Interaction Effect Framework},
+  journal   = {arXiv preprint arXiv:2007.16031},
+  year      = {2020},
+  note      = {Published as PMC9139468; no-interaction reduction supplies
+               the four-PSE collapse used in F2 §3.2.},
+}
+
+@article{arxiv:1710.02011,
+  author    = {Miles, Caleb H. and Shpitser, Ilya and Kanki, Phyllis and
+               Meloni, Seema and Tchetgen Tchetgen, Eric J.},
+  title     = {On semiparametric estimation of a path-specific effect in
+               the presence of mediator-outcome confounding},
+  journal   = {arXiv preprint arXiv:1710.02011},
+  year      = {2017},
+  note      = {Efficient influence function basis for the delta-method
+               reduction used in §3.2 (no-interaction regime).},
+}
+
+@article{arxiv:1912.09936,
+  author    = {D{\'i}az, Iv{\'a}n and Hejazi, Nima S. and Rudolph,
+               Kara E. and van der Laan, Mark J.},
+  title     = {Non-parametric efficient causal mediation with
+               intermediate confounders},
+  journal   = {Biometrika},
+  year      = {2021},
+  volume    = {108},
+  number    = {3},
+  pages     = {627--641},
+  note      = {arXiv:1912.09936 preprint.},
+}
+
+@article{arxiv:2205.04408,
+  author    = {Rudolph, Kara E. and D{\'i}az, Iv{\'a}n},
+  title     = {Efficient and flexible estimation of natural mediation
+               effects under intermediate confounding and monotonicity
+               constraints},
+  journal   = {Biometrics},
+  year      = {2023},
+  doi       = {10.1111/biom.13850},
+  note      = {arXiv:2205.04408 preprint.},
+}
+
+@article{arxiv:2107.11014,
+  author    = {Hong, Guanglei and Yang, Fan and Qin, Xu},
+  title     = {Posttreatment confounding in causal mediation studies:
+               {A} cutting-edge problem and a novel solution via
+               sensitivity analysis},
+  journal   = {Biometrics},
+  year      = {2023},
+  doi       = {10.1111/biom.13705},
+  note      = {arXiv:2107.11014 preprint.},
+}
+
+% ── Sensitivity analysis ─────────────────────────────────────────────
+@article{vanderweele2017evalue,
+  author    = {VanderWeele, Tyler J. and Ding, Peng},
+  title     = {Sensitivity Analysis in Observational Research:
+               Introducing the E-Value},
+  journal   = {Annals of Internal Medicine},
+  year      = {2017},
+  volume    = {167},
+  number    = {4},
+  pages     = {268--274},
+  doi       = {10.7326/M16-2607},
+}
+
+@article{haneuse2019jama,
+  author    = {Haneuse, Sebastien and VanderWeele, Tyler J. and Arterburn, David},
+  title     = {Using the {E-Value} to Assess the Potential Effect of
+               Unmeasured Confounding in Observational Studies},
+  journal   = {JAMA},
+  year      = {2019},
+  volume    = {321},
+  number    = {6},
+  pages     = {602--603},
+  doi       = {10.1001/jama.2018.21554},
+  pmid      = {30676631},
+}
+
+@article{guo2026sim,
+  author    = {Guo, Hao and Liu, Wei and others},
+  title     = {Sensitivity Analysis for Unmeasured Confounding in
+               Causal Mediation Analysis With Survival Outcome},
+  journal   = {Statistics in Medicine},
+  year      = {2026},
+  volume    = {45},
+  number    = {8-9},
+  pages     = {e70548},
+  doi       = {10.1002/sim.70548},
+  note      = {Author order verified; check final journal record at
+               proof time for the full author list.},
+}
+
+@article{arxiv:2605.18724,
+  author    = {Ohnishi, Yuki and Li, Fan},
+  title     = {Additive bridge-score sensitivity envelopes for
+               path-specific effects},
+  journal   = {arXiv preprint arXiv:2605.18724},
+  year      = {2026},
+  note      = {Theorem 2 (Eq. 5) is the additive bound used in F2 §3.3.
+               Uniform-scalar reduction $\Gamma := \sup \gamma_a$,
+               $\Lambda := \sup \eta_a$ described in §3.3.},
+}
+
+@article{arxiv:2508.10083,
+  author    = {Owen, Art B.},
+  title     = {Better bootstrap-{t} confidence intervals for the mean},
+  journal   = {arXiv preprint arXiv:2508.10083},
+  year      = {2025},
+  note      = {Motivates Student-{t} default over BCa at N=5 by
+               documenting BCa undercoverage.},
+}
+
+% ── ML ablation methodology ──────────────────────────────────────────
+@article{arxiv:2507.08038,
+  author    = {Abramovich, Roi and others},
+  title     = {{AblationBench}: A benchmark for ablation methodology},
+  journal   = {arXiv preprint arXiv:2507.08038},
+  year      = {2025},
+  note      = {Wide-form CSV + paired-Welch + Cohen's d baseline that
+               F2 generalizes to long-form with W3C-PROV preambles.},
+}
+
+@inproceedings{fostiropoulos2023ablator,
+  author    = {Fostiropoulos, Iordanis and Itti, Laurent},
+  title     = {{ABLATOR}: Robust Horizontal-Scaling of Machine Learning
+               Ablation Experiments},
+  booktitle = {Proceedings of the 2nd International Conference on
+               Automated Machine Learning (AutoML)},
+  year      = {2023},
+  note      = {Closest infrastructure work to F2; stops at multi-seed
+               ranking without mediation decomposition.},
+}
+
+@article{arxiv:2302.04054,
+  author    = {Hagmann, Michael and Meier, Stefan and Riezler, Stefan},
+  title     = {Towards Inferential Reproducibility of Machine Learning
+               Research},
+  journal   = {arXiv preprint arXiv:2302.04054},
+  year      = {2023},
+  note      = {Seed-stability motivation for F2 provenance discipline.},
+}
+
+% ── Provenance / reproducibility ─────────────────────────────────────
+@article{arxiv:2312.07852,
+  author    = {Sefton, Stian and others},
+  title     = {{RO-Crate}: Packaging research data, software and other
+               digital objects with provenance},
+  journal   = {arXiv preprint arXiv:2312.07852},
+  year      = {2023},
+  note      = {W3C-PROV / RO-Crate preamble convention adopted in F2
+               (§3.5.1).},
+}
+
+@article{arxiv:2011.04216,
+  author    = {Sharma, Amit and K{\i}c{\i}man, Emre},
+  title     = {{DoWhy}: An End-to-End Library for Causal Inference},
+  journal   = {arXiv preprint arXiv:2011.04216},
+  year      = {2020},
+  note      = {Flat-record-per-estimate JSONL convention adopted by
+               f2\_to\_jsonl.},
+}
+
+% ── Quantization / motivation for champion-scale follow-up ──────────
+@article{arxiv:2402.17764,
+  author    = {Ma, Shuming and others},
+  title     = {The Era of {1-bit} {LLMs}: All Large Language Models are
+               in 1.58 Bits},
+  journal   = {arXiv preprint arXiv:2402.17764},
+  year      = {2024},
+  note      = {Original BitNet b1.58 paper.},
+}
+
+@article{arxiv:2504.12285,
+  author    = {Microsoft},
+  title     = {{BitNet b1.58 2B4T} Technical Report},
+  journal   = {arXiv preprint arXiv:2504.12285},
+  year      = {2025},
+  note      = {2B parameter, 4T token instantiation of the b1.58 recipe.
+               NOT to be confused with arXiv:2402.17764 (the original
+               paper) — Loop 55 caught this conflation in F2 §9.},
+}
+
+@article{arxiv:2502.05003,
+  author    = {Panferov, Andrei and others},
+  title     = {{QuEST}: Quantization scaling laws via quantization-aware
+               training},
+  journal   = {arXiv preprint arXiv:2502.05003},
+  year      = {2025},
+  note      = {Cited as closest proxy for quantization scaling-law
+               treatment.},
+}
+
+@article{arxiv:2509.22536,
+  author    = {{NVIDIA} and others},
+  title     = {{MXFP8} training recipe ({InfiR2})},
+  journal   = {arXiv preprint arXiv:2509.22536},
+  year      = {2025},
+  note      = {FP8 production-scale recipe; pre-reg comparator.},
+}
+
+@article{arxiv:2511.01921,
+  author    = {Schmidt-Mengin, Maxence and others},
+  title     = {Fibbinary / golden-ratio quantization},
+  journal   = {arXiv preprint arXiv:2511.01921},
+  year      = {2025},
+  note      = {Only published phi-format work known to us; literature
+               anchor for the phi-ladder path.},
+}
