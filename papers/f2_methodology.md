@@ -231,26 +231,45 @@ in the enum doc-comment.
 
 **Figure 2**: Stratum enum + registry flow.
 
-### 3.2 Zhao-Luo four-path decomposition
+### 3.2 Four-path decomposition for two ordered mediators
 
-Following Gao, Li & Luo (2020, arXiv:2007.16031, "Decomposition of the
-Total Effect for Two Mediators: A Natural Counterfactual Interaction
-Effect Framework"), the total effect of `X` on
-`Y` in the presence of two ordered mediators `M_1` and `M_2` decomposes
-additively into four path-specific effects (PSEs):
+Following Daniel, De Stavola, Cousens & Vansteelandt (2015,
+*Biometrics* 71:1–14, doi:10.1111/biom.12248,
+"Causal mediation analysis with multiple mediators"), the total
+effect of `X` on `Y` in the presence of two ordered mediators
+`M_1`, `M_2` decomposes additively into four path-specific effects
+(PSEs):
 
 $$
 \text{TE}(X) \;=\; \text{NDE}(X) \;+\; \text{NIE}_{M_1}(X) \;+\; \text{NIE}_{M_2}(X) \;+\; \text{NIE}_{\text{chain}}(X)
 $$
 
-Under sequential ignorability and no exposure-mediator interaction, each
-PSE is identified by the **counterfactual difference**
+The four components are: the **natural direct effect** (the part of
+`Δ Y` that does not flow through either mediator), the **natural
+indirect effect through `M_1` alone**, the **natural indirect effect
+through `M_2` alone**, and the **natural indirect effect through the
+chain `M_1 → M_2`** (the path that traverses both mediators
+sequentially). The Daniel et al. nested-counterfactual identification
+formulas decompose the joint NIE into exactly these four pieces; the
+broader interaction-effect framework of Gao, Li & Luo (2020,
+arXiv:2007.16031, "Decomposition of the Total Effect for Two Mediators:
+A Natural Counterfactual Interaction Effect Framework") supplies the
+companion no-interaction reduction we adopt below — under
+no exposure-mediator interaction, every Gao-Li-Luo interaction term
+vanishes and the residual decomposition collapses onto the Daniel et
+al. four-PSE form.
+
+Under sequential ignorability and no exposure-mediator interaction,
+each PSE is identified by the **counterfactual difference**
 
 $$
 \Delta_S \;\equiv\; \mathbb{E}\!\left[Y(\text{remove } S)\right] - \mathbb{E}\!\left[Y(\text{full stack})\right]
 $$
 
-for every `S ⊆ {X, M_1, M_2}`. The closed-form Zhao-Luo decomposition is:
+for every `S ⊆ {X, M_1, M_2}`. This `Δ_S` notation is the
+computational representation we use in `f2_dual_mediation`; it is
+algebraically equivalent to the Daniel et al. nested-counterfactual
+expressions under no-interaction, with the four-PSE decomposition:
 
 $$
 \begin{aligned}
@@ -260,6 +279,13 @@ $$
 \text{NIE}_{M_2} &= \Delta_{X, M_1} - \Delta_{X, M_1, M_2}
 \end{aligned}
 $$
+
+The lock test
+`dual_mediation_no_interaction_residual_lock` (§8.2) certifies the
+equivalence numerically: the residual
+`Δ_X − (NDE + NIE_{M_1} + NIE_{M_2} + NIE_{chain})` is below
+`1×10⁻⁶` in our regime, which empirically confirms the no-interaction
+collapse.
 
 In our setting, `Δ_S` is estimated per seed `i ∈ {1, …, N}` as the
 within-seed difference `Y_i(\text{remove } S) − Y_i(\text{full stack})`. Each
@@ -292,11 +318,9 @@ method) are the relevant evidence for our purposes. The Student-t
 adjustment we use is more conservative but does not require simulation
 calibration, which is desirable at the demonstration scale of §5.
 
-**Implementation**: `src/bin/f2_dual_mediation.rs`. The `Loop 34 lock test`
-`dual_mediation_no_interaction_residual_lock` verifies the residual
-`Δ_X − (\text{NDE} + \text{NIE}_{M_1} + \text{NIE}_{M_2} + \text{NIE}_{\text{chain}})`
-is below `1×10⁻⁶` in our regime, empirically confirming the no-interaction
-assumption holds.
+**Implementation**: `src/bin/f2_dual_mediation.rs`. The
+no-interaction equivalence and the residual lock test are described
+above in the four-PSE block.
 
 ### 3.3 Bridge-score sensitivity envelope
 
