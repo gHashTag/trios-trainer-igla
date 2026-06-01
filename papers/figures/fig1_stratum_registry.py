@@ -48,31 +48,34 @@ def main():
             fontsize=11, fontweight="bold", ha="left")
     for i, (name, prefix) in enumerate(STRATA):
         y = 5.5 - i * 0.7
+        # Loop 105 fix: box height increased + prefix annotation moved
+        # to a separate y row so it no longer collides with the enum name
+        # (was "::Canonicaldefault" run-together text).
         rect = mpatches.FancyBboxPatch(
-            (0.5, y - 0.25), 2.3, 0.55,
+            (0.5, y - 0.32), 2.3, 0.62,
             boxstyle="round,pad=0.05",
             facecolor="#dfeaf6", edgecolor="#2c5d8f", linewidth=1.4,
         )
         ax.add_patch(rect)
-        ax.text(0.7, y, f"::{name}", fontsize=10, fontweight="bold",
+        ax.text(0.7, y + 0.10, f"::{name}", fontsize=10, fontweight="bold",
                 color="#2c5d8f", va="center")
-        ax.text(2.7, y - 0.05, f"prefix={prefix!r}", fontsize=8, color="#555555",
-                va="center", ha="right")
+        ax.text(0.7, y - 0.16, f"prefix={prefix!r}", fontsize=8, color="#555555",
+                va="center", ha="left")
 
     # Middle column: ModeKind enum.
     ax.text(4.5, 6.4, "ModeKind", fontsize=11, fontweight="bold", ha="left")
     for i, (name, base) in enumerate(MODE_KINDS):
         y = 5.5 - i * 0.7
         rect = mpatches.FancyBboxPatch(
-            (4.2, y - 0.25), 2.0, 0.55,
+            (4.2, y - 0.32), 2.0, 0.62,
             boxstyle="round,pad=0.05",
             facecolor="#e8f0d8", edgecolor="#5a7d2c", linewidth=1.4,
         )
         ax.add_patch(rect)
-        ax.text(4.4, y, f"::{name}", fontsize=10, fontweight="bold",
+        ax.text(4.4, y + 0.10, f"::{name}", fontsize=10, fontweight="bold",
                 color="#5a7d2c", va="center")
-        ax.text(6.1, y - 0.05, f"base={base!r}", fontsize=8, color="#555555",
-                va="center", ha="right")
+        ax.text(4.4, y - 0.16, f"base={base!r}", fontsize=8, color="#555555",
+                va="center", ha="left")
 
     # Right column: emitted mode strings (cross-product).
     ax.text(7.7, 6.4, "mode column tag",

@@ -15,7 +15,7 @@ TMLR/MLRC reader sees first.
 
 A modern transformer training recipe pins down dozens of choices
 that interact in non-obvious ways. Among them, the **numeric
-representation** of weights and activations — bf16, FP8, INT4-W4A8,
+representation** of weights and activations — bf16, FP8, INT8,
 BitNet-1.58 ternary — has become a moving target, with new "zoo"
 entries published every quarter and very few of them evaluated
 against each other on the same controlled training regime. The
@@ -25,7 +25,7 @@ does the **phi-ladder** family of representations
 (GFTernary → GF8 → GF16 → GF32, anchored at the golden-ratio
 recurrence $\phi^2 + \phi^{-2} = 3$) yield lower held-out
 validation bits-per-byte (BPB) than the leading members of the
-mainstream zoo (BitNet-1.58, INT4-W4A8, MXFP8, bf16)?*
+mainstream zoo (BitNet-1.58, INT8 Jetfire, MXFP8, bf16)?*
 
 The contribution of this paper is **not** a positive answer to
 that question. We pre-register a sweep against eight
@@ -142,7 +142,7 @@ We do not claim:
   Fibonacci-basis quantizations (Fibbinary,
   arXiv:2511.01921 for radio receivers) exist and are not
   evaluated here.
-- **No claim of computational-cost parity** with INT4 or FP8.
+- **No claim of computational-cost parity** with INT8 or FP8.
   The phi-ladder's multiplicative basis costs more per FLOP than
   the additive INT/FP families; we report wall-clock and memory
   peak as secondary outcomes but do not adjust the BPB comparison
@@ -176,7 +176,7 @@ QAT-on-pretrained-model literature; our protocol holds at
 quantization-aware training from scratch at 1B parameters, so the
 comparable prior work is pre-training quantization specifically.
 
-### 2.1 Integer-base zoo (INT8, INT4-W4A8, BitNet-1.58)
+### 2.1 Integer-base zoo (INT8, BitNet-1.58)
 
 The 8-bit integer family has been the production default since
 GPTQ (Frantar, Ashkboos, Hoefler & Alistarh 2023,
@@ -193,23 +193,25 @@ combined with an 8-bit activation path; the authors do not
 isolate the contribution of the ternary path from the activation
 quantization.
 
-The INT4-W4A8 family includes both **post-training** and
-**from-scratch-training** variants. The contemporary
-from-scratch reference is **Jetfire** (Xi et al. 2024, NeurIPS,
-arXiv:2403.12422), which trains transformers with INT4 weights
-and INT8 activations from initialization. **LLM-FP4** (Liu et
-al., arXiv:2310.16836) is a related W4A4 floating-point
-*post-training* method, often grouped with the INT4 family in
-ablation surveys. AffineQuant (Zhao et al. 2024, arXiv:2403.12544)
-is another post-training INT4 variant. Their BPB deltas vs bf16
-at $\sim$1B parameters are reported as $\leq 0.05$ BPB in the
-original papers; the comparisons are typically against
-post-training rather than from-scratch training, so for our
-protocol (from-scratch, FineWeb 50B tokens) we use **Jetfire's
-from-scratch INT4-W4A8 recipe** as the zoo competitor. Earlier
-drafts mis-attributed arXiv:2310.16836 to Jetfire; the correct
-Jetfire arXiv id is 2403.12422 (corrected in Loop 104 after the
-27th adversarial pass).
+From-scratch low-bit *integer* training is dominated by **Jetfire**
+(Xi et al. 2024, NeurIPS, arXiv:2403.12422), which trains
+transformers with **INT8 weights, INT8 activations, and per-block
+quantization** from initialization. Lower-precision INT4-W4A8
+schemes exist primarily as *post-training* methods: LLM-FP4 (Liu
+et al., arXiv:2310.16836) is W4A4 floating-point post-training,
+and AffineQuant (Zhao et al. 2024, arXiv:2403.12544) is INT4
+post-training. To our knowledge there is no widely-cited
+from-scratch INT4-W4A8 reference at $\geq$ 1B parameters; the
+zoo entry in §3.1 is therefore restricted to **INT8** (Jetfire's
+recipe) and we drop the INT4 entry. Earlier drafts of this
+manuscript (pre-Loop 105) cycled through two wrong attributions
+for the integer zoo entry — first attributing
+arXiv:2310.16836 to "Jetfire INT4-W4A8" (Loop 102 draft), then
+correcting the arXiv id to 2403.12422 while *retaining* the
+incorrect INT4-W4A8 description (Loop 104 patch). The 28th
+adversarial pass (Loop 105) caught both errors; we now use
+Jetfire as INT8 (its actual claim) and acknowledge there is no
+champion-scale from-scratch INT4 reference to compare against.
 
 The integer family's strength is its alignment with existing
 hardware INT4/INT8 matmul kernels; its weakness is the
@@ -315,12 +317,15 @@ Eight configurations × two strata × five seeds = **80 runs**.
 | `GF16`      | phi-ladder | 16-bit phi-encoded weights; activations bf16 |
 | `GF32`      | phi-ladder | 32-bit phi-encoded weights (intra-family baseline) |
 | `BitNet-1.58` | integer | ternary weights per arXiv:2402.17764; 8-bit activations |
-| `INT4-W4A8` | integer  | 4-bit weights + 8-bit activations per arXiv:2310.16836 |
+| `INT8`      | integer  | INT8 weights + INT8 activations + per-block quantization per Jetfire (arXiv:2403.12422) |
 | `FP8`       | floating-point | E4M3 weights + E5M2 gradients per arXiv:2209.05433 |
 | `bf16`      | floating-point | bf16 weights + bf16 activations (gold-standard baseline) |
 
 **Strata**: `canonical` (default WD = 0.1, all seven F2 fixes
-enabled) and `wd0` (WD pinned to 0.0, otherwise identical). The
+enabled) is the **pre-registered primary stratum**; `wd0` (WD
+pinned to 0.0, otherwise identical) is the **secondary stratum**.
+The asymmetric primary/secondary designation is enforced by the
+§4.4 reporting rule and prevents post-hoc stratum-shopping. The
 wd0 stratum is the Pearl Controlled Direct Effect on weight decay
 that the companion F2 paper's §5.2 demonstrates is informative.
 
@@ -394,48 +399,54 @@ CSV is committed at run time to `data/issue1021/<batch>/`.
 The protocol uses the F2 framework's identification machinery
 **per pairwise (phi-config, zoo-config) comparison**, not as a
 single decomposition over all 8 configs. For each pair, X is
-binary (which of the two formats is in use), and the four-PSE
-decomposition of `f2_dual_mediation` runs unchanged.
+binary (which of the two formats is in use). However, the
+four-PSE decomposition of `f2_dual_mediation` **does not apply
+to the format comparison** for an identification reason we
+discuss below; this paper uses only the **total-effect** and
+**bridge-score envelope** machinery from the F2 framework.
 
-**Mediator-positivity caveat (added Loop 104 per 27th adversarial
-pass).** Naïvely using `lossy_conversions` as $M_1$ and
-`wall_clock_s` as $M_2$ would violate the positivity / overlap
-assumption that Pearl's four-PSE identification requires: a
-config's mediator value is largely *deterministic* in the format
-choice (bf16 has zero lossy conversions by definition; GFTernary
-has many). Under deterministic $M | X$, the four-PSE decomposition
-is not identified — the NIE_M1 and NIE_M2 pathways collapse into
-the direct path. We therefore use the following residualized
-mediators:
+**Why four-PSE is dropped for this paper (28th adversarial pass
+discovery, Loop 105).** Pearl's four-PSE identification requires
+positivity: $0 < P(M = m | X = x) < 1$ for the mediator values
+the decomposition integrates over. Two candidate mediators —
+`lossy_conversions` and `wall_clock_s` — are **deterministic
+functions of $X$**: bf16 has zero lossy conversions by definition,
+GFTernary has many; per-format wall-clock is determined by the
+kernel path. Loop 104 attempted a residualization fix (subtracting
+config-specific seed-median baselines), but the 28th pass
+correctly noted that subtracting a config-specific constant does
+not change the conditional distribution shape; the residualized
+$M$ is still deterministic in $X$ up to a shift, and positivity
+remains violated. The four-PSE decomposition under these
+mediators would be identified algebraically (because the
+residualization makes the variance non-degenerate) but
+uninformative — the NDE absorbs essentially the entire total
+effect because NIE_M1 and NIE_M2 carry no causally relevant
+variation. We do not pre-register a four-PSE decomposition for
+this paper; instead we run:
 
-- **$M_1$ = residual lossy-conversion rate** = (per-cell lossy
-  conversions) − (config-baseline lossy conversions at seed
-  median). This subtracts the format-deterministic component
-  and leaves only the *seed-residual* variation in conversion
-  counts, which has support across formats.
-- **$M_2$ = residual training wall-clock** = (per-cell wall_s) −
-  (config-baseline wall_s at seed median). Same residualization
-  argument.
+- **Total-effect estimation per pair**: `f2_pairwise_perm`
+  paired-permutation test on val_bpb difference, BH-corrected
+  over 4 comparisons per phi-config.
+- **Bridge-score envelope on the total effect**:
+  `f2_mediation_sensitivity` with the *total effect* as the
+  estimand (not a per-PSE bound). This treats unmeasured
+  confounding between format and validation BPB symmetrically
+  for each pair.
 
-The pre-registered question is whether the *residualized* direct
-path (controlling for seed-residual variation in $M_1$ and $M_2$)
-favors phi-ladder. The format-deterministic component of each
-mediator is part of the *direct* effect under this
-identification, by design.
-
-This residualization differs from the companion F2 paper's
-unmediated mediator definition (RmsNorm × WD had clear
-positivity); the change is forced by the pairwise-categorical
-X structure here. We pre-register this identification choice
-along with the rest of the protocol; any deviation will be
-flagged at the run-result paper.
+The four-PSE machinery is **retained for future use** if and
+when a separate paper exhibits a non-deterministic mediator
+that can be measured at champion scale (e.g., per-layer gradient
+norm under format perturbation), but we do not deploy it for
+the format-comparison protocol here.
 
 The wd0 stratum is the Pearl CDE that the companion paper
 demonstrates can flip signs. If quantization-format × WD
 interaction exists at the same magnitude as the companion paper's
 RmsNorm × WD interaction, we expect the wd0 stratum to either
 strengthen or weaken the phi-ladder advantage. The protocol
-explicitly admits both outcomes and reports both.
+explicitly admits both outcomes and reports both, with
+**canonical as the pre-registered primary stratum** (see §4.4).
 
 ### 3.5 Reporting discipline
 
@@ -504,7 +515,7 @@ claim about superiority on the pairs where H1 does not hold.
 ### 4.3 H2 — phi-config dominant across the zoo
 
 **Statement**: At least one phi-config has mean BPB $\geq 0.10$
-BPB lower than **every** zoo-config (BitNet-1.58, INT4-W4A8, FP8,
+BPB lower than **every** zoo-config (BitNet-1.58, INT8, FP8,
 bf16), with all 4 pairwise differences significant at $p < 0.05$
 after BH correction over the 4 comparisons.
 
@@ -810,7 +821,7 @@ Citations to add to the bib before spin-off (introduced in
 §2 + §3):
 - Frantar/GPTQ (arXiv:2210.17323)
 - Xiao/SmoothQuant (arXiv:2211.10438)
-- Xi/Jetfire (arXiv:2310.16836)
+- Xi/Jetfire (arXiv:2403.12422) — INT8, not INT4 (Loop 105 correction)
 - Wang & Kanwar bf16 (Google blog post 2019)
 - Micikevicius FP8 (arXiv:2209.05433)
 - Hagmann phi-quantization (arXiv:2102.xxx — to verify)

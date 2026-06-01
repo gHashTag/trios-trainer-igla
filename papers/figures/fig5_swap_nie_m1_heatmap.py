@@ -139,10 +139,12 @@ def main():
 
     ax.set_xlabel("Stratum")
     ax.set_ylabel("fix_x")
+    # Loop 105 fix: caption was overlapping the x-axis label.
+    # Move caption further below and reserve bottom margin in layout.
+    fig.tight_layout(rect=(0, 0.06, 1, 1))
     plt.figtext(
-        0.5, 0.005,
-        "Thick row outline = byte-identical estimate across all 3 strata "
-        "(Loop 64 Phase 0 finding)",
+        0.5, 0.015,
+        "Thick row outline = byte-identical estimate across all 3 strata",
         ha="center", fontsize=8, style="italic",
     )
 
