@@ -29,6 +29,8 @@ pub mod optimizer;
 pub mod phi_numbers;
 pub mod race;
 pub mod seed_canon;
+pub mod backward;
+pub mod pipeline;
 pub mod train_loop;
 
 pub use config::TrainConfig;

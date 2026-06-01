@@ -188,7 +188,7 @@ pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError
 ///
 /// Uses Abramowitz & Stegun 26.7.1 approximation for the incomplete beta
 /// function. For df=2 (our n=3 case), this is exact.
-fn t_cdf_lower_tail(t: f64, df: f64) -> f64 {
+pub(crate) fn t_cdf_lower_tail(t: f64, df: f64) -> f64 {
     // For df=2, we have a closed form using the arctangent
     if (df - 2.0).abs() < f64::EPSILON {
         // Exact formula for df=2: 0.5 + t / (2 * sqrt(2 + t²))
