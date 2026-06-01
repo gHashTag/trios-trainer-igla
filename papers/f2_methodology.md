@@ -250,10 +250,105 @@ strata (the sign-flip case in §5.2), or one stratum's CSV is corrupted
 **Implementation**: `src/bin/f2_stratum_compare.rs`.
 
 ### 3.5 Provenance and reproducibility
-- W3C-PROV / Workflow Run RO-Crate preamble (arXiv:2312.07852)
-- `f2_provenance_check` validates schema + git SHA + timestamp
-- TRAINER_INTERNALS_SCHEMA constant in `config_fingerprint` detects silent
-  drift (e.g., LCG seed changes that flip outputs at identical config hash)
+
+Statistical-causal results are only as credible as the data lineage that
+produced them. Three Loop-32 audit incidents motivated a defensive provenance
+discipline that is now part of the framework's binary contract:
+
+1. **Identical-hash divergence (Loop 31)**. The same `config_fingerprint`
+   produced LOCO_wd estimates of 0.07 BPB on Loop 28 and 0.58 BPB on Loop 31
+   — an 8× shift at a byte-identical input. Investigation revealed an
+   uncommitted refactor of `src/transformer.rs` (the forward kernel) that
+   changed the integration of the model but not any field hashed into
+   `config_fingerprint`.
+2. **Silent provenance loss (Loop 32)**. CSVs produced by older runs of
+   `f2_ablation_sweep` carried no information about which trainer-internals
+   version produced them. The hash matched; the BPB did not.
+3. **Silent stratum loss (Loop 47)**. When `f2_dual_mediation` consumes a
+   stratified CSV, the resulting PSE labels (NDE, NIE_M1, …) read like
+   *marginal* effects but are actually **Pearl CDEs**. Without a stratum
+   tag in the output, downstream tooling cannot distinguish.
+
+The three defensive mechanisms below address each incident in turn.
+
+**3.5.1 Provenance preamble (`# prov:*` lines).** Every CSV emitted by
+`f2_ablation_sweep` (Loop 32+) carries a W3C-PROV / Workflow Run RO-Crate
+preamble (arXiv:2312.07852) of the form:
+
+```
+# prov:generatedAt = 1717205400 (unix seconds UTC)
+# prov:wasGeneratedBy = f2_ablation_sweep --mode wd_stratified --steps 200
+# prov:agent_git_sha = ae48fd5
+# prov:host = host.example
+# prov:trainer_internals_schema = trainer_internals_v1_2026_06_01
+# prov:cargo_pkg_version = 0.1.0
+```
+
+The `f2_provenance_check` binary validates each field with `PASS` / `WARN` /
+`FAIL` exit codes (0 / 1 / 2 respectively). Schema mismatch is `FAIL`: the
+binary refuses to vouch for results produced by a different trainer-internals
+version. Git SHA mismatch is `WARN`: an older commit may still be valid, but
+the analyst must confirm.
+
+**3.5.2 Trainer-internals schema (`TRAINER_INTERNALS_SCHEMA`).** The
+incident in §3.5.1 (1) motivated a manual integrity lock: a single string
+constant in `src/race/multi_seed.rs` that is mixed into `config_fingerprint`.
+The convention is:
+
+> Bump `TRAINER_INTERNALS_SCHEMA` (e.g. `v1_2026_06_01 → v2_2026_06_15`)
+> whenever any of the following changes: LCG seed constants, embedding/
+> Xavier/Kaiming initializers, optimizer step ordering, forward or backward
+> kernels, `cross_entropy_loss` numerics, BPB computation, or eval
+> tokenization.
+
+A lib test (`trainer_internals_schema_is_load_bearing`, Loop 33) verifies
+that mutating the constant changes the fingerprint output, so an
+intentional bump is detectable from CI. A mtime-drift advisory
+(Loop 39) compares the schema-string date against the on-disk mtime of
+`src/transformer.rs` and surfaces a stale-schema warning during
+`cargo test --lib`.
+
+**3.5.3 Stratum context propagation (`# INPUT STRATUM = …`).** When
+`f2_dual_mediation` consumes a stratified CSV, it detects the row-prefix
+distribution (`canonical`, `wd0`, `warmup0`, or `mixed`) and emits a
+single-line stratum banner before its column header. `f2_mediation_sensitivity`
+reads this banner from its dual_mediation input and re-emits it in its own
+output, so the stratum context survives every downstream pipeline step:
+
+```
+sweep CSV ─► f2_dual_mediation ─► dual CSV ─► f2_mediation_sensitivity ─► sens CSV
+            (# INPUT STRATUM)                 (# INPUT STRATUM)
+```
+
+If a stratified CSV's PSE values are mis-interpreted as marginal effects,
+the banner makes the error visible at the first line of any downstream
+report. The `mixed` value is itself a signal: a CSV that concatenates rows
+from multiple strata is causally undefined, and the binary refuses to
+emit a verdict.
+
+**3.5.4 Reproducibility checklist (for reviewers).** A reviewer wishing to
+reproduce any number in §5 should perform the following:
+
+1. `git checkout ae48fd5` (or whatever anchor commit the paper cites).
+2. `cargo test --lib` exits 0 with 632 passing tests.
+3. Pick any figure script in `papers/figures/`; run with no flags.
+4. The script reads from the embedded `--input` default; verify the SHA
+   of that input file against the value in the paper's appendix
+   (`docs/F2_RMS_CDE.md` § Reproduce).
+5. The generated PNG should be byte-equivalent (or visually identical
+   modulo matplotlib version) to the figure in the paper.
+6. The output JSONL should match the appendix's first-record signature.
+
+We claim **mechanical reproducibility** for §5 (figures regenerate from
+public commits); we explicitly do **not** claim mechanical reproducibility
+for the champion-scale follow-up of `docs/F2_PRE_REG.md`, which depends
+on FineWeb data licensing and a specific hardware configuration.
+
+**Implementation**: provenance preamble in `src/bin/f2_ablation_sweep.rs`;
+fingerprint mixin in `src/race/multi_seed.rs` (`config_fingerprint`);
+checker in `src/bin/f2_provenance_check.rs`; stratum banner in
+`src/bin/f2_dual_mediation.rs` (`detect_input_stratum`) and
+`src/bin/f2_mediation_sensitivity.rs` (`write_stratum_banner`).
 
 ---
 
