@@ -1026,7 +1026,12 @@ marking the warmup row's full invariance.
 
 We list six limitations the paper's claims are subject to. Each is
 acknowledged here so a future reader can verify the framework is being
-applied within its valid scope.
+applied within its valid scope. The six items group into four
+clusters: **scope/external validity** (items 1, 4), **statistical
+power** (item 2), **identification assumptions** (items 3, 6), and
+**framework scope** (item 5).
+
+### 7.1 Scope and external validity
 
 1. **Sandbox-scale only.** The 200-step, ~8K-parameter, single-batch
    configuration of §4 is a stress test for the methodology, not a
@@ -1035,6 +1040,8 @@ applied within its valid scope.
    expect to generalize to larger scales, but the specific magnitudes
    (−4.12 vs +0.43) do not transfer. Champion-scale validation is
    pre-registered in `docs/F2_PRE_REG.md`.
+
+### 7.2 Statistical power
 
 2. **Five seeds is small.** Owen (2025, arXiv:2508.10083) and a related
    literature on N≤5 inference (see §3.2) argue that Student-t intervals
@@ -1046,6 +1053,8 @@ applied within its valid scope.
    excludes zero by 0.01 BPB, a 7% margin. A larger seed budget would
    yield tighter CIs and might or might not preserve the sign-flip
    verdict.
+
+### 7.3 Identification assumptions
 
 3. **No exposure-mediator interaction is assumed.** The Daniel et al.
    identification result (§3.2) requires both sequential ignorability
@@ -1065,6 +1074,8 @@ applied within its valid scope.
    scale. The pattern of WD suppression and RmsNorm sign-flip could in
    principle be specific to this task. The pre-registered FineWeb
    validation in `docs/F2_PRE_REG.md` is the appropriate next step.
+
+### 7.4 Framework scope
 
 5. **The framework supports two-mediator decomposition only.** Adding a
    third mediator requires reworking the identification arithmetic; we
