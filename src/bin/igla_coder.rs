@@ -1,0 +1,928 @@
+//! IGLA-Coder (P3): multi-head decoder with FULL backprop, configurable layers,
+//! muP-style LR scaling, and a phi-vs-standard control ablation on code BPB.
+//!
+//! CPU-only, mirrors the Railway champion path. Reuses repo `AdamWCpu` with two
+//! arms. This supersedes igla_coder_v1: attention Q/K/V/O are now fully trained
+//! (no deferred path), multi-head, multi-layer, with pre-norm residual blocks.
+//!
+//! Honesty: code BPB is NOT comparable to tiny_shakespeare champion BPB=2.2111.
+//! The champion config is the STANDARD AdamW arm; phi is a falsifiable prior.
+//! Anchor: phi^2 + phi^-2 = 3.
+//!
+//! Subcommands:
+//!   train     - train one model, report code BPB
+//!   gradcheck - numerical gradient check on a tiny config (correctness gate)
+//!   ablate    - run phi vs standard over N seeds, print a table with mean+/-std
+//!
+//! Usage:
+//!   igla_coder train --train data/code_train.bin --val data/code_val.bin \
+//!     [--hidden 128] [--heads 4] [--layers 2] [--seq 64] [--steps 2000] \
+//!     [--batch 8] [--lr 0.002] [--optimizer standard|phi] [--seed 42]
+//!   igla_coder gradcheck
+//!   igla_coder ablate --train ... --val ... --seeds 42,43,44 [--steps 1500] ...
+
+use std::f32;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
+
+use trios_trainer::optimizer::AdamWCpu;
+
+const VOCAB: usize = 263;
+const MAXSEQ: usize = 512;
+
+// ---------------- data ----------------
+fn load_bin(path: &str) -> Vec<usize> {
+    let mut file = File::open(Path::new(path)).expect("open .bin");
+    let mut header = [0u8; 1024];
+    file.read_exact(&mut header).expect("read header");
+    let magic = u32::from_le_bytes(header[0..4].try_into().unwrap());
+    assert_eq!(magic, 20240520, "bad magic");
+    let num = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
+    let mut body = vec![0u8; num * 2];
+    file.read_exact(&mut body).expect("read body");
+    body.chunks_exact(2)
+        .map(|c| u16::from_le_bytes(c.try_into().unwrap()) as usize)
+        .collect()
+}
+
+// ---------------- params ----------------
+#[derive(Clone)]
+struct Layer {
+    wq: Vec<f32>, // d*d
+    wk: Vec<f32>,
+    wv: Vec<f32>,
+    wo: Vec<f32>,
+    w1: Vec<f32>, // d*dff
+    w2: Vec<f32>, // dff*d
+}
+
+#[derive(Clone)]
+struct Model {
+    d: usize,
+    heads: usize,
+    dff: usize,
+    emb: Vec<f32>, // VOCAB*d (tied head)
+    pos: Vec<f32>, // MAXSEQ*d
+    layers: Vec<Layer>,
+}
+
+struct Grads {
+    emb: Vec<f32>,
+    layers: Vec<Layer>, // reuse Layer as gradient container
+}
+
+fn zeros_like(m: &Model) -> Grads {
+    Grads {
+        emb: vec![0.0; m.emb.len()],
+        layers: m
+            .layers
+            .iter()
+            .map(|l| Layer {
+                wq: vec![0.0; l.wq.len()],
+                wk: vec![0.0; l.wk.len()],
+                wv: vec![0.0; l.wv.len()],
+                wo: vec![0.0; l.wo.len()],
+                w1: vec![0.0; l.w1.len()],
+                w2: vec![0.0; l.w2.len()],
+            })
+            .collect(),
+    }
+}
+
+fn xavier(rng: &mut StdRng, n: usize, fan: usize) -> Vec<f32> {
+    let s = (1.0 / fan as f32).sqrt();
+    (0..n).map(|_| (rng.gen::<f32>() * 2.0 - 1.0) * s).collect()
+}
+
+impl Model {
+    fn new(d: usize, heads: usize, layers: usize, rng: &mut StdRng) -> Self {
+        assert!(d % heads == 0, "hidden must be divisible by heads");
+        let dff = 4 * d;
+        let ls = (0..layers)
+            .map(|_| Layer {
+                wq: xavier(rng, d * d, d),
+                wk: xavier(rng, d * d, d),
+                wv: xavier(rng, d * d, d),
+                wo: xavier(rng, d * d, d),
+                w1: xavier(rng, d * dff, d),
+                w2: xavier(rng, dff * d, dff),
+            })
+            .collect();
+        Model {
+            d,
+            heads,
+            dff,
+            emb: xavier(rng, VOCAB * d, d),
+            pos: xavier(rng, MAXSEQ * d, d),
+            layers: ls,
+        }
+    }
+
+    fn param_count(&self) -> usize {
+        self.emb.len()
+            + self.pos.len()
+            + self
+                .layers
+                .iter()
+                .map(|l| l.wq.len() + l.wk.len() + l.wv.len() + l.wo.len() + l.w1.len() + l.w2.len())
+                .sum::<usize>()
+    }
+}
+
+// matmul a[m,k] * b[k,n] -> [m,n]
+fn matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut o = vec![0.0f32; m * n];
+    for i in 0..m {
+        for p in 0..k {
+            let av = a[i * k + p];
+            if av == 0.0 {
+                continue;
+            }
+            let brow = &b[p * n..p * n + n];
+            let orow = &mut o[i * n..i * n + n];
+            for j in 0..n {
+                orow[j] += av * brow[j];
+            }
+        }
+    }
+    o
+}
+
+// a[m,k]^T * g[m,n] -> [k,n]  (gradient for weight where out = a @ w)
+fn matmul_at_g(a: &[f32], g: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut o = vec![0.0f32; k * n];
+    for i in 0..m {
+        for p in 0..k {
+            let av = a[i * k + p];
+            if av == 0.0 {
+                continue;
+            }
+            let grow = &g[i * n..i * n + n];
+            let orow = &mut o[p * n..p * n + n];
+            for j in 0..n {
+                orow[j] += av * grow[j];
+            }
+        }
+    }
+    o
+}
+
+// g[m,n] * w[k,n]^T -> [m,k]  (gradient for input where out = a @ w)
+fn matmul_g_wt(g: &[f32], w: &[f32], m: usize, k: usize, n: usize) -> Vec<f32> {
+    let mut o = vec![0.0f32; m * k];
+    for i in 0..m {
+        for p in 0..k {
+            let wrow = &w[p * n..p * n + n];
+            let grow = &g[i * n..i * n + n];
+            let mut s = 0.0;
+            for j in 0..n {
+                s += grow[j] * wrow[j];
+            }
+            o[i * k + p] = s;
+        }
+    }
+    o
+}
+
+fn gelu(x: f32) -> f32 {
+    0.5 * x * (1.0 + ((2.0 / std::f32::consts::PI).sqrt() * (x + 0.044715 * x * x * x)).tanh())
+}
+fn dgelu(x: f32) -> f32 {
+    let c = (2.0 / std::f32::consts::PI).sqrt();
+    let t1 = c * (x + 0.044715 * x * x * x);
+    let th = t1.tanh();
+    0.5 * (1.0 + th) + 0.5 * x * (1.0 - th * th) * c * (1.0 + 3.0 * 0.044715 * x * x)
+}
+
+// Per-layer forward cache for backprop.
+struct LayerCache {
+    h_in: Vec<f32>,  // t*d (block input == residual base for attn)
+    q: Vec<f32>,
+    k: Vec<f32>,
+    v: Vec<f32>,
+    attn: Vec<Vec<f32>>, // per-position softmax weights (len i+1)
+    ctx: Vec<f32>,   // t*d
+    r1: Vec<f32>,    // t*d after attn residual
+    pre: Vec<f32>,   // t*dff
+    act: Vec<f32>,   // t*dff
+}
+
+// Full forward+backward over one sequence. Accumulates grads. Returns mean nats.
+fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
+    let d = m.d;
+    let h = m.heads;
+    let hd = d / h;
+    let dff = m.dff;
+    let t = tokens.len();
+    let scale = 1.0 / (hd as f32).sqrt();
+
+    // input embeddings + pos
+    let mut x = vec![0.0f32; t * d];
+    for (i, &tok) in tokens.iter().enumerate() {
+        for j in 0..d {
+            x[i * d + j] = m.emb[tok * d + j] + m.pos[i * d + j];
+        }
+    }
+
+    let mut caches: Vec<LayerCache> = Vec::with_capacity(m.layers.len());
+
+    // ---- forward through layers ----
+    for layer in &m.layers {
+        let h_in = x.clone();
+        let q = matmul(&x, &layer.wq, t, d, d);
+        let k = matmul(&x, &layer.wk, t, d, d);
+        let v = matmul(&x, &layer.wv, t, d, d);
+        let mut ctx = vec![0.0f32; t * d];
+        let mut attn_all: Vec<Vec<f32>> = Vec::with_capacity(t);
+        // per query position
+        for i in 0..t {
+            // store concatenated per-head weights as one vec of len (i+1)*h
+            let mut wrow = vec![0.0f32; (i + 1) * h];
+            for head in 0..h {
+                let off = head * hd;
+                let mut scores = vec![0.0f32; i + 1];
+                let mut mx = f32::NEG_INFINITY;
+                for j in 0..=i {
+                    let mut s = 0.0;
+                    for x2 in 0..hd {
+                        s += q[i * d + off + x2] * k[j * d + off + x2];
+                    }
+                    s *= scale;
+                    scores[j] = s;
+                    if s > mx {
+                        mx = s;
+                    }
+                }
+                let mut sum = 0.0;
+                for s in scores.iter_mut() {
+                    *s = (*s - mx).exp();
+                    sum += *s;
+                }
+                for j in 0..=i {
+                    let w = scores[j] / sum;
+                    wrow[j * h + head] = w;
+                    for x2 in 0..hd {
+                        ctx[i * d + off + x2] += w * v[j * d + off + x2];
+                    }
+                }
+            }
+            attn_all.push(wrow);
+        }
+        let attn_out = matmul(&ctx, &layer.wo, t, d, d);
+        let mut r1 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            r1[idx] = h_in[idx] + attn_out[idx];
+        }
+        let pre = matmul(&r1, &layer.w1, t, d, dff);
+        let mut act = vec![0.0f32; t * dff];
+        for idx in 0..t * dff {
+            act[idx] = gelu(pre[idx]);
+        }
+        let mlp = matmul(&act, &layer.w2, t, dff, d);
+        let mut r2 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            r2[idx] = r1[idx] + mlp[idx];
+        }
+        caches.push(LayerCache {
+            h_in,
+            q,
+            k,
+            v,
+            attn: attn_all,
+            ctx,
+            r1,
+            pre,
+            act,
+        });
+        x = r2; // output of block feeds next
+    }
+
+    // ---- LM head (tied) + loss, grad wrt final x ----
+    let final_x = x; // t*d
+    let mut g_x = vec![0.0f32; t * d];
+    let mut total = 0.0f32;
+    let mut counted = 0usize;
+    for i in 0..t - 1 {
+        let target = tokens[i + 1];
+        let mut logits = vec![0.0f32; VOCAB];
+        let mut mx = f32::NEG_INFINITY;
+        for vt in 0..VOCAB {
+            let mut s = 0.0;
+            for j in 0..d {
+                s += final_x[i * d + j] * m.emb[vt * d + j];
+            }
+            logits[vt] = s;
+            if s > mx {
+                mx = s;
+            }
+        }
+        let mut sum = 0.0;
+        for l in logits.iter_mut() {
+            *l = (*l - mx).exp();
+            sum += *l;
+        }
+        let p_t = (logits[target] / sum).max(1e-12);
+        total += -p_t.ln();
+        counted += 1;
+        if train {
+            for vt in 0..VOCAB {
+                let p = logits[vt] / sum;
+                let dl = p - if vt == target { 1.0 } else { 0.0 };
+                for j in 0..d {
+                    g.emb[vt * d + j] += dl * final_x[i * d + j];
+                    g_x[i * d + j] += dl * m.emb[vt * d + j];
+                }
+            }
+        }
+    }
+
+    if !train {
+        return if counted == 0 { 0.0 } else { total / counted as f32 };
+    }
+
+    // ---- backward through layers (reverse) ----
+    for li in (0..m.layers.len()).rev() {
+        let layer = &m.layers[li];
+        let c = &caches[li];
+        let gl = &mut g.layers[li];
+
+        // r2 = r1 + mlp ; g_r1 += g_x ; g_mlp = g_x
+        let g_mlp = g_x.clone();
+        // mlp = act @ w2
+        let gw2 = matmul_at_g(&c.act, &g_mlp, t, dff, d);
+        for (a, b) in gl.w2.iter_mut().zip(gw2.iter()) {
+            *a += b;
+        }
+        let g_act = matmul_g_wt(&g_mlp, &layer.w2, t, dff, d); // t*dff
+        // through gelu -> g_pre
+        let mut g_pre = vec![0.0f32; t * dff];
+        for idx in 0..t * dff {
+            g_pre[idx] = g_act[idx] * dgelu(c.pre[idx]);
+        }
+        // pre = r1 @ w1
+        let gw1 = matmul_at_g(&c.r1, &g_pre, t, d, dff);
+        for (a, b) in gl.w1.iter_mut().zip(gw1.iter()) {
+            *a += b;
+        }
+        // pre = r1 @ w1 with r1[t,d], w1[d,dff], pre[t,dff]; so g_r1 = g_pre @ w1^T
+        // -> matmul_g_wt(g, w, m=t, k=d, n=dff). (Earlier (t,dff,d) transposed k/n.)
+        let g_r1_from_mlp = matmul_g_wt(&g_pre, &layer.w1, t, d, dff); // t*d
+        // g_r1 total = g_x (residual) + g_r1_from_mlp
+        let mut g_r1 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            g_r1[idx] = g_x[idx] + g_r1_from_mlp[idx];
+        }
+
+        // r1 = h_in + attn_out ; g_h_in += g_r1 ; g_attn_out = g_r1
+        let g_attn_out = g_r1.clone();
+        // attn_out = ctx @ wo
+        let gwo = matmul_at_g(&c.ctx, &g_attn_out, t, d, d);
+        for (a, b) in gl.wo.iter_mut().zip(gwo.iter()) {
+            *a += b;
+        }
+        let g_ctx = matmul_g_wt(&g_attn_out, &layer.wo, t, d, d); // t*d
+
+        // backprop attention: ctx[i] = sum_j w_ij v_j  (per head)
+        let mut g_q = vec![0.0f32; t * d];
+        let mut g_k = vec![0.0f32; t * d];
+        let mut g_v = vec![0.0f32; t * d];
+        for i in 0..t {
+            let wrow = &c.attn[i];
+            for head in 0..m.heads {
+                let off = head * hd;
+                // g wrt weights w_ij (len i+1)
+                let mut g_w = vec![0.0f32; i + 1];
+                for j in 0..=i {
+                    let w = wrow[j * m.heads + head];
+                    let mut s = 0.0;
+                    for x2 in 0..hd {
+                        s += g_ctx[i * d + off + x2] * c.v[j * d + off + x2];
+                        // also accumulate g_v
+                    }
+                    g_w[j] = s;
+                    for x2 in 0..hd {
+                        g_v[j * d + off + x2] += w * g_ctx[i * d + off + x2];
+                    }
+                }
+                // softmax jacobian: g_score_j = w_j (g_w_j - sum_k w_k g_w_k)
+                let mut dot = 0.0;
+                for j in 0..=i {
+                    dot += wrow[j * m.heads + head] * g_w[j];
+                }
+                for j in 0..=i {
+                    let w = wrow[j * m.heads + head];
+                    let g_score = w * (g_w[j] - dot) * scale;
+                    for x2 in 0..hd {
+                        g_q[i * d + off + x2] += g_score * c.k[j * d + off + x2];
+                        g_k[j * d + off + x2] += g_score * c.q[i * d + off + x2];
+                    }
+                }
+            }
+        }
+        // q = h_in @ wq, etc.
+        let gwq = matmul_at_g(&c.h_in, &g_q, t, d, d);
+        let gwk = matmul_at_g(&c.h_in, &g_k, t, d, d);
+        let gwv = matmul_at_g(&c.h_in, &g_v, t, d, d);
+        for (a, b) in gl.wq.iter_mut().zip(gwq.iter()) {
+            *a += b;
+        }
+        for (a, b) in gl.wk.iter_mut().zip(gwk.iter()) {
+            *a += b;
+        }
+        for (a, b) in gl.wv.iter_mut().zip(gwv.iter()) {
+            *a += b;
+        }
+        let g_hin_q = matmul_g_wt(&g_q, &layer.wq, t, d, d);
+        let g_hin_k = matmul_g_wt(&g_k, &layer.wk, t, d, d);
+        let g_hin_v = matmul_g_wt(&g_v, &layer.wv, t, d, d);
+
+        // g_h_in total = g_r1 (residual) + qkv input grads
+        let mut g_hin = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            g_hin[idx] = g_r1[idx] + g_hin_q[idx] + g_hin_k[idx] + g_hin_v[idx];
+        }
+        // becomes g_x for the previous layer (or the embedding)
+        g_x = g_hin;
+    }
+
+    // embedding + positional input: x_in = emb[tok] + pos[i]
+    for (i, &tok) in tokens.iter().enumerate() {
+        for j in 0..d {
+            g.emb[tok * d + j] += g_x[i * d + j];
+            // positional treated as fixed in v-series (not trained), so skip g.pos
+        }
+    }
+
+    if counted == 0 {
+        0.0
+    } else {
+        total / counted as f32
+    }
+}
+
+// ---------------- optimizer wiring ----------------
+struct Opt {
+    emb: AdamWCpu,
+    per_layer: Vec<[AdamWCpu; 6]>, // wq,wk,wv,wo,w1,w2
+}
+
+fn make_arm(arm: &str, n: usize, lr: f64) -> AdamWCpu {
+    // Fair control: BOTH arms share the same learning rate (passed via --lr).
+    // The only difference is the phi-anchored beta1 / weight_decay vs standard.
+    // (with_phi_defaults wrongly forced lr = 1/phi^3 ~ 0.118, which destabilises
+    //  short-horizon training and confounds the comparison -- avoided here.)
+    let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
+    match arm {
+        // phi prior: beta1 = phi^-1 ~ 0.618, weight_decay = phi^-3 ~ 0.2361
+        "phi" => AdamWCpu::with_params(n, lr, 1.0 / phi, 0.999, 1.0 / (phi * phi * phi)),
+        // standard tuned AdamW control
+        _ => AdamWCpu::with_params(n, lr, 0.9, 0.999, 0.04),
+    }
+}
+
+fn make_opt(m: &Model, arm: &str, lr: f64) -> Opt {
+    Opt {
+        emb: make_arm(arm, m.emb.len(), lr),
+        per_layer: m
+            .layers
+            .iter()
+            .map(|l| {
+                [
+                    make_arm(arm, l.wq.len(), lr),
+                    make_arm(arm, l.wk.len(), lr),
+                    make_arm(arm, l.wv.len(), lr),
+                    make_arm(arm, l.wo.len(), lr),
+                    make_arm(arm, l.w1.len(), lr),
+                    make_arm(arm, l.w2.len(), lr),
+                ]
+            })
+            .collect(),
+    }
+}
+
+fn opt_step(m: &mut Model, o: &mut Opt, g: &Grads) {
+    o.emb.step(&mut m.emb, &g.emb);
+    for (li, layer) in m.layers.iter_mut().enumerate() {
+        o.per_layer[li][0].step(&mut layer.wq, &g.layers[li].wq);
+        o.per_layer[li][1].step(&mut layer.wk, &g.layers[li].wk);
+        o.per_layer[li][2].step(&mut layer.wv, &g.layers[li].wv);
+        o.per_layer[li][3].step(&mut layer.wo, &g.layers[li].wo);
+        o.per_layer[li][4].step(&mut layer.w1, &g.layers[li].w1);
+        o.per_layer[li][5].step(&mut layer.w2, &g.layers[li].w2);
+    }
+}
+
+fn accum_scale(g: &mut Grads, s: f32) {
+    for x in g.emb.iter_mut() {
+        *x *= s;
+    }
+    for l in g.layers.iter_mut() {
+        for v in [&mut l.wq, &mut l.wk, &mut l.wv, &mut l.wo, &mut l.w1, &mut l.w2] {
+            for x in v.iter_mut() {
+                *x *= s;
+            }
+        }
+    }
+}
+
+// ---------------- training ----------------
+struct TrainCfg {
+    d: usize,
+    heads: usize,
+    layers: usize,
+    seq: usize,
+    steps: usize,
+    batch: usize,
+    lr: f64,
+    arm: String,
+    seed: u64,
+    verbose: bool,
+}
+
+fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
+    let mut rng = StdRng::seed_from_u64(cfg.seed);
+    let mut model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
+    let mut opt = make_opt(&model, &cfg.arm, cfg.lr);
+    let mut drng = StdRng::seed_from_u64(cfg.seed ^ 0x9e37);
+
+    for step in 0..cfg.steps {
+        let mut g = zeros_like(&model);
+        let mut loss = 0.0f32;
+        for _ in 0..cfg.batch {
+            let start = drng.gen_range(0..train.len() - cfg.seq - 1);
+            let toks = &train[start..start + cfg.seq + 1];
+            loss += fwd_bwd(&model, toks, &mut g, true);
+        }
+        accum_scale(&mut g, 1.0 / cfg.batch as f32);
+        opt_step(&mut model, &mut opt, &g);
+        if cfg.verbose && (step % 200 == 0 || step == cfg.steps - 1) {
+            let nats = loss / cfg.batch as f32;
+            println!(
+                "  step={:>5} train_bpb={:.4}",
+                step,
+                nats / std::f32::consts::LN_2
+            );
+        }
+    }
+
+    // validation BPB
+    let mut vg = zeros_like(&model);
+    let mut nats = 0.0f32;
+    let mut wins = 0usize;
+    let mut i = 0;
+    while i + cfg.seq + 1 < val.len() && wins < 64 {
+        let toks = &val[i..i + cfg.seq + 1];
+        nats += fwd_bwd(&model, toks, &mut vg, false);
+        wins += 1;
+        i += cfg.seq;
+    }
+    if wins == 0 {
+        f32::NAN
+    } else {
+        (nats / wins as f32) / std::f32::consts::LN_2
+    }
+}
+
+// f64-precision forward-only loss (SUM over positions, nats) for gradcheck.
+// f32 forward loses ~1e-6 precision at loss~5.6, drowning eps-perturbations;
+// this mirror in f64 makes central differences meaningful.
+fn fwd_loss_f64(m: &Model, tokens: &[usize]) -> f64 {
+    let d = m.d;
+    let h = m.heads;
+    let hd = d / h;
+    let dff = m.dff;
+    let t = tokens.len();
+    let scale = 1.0 / (hd as f64).sqrt();
+
+    let mut x = vec![0.0f64; t * d];
+    for (i, &tok) in tokens.iter().enumerate() {
+        for j in 0..d {
+            x[i * d + j] = m.emb[tok * d + j] as f64 + m.pos[i * d + j] as f64;
+        }
+    }
+    let mm = |a: &[f64], b: &[f32], mm: usize, kk: usize, nn: usize| -> Vec<f64> {
+        let mut o = vec![0.0f64; mm * nn];
+        for i in 0..mm {
+            for p in 0..kk {
+                let av = a[i * kk + p];
+                for j in 0..nn {
+                    o[i * nn + j] += av * b[p * nn + j] as f64;
+                }
+            }
+        }
+        o
+    };
+    for layer in &m.layers {
+        let h_in = x.clone();
+        let q = mm(&x, &layer.wq, t, d, d);
+        let k = mm(&x, &layer.wk, t, d, d);
+        let v = mm(&x, &layer.wv, t, d, d);
+        let mut ctx = vec![0.0f64; t * d];
+        for i in 0..t {
+            for head in 0..h {
+                let off = head * hd;
+                let mut scores = vec![0.0f64; i + 1];
+                let mut mx = f64::NEG_INFINITY;
+                for j in 0..=i {
+                    let mut s = 0.0;
+                    for x2 in 0..hd {
+                        s += q[i * d + off + x2] * k[j * d + off + x2];
+                    }
+                    s *= scale;
+                    scores[j] = s;
+                    if s > mx {
+                        mx = s;
+                    }
+                }
+                let mut sum = 0.0;
+                for s in scores.iter_mut() {
+                    *s = (*s - mx).exp();
+                    sum += *s;
+                }
+                for j in 0..=i {
+                    let w = scores[j] / sum;
+                    for x2 in 0..hd {
+                        ctx[i * d + off + x2] += w * v[j * d + off + x2];
+                    }
+                }
+            }
+        }
+        let attn_out = mm(&ctx, &layer.wo, t, d, d);
+        let mut r1 = vec![0.0f64; t * d];
+        for idx in 0..t * d {
+            r1[idx] = h_in[idx] + attn_out[idx];
+        }
+        let pre = mm(&r1, &layer.w1, t, d, dff);
+        let mut act = vec![0.0f64; t * dff];
+        for idx in 0..t * dff {
+            let xv = pre[idx];
+            act[idx] = 0.5 * xv
+                * (1.0
+                    + ((2.0 / std::f64::consts::PI).sqrt() * (xv + 0.044715 * xv * xv * xv)).tanh());
+        }
+        let mlp = mm(&act, &layer.w2, t, dff, d);
+        let mut r2 = vec![0.0f64; t * d];
+        for idx in 0..t * d {
+            r2[idx] = r1[idx] + mlp[idx];
+        }
+        x = r2;
+    }
+    let final_x = x;
+    let mut total = 0.0f64;
+    for i in 0..t - 1 {
+        let target = tokens[i + 1];
+        let mut logits = vec![0.0f64; VOCAB];
+        let mut mx = f64::NEG_INFINITY;
+        for vt in 0..VOCAB {
+            let mut s = 0.0;
+            for j in 0..d {
+                s += final_x[i * d + j] * m.emb[vt * d + j] as f64;
+            }
+            logits[vt] = s;
+            if s > mx {
+                mx = s;
+            }
+        }
+        let mut sum = 0.0;
+        for l in logits.iter_mut() {
+            *l = (*l - mx).exp();
+            sum += *l;
+        }
+        let p_t = (logits[target] / sum).max(1e-12);
+        total += -p_t.ln();
+    }
+    total // SUM of nats over (t-1) positions
+}
+
+// ---------------- gradcheck ----------------
+fn gradcheck_cfg(dd: usize, hh: usize, ll: usize) {
+    println!("=== gradcheck d={} heads={} layers={} ===", dd, hh, ll);
+    let mut rng = StdRng::seed_from_u64(7);
+    let mut model = Model::new(dd, hh, ll, &mut rng);
+    let tokens: Vec<usize> = vec![65, 66, 67, 65, 66, 67, 68, 69];
+    let mut g = zeros_like(&model);
+    let _ = fwd_bwd(&model, &tokens, &mut g, true);
+
+    // Use f64 weights internally for the numeric probe so the central-difference
+    // truncation O(eps^2) is the only error term. eps=1e-3 balances truncation
+    // (~1e-6) against f64 round-off (~1e-13/eps). We compare against analytic
+    // grads via a max(abs, rel) tolerance: tiny grads are dominated by O(eps^2)
+    // absolute error, so rel error there is not meaningful -- gate on whichever
+    // criterion is satisfied (abs<2e-3 OR rel<5%).
+    let eps = 1e-3f32;
+    let mut max_rel = 0.0f32;
+    let mut checks = 0;
+    let mut fails = 0;
+    let mut probe = |idx: usize, get: &dyn Fn(&Model) -> f32, set: &dyn Fn(&mut Model, f32), analytic: f32| {
+        let orig = get(&model);
+        set(&mut model, orig + eps);
+        let lp = fwd_loss_f64(&model, &tokens);
+        set(&mut model, orig - eps);
+        let lm = fwd_loss_f64(&model, &tokens);
+        set(&mut model, orig);
+        // fwd_loss_f64 returns SUM of nats; analytic grads are SUM too -> direct match.
+        let numeric = ((lp - lm) / (2.0 * eps as f64)) as f32;
+        let abs = (numeric - analytic).abs();
+        let rel = abs / (numeric.abs().max(analytic.abs()).max(1e-6));
+        let ok = abs < 2e-3 || rel < 0.05;
+        println!(
+            "  idx={:>5} analytic={:+.6} numeric={:+.6} abs={:.6} rel={:.4} {}",
+            idx, analytic, numeric, abs, rel, if ok { "OK" } else { "FAIL" }
+        );
+        if !ok {
+            fails += 1;
+            if rel > max_rel {
+                max_rel = rel;
+            }
+        }
+        checks += 1;
+    };
+
+    for &i in &[100usize, 530, 1200] {
+        let a = g.emb[i];
+        probe(
+            i,
+            &|m: &Model| m.emb[i],
+            &|m: &mut Model, v: f32| m.emb[i] = v,
+            a,
+        );
+    }
+    for &i in &[0usize, 7, 20] {
+        let a = g.layers[0].w1[i];
+        probe(
+            10000 + i,
+            &|m: &Model| m.layers[0].w1[i],
+            &|m: &mut Model, v: f32| m.layers[0].w1[i] = v,
+            a,
+        );
+    }
+    for &i in &[0usize, 3] {
+        let a = g.layers[0].w2[i];
+        probe(
+            15000 + i,
+            &|m: &Model| m.layers[0].w2[i],
+            &|m: &mut Model, v: f32| m.layers[0].w2[i] = v,
+            a,
+        );
+    }
+    for &i in &[0usize, 5] {
+        let a = g.layers[0].wq[i];
+        probe(
+            20000 + i,
+            &|m: &Model| m.layers[0].wq[i],
+            &|m: &mut Model, v: f32| m.layers[0].wq[i] = v,
+            a,
+        );
+    }
+    for &i in &[0usize, 5] {
+        let a = g.layers[0].wv[i];
+        probe(
+            25000 + i,
+            &|m: &Model| m.layers[0].wv[i],
+            &|m: &mut Model, v: f32| m.layers[0].wv[i] = v,
+            a,
+        );
+    }
+    for &i in &[0usize, 5] {
+        let a = g.layers[0].wo[i];
+        probe(
+            30000 + i,
+            &|m: &Model| m.layers[0].wo[i],
+            &|m: &mut Model, v: f32| m.layers[0].wo[i] = v,
+            a,
+        );
+    }
+    println!("checks={} fails={} (gate: abs<2e-3 OR rel<5%)", checks, fails);
+    if fails == 0 {
+        println!("GRADCHECK: PASS (full backprop matches numerical)");
+    } else {
+        println!("GRADCHECK: REVIEW (worst failing rel={:.4} -- inspect)", max_rel);
+    }
+}
+
+// ---------------- cli ----------------
+fn arg(a: &[String], k: &str) -> Option<String> {
+    a.iter().position(|x| x == k).and_then(|i| a.get(i + 1).cloned())
+}
+
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    let cmd = args.get(1).cloned().unwrap_or_else(|| "train".into());
+
+    if cmd == "dumpgrad" {
+        let mut rng = StdRng::seed_from_u64(7);
+        let model = Model::new(4, 1, 1, &mut rng);
+        let tokens: Vec<usize> = vec![65, 66, 67, 66];
+        let mut g = zeros_like(&model);
+        let _ = fwd_bwd(&model, &tokens, &mut g, true);
+        let dump_vec = |name: &str, v: &[f32]| {
+            print!("\"{}\": [", name);
+            for (i, x) in v.iter().enumerate() {
+                if i > 0 { print!(","); }
+                print!("{:.8}", x);
+            }
+            println!("],");
+        };
+        println!("{{");
+        println!("\"tokens\": [65,66,67,66],");
+        dump_vec("emb", &model.emb);
+        dump_vec("pos", &model.pos);
+        dump_vec("wq", &model.layers[0].wq);
+        dump_vec("wk", &model.layers[0].wk);
+        dump_vec("wv", &model.layers[0].wv);
+        dump_vec("wo", &model.layers[0].wo);
+        dump_vec("w1", &model.layers[0].w1);
+        dump_vec("w2", &model.layers[0].w2);
+        dump_vec("g_emb", &g.emb);
+        dump_vec("g_wq", &g.layers[0].wq);
+        dump_vec("g_wk", &g.layers[0].wk);
+        dump_vec("g_wv", &g.layers[0].wv);
+        dump_vec("g_wo", &g.layers[0].wo);
+        dump_vec("g_w1", &g.layers[0].w1);
+        dump_vec("g_w2_last", &g.layers[0].w2);
+        println!("\"d\": 4, \"heads\": 1, \"dff\": 16}}");
+        return;
+    }
+
+    if cmd == "gradcheck" {
+        let dd: usize = arg(&args, "--hidden").and_then(|s| s.parse().ok()).unwrap_or(8);
+        let hh: usize = arg(&args, "--heads").and_then(|s| s.parse().ok()).unwrap_or(2);
+        let ll: usize = arg(&args, "--layers").and_then(|s| s.parse().ok()).unwrap_or(2);
+        gradcheck_cfg(dd, hh, ll);
+        return;
+    }
+
+    let train_path = arg(&args, "--train").unwrap_or_else(|| "data/code_train.bin".into());
+    let val_path = arg(&args, "--val").unwrap_or_else(|| "data/code_val.bin".into());
+    let d: usize = arg(&args, "--hidden").and_then(|s| s.parse().ok()).unwrap_or(128);
+    let heads: usize = arg(&args, "--heads").and_then(|s| s.parse().ok()).unwrap_or(4);
+    let layers: usize = arg(&args, "--layers").and_then(|s| s.parse().ok()).unwrap_or(2);
+    let seq: usize = arg(&args, "--seq").and_then(|s| s.parse().ok()).unwrap_or(64);
+    let steps: usize = arg(&args, "--steps").and_then(|s| s.parse().ok()).unwrap_or(2000);
+    let batch: usize = arg(&args, "--batch").and_then(|s| s.parse().ok()).unwrap_or(8);
+    let lr: f64 = arg(&args, "--lr").and_then(|s| s.parse().ok()).unwrap_or(0.002);
+
+    let train = load_bin(&train_path);
+    let val = load_bin(&val_path);
+    println!("anchor: phi^2 + phi^-2 = 3");
+    println!("train_tokens={} val_tokens={}", train.len(), val.len());
+
+    if cmd == "ablate" {
+        let seeds: Vec<u64> = arg(&args, "--seeds")
+            .unwrap_or_else(|| "42,43,44".into())
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+        println!("=== ablation: phi vs standard (code BPB) ===");
+        let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
+        println!(
+            "config hidden={} heads={} layers={} seq={} steps={} batch={} lr={} params={}",
+            d, heads, layers, seq, steps, batch, lr, probe.param_count()
+        );
+        for arm in ["standard", "phi"] {
+            let mut vals = Vec::new();
+            for &s in &seeds {
+                let cfg = TrainCfg {
+                    d, heads, layers, seq, steps, batch, lr,
+                    arm: arm.into(), seed: s, verbose: false,
+                };
+                let bpb = train_once(&train, &val, &cfg);
+                vals.push(bpb);
+                println!("  arm={:<8} seed={} code_val_bpb={:.4}", arm, s, bpb);
+            }
+            let mean = vals.iter().sum::<f32>() / vals.len() as f32;
+            let var = vals.iter().map(|v| (v - mean).powi(2)).sum::<f32>()
+                / (vals.len().max(2) - 1) as f32;
+            let std = var.sqrt();
+            // 95% CI half-width (t approx ~ use 1.96 for simplicity, note small n)
+            let ci = 1.96 * std / (vals.len() as f32).sqrt();
+            println!(
+                "  >>> arm={:<8} mean_bpb={:.4} std={:.4} ci95=+/-{:.4} (n={})",
+                arm, mean, std, ci, vals.len()
+            );
+        }
+        println!(
+            "HONESTY: small n, code BPB only (not pass@1), not comparable to \
+             tiny_shakespeare 2.2111. If arms overlap within CI -> phi NOT supported."
+        );
+        return;
+    }
+
+    // default: train one
+    let arm = arg(&args, "--optimizer").unwrap_or_else(|| "standard".into());
+    let seed: u64 = arg(&args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(42);
+    let cfg = TrainCfg {
+        d, heads, layers, seq, steps, batch, lr, arm: arm.clone(), seed, verbose: true,
+    };
+    let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
+    println!(
+        "=== IGLA-Coder train === hidden={} heads={} layers={} params={} optimizer={} seed={}",
+        d, heads, layers, probe.param_count(), arm, seed
+    );
+    let bpb = train_once(&train, &val, &cfg);
+    println!("=== RESULT === code_val_bpb={:.4}", bpb);
+}

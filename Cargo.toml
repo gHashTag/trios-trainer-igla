@@ -301,3 +301,7 @@ path = "src/bin/code_binarize.rs"
 [[bin]]
 name = "igla_coder_v1"
 path = "src/bin/igla_coder_v1.rs"
+
+[[bin]]
+name = "igla_coder"
+path = "src/bin/igla_coder.rs"
