@@ -80,9 +80,16 @@ g.SCOPED_DIFF_CLAIMS = [
     for (regex, paper, scope, lo, hi, label) in _saved_scoped
 ]
 g.ACKNOWLEDGES_CLAIMS = [
-    (g.F2_PAPER if paper == _orig_f2 else (g.ISSUE1021_PAPER if paper == _orig_i1021 else g.SUBMISSION_CHECKLIST),
-     claim_pat, ack_pat, label)
-    for (paper, claim_pat, ack_pat, label) in _saved_ackn
+    # Loop 126 D (49th pass A5 SEV-2 regression fix): handle both
+    # 4-tuple (required) and 5-tuple (optional=True). Previous code
+    # unpacked only 4-tuple, crashing on any 5-tuple registration.
+    (
+        (g.F2_PAPER if spec[0] == _orig_f2 else
+         (g.ISSUE1021_PAPER if spec[0] == _orig_i1021
+          else g.SUBMISSION_CHECKLIST)),
+        *spec[1:],
+    )
+    for spec in _saved_ackn
 ]
 sys.exit(g.main())
 """
