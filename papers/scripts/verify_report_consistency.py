@@ -135,14 +135,70 @@ EXISTS_STUBS: list[dict] = [
 ]
 
 
+def _strip_code_fences(text: str) -> str:
+    """Remove fenced code blocks so table-row regexes don't match prose
+    examples shown inside ```markdown ... ``` blocks (45th adversarial
+    pass A4)."""
+    lines = text.splitlines(keepends=True)
+    out: list[str] = []
+    inside = False
+    for ln in lines:
+        if ln.lstrip().startswith("```"):
+            inside = not inside
+            out.append("")
+            continue
+        out.append("" if inside else ln)
+    return "".join(out)
+
+
+def _looks_like_table_row(line: str) -> bool:
+    """A 'real' Markdown table row has at least two `|` separators outside
+    of code spans, AND the line (after optional leading whitespace) starts
+    with `|`. CommonMark §4.10 permits up to 3 leading spaces for table
+    rows; we tolerate that. We reject pure-separator rows like `|---|---|`
+    because those don't carry data and shouldn't satisfy a column-presence
+    check."""
+    stripped = line.lstrip(" ")
+    if not stripped.startswith("|"):
+        return False
+    if stripped.count("|") < 2:
+        return False
+    # Reject separator-row that's all `-`, `:`, `|`, and whitespace.
+    cells = [c.strip() for c in stripped.strip().strip("|").split("|")]
+    if all(re.fullmatch(r"[-: ]+", c) for c in cells if c):
+        return False
+    return True
+
+
 def check_exists_stub(spec: dict, root: Path) -> list[str]:
     rpath = root / spec["path"]
     if not rpath.exists():
         return []   # vacuous OK pre-sweep
-    text = rpath.read_text()
+    raw = rpath.read_text()
+    # Loop 123 B (45th pass A4): pre-process to strip code fences before
+    # applying the heading + table-row regexes. A markdown example showing
+    # how to read a table inside a fenced block must NOT satisfy the stub
+    # — it's documentation, not result content.
+    text = _strip_code_fences(raw)
     mismatches: list[str] = []
     for pat in spec["required_headings"]:
-        if not re.search(pat, text, re.MULTILINE):
+        compiled = re.compile(pat, re.MULTILINE)
+        # If the pattern starts with `^\|` we want to require the matching
+        # line to look like a real table row (Loop 123 B). For non-table
+        # patterns (e.g. `^##`), fall through to plain re.search.
+        if pat.startswith(r"^\|"):
+            matched = False
+            for line in text.splitlines():
+                if compiled.search(line) and _looks_like_table_row(line):
+                    matched = True
+                    break
+            if not matched:
+                mismatches.append(
+                    f"{spec['id']}: report exists but no real table row "
+                    f"matches {pat!r} (CommonMark-style table check, "
+                    "Loop 123 B — separator-only rows and code-fenced "
+                    "examples are rejected)")
+        elif not compiled.search(text):
             mismatches.append(
                 f"{spec['id']}: report exists but missing expected "
                 f"pattern {pat!r} — schema may have drifted, or this "

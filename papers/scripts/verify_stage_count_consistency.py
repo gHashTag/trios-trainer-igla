@@ -162,9 +162,15 @@ def words_to_int(w: str) -> int | None:
     if w.isdigit():
         return int(w)
     w = w.lower().strip()
+    if not w:
+        # Loop 123 D (46th pass A1 SEV-4): empty string used to fall
+        # through to `_TENS.index("") * 10 = 0`. Reject explicitly.
+        return None
     if w in _UNITS:
         return _UNITS.index(w)
-    if w in _TENS:
+    # Loop 123 D: _TENS[0] and _TENS[1] are both "" — only treat
+    # explicit ten-word matches as valid, never the empty placeholder.
+    if w in _TENS[2:]:
         return _TENS.index(w) * 10
     # Compound forms: "twenty-one", "thirty-five", etc.
     for sep in ("-", " "):
@@ -192,13 +198,28 @@ def catalogued_as_stage_offset() -> int:
                         re.DOTALL)
     m = cat_re.search(paper)
     if not m:
-        return 7  # fall back to old hard-code if §E moves
+        # Loop 123 D (46th pass A2 SEV-2): warn loudly instead of silently
+        # masking the rename. The fallback 7 keeps the gate working but the
+        # stderr trail makes the drift visible.
+        print("# WARN catalogued_as_stage_offset: §E section heading "
+              "not found; falling back to hard-coded 7. The §E catalogue "
+              "may have been renamed.", file=sys.stderr)
+        return 7
     body = m.group(1)
     n_bullets = len(re.findall(r"^- \*\*`papers/scripts/", body, re.MULTILINE))
-    # Subtract 1 for the orchestrator (run_all_checks.sh). The orchestrator
-    # may or may not be at the end of the catalogue, but is always one of
-    # the bullets.
-    return max(n_bullets - 1, 0)
+    has_orchestrator = bool(re.search(r"run_all_checks\.sh", body))
+    if n_bullets == 0:
+        # Loop 123 D (46th pass A2 SEV-2): the bullet-format change
+        # used to clamp to 0 silently. Now we warn AND fall back.
+        print("# WARN catalogued_as_stage_offset: §E catalogue has 0 "
+              "bullets in expected `- **`papers/scripts/...`` format. "
+              "Bullet style may have changed (e.g., `* **` instead of "
+              "`- **`); falling back to hard-coded 7.", file=sys.stderr)
+        return 7
+    # Loop 123 D (46th pass A2 SEV-3): content-based detection of the
+    # orchestrator rather than positional `- 1`. If `run_all_checks.sh`
+    # is no longer in the catalogue, the offset = bullet count directly.
+    return n_bullets - 1 if has_orchestrator else n_bullets
 
 
 def find_decomposition(path: Path, pattern: str) -> tuple[int, int, int] | None:
@@ -253,7 +274,15 @@ def main() -> int:
                 f"{rel}: no match for derived '{desc}' (pattern {pattern!r})")
             continue
         claimed, line_no = found
-        offset = resolve_offset(offset_key)
+        try:
+            offset = resolve_offset(offset_key)
+        except ValueError as e:
+            # Loop 123 D (46th pass A5 SEV-3): catch typo'd offset keys
+            # cleanly instead of crashing main() with a traceback.
+            mismatches.append(
+                f"{rel}: derived '{desc}' has invalid offset key "
+                f"{offset_key!r}: {e}")
+            continue
         expected = actual - offset
         if claimed != expected:
             mismatches.append(

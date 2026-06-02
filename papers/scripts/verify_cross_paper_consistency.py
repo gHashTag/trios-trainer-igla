@@ -77,6 +77,17 @@ EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
         SUBMISSION_CHECKLIST,
         "SUBMISSION_CHECKLIST TMLR PDF page count (self-consistency)",
     ),
+    # Loop 123 C: non-anon and anon page counts should match each other
+    # (anonymization removes acknowledgments but adds the placeholder,
+    # net page change is typically zero). The checklist currently pins
+    # both to 42pp; gate the self-consistency.
+    (
+        r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        r"Anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "SUBMISSION_CHECKLIST non-anon vs anon page count",
+    ),
 ]
 
 
@@ -91,7 +102,11 @@ ACKNOWLEDGES_CLAIMS: list[tuple[Path, str, str, str]] = [
     # acknowledges via "the F2 paper's own §8.1 names a subset" — gate this.
     (
         ISSUE1021_PAPER,
-        r"\bf12 binaries on disk\b",
+        # Loop 123 D (46th pass A3 SEV-1 fix): the original `\bf12` had a
+        # typo — `\b` followed by literal `f` matches "f12", not "12". The
+        # actual prose says "**12 binaries** on disk"; the corrected regex
+        # finds it.
+        r"\*\*12 binaries\*\* on disk",
         r"F2 paper's own §8.1 names a subset",
         "#1021 §3.3 must acknowledge F2 §8.1's different binary scope",
     ),
@@ -118,6 +133,26 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         "total = lib + per-bin + integration",
         800, 900,
         "F2 §8.2 grouped total",
+    ),
+    # Loop 123 C: TMLR-class PDF page count sanity range (20-35pp is the
+    # plausible range for the F2 paper; outside this, something is wrong).
+    (
+        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "TMLR class single-column",
+        20, 35,
+        "SUBMISSION_CHECKLIST TMLR page sanity range",
+    ),
+    # Loop 123 C: non-anonymized PDF should be 1.4-1.7× the TMLR-class
+    # (article wrapper is wider-margined, fewer pages... actually F2
+    # uses a single-column wrapper for both, so the multiplier is closer
+    # to 1.5×). Sanity-bound the non-anon page count to 30-55pp.
+    (
+        r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "article wrapper",
+        30, 55,
+        "SUBMISSION_CHECKLIST non-anon page sanity range",
     ),
 ]
 
@@ -147,13 +182,20 @@ def check_exact_match(spec: tuple[str, Path, str, Path, str]) -> list[str]:
 
 
 def check_acknowledges(spec: tuple[Path, str, str, str]) -> list[str]:
+    """Loop 123 D (46th pass A3 SEV-2 + SEV-3): the gate now fails if EITHER
+    the claim is missing (claim was deleted without removing the
+    acknowledgement-requirement registration) OR the claim is present but
+    the acknowledgement isn't. Eliminates the silent-pass-on-claim-removal
+    class the 46th pass surfaced."""
     paper, claim_pat, ack_pat, label = spec
     text = paper.read_text()
-    # The claim must be present (otherwise the gate isn't relevant).
     if not re.search(claim_pat, text):
-        # Not a failure — the claim just isn't in this paper right now.
-        return []
-    # If the claim is present, the acknowledgement must also be present.
+        return [
+            f"{label}: claim {claim_pat!r} no longer present in "
+            f"{paper.relative_to(CRATE_ROOT)} — either the paper deleted "
+            "the claim without removing this registration, or the regex "
+            "drifted. Update the registry to match current prose."
+        ]
     if not re.search(ack_pat, text):
         return [
             f"{label}: claim {claim_pat!r} found in "
