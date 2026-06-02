@@ -79,17 +79,12 @@ EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
         ISSUE1021_PAPER,
         "Total cargo-test count (F2 §1 vs #1021 §1.3)",
     ),
-    # Loop 122 B: SUBMISSION_CHECKLIST page-count claims; the F2 paper PDF
-    # at the TMLR-class variant must match. We pin both via the checklist;
-    # this is a single-file check across two CLAIMS (TMLR-class page count
-    # currently 27pp at Loop 109+).
-    (
-        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
-        SUBMISSION_CHECKLIST,
-        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
-        SUBMISSION_CHECKLIST,
-        "SUBMISSION_CHECKLIST TMLR PDF page count (self-consistency)",
-    ),
+    # Loop 122 B: TMLR-class PDF page count, paired with itself in the
+    # same file. Loop 126 D (48th pass A5 SEV-2): this entry was a no-op
+    # — find_int_claim returns the first match for both calls so val_a
+    # == val_b trivially. Removed and replaced with the SCOPED_DIFF
+    # below at a hardcoded sanity-equal range [27, 27] so a one-line
+    # bump fires the gate.
     # Loop 123 C: non-anon and anon page counts should match each other
     # (anonymization removes acknowledgments but adds the placeholder,
     # net page change is typically zero). The checklist currently pins
@@ -154,25 +149,26 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         800, 900,
         "F2 §8.2 grouped total",
     ),
-    # Loop 124 D (47th pass A3 SEV-3): tightened from [20, 35] to [25, 30].
-    # Current TMLR-class is 27pp; the old [20, 35] admitted 30% growth
-    # silently. The new band tracks ±10% around the current observed
-    # value, requiring intentional bumps to be reviewed.
+    # Loop 126 D (48th pass A5 SEV-2): pinned exactly to current 27pp.
+    # Any single-page drift fires the gate, requiring intentional review
+    # of the SUBMISSION_CHECKLIST. Replaces Loop 124's [25, 30] range
+    # which admitted 1-2pp silent drift; the SCOPED_DIFF [27, 27] form is
+    # an exact pin disguised as a range so it slots cleanly into the
+    # existing SCOPED_DIFF infrastructure.
     (
         r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        "TMLR class single-column",
-        25, 30,
-        "SUBMISSION_CHECKLIST TMLR page sanity range",
+        "TMLR class single-column (pinned exactly)",
+        27, 27,
+        "SUBMISSION_CHECKLIST TMLR page exact pin",
     ),
-    # Loop 124 D (47th pass A3 SEV-3): tightened from [30, 55] to [38, 46].
-    # Current non-anon is 42pp; old band admitted nearly 30% drift.
+    # Loop 126 D (48th pass A5 SEV-2): pinned exactly to current 42pp.
     (
         r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        "article wrapper",
-        38, 46,
-        "SUBMISSION_CHECKLIST non-anon page sanity range",
+        "article wrapper (pinned exactly)",
+        42, 42,
+        "SUBMISSION_CHECKLIST non-anon page exact pin",
     ),
 ]
 

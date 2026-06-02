@@ -236,7 +236,8 @@ Stage additions since the original 8-script catalogue:
 
 - **Loop 87** — Markdown lint (`lint_paper_md.py`) **first added as a
   stage in `run_all_checks.sh`** (§E catalogue itself wasn't synced
-  until Loop 96 `c8e8707`; see also CHANGELOG line 164). Upstream of
+  until Loop 96 `c8e8707`; see also the Loop 87 entry in §7.5 above
+  for the conversion-tooling context). Upstream of
   the LaTeX render to catch SEV-4 table-truncation and structural
   issues before xelatex parses the body.
 - **Loop 99** — `verify_tables_against_csv.py` added: numerical

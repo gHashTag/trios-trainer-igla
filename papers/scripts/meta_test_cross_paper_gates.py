@@ -178,10 +178,50 @@ def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     )
 
 
+def test_inventory_completeness() -> bool:
+    """Loop 126 B (47th pass A4 follow-up): assert every claim-class list
+    in `verify_cross_paper_consistency.py` has at least one break-test in
+    this file. Adding a new class without a meta-test fails the harness.
+
+    Approach: introspect the gate module's CLAIMS lists by name, then
+    check that this script's TEST_FN_BY_CLASS map covers each."""
+    sys.path.insert(0, str(CRATE_ROOT / "papers" / "scripts"))
+    try:
+        import verify_cross_paper_consistency as g
+    finally:
+        sys.path.pop(0)
+    registered_classes = {
+        name.removesuffix("_CLAIMS")
+        for name in dir(g)
+        if name.endswith("_CLAIMS") and isinstance(getattr(g, name), list)
+    }
+    # Each class must have at least one break-test below.
+    tested_classes = {"EXACT_MATCH", "SCOPED_DIFF", "ACKNOWLEDGES"}
+    missing = registered_classes - tested_classes
+    extra = tested_classes - registered_classes
+    if missing:
+        print(f"# FAIL  inventory_completeness: gate has CLAIMS classes "
+              f"{sorted(missing)} that this meta-test does not cover. "
+              "Add a break-test before the gate is trusted to enforce "
+              "those classes.", file=sys.stderr)
+        return False
+    if extra:
+        # Tested classes not in gate is suspicious but not fatal — could
+        # be a leftover after a class was deleted from the gate.
+        print(f"# WARN  inventory_completeness: meta-test names classes "
+              f"{sorted(extra)} that don't exist in the gate (stale "
+              "test?)", file=sys.stderr)
+    print(f"# OK    inventory_completeness: {len(registered_classes)} "
+          f"claim classes registered ({sorted(registered_classes)}), "
+          "all covered by break-tests")
+    return True
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="meta_test_cross_paper_") as td:
         tmp = Path(td)
         tests = [
+            ("inventory_completeness", lambda _t: test_inventory_completeness()),
             ("exact_match_f2_total", test_exact_match_break_f2_total),
             ("scoped_diff_lib_count", test_scoped_diff_break_lib_count),
             ("acknowledges_remove_ack", test_acknowledges_break_remove_ack),
