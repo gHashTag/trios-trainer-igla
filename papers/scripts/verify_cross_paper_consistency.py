@@ -51,6 +51,9 @@ def find_int_claim(path: Path, pattern: str) -> tuple[int, int] | None:
     return int(m.group(1)), line_no
 
 
+SUBMISSION_CHECKLIST = CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md"
+
+
 # EXACT_MATCH: both papers must report the same integer.
 # Each entry: (regex_a, paper_a, regex_b, paper_b, description)
 EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
@@ -62,6 +65,35 @@ EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
         r"The same 10 F2 binaries, (\d+) tests",
         ISSUE1021_PAPER,
         "Total cargo-test count (F2 §1 vs #1021 §1.3)",
+    ),
+    # Loop 122 B: SUBMISSION_CHECKLIST page-count claims; the F2 paper PDF
+    # at the TMLR-class variant must match. We pin both via the checklist;
+    # this is a single-file check across two CLAIMS (TMLR-class page count
+    # currently 27pp at Loop 109+).
+    (
+        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "SUBMISSION_CHECKLIST TMLR PDF page count (self-consistency)",
+    ),
+]
+
+
+# ACKNOWLEDGES: paper A says X, paper B says Y, where X ≠ Y is intentional
+# (different scopes). The gate requires that paper A explicitly acknowledges
+# the other paper's different scope, so that a TMLR reviewer reading both
+# in sequence isn't surprised. Each entry: (paper, regex, must_include_pattern, description).
+ACKNOWLEDGES_CLAIMS: list[tuple[Path, str, str, str]] = [
+    # F2 §8.1 says "Ten F2 binaries"; #1021 §3.3 says "12 binaries on disk".
+    # The discrepancy is legitimate (F2's documented set vs #1021's
+    # on-disk inventory including new f2_pairwise_perm). #1021 §3.3 already
+    # acknowledges via "the F2 paper's own §8.1 names a subset" — gate this.
+    (
+        ISSUE1021_PAPER,
+        r"\bf12 binaries on disk\b",
+        r"F2 paper's own §8.1 names a subset",
+        "#1021 §3.3 must acknowledge F2 §8.1's different binary scope",
     ),
 ]
 
@@ -114,6 +146,25 @@ def check_exact_match(spec: tuple[str, Path, str, Path, str]) -> list[str]:
     return mismatches
 
 
+def check_acknowledges(spec: tuple[Path, str, str, str]) -> list[str]:
+    paper, claim_pat, ack_pat, label = spec
+    text = paper.read_text()
+    # The claim must be present (otherwise the gate isn't relevant).
+    if not re.search(claim_pat, text):
+        # Not a failure — the claim just isn't in this paper right now.
+        return []
+    # If the claim is present, the acknowledgement must also be present.
+    if not re.search(ack_pat, text):
+        return [
+            f"{label}: claim {claim_pat!r} found in "
+            f"{paper.relative_to(CRATE_ROOT)} but acknowledgement "
+            f"{ack_pat!r} is missing — cross-paper relationship needs "
+            "to be explicitly noted to avoid silent contradiction with the "
+            "other paper's different scope."
+        ]
+    return []
+
+
 def check_scoped_diff(spec: tuple[str, Path, str, int, int, str]) -> list[str]:
     pat, paper, scope_desc, lo, hi, label = spec
     found = find_int_claim(paper, pat)
@@ -154,12 +205,24 @@ def main() -> int:
         else:
             print(f"# OK    SCOPED {label}")
 
+    for spec in ACKNOWLEDGES_CLAIMS:
+        ms = check_acknowledges(spec)
+        label = spec[-1]
+        if ms:
+            all_mismatches.extend(ms)
+            print(f"# FAIL  ACKN   {label}", file=sys.stderr)
+            for m in ms:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            print(f"# OK    ACKN   {label}")
+
     if all_mismatches:
         print(f"# verify_cross_paper_consistency.py — "
               f"{len(all_mismatches)} cross-paper drift(s)",
               file=sys.stderr)
         return 1
-    n_total = len(EXACT_MATCH_CLAIMS) + len(SCOPED_DIFF_CLAIMS)
+    n_total = (len(EXACT_MATCH_CLAIMS) + len(SCOPED_DIFF_CLAIMS) +
+               len(ACKNOWLEDGES_CLAIMS))
     print(f"# verify_cross_paper_consistency.py — "
           f"{n_total} cross-paper claims verified, 0 drift")
     return 0

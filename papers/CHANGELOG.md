@@ -227,7 +227,10 @@ than reciting them inline.
 
 Stage additions since the original 8-script catalogue:
 
-- **Loop 87** — Markdown lint (`lint_paper_md.py`) added upstream of
+- **Loop 87** — Markdown lint (`lint_paper_md.py`) **first chain-included
+  in `run_all_checks.sh`** (the §E catalogue was not yet updated at this
+  point; the Loop 96 c8e8707 §E sync brought the script into §E along
+  with `check_no_fabricated_shas.py`) upstream of
   the LaTeX render to catch SEV-4 table-truncation and structural
   issues before xelatex parses the body.
 - **Loop 99** — `verify_tables_against_csv.py` added: numerical

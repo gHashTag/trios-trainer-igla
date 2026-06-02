@@ -123,29 +123,82 @@ DECOMPOSITION_CLAIMS: list[tuple[str, str, str]] = [
 # Used for F2 §E's "additional N" sentence whose N should match the
 # "non-catalogue" stage count = actual - 7 (the 7 catalogued-as-stage
 # count out of 8 catalogue bullets; the 8th is run_all_checks.sh itself).
-DERIVED_CLAIMS: list[tuple[str, str, int, str]] = [
+DERIVED_CLAIMS: list[tuple[str, str, str, str]] = [
     (
         "papers/f2_methodology.md",
         # "the additional N are documented" — N should equal actual - 7
         r"the additional (\d+) are documented",
-        7,   # constant_offset: actual - 7 catalogued-as-stage = additional
-        "F2 §E follow-up additional count (= actual - 7 catalogued-as-stage)",
+        "catalogued_as_stage",   # offset key resolved at runtime
+        "F2 §E follow-up additional count "
+        "(= actual - catalogued_as_stage_offset())",
     ),
 ]
 
 
+def resolve_offset(key: str) -> int:
+    """Resolve a named offset to an integer. Loop 122 C: replaces hard-coded 7."""
+    if key == "catalogued_as_stage":
+        return catalogued_as_stage_offset()
+    if isinstance(key, int):
+        return key
+    raise ValueError(f"unknown offset key {key!r}")
+
+
+_UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven",
+          "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+          "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
+_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+         "eighty", "ninety"]
+
+
 def words_to_int(w: str) -> int | None:
-    """Convert English number words (zero..twenty) + digits to int."""
-    table = {
-        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
-        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
-        "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
-        "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
-        "nineteen": 19, "twenty": 20,
-    }
+    """Convert English number words (0..99) + digits to int.
+
+    Loop 122 C (45th pass A5): extended from the original 0..20 cap so the
+    gate doesn't break silently when the on-disk stage count grows past 20.
+    Handles "twenty-one", "twenty one", "twenty 1" forms (the last via the
+    digit shortcut).
+    """
     if w.isdigit():
         return int(w)
-    return table.get(w.lower())
+    w = w.lower().strip()
+    if w in _UNITS:
+        return _UNITS.index(w)
+    if w in _TENS:
+        return _TENS.index(w) * 10
+    # Compound forms: "twenty-one", "thirty-five", etc.
+    for sep in ("-", " "):
+        if sep in w:
+            tens_part, _, units_part = w.partition(sep)
+            if tens_part in _TENS and units_part in _UNITS[1:10]:
+                return _TENS.index(tens_part) * 10 + _UNITS.index(units_part)
+    return None
+
+
+def catalogued_as_stage_offset() -> int:
+    """Derive the F2 §E catalogue-as-stage count rather than hard-coding 7.
+
+    The §E catalogue lists 8 scripts; one of them (`run_all_checks.sh`)
+    is the orchestrator and not a stage of itself. The remaining 7
+    contribute to STAGES. Loop 122 C (45th pass A5): future-proof by
+    computing this from the catalogue rather than the literal 7.
+    """
+    paper = (CRATE_ROOT / "papers" / "f2_methodology.md").read_text()
+    # Count bullets of the form "- **`papers/scripts/<name>`** ..." within
+    # the §E catalogue body (between "### E. Reviewer-grade tooling
+    # catalogue" and the closing "supplementary-zip packer" or section
+    # boundary).
+    cat_re = re.compile(r"###\s+E\.\s+Reviewer-grade tooling catalogue(.*?)(?=###|\Z)",
+                        re.DOTALL)
+    m = cat_re.search(paper)
+    if not m:
+        return 7  # fall back to old hard-code if §E moves
+    body = m.group(1)
+    n_bullets = len(re.findall(r"^- \*\*`papers/scripts/", body, re.MULTILINE))
+    # Subtract 1 for the orchestrator (run_all_checks.sh). The orchestrator
+    # may or may not be at the end of the catalogue, but is always one of
+    # the bullets.
+    return max(n_bullets - 1, 0)
 
 
 def find_decomposition(path: Path, pattern: str) -> tuple[int, int, int] | None:
@@ -186,8 +239,10 @@ def main() -> int:
         else:
             print(f"# OK  {rel}:{line_no}  — {desc} = {claimed}")
 
-    # Loop 120 B: derived claims (N == actual - constant_offset).
-    for rel, pattern, offset, desc in DERIVED_CLAIMS:
+    # Loop 120 B: derived claims (N == actual - resolved_offset).
+    # Loop 122 C: offset is now a key resolved to a computed value
+    # via `resolve_offset`, future-proofing against §E catalogue growth.
+    for rel, pattern, offset_key, desc in DERIVED_CLAIMS:
         path = CRATE_ROOT / rel
         if not path.exists():
             mismatches.append(f"{rel}: file missing for derived '{desc}'")
@@ -198,6 +253,7 @@ def main() -> int:
                 f"{rel}: no match for derived '{desc}' (pattern {pattern!r})")
             continue
         claimed, line_no = found
+        offset = resolve_offset(offset_key)
         expected = actual - offset
         if claimed != expected:
             mismatches.append(
