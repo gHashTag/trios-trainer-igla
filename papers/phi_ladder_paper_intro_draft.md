@@ -72,10 +72,12 @@ There are two reasons to suspect the comparison is informative:
    RmsNorm is $-4.12$ BPB in the canonical stratum (i.e., RmsNorm
    accounts for $\sim 4$ BPB of held-out validation performance);
    at $\mathrm{WD}=0$, the same removal yields $+0.43$ BPB
-   (RmsNorm is now *anti-productive*). Pearl-style CDE pins this
-   as an interaction effect between RmsNorm's normalizing role and
-   weight decay's regularizing role. The same Pearl-CDE framework
-   should be able to detect — or rule out — analogous interaction
+   (RmsNorm is now *anti-productive*). The companion F2 paper uses
+   Pearl-style CDE to pin this as an interaction effect between
+   RmsNorm's normalizing role and weight decay's regularizing
+   role. This paper uses the same *strata pair* (canonical, wd0)
+   on a total-effect contrast (not a Pearl CDE — see §3.4) and
+   should be able to detect or rule out analogous interaction
    effects between quantization path and WD.
 
 The phi-ladder is therefore a *theoretically motivated* alternative
@@ -376,11 +378,16 @@ recipes.
 
 ### 3.3 Analysis machinery (sourced from F2 companion)
 
-The same 10 F2 binaries that back the companion paper run this
-study unmodified at the per-cell level; six are deployed here
-(the seventh, `f2_dual_mediation`, is intentionally excluded —
-see §3.4 for the four-PSE identification issue that motivates
-the exclusion):
+The companion F2 paper provides 10 binaries total: 7 analysis
+binaries + 3 infrastructure/helper binaries (`f2_provenance_check`,
+`f2_to_jsonl`, plus figure-script utilities). Of the **7 analysis
+binaries**, this study uses **6 unmodified at the per-cell level**:
+the 7th, `f2_dual_mediation`, is intentionally excluded because
+its four-PSE identification fails for our mediator candidates
+(see §3.4). `f2_provenance_check` is run over every emitted CSV
+as infrastructure, but contributes no analysis-level estimands.
+
+The six deployed analysis binaries:
 
 - **Per-cell BPB recording**: `f2_ablation_sweep --config <slot>
   --stratum <s> --seed <i> --output cell_<s>_<slot>_<i>.csv`.
@@ -554,7 +561,17 @@ at least one of:
 Conditions (a)–(d) are jointly exhaustive of "fails the H1 test"
 for finite-BPB results. Non-finite cells are excluded from the
 test per §3.5 reporting discipline. If every pair satisfies at
-least one of (a)/(b)/(c)/(d) in **both strata**, H1 is falsified.
+least one of (a)/(b)/(c)/(d) in the **primary (canonical)
+stratum**, H1 is falsified — the §4.4 asymmetric rule treats
+canonical alone as positive-determining, so falsification (the
+logical negation of "positive") must also be canonical-only.
+Failure at wd0 (with success at canonical) is reported as
+secondary evidence per §4.4, NOT as additional grounds for H1
+falsification. Loop 108 31st-pass correction: earlier drafts
+required failure in both strata, which created a no-man's-land
+(canonical-fail + wd0-hold) classified as neither falsified nor
+positive — fixed here by aligning §4.2 falsification with §4.4
+primary-determining logic.
 
 **Action if H1 holds**: report the specific pair(s) at which
 phi-ladder is superior, with the bridge-score envelope. Make no
@@ -770,8 +787,10 @@ plus an exploratory wall-clock observation.
 ### 6.4 The wd0 stratum is a structural device, not a recommendation
 
 We test at wd0 because the companion F2 paper demonstrates that
-the wd0 Pearl CDE can surface format-WD interaction structure
-that the canonical (marginal) recipe hides. We do not recommend
+the wd0 contrast (Pearl CDE in the companion's identification
+machinery; total-effect contrast in ours per §3.4) can surface
+format-WD interaction structure that the canonical (marginal)
+recipe hides. We do not recommend
 training transformers at WD=0 in production — the companion
 paper's §5.2 documents the wd0 stratum reproducing a real
 pre-AdamW configuration, not endorsing it. If H1 or H2 holds

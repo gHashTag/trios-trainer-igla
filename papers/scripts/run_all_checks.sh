@@ -125,6 +125,7 @@ STAGES=(
     "markdown lint:python3 papers/scripts/lint_paper_md.py"
     "tables vs CSVs:python3 papers/scripts/verify_tables_against_csv.py"
     "formulas vs tables:python3 papers/scripts/verify_formulas_vs_tables.py"
+    "label consistency:python3 papers/scripts/verify_label_consistency.py"
     "#1021 cross-ref audit:papers/scripts/cross_reference_audit.py papers/phi_ladder_paper_intro_draft.md"
     "#1021 markdown lint:python3 papers/scripts/lint_paper_md.py papers/phi_ladder_paper_intro_draft.md"
     "test inventory regen:papers/scripts/generate_appendix_d.sh"
