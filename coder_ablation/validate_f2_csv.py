@@ -10,7 +10,7 @@ Checks the contract from the f2-mediation-loop skill:
 import re
 import sys
 
-KNOWN_STRATA = {"canonical", "wd0", "warmup0"}
+KNOWN_STRATA = {"canonical", "wd0", "warmup0", "mom_std"}
 SNAKE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 

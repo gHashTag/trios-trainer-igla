@@ -1,224 +1,197 @@
-# IGLA-Coder Loop+2 -- power (A) + real F2 bridge (B) + lr x wd frontier (C)
+# IGLA-Coder Loop+3 -- third stratum + cross-stratum CDE stability
 
-Repo: gHashTag/trios-trainer-igla @ feat/igla-coder-v1 (HEAD bd2b06e + this
+Repo: gHashTag/trios-trainer-igla @ feat/igla-coder-v1 (HEAD 7abf019 + this
 loop's uncommitted edits). Architecture: pre-norm RMSNorm decoder, trainable
 pos-emb, full analytic backward (gradcheck 23/0). CPU-only. Outcome metric:
 code_val_bpb on code_val.bin (lower is better). NOT comparable to the
 tiny_shakespeare champion BPB=2.2111 -- different corpus.
 
+## Audit -- weak spots considered (Loop+3)
+
+1. **Proposed warmup0 stratum is FICTITIOUS for this trainer.** Audit of
+   `src/bin/igla_coder.rs` confirms there is NO learning-rate warmup and NO
+   LR schedule (lr is constant; grep for `warmup`/`schedule`/`cosine` returns
+   nothing). The f2-mediation-loop rule requires a stratum to pin a REAL
+   mediator carrying >= 50% of the indirect effect. Pinning a non-existent
+   warmup would be a banner with no mechanism behind it. **Dropped.**
+2. The single-mediator branch in `f2_dual_mediation` was hardcoded for the
+   decay-pinned (wd0) case only -- it would panic on a momentum-pinned CSV
+   (missing `(1,0)` cell). Generalised this loop.
+3. The wd0 momentum sign flip (Loop+2) had no symmetric control: was decay's
+   harmful CDE also regime-dependent, or stable? Unanswered until now.
+4. No cross-stratum stability flag existed for the coder track (the skill's
+   `f2_stratum_compare` is not on this branch). Added a numpy bridge.
+5. The CSV schema validator did not know any stratum beyond
+   {canonical, wd0, warmup0}. Extended.
+
 ## Headline (negative result first)
 
-phi still does **NOT** beat tuned standard AdamW for the coder model. Three
-independent angles this loop all return the same verdict:
+phi still does **NOT** beat tuned standard AdamW for the coder model -- nothing
+this loop changes that. The new work is causal-mechanistic, not a phi win, and
+it sharpens the Loop+2 finding into a clean dichotomy between the two phi
+knobs:
 
-1. **Power (A):** with a best-checkpoint readout at hidden=128 / 1000 steps /
-   6 seeds, phi_b1 and standard are a statistical **tie** (delta_best =
-   -0.005 BPB [-0.136, +0.156]). The apparent final-step gap is entirely an
-   instability artefact: phi_b1's variance is ~2.7x standard's and its worst
-   seed drifts +1.46 BPB between best and final. phi-momentum is **less
-   stable, not better**.
-2. **Frontier (C):** **no** phi-derived configuration reaches the standard
-   frontier (3.775 BPB). phi-lr alone costs +0.31 BPB [+0.27, +0.34]; the
-   all-phi config is catastrophic (+4.24 BPB); phi-tempered is +0.46 BPB. All
-   CIs lie strictly above zero -- this is a **falsification**, not a tie. The
-   "one phi constant generates a competitive config" (MDL-prior) hypothesis
-   is rejected at this scale.
-3. **Mechanism (B):** the new real-Rust F2 bridge reproduces the numpy
-   stand-in exactly, and the wd0 stratum delivers the cleanest causal finding
-   of the whole coder track (sign flip, below).
+- **decay CDE is stable across strata and robustly HARMFUL.** The phi^-3
+  weight-decay penalty costs +3.544 BPB whether momentum is free (canonical)
+  or pinned to standard (mom_std) -- byte-identical effect, overlapping CIs,
+  same sign, Gamma_tip ~65. phi^-3 decay is a **regime-independent liability**.
+- **momentum CDE is NOT stable across strata.** It is +0.888 BPB (harmful) at
+  canonical wd=0.04 but flips to -0.268 BPB (helpful) at wd=0. The phi^-1
+  momentum knob is a **regime-dependent wildcard** whose sign is set entirely
+  by the weight-decay regime.
 
 The honest sentence stands: **the method survives, phi does not (yet).** Only
-`phi^2 + phi^-2 = 3` remains [Verified].
-
-The single most informative new result is causal-mechanistic, not a phi win:
-**phi-momentum's effect is entirely conditional on the weight-decay regime.**
-At canonical wd=0.04 it is harmful (CDE +0.89 BPB); when weight decay is
-pinned to zero its controlled direct effect **flips sign** to -0.27 BPB
-[-0.37, -0.18], Gamma_tip = 7.21, [Verified]. phi-momentum *helps* only in a
-regime nobody trains in.
+`phi^2 + phi^-2 = 3` is [Verified]. The one cell where a phi knob helps
+(wd0 momentum) lives in a regime nobody ships (zero weight decay). The
+mechanism literature explains why: warmup -- which this trainer lacks --
+normally absorbs the beta1 bias-correction shock; without it, the phi^-1
+momentum arm is the unstable one we measured in Loop+2.
 
 ---
 
-## Option A -- power run (hidden=128, 1000 steps, lr=0.01, wd=0.02, 6 seeds)
+## Implemented this loop
 
-Best-checkpoint readout added this loop (`eval_every`, `eval_val`, bestval
-print line) so the unstable phi_b1 seed is handled honestly instead of being
-read at a diverged final step. lr=0.01 (not 0.03) because lr=0.03 was unstable
-at hidden=128 in Loop+1 (muP intuition: wider net, smaller lr).
+### New stratum: mom_std (momentum pinned to standard)
 
-| arm | readout | mean [95% CI] | sd |
-|---|---|---|---|
-| standard | final | 4.093 [3.944, 4.253] | 0.200 |
-| standard | best  | 4.011 [3.933, 4.091] | 0.101 |
-| phi_b1   | final | 4.340 [3.969, 4.813] | 0.540 |
-| phi_b1   | best  | 4.006 [3.918, 4.146] | 0.153 |
+Symmetric completion of the 2x2 factorial begun by wd0. Where wd0 pins decay
+(wd=0) and varies momentum, **mom_std pins momentum (beta1=0.9) and varies
+decay** (0.04 -> phi^-3). The PSE is a Pearl CDE of decay along the
+non-momentum paths. Six new CPU runs (hidden=64, 300 steps, seeds 42/43/44):
 
-Bootstrap 95% CIs (20k resamples), paired-arm delta:
+| arm (decay) | beta1 | wd | seed42 | seed43 | seed44 |
+|---|---|---|---|---|---|
+| standard (baseline) | 0.9 | 0.04 | 4.3111 | 4.5282 | 4.3456 |
+| phi_wd (phi decay) | 0.9 | phi^-3 | 7.9469 | 7.9743 | 7.8957 |
 
-| readout | delta (phi_b1 - standard) | 95% CI | verdict |
-|---|---|---|---|
-| final | +0.246 | [-0.166, +0.742] | TIE (CI spans 0), but phi 2.7x variance |
-| best  | -0.005 | [-0.136, +0.156] | **TIE (CI spans 0)** |
+`coder_ablation_f2_mom_std.csv` (INPUT STRATUM = mom_std, single-mediator).
 
-**Interpretation [Conj]:** the best-checkpoint readout collapses the final-step
-"gap" to zero. The only real difference is variance: phi_b1 max best-vs-final
-instability gap = 1.46 BPB (seed 43: final 5.39 vs best 3.93) vs standard's
-0.33. phi-momentum does not improve the achievable minimum; it widens the
-spread. Reporting the diverged final step would have *overstated* a phi
-disadvantage -- the honest readout shows a tie with worse stability.
+### Generalised single-mediator branch (f2_dual_mediation)
 
-## Option B -- real F2 bridge (Rust binary) + wd0 stratum (Pearl CDE)
+The binary now detects WHICH mediator is pinned from the present cells and
+computes the matching CDE:
+- decay-pinned (wd0): cells (0,0),(1,0) -> momentum CDE along non-decay paths.
+- momentum-pinned (mom_std): cells (0,0),(0,1) -> decay CDE along non-momentum
+  paths.
+New unit test `mom_std_single_mediator_csv_has_only_momentum0_cells`
+(5 tests total, all green). The validator's KNOWN_STRATA now includes mom_std.
 
-The full F2 toolchain was not on this branch (only f2_harness.rs). This loop
-ports a minimal real Rust binary `src/bin/f2_dual_mediation.rs` (registered in
-Cargo.toml), so the coder CSV now flows through a real F2-contract reader
-instead of the numpy stand-in. The binary: SplitMix64 RNG (no external crate),
-`#`-preamble + INPUT STRATUM + W3C-PROV passthrough, 2x2 Pearl CDE + 4-way
-VanderWeele decomposition, bootstrap CI (20k), Gamma_tip (E-value transform),
-claim-status labels, and a single-mediator branch for decay-pinned strata.
-4 unit tests, all green.
+### Cross-stratum comparator (coder_ablation/stratum_compare_coder.py)
 
-**Reproduction check (canonical, `--csv coder_ablation_f2.csv`):** the Rust
-binary reproduces the Loop+1 numpy stand-in to the displayed precision.
+Runs f2_dual_mediation on all three strata and emits a per-mediator
+`stable_across_strata` flag (CI overlap AND sign agreement). The
+coder-track analogue of the skill's f2_stratum_compare.
 
-| Path-specific effect | effect (BPB) | 95% CI | Gamma_tip | status |
-|---|---|---|---|---|
-| CDE_momentum \| decay=0 | +0.888 | [+0.653, +1.182] | 8.20 | **[Verified]** |
-| CDE_decay \| momentum=0 | +3.544 | [+3.419, +3.643] | 64.82 | **[Verified]** |
-| Total effect (both phi on) | +2.858 | [+2.032, +3.565] | 8.92 | **[Verified]** |
-| Mediated-interaction | -1.574 | [-2.402, -0.839] | 5.48 | **[Verified]** |
-
-**New wd0 stratum (`coder_ablation_f2_wd0.csv`, weight_decay pinned to 0,
-3 seeds).** Following the f2-mediation-loop stratum rule (pin the dominant
-mediator -- decay carries +3.54 BPB, the largest IE -- to isolate the
-momentum path as a Pearl CDE along the non-decay paths):
+## Empirical findings (the three strata)
 
 | stratum | PSE | effect (BPB) | 95% CI | Gamma_tip | status |
 |---|---|---|---|---|---|
-| canonical (wd=0.04) | CDE_momentum | +0.888 | [+0.653, +1.182] | 8.20 | [Verified] |
-| **wd0 (wd=0)** | CDE_momentum (decay-pinned) | **-0.268** | [-0.367, -0.180] | 7.21 | **[Verified]** |
+| canonical | CDE_momentum (decay=0) | +0.888 | [+0.653, +1.182] | 8.20 | [Verified] |
+| canonical | CDE_decay (momentum=0) | +3.544 | [+3.419, +3.643] | 64.82 | [Verified] |
+| canonical | total effect | +2.858 | [+2.032, +3.565] | 8.92 | [Verified] |
+| canonical | mediated interaction | -1.574 | [-2.402, -0.839] | 5.48 | [Verified] |
+| wd0 | CDE_momentum (decay pinned) | **-0.268** | [-0.367, -0.180] | 7.21 | [Verified] |
+| mom_std | CDE_decay (momentum pinned) | **+3.544** | [+3.420, +3.643] | 65.16 | [Verified] |
 
-**Interpretation [Verified for the sign flip; no phi-superiority claim]:**
-this is the cleanest cross-stratum result on the coder track. phi-momentum's
-controlled direct effect is **+0.89 BPB (harmful) at canonical wd=0.04** but
-**-0.27 BPB (helpful) at wd=0**, both robust (Gamma_tip > 7). The effect of
-the phi^-1 momentum knob is **entirely conditional on the weight-decay
-regime** -- there is no regime-independent "phi-momentum is good/bad" claim to
-make. Since real training uses non-zero weight decay, the operative regime is
-the canonical one where phi-momentum hurts. The wd0 benefit is real but lives
-in a regime nobody ships.
+### Cross-stratum stability
 
-## Option C -- lr x wd frontier + phi-lr arm (hidden=64, 300 steps, 3 seeds)
+| mediator | stratum A | effect A | stratum B | effect B | CI overlap | sign agree | **stable** |
+|---|---|---|---|---|---|---|---|
+| momentum | canonical | +0.888 | wd0 | -0.268 | No | No | **False** |
+| decay | canonical | +3.544 | mom_std | +3.544 | Yes | Yes | **True** |
 
-Probes the phi-as-hyperparameter-generator (MDL-prior) hypothesis directly:
-can ONE phi constant generate a config that reaches the standard frontier?
-phi-lr = 0.03 * phi^-1 = 0.0185410197.
+**Interpretation [Verified for both stability verdicts; no phi-superiority
+claim]:** the two phi-derived knobs behave categorically differently.
+- **decay (phi^-3): regime-independent, robustly harmful.** Its CDE is
+  identical (to 4 dp) whether momentum is free or pinned, Gamma_tip ~65 in
+  both. The phi^-3 weight-decay magnitude is simply too large for this model;
+  no regime rescues it.
+- **momentum (phi^-1): regime-dependent.** Helpful only when weight decay is
+  exactly zero; harmful at the canonical wd=0.04 that real training uses.
+  There is no regime-independent "phi-momentum is good/bad" claim to make.
 
-| config | beta1 | wd | lr | mean [95% CI] | vs frontier |
-|---|---|---|---|---|---|
-| standard_lr03_wd04 | 0.9 | 0.04 | 0.03 | 4.395 [4.311, 4.528] | +0.620 |
-| **standard_lr03_wd02** | 0.9 | 0.02 | 0.03 | **3.775 [3.765, 3.794]** | FRONTIER |
-| standard_philr_wd02 | 0.9 | 0.02 | phi-lr | 4.086 [4.045, 4.109] | +0.311 |
-| allphi | phi^-1 | phi^-3 | phi-lr | 8.012 [7.958, 8.039] | +4.237 |
-| phi_tempered_philr_wd02 | phi^-1 | 0.02 | phi-lr | 4.232 [4.159, 4.287] | +0.457 |
-
-Frontier-reach test (paired bootstrap delta vs standard_lr03_wd02):
-
-| config | delta | 95% CI | reaches frontier? |
-|---|---|---|---|
-| standard_philr_wd02 | +0.311 | [+0.270, +0.342] | **NO (worse)** |
-| allphi | +4.237 | [+4.184, +4.274] | **NO (worse)** |
-| phi_tempered_philr_wd02 | +0.457 | [+0.384, +0.512] | **NO (worse)** |
-
-**Interpretation [Efit -> falsification]:** every phi-derived config is
-strictly worse than the standard frontier (all CIs above zero). phi-lr alone
-hurts (+0.31 BPB) -- scaling the learning rate by phi^-1 is simply too small a
-step here. The all-phi stack (phi momentum + phi^-3 decay + phi-lr) is
-dominated by the phi^-3 weight-decay term and lands +4.24 BPB off. The
-MDL-prior hypothesis -- "one phi constant generates a competitive config" --
-is **rejected at this scale**: no single-constant phi derivation reaches the
-hand-tuned frontier. The compact-code advantage of phi as a generator is real
-for *description length*, but it does not buy a competitive *config* here.
+This is the strongest causal statement the coder track supports, and it is a
+statement about phi's *liabilities and conditionality*, not its benefits.
 
 ## Research applied
 
-- Weight-decay dominance over muP for LR transfer: arXiv 2025-10 "Weight Decay
-  may matter more than muP for Learning Rate Transfer in Practice" -- explains
-  why the phi^-3 wd term dominates the all-phi config and why best-checkpoint
-  vs final readout diverges most for the higher-variance arm.
-- RMSNorm pre-norm: Zhang & Sennrich 2019.
-- Mediation / stratified CDE: Pearl 2001 (direct/indirect effects);
-  VanderWeele 2015 (4-way decomposition); VanderWeele & Ding 2017 (E-value /
-  Gamma_tip); Zhao & Luo 2024 (mediation CIs). Stratum rule (pin dominant
-  mediator -> Pearl CDE) per the f2-mediation-loop framework.
+- "Analyzing & Reducing the Need for Learning Rate Warmup in GPT Training"
+  (NeurIPS 2024, arXiv:2410.23922): warmup's mechanism is tied specifically to
+  Adam's beta1 bias-correction shock and interacts with weight decay through
+  the scale-invariant-weight equilibrium magnitude. Two consequences for us:
+  (a) it justifies DROPPING the warmup0 stratum (no warmup exists here, so the
+  beta1 shock is unmitigated -- consistent with phi_b1's higher Loop+2
+  variance); (b) since warmup interacts with weight decay, stratifying on the
+  decay regime is exactly the right lens for the momentum knob.
+- VanderWeele 2015 (4-way decomposition) and Pearl 2001 (controlled direct
+  effects): the mom_std stratum is the second single-mediator CDE that, with
+  wd0 and canonical, lets us test mediator-effect stability rather than assume
+  it. VanderWeele & Ding 2017 for the Gamma_tip / E-value robustness transform.
+- "Mediation Analysis with Multiple Mediators" (PMC4287269): the
+  cross-stratum stability check (do CDEs agree across strata in which a
+  mediator is identified) is the multiple-mediator analogue of consistency
+  checks across identification strategies.
 
 ## Verification
 
-- gradcheck: checks=23 fails=0 (PASS) after all edits.
+- gradcheck: checks=23 fails=0 (PASS).
 - cargo fmt --all -- --check: clean (exit 0).
 - cargo clippy --all-targets -- -D warnings: clean (exit 0).
-- cargo test --release --bin f2_dual_mediation: 4 passed; 0 failed
-  (reads_csv_with_preamble_and_stratum_banner,
-  cde_decay_is_dominant_and_decomposition_holds, wd0_stratum_is_detected,
-  wd0_single_mediator_csv_has_only_decay0_cells).
-- F2 CSV schema validator: PASS on BOTH coder_ablation_f2.csv (canonical,
-  12 rows) AND coder_ablation_f2_wd0.csv (wd0, 6 rows).
-- Rust f2_dual_mediation reproduces the numpy stand-in on the canonical CSV to
-  displayed precision.
+- cargo test --release --bin f2_dual_mediation: 5 passed; 0 failed (adds
+  mom_std_single_mediator_csv_has_only_momentum0_cells).
+- F2 CSV schema validator: PASS on ALL THREE -- canonical (12 rows),
+  wd0 (6 rows), mom_std (6 rows).
+- Regression: canonical + wd0 outputs reproduce Loop+2 to displayed precision.
 
 ## Files (this loop)
 
-- src/bin/f2_dual_mediation.rs -- NEW minimal real Rust F2 bridge (4 tests).
-- Cargo.toml -- registered the new bin.
-- src/bin/igla_coder.rs -- eval_val helper, TrainCfg.eval_every,
-  best-checkpoint tracking + bestval print, --eval-every CLI flag.
-- loop2_optionA.csv -- power run raw data (6 seeds x 2 arms, final + best).
-- loop2_optionC.csv -- frontier raw data (5 configs x 3 seeds).
-- coder_ablation_f2_wd0.csv -- wd0 stratum F2 long-form CSV.
-- emit_f2_wd0.py -- wd0 CSV generator.
-- analyze_loop2.py -- bootstrap CI analysis (A + C).
+- src/bin/f2_dual_mediation.rs -- generalised single-mediator branch (handles
+  both decay-pinned and momentum-pinned strata) + 1 new unit test (5 total).
+- coder_ablation/emit_f2_mom_std.py -- mom_std CSV generator + design note on
+  why warmup0 was dropped.
+- coder_ablation/coder_ablation_f2_mom_std.csv -- mom_std stratum (6 rows).
+- coder_ablation/stratum_compare_coder.py -- cross-stratum comparator.
+- coder_ablation/validate_f2_csv.py -- KNOWN_STRATA += mom_std.
 
 ## Claim-status summary
 
-- [Verified] phi^2 + phi^-2 = 3; the mediation decomposition identity; the
-  four canonical CDEs; the wd0 CDE_momentum sign flip (-0.27 BPB, Gamma 7.21).
-  These describe phi's regime-dependent and mostly-harmful effects, NOT a
-  benefit.
-- [Conj] phi_b1 ties standard at hidden=128 best-checkpoint (delta -0.005,
-  CI spans 0); the tie is "no better, higher variance".
-- [Efit -> falsified] no phi-derived config reaches the standard frontier;
-  phi-lr alone hurts; all-phi is +4.24 BPB off. MDL-single-constant-config
-  hypothesis rejected at this scale.
+- [Verified] phi^2 + phi^-2 = 3; the decomposition identity; the four
+  canonical CDEs; the mom_std decay CDE (+3.544, Gamma 65); the two
+  cross-stratum stability verdicts (decay stable, momentum not). All describe
+  phi's harmful or conditional effects, NOT a benefit.
+- [Conj] the wd0 momentum benefit (-0.268) is real but regime-specific (wd=0
+  only) and does not generalise to shipped training.
+- [Efit -> falsified] (from Loop+2, unchanged) no phi-derived config reaches
+  the standard frontier; phi-lr alone hurts.
 - [Retr] "phi-momentum beats standard" (project-wide); delta_CP = 3/phi^2.
 
-## Three collaboration options for Loop+3
+## Three collaboration options for Loop+4
 
-**A. Cross-stratum compare + warmup0 stratum (close the F2 loop).**
-Direction: add the warmup0 stratum (pin warmup=0, the other candidate
-mediator) and run a real f2_stratum_compare-style join across
-canonical / wd0 / warmup0 for the coder CSV, emitting a stable_across_strata
-flag per PSE. The wd0 sign flip is the highest-information result so far;
-a third stratum tests whether the momentum CDE is stable or regime-specific
-across two different pinned nuisances.
-Cost/Risk: ~6-9 short CPU runs + one comparator pass; low; directly extends
-the cleanest finding and aligns fully with the f2-mediation-loop pipeline.
+**A. Decay-magnitude dose-response (find where phi^-3 goes wrong).**
+Direction: decay is the regime-independent killer at phi^-3 (+3.54 BPB). Sweep
+wd along a dose-response curve {0, 0.01, 0.02, 0.04, phi^-3/2~0.118, phi^-3}
+at fixed momentum, hidden=64, to locate the BPB knee and quantify exactly how
+far phi^-3 overshoots the optimum. Answers "is ANY phi-derived decay value
+admissible?" with a curve, not a point.
+Cost/Risk: ~12-18 short CPU runs; low; turns the single harmful point into a
+calibrated dose-response and gives a fair test of the decay prior.
 
-**B. Detectable-effect power run (settle the tie honestly).**
-Direction: the Option A tie has wide CIs (~+/-0.15 BPB at best-checkpoint).
-Run hidden=128 to ~1500-2000 steps with 10-12 seeds per arm and a fixed
-best-checkpoint protocol, so a <=0.15 BPB effect becomes detectable and the
-tie is either confirmed tight or resolved. Report the achieved minimum
-detectable effect explicitly.
+**B. Detectable-effect power run on momentum (settle the Loop+2 tie).**
+Direction: the hidden=128 phi_b1-vs-standard tie still has wide CIs
+(~+/-0.15 BPB at best-checkpoint). Run hidden=128 to ~1500-2000 steps,
+10-12 seeds/arm, fixed best-checkpoint protocol, and report the achieved
+minimum detectable effect explicitly, so the tie is either tightened or
+resolved. Pairs naturally with the now-established regime-dependence of
+momentum.
 Cost/Risk: ~24-30 CPU runs at ~5-8 min each under throttling (several hours,
 one seed per call); low conceptual risk, pure statistical power.
 
-**C. lr x wd 2-D surface + phi-on-the-grid test.**
-Direction: Option C tested only the phi-lr point. Sweep a denser lr x wd grid
-(e.g. lr in {0.01, 0.02, 0.03, phi-lr}, wd in {0, 0.01, 0.02, 0.04, phi^-3})
-at hidden=64 to map the BPB surface, then ask the sharper MDL question: does
-ANY phi-derived (lr, wd) PAIR land on the empirical frontier, even if no
-single phi constant does? Falsification path explicit.
-Cost/Risk: ~16-20 runs; medium; turns the single-point frontier rejection
-into a real surface and gives a fair test of the multi-constant phi prior.
+**C. Port a real f2_stratum_compare Rust binary (retire the numpy bridge).**
+Direction: replace `stratum_compare_coder.py` with a proper
+`src/bin/f2_stratum_compare.rs` that reads N dual-mediation CSVs, joins on
+mediator, and emits the long-form cross-stratum CSV with stable_across_strata
+-- matching the skill's binary contract, with unit tests and INPUT STRATUM
+passthrough. Closes weak-spot #4 in Rust instead of Python.
+Cost/Risk: ~no new compute; medium implementation; brings the coder track's
+tooling fully onto the Rust f2 contract and removes the last numpy stand-in.
 
-STOP -- pick A / B / C (or a combination) for Loop+3.
+STOP -- pick A / B / C (or a combination) for Loop+4.

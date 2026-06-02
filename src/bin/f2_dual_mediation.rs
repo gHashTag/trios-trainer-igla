@@ -166,25 +166,43 @@ fn main() {
     let parsed = parse_csv(&text);
     let c = &parsed.cells;
 
-    // wd0 (or any decay-pinned) stratum: only m2=0 cells exist -> single-mediator
-    // momentum CDE along the non-decay paths. Handle before the full 2x2 path.
-    if !c.contains_key(&(0, 1)) || !c.contains_key(&(1, 1)) {
+    // Single-mediator strata: one of the two mediators is pinned so only one
+    // varying cell exists alongside the (0,0) baseline. Two symmetric cases:
+    //   decay-pinned (wd0):       cells (0,0),(1,0) -> momentum CDE (non-decay paths)
+    //   momentum-pinned (mom_std): cells (0,0),(0,1) -> decay CDE  (non-momentum paths)
+    // Detect by which off-baseline cell is present. Handle before the 2x2 path.
+    let full_2x2 = c.contains_key(&(1, 0))
+        && c.contains_key(&(0, 1))
+        && c.contains_key(&(1, 1))
+        && c.contains_key(&(0, 0));
+    if !full_2x2 {
+        let momentum_pinned = c.contains_key(&(0, 1)) && !c.contains_key(&(1, 0));
+        let (pinned_name, free_name, row_name, cell): (&str, &str, &str, (u8, u8)) =
+            if momentum_pinned {
+                ("momentum", "decay", "cde_decay_momentum_pinned", (0, 1))
+            } else {
+                ("decay", "momentum", "cde_momentum_decay_pinned", (1, 0))
+            };
+        assert!(
+            c.contains_key(&(0, 0)) && c.contains_key(&cell),
+            "single-mediator stratum needs baseline (0,0) and the free-mediator cell"
+        );
         println!(
             "# W3C-PROV: source = {}, mode = dual_mediation",
             parsed.source
         );
         println!("# INPUT STRATUM = {}", parsed.stratum);
         println!(
-            "# CDE-framing: {} -- single-mediator (momentum) Pearl CDE along \
-             non-decay paths",
-            parsed.stratum
+            "# CDE-framing: {} -- single-mediator ({}) Pearl CDE along \
+             non-{} paths",
+            parsed.stratum, free_name, pinned_name
         );
         println!("pse,effect_bpb,ci95_lo,ci95_hi,p,gamma_tip,status");
-        let cde_mom = |c: &BTreeMap<(u8, u8), Vec<f64>>| mean(&c[&(1, 0)]) - mean(&c[&(0, 0)]);
-        let (point, lo, hi, p) = boot_contrast(c, cde_mom, 0xF2A);
+        let cde = move |c: &BTreeMap<(u8, u8), Vec<f64>>| mean(&c[&cell]) - mean(&c[&(0, 0)]);
+        let (point, lo, hi, p) = boot_contrast(c, cde, 0xF2A);
         let g = gamma_tip(point, lo, hi);
         let st = status(point, lo, hi, g);
-        println!("cde_momentum_decay_pinned,{point:.4},{lo:.4},{hi:.4},{p:.3},{g:.2},{st}");
+        println!("{row_name},{point:.4},{lo:.4},{hi:.4},{p:.3},{g:.2},{st}");
         return;
     }
 
@@ -303,6 +321,25 @@ w,phi_b1,42,1,1,0,0.618,0.0,64,300,0.03,3.45
         assert!(p.cells.contains_key(&(0, 0)));
         assert!(p.cells.contains_key(&(1, 0)));
         assert!(!p.cells.contains_key(&(0, 1)));
+        assert!(!p.cells.contains_key(&(1, 1)));
+    }
+
+    #[test]
+    fn mom_std_single_mediator_csv_has_only_momentum0_cells() {
+        // Momentum-pinned stratum: beta1 fixed at 0.9, only decay varies.
+        // Cells are baseline (0,0) and decay-on (0,1); (1,0) and (1,1) absent.
+        let mom_std = "\
+# W3C-PROV: source = trios-trainer-igla@deadbee, mode = optimizer_factorial_mom_std
+# INPUT STRATUM = mom_std
+mode,arm,seed,x_phi_prior,m1_momentum,m2_decay,beta1,wd,hidden,n_steps,lr,code_val_bpb
+m,standard,42,0,0,0,0.9,0.04,64,300,0.03,4.31
+m,phi_wd,42,1,0,1,0.9,0.2360679775,64,300,0.03,7.95
+";
+        let p = parse_csv(mom_std);
+        assert_eq!(p.stratum, "mom_std");
+        assert!(p.cells.contains_key(&(0, 0)));
+        assert!(p.cells.contains_key(&(0, 1)));
+        assert!(!p.cells.contains_key(&(1, 0)));
         assert!(!p.cells.contains_key(&(1, 1)));
     }
 }
