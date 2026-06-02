@@ -107,26 +107,26 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–131)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–132)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty-four** independent
-passes total across Loops 59–131 (50-pass milestone reached at
-Loop 127; passes 51–54 dispatched at Loops 128–131). The first
+caught before reviewers saw them. **Fifty-five** independent
+passes total across Loops 59–132 (50-pass milestone reached at
+Loop 127; passes 51–55 dispatched at Loops 128–132). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–131 extended the discipline to round-N
+submission flow; Loops 86–132 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–54 are summarized in §10 (CI gate evolution arc Loops 87–131;
+12–55 are summarized in §10 (CI gate evolution arc Loops 87–132;
 subsequent passes documented in per-loop commit messages). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–131 (49th pass flagged the un-widened grep covered only
-~35 of 54 passes; the two-pattern form widens reach).
+90–132 (49th pass flagged the un-widened grep covered only
+~35 of 55 passes; the two-pattern form widens reach).
 
-#### Adversarial review retrospective (50-pass milestone Loop 127; current cumulative count tracked in lead paragraph)
+#### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
-As of the Loop 127 50-pass milestone:
+Snapshot at Loop 127 (50 passes); see §7 lead for cumulative count.
 The 27→50 audit cycle (rounds N=1..23 across Loops 104–127)
 followed a productive pattern: each substantive patch was
 re-audited the next loop; round-N audits at N≥5 still found
@@ -263,7 +263,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–130)
+### 10. CI gate evolution (Loops 87–132)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -362,8 +362,25 @@ Stage additions since the original 8-script catalogue:
   while the other two sites had been refreshed to "52" at Loop
   129) — operationalizes "no single doc owns the canonical count;
   the gate is the only canonical source".
+- **Loop 132 B** — `regen_changelog_section7.py` added as an
+  informational generator (NOT in the CI gate). Runs `git log
+  --grep="adversarial pass" --grep="round-"` on the f2-methodology
+  branch and emits a per-loop Markdown table at
+  `papers/CHANGELOG_section7_generated.md`. The hand-maintained §7
+  prose remains authoritative; this artifact makes drift visible
+  at-a-glance and prepares for an eventual retire-the-prose
+  transition (54th-pass catch #7+#8 *class* mitigation).
+- **Loop 132 C** — `verify_anonymizer_completeness.py` added
+  (24th stage). Scans the two TMLR-bound papers
+  (`f2_methodology.md`, `phi_ladder_paper_intro_draft.md`) for
+  bare `\bLoop \d+\b` anchors outside allowed contexts (section
+  headers, `(internal ref)` parentheticals, HTML comments, fenced
+  code). Operates in **ratchet mode**: legacy debt (28 + 42 = 70
+  bare anchors at Loop 132 baseline) is allowed; new additions
+  fail the gate. Closes the 54th-pass catch #9 *class*
+  (anonymization-leak through bare Loop-N anchors).
 
-The on-disk gate now runs **23 stages** (verified by the new
+The on-disk gate now runs **24 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

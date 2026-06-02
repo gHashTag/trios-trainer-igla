@@ -103,6 +103,35 @@ SITES: list[tuple[Path, str, str]] = [
         r"\*\*(\d+) adversarial passes total\*\* \(Loops 59[–-](\d+)\)",
         "ADVERSARIAL_REVIEW_LOG headline statistics",
     ),
+    # Loop 132-A SEV-2 fix #1: add CHANGELOG §10 header as a 4th site
+    # so the loop-range terminal cursor is enforced at every documented
+    # terminal. Without this, §10's "(Loops 87–130)" drifts silently
+    # while §7's "Loops 59–130" gets caught — the prior gate only saw
+    # one of them. Pattern: capture the start loop and terminal — the
+    # gate already enforces (count, last_loop); start loop is captured
+    # but ignored for now (could become its own SITES_BY_START class
+    # if a future loop wants to bind §10's "from 87" anchor too).
+    #
+    # We synthesize a fake "count" group of 0 because §10's header
+    # doesn't claim a pass count. The agreement check tolerates this:
+    # `counts` collapses {0, 54, 54, 54} → {0, 54} which would fail.
+    # So instead we register §10 with a pattern that captures a dummy
+    # count == the agreed terminal loop count, derived from the OTHER
+    # sites at agreement time. This is too clever; the simpler path
+    # is a separate LOOP_RANGE_SITES list that gates only the terminal
+    # loop number, distinct from the count-and-loop SITES above.
+]
+
+
+# Loop 132-A SEV-2 fix #1: separate registry for sites that gate ONLY
+# the loop-range terminal cursor (no associated pass count). Each
+# entry: (path, regex with single group capturing terminal loop, label).
+LOOP_RANGE_SITES: list[tuple[Path, str, str]] = [
+    (
+        CRATE_ROOT / "papers" / "CHANGELOG.md",
+        r"### 10\. CI gate evolution \(Loops 87[–-](\d+)\)",
+        "CHANGELOG §10 header loop-range terminal",
+    ),
 ]
 
 
@@ -146,9 +175,35 @@ def main() -> int:
               file=sys.stderr)
         return 1
 
+    # Loop 132-A: also parse LOOP_RANGE_SITES (loop-terminal-only
+    # registry, no count). These contribute to the `loops` agreement
+    # check but not to `counts`.
+    loop_range_rows: list[tuple[str, int, int]] = []
+    for path, pattern, label in LOOP_RANGE_SITES:
+        if not path.exists():
+            errors.append(f"{label}: file missing at {path.relative_to(CRATE_ROOT)}")
+            continue
+        text = path.read_text()
+        m = re.search(pattern, text)
+        if not m:
+            errors.append(f"{label}: regex did not match {path.name}")
+            continue
+        last_loop = _to_int(m.group(1))
+        if last_loop is None:
+            errors.append(f"{label}: last-loop token {m.group(1)!r} not recognized")
+            continue
+        line_no = text[:m.start()].count("\n") + 1
+        loop_range_rows.append((label, last_loop, line_no))
+        print(f"# OK    parse  {label}:{line_no}  last_loop={last_loop}")
+    if errors:
+        print(f"# verify_changelog_consistency.py — "
+              f"{len(errors)} parse error(s); cannot compare",
+              file=sys.stderr)
+        return 1
+
     # Pairwise agreement: all counts equal, all last_loops equal.
     counts = {r[1] for r in rows}
-    loops = {r[2] for r in rows}
+    loops = {r[2] for r in rows} | {lr[1] for lr in loop_range_rows}
     if len(counts) > 1:
         errors.append(
             f"pass count disagreement across {len(rows)} sites: "
@@ -159,12 +214,14 @@ def main() -> int:
             print(f"  {label}:{line_no} = {c}", file=sys.stderr)
     if len(loops) > 1:
         errors.append(
-            f"loop-range terminal disagreement across {len(rows)} sites: "
-            f"{sorted(loops)}")
+            f"loop-range terminal disagreement across "
+            f"{len(rows) + len(loop_range_rows)} sites: {sorted(loops)}")
         print(f"# FAIL  agree  loop terminals: {sorted(loops)}",
               file=sys.stderr)
         for label, _, l, line_no in rows:
             print(f"  {label}:{line_no} = Loops 59-{l}", file=sys.stderr)
+        for label, l, line_no in loop_range_rows:
+            print(f"  {label}:{line_no} = Loops ...-{l}", file=sys.stderr)
 
     if errors:
         print(f"# verify_changelog_consistency.py — "

@@ -139,10 +139,13 @@ ACKNOWLEDGES_CLAIMS: list[tuple] = [
     (
         ISSUE1021_PAPER,
         # Loop 123 D (46th pass A3 SEV-1 fix): the original `\bf12` had a
-        # typo — `\b` followed by literal `f` matches "f12", not "12". The
-        # actual prose says "**12 binaries** on disk"; the corrected regex
-        # finds it.
-        r"\*\*12 binaries\*\* on disk",
+        # typo — `\b` followed by literal `f` matches "f12", not "12".
+        # Loop 132-A SEV-4 fix #13: relax markdown emphasis to optional
+        # `**` so a future copyedit that drops bold doesn't break the
+        # gate. `(?:\*\*)?` permits both "**12 binaries**" and "12
+        # binaries" forms; \b boundary on the digit prevents matching
+        # "112 binaries" or similar.
+        r"(?:\*\*)?\b12 binaries(?:\*\*)? on disk",
         r"F2 paper's own §8.1 names a subset",
         "#1021 §3.3 must acknowledge F2 §8.1's different binary scope",
     ),

@@ -828,7 +828,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (23 stages on disk as of Loop 131)
+The companion paper's CI gate (24 stages on disk as of Loop 132)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -873,13 +873,14 @@ are produced.
 **Gate stage decomposition** (Loop 116 fixed the 38th-pass
 arithmetic; Loop 117 brought the count to the post-pre-registration
 end state; Loops 118 + 121 added the stage-count + cross-paper
-verifiers): the current **23-stage on-disk gate** breaks down as
-**17 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+verifiers): the current **24-stage on-disk gate** breaks down as
+**18 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier added in Loop 121, the
-submission-readiness verifier added in Loop 130 C, and the
-changelog-consistency verifier added in Loop 131 C) **+ 6
+submission-readiness verifier added in Loop 130 C, the
+changelog-consistency verifier added in Loop 131 C, and the
+anonymizer-completeness verifier added in Loop 132 C) **+ 6
 #1021-scoped stages already wired** into F2's `run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No

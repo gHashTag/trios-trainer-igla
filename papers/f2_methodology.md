@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **23 stages**
+  cold**) — single-shot CI gate. Currently chains **24 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other sixteen stages are gates
+  not a stage of itself); the **other seventeen stages are gates
   introduced after the §E 8-script catalogue crystallized at
   Loop 96, prior to the post-96 gate-evolution arc documented
   in CHANGELOG §10**:
@@ -1744,11 +1744,14 @@ dependency; we do not stub any of them.
   audit, its markdown lint, the smoke test for its
   `f2_pairwise_perm` binary, the supplementary-zip packer, the
   submission-readiness verifier (Loop 130 C, gates SUBMISSION_CHECKLIST
-  §1 against the STAGES array), and the changelog-consistency
-  verifier (Loop 131 C, binds CHANGELOG §7 ↔ SUBMISSION_CHECKLIST
-  §2 ↔ ADVERSARIAL_REVIEW_LOG headline pass-count triple). Exits 0
-  only if every stage passes. The catalogue above is the original 8
-  the paper relied on at draft time; the additional 16 are documented
+  §1 against the STAGES array), the changelog-consistency verifier
+  (Loop 131 C, binds CHANGELOG §7 ↔ SUBMISSION_CHECKLIST §2 ↔
+  ADVERSARIAL_REVIEW_LOG headline pass-count triple), and the
+  anonymizer-completeness verifier (Loop 132 C, ratchets bare
+  `Loop N` anchor count per-file against a fixed baseline). Exits
+  0 only if every stage passes. The catalogue above is the
+  original 8 the paper relied on at draft time; the additional
+  17 are documented
   in the follow-up paper's §5.4. (The 40th adversarial pass
   corrected an earlier "seven catalogued + ten additional"
   miscount.)

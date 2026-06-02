@@ -170,6 +170,22 @@ def main() -> int:
 
     mismatches: list[str] = []
 
+    # Loop 132-A SEV-3 fix #3: precheck STAGES for duplicate entries.
+    # The nearest-neighbor check uses strict `<` against best_other,
+    # which ties admit silently when STAGES contains a literal
+    # duplicate (a copy-paste mistake). Catch the underlying issue
+    # before the NN loop runs.
+    seen: dict[str, int] = {}
+    for i, name in enumerate(stages):
+        if name in seen:
+            mismatches.append(
+                f"papers/scripts/run_all_checks.sh STAGES has duplicate "
+                f"entry '{name}' at positions {seen[name]} and {i}. "
+                f"Each stage name must be unique; otherwise the §1 "
+                f"nearest-neighbor match is ambiguous.")
+        else:
+            seen[name] = i
+
     # Loop 131-A SEV-4 fix #6: dedicated diagnostic when sub-bullets
     # are marked `[x]`. The readiness audit assumes all-or-none
     # unchecked state (because a partially-checked checklist is a
@@ -253,6 +269,35 @@ def main() -> int:
                 print(f"# OK  ({k}/{actual_n}) '{sub_name}' ~ STAGES[{i}] "
                       f"'{stage_name}' (jaccard={score:.2f}, "
                       f"best_other={best_other_score:.2f})")
+
+    # Loop 132-A SEV-3 fix #14: gate the §1 (13/M) "N claims (X EXACT +
+    # Y SCOPED + Z ACKN + W RELATIONAL)" enumeration so the leading N
+    # matches the sum X+Y+Z+W. Drift example: adding a 5th RELATIONAL
+    # invariant (W: 4→5) without bumping the leading "11 claims" → 12.
+    try:
+        text = SUBMISSION_CHECKLIST.read_text()
+    except FileNotFoundError:
+        text = ""
+    if text:
+        enum_re = re.compile(
+            r"(\d+) claims \((\d+) EXACT \+ (\d+) SCOPED "
+            r"\+ (\d+) ACKN \+ (\d+) RELATIONAL\)"
+        )
+        m = enum_re.search(text)
+        if m:
+            leading = int(m.group(1))
+            parts = [int(m.group(j)) for j in range(2, 6)]
+            total = sum(parts)
+            line_no = text[:m.start()].count("\n") + 1
+            if leading != total:
+                mismatches.append(
+                    f"SUBMISSION_CHECKLIST.md:{line_no}: §1 enumeration "
+                    f"'{leading} claims ({'+'.join(str(p) for p in parts)})' "
+                    f"— leading {leading} != sum {total}. Update the "
+                    f"leading count to match the partition.")
+            else:
+                print(f"# OK  §1 claim-class enumeration: {leading} = "
+                      f"{'+'.join(str(p) for p in parts)}")
 
     if mismatches:
         print(f"# verify_submission_readiness.py — "
