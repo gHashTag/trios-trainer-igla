@@ -215,7 +215,9 @@ into CI on every push touching `papers/`. PR #185 turns from
 ### 10. CI gate evolution (Loops 87–118)
 
 The 39th and 40th adversarial passes both surfaced that the
-F2 paper's §E catalogue, which was authoritative through Loop 86,
+F2 paper's §E catalogue, whose 8-script composition was last
+expanded at Loop 87 (`lint_paper_md.py` added there) and remained
+authoritative as a complete enumeration through Loop 98,
 diverged from the on-disk gate after subsequent loops added new
 stages. This section documents the trajectory per-loop so that
 the §E paragraph can point here for the additional gates rather
