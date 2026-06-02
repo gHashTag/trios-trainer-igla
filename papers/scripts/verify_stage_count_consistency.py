@@ -121,7 +121,7 @@ DECOMPOSITION_CLAIMS: list[tuple[str, str, str]] = [
     # between "appear as" and "individual stages".
     (
         "papers/f2_methodology.md",
-        r"(\w+)\s+appear\s+as\s+individual\s+stages[\s\S]*?other\s+(\w+)\s+stages\s+are\s+gates",
+        r"([\w-]+)\s+appear\s+as\s+individual\s+stages[\s\S]*?other\s+([\w-]+)\s+stages\s+are\s+gates",
         "F2 §E catalogue partition (words)",
     ),
 ]

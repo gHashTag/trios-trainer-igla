@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **27 stages**
+  cold**) — single-shot CI gate. Currently chains **28 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other twenty stages are gates
+  not a stage of itself); the **other twenty-one stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1754,12 +1754,15 @@ dependency; we do not stub any of them.
   breadcrumb), and the class-registry-binding verifier (asserts
   §1 sub-bullet class-class enumeration labels and counts agree
   with the live `verify_cross_paper_consistency.py` `_CLAIMS`
-  lists). Exits 0 only if every stage passes. The catalogue
-  above is the original 8 the paper relied on at draft time;
-  the additional 20 are documented in the follow-up paper's
+  lists), and the documented-vs-extracted-consistency verifier
+  (binds §1 sub-bullet description metadata like "6 reports
+  (2 full + 4 stub)" to live verifier-source state). Exits 0
+  only if every stage passes. The catalogue above is the
+  original 8 the paper relied on at draft time;
+  the additional 21 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
-  is enumerated in `papers/CHANGELOG.md`
-  §10. (Earlier drafts wrote "seven catalogued + ten additional",
+  is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
+  wrote "seven catalogued + ten additional",
   which an adversarial pass corrected.)
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains

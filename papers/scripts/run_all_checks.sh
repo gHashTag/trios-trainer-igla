@@ -133,6 +133,7 @@ STAGES=(
     "cardinality arithmetic:python3 papers/scripts/verify_cardinality_arithmetic.py"
     "generator consistency:python3 papers/scripts/verify_generator_consistency.py"
     "class registry binding:python3 papers/scripts/verify_class_registry_binding.py"
+    "documented vs extracted:python3 papers/scripts/verify_documented_vs_extracted_consistency.py"
 )
 
 PASSED=0

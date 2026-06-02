@@ -19,42 +19,45 @@ placeholder below).
 
 Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
 
-- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **27/27 PASS**
-  - [ ] (1/27) cross-reference audit (F2/main paper) — 0 dangling refs
-  - [ ] (2/27) metadata verifier — title/tests/bib/figures parity
-  - [ ] (3/27) no fabricated SHAs — `git cat-file -e` per SHA-like token
-  - [ ] (4/27) markdown lint — 0 SEV-≥4 issues
-  - [ ] (5/27) tables vs CSVs — 6 tables × 119 numeric assertions verified
-  - [ ] (6/27) formulas vs tables — 4 algebraic identities (closure +
+- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **28/28 PASS**
+  - [ ] (1/28) cross-reference audit (F2/main paper) — 0 dangling refs
+  - [ ] (2/28) metadata verifier — title/tests/bib/figures parity
+  - [ ] (3/28) no fabricated SHAs — `git cat-file -e` per SHA-like token
+  - [ ] (4/28) markdown lint — 0 SEV-≥4 issues
+  - [ ] (5/28) tables vs CSVs — 6 tables × 119 numeric assertions verified
+  - [ ] (6/28) formulas vs tables — 4 algebraic identities (closure +
         Γ_tip bullets + headline-table + #1021 arithmetic) — 44 assertions
-  - [ ] (7/27) label consistency — 7 deprecated-term rules, 0 leaks
-  - [ ] (8/27) preamble per producer — static + runtime W3C-PROV gate
-  - [ ] (9/27) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
-  - [ ] (10/27) run completeness — 93-CSV inventory check (vacuous pre-sweep)
-  - [ ] (11/27) report consistency — 6 reports (2 full + 4 stub coverage)
-  - [ ] (12/27) stage count consistency — 5 counts + 2 decompositions + 1 derived
-  - [ ] (13/27) cross-paper consistency — 11 claims (1 EXACT + 2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN)
-  - [ ] (14/27) cross-paper gate meta-test — 7 synthetic-break tests PASS (5 classes covered)
-  - [ ] (15/27) f2_pairwise_perm smoke — end-to-end binary test + prov check
-  - [ ] (16/27) #1021 cross-ref audit — informational
-  - [ ] (17/27) #1021 markdown lint — 0 SEV-≥4 issues
-  - [ ] (18/27) test inventory regen — `cargo test --list` re-emits 809
-  - [ ] (19/27) xelatex 3-variant compile — non-anon, anon, real TMLR class
-  - [ ] (20/27) figure regen — all 6 figures rebuild from CSVs
-  - [ ] (21/27) supplementary pack — zip builds with 3-stage pre-flight
-  - [ ] (22/27) submission readiness — §1 ↔ STAGES alignment gate
+  - [ ] (7/28) label consistency — 7 deprecated-term rules, 0 leaks
+  - [ ] (8/28) preamble per producer — static + runtime W3C-PROV gate
+  - [ ] (9/28) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
+  - [ ] (10/28) run completeness — 93-CSV inventory check (vacuous pre-sweep)
+  - [ ] (11/28) report consistency — 6 reports (2 full + 4 stub coverage)
+  - [ ] (12/28) stage count consistency — 5 counts + 2 decompositions + 1 derived
+  - [ ] (13/28) cross-paper consistency — 11 claims (1 EXACT + 2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN)
+  - [ ] (14/28) cross-paper gate meta-test — 7 synthetic-break tests PASS (5 classes covered)
+  - [ ] (15/28) f2_pairwise_perm smoke — end-to-end binary test + prov check
+  - [ ] (16/28) #1021 cross-ref audit — informational
+  - [ ] (17/28) #1021 markdown lint — 0 SEV-≥4 issues
+  - [ ] (18/28) test inventory regen — `cargo test --list` re-emits 809
+  - [ ] (19/28) xelatex 3-variant compile — non-anon, anon, real TMLR class
+  - [ ] (20/28) figure regen — all 6 figures rebuild from CSVs
+  - [ ] (21/28) supplementary pack — zip builds with 3-stage pre-flight
+  - [ ] (22/28) submission readiness — §1 ↔ STAGES alignment gate
         (count + sub-bullet renumbering + per-position nearest-neighbor)
-  - [ ] (23/27) changelog consistency — CHANGELOG §7 ↔ §2 ↔
+  - [ ] (23/28) changelog consistency — CHANGELOG §7 ↔ §2 ↔
         ADVERSARIAL_REVIEW_LOG agree on (pass_count, last_loop)
-  - [ ] (24/27) anonymizer completeness — bare `Loop N` anchor count
-        per-file ≤ baseline (legacy debt ratchet, 61 at Loop 134)
-  - [ ] (25/27) cardinality arithmetic — N items (a+b+...) sum-equality
-        across registered paper-body anchors
-  - [ ] (26/27) generator consistency — regen_changelog_section7.py
+  - [ ] (24/28) anonymizer completeness — bare `Loop N` anchor count
+        per-file ≤ baseline (legacy debt ratchet, 54 at Loop 135)
+  - [ ] (25/28) cardinality arithmetic — N items (a+b+...) sum-equality
+        with frozen-historical-entry distinction
+  - [ ] (26/28) generator consistency — regen_changelog_section7.py
         output agrees with §7 lead commit floor + range terminal
-  - [ ] (27/27) class registry binding — §1 (13/M) class-class
+  - [ ] (27/28) class registry binding — §1 (13/M) class-class
         labels + counts agree with live `_CLAIMS` lists in
         verify_cross_paper_consistency.py
+  - [ ] (28/28) documented vs extracted — §1 sub-bullet description
+        metadata (e.g., '6 reports (2 full + 4 stub)') agrees with
+        live verifier-source state
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -75,9 +78,9 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 26 VERIFIED + 1 VERIFIED-WITHDRAWN
       (96%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 57 passes across Loops 59-134
+- [ ] **Adversarial review**: 58 passes across Loops 59-135
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-57 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-58 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -177,9 +180,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 134 (2026-06-02)**
+- Checklist version: **Loop 135 (2026-06-02)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 134 A/B/C commits on `f2-methodology`
+  Loop 135 A/B/C commits on `f2-methodology`
 - Next deadline: MLRC EOI soft 2026-06-04 AOE / hard TMLR 2026-09-30 AOE
 
 ### Checklist change log
@@ -228,9 +231,17 @@ If rejected:
   (cross-paper claims now 11 across 5 classes); F2 §E
   catalogue bare-anchor burn-down −7; 56th-pass UX/regex polish
   on changelog-consistency and submission-readiness gates.
-- Loop 134: this update — stage count 26 → 27 (added
+- Loop 134: stage count 26 → 27 (added
   `verify_class_registry_binding.py` as 27th stage; class label
   drift between §1 and live registry now caught); #1021 §5.4
   partition bare-anchor burn-down −7 (anonymizer baseline 46
   → 39); anonymizer baselines migrated to JSON sidecar; manual
   pre-flight `verify_committed_state_consistency.py` added.
+- Loop 135: this update — stage count 27 → 28 (added
+  `verify_documented_vs_extracted_consistency.py` binding §1
+  description metadata to live verifier source); phi_ladder §5.4
+  second-pass burn-down −7 (anonymizer baseline 39 → 32);
+  cardinality registry gains `frozen=True` for historical
+  snapshots; 6 quick SEV-3/4 closures (sidecar validation,
+  traceback emission, dead flag, EXCLUDE_PATHS, "as of Loop X"
+  annotation, docstring clarity).

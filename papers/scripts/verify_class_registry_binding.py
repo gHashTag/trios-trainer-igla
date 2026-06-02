@@ -86,6 +86,11 @@ def load_gate_classes() -> tuple[dict[str, int], dict[str, str]] | str:
     try:
         spec.loader.exec_module(mod)
     except Exception as e:
+        # Loop 135 — 58th-pass SEV-3 fix #7: emit traceback before
+        # returning the error string so a syntax error in the gate
+        # module surfaces with full context for debugging.
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return f"failed to import gate module: {e}"
     classes: dict[str, int] = {}
     for name in dir(mod):

@@ -32,29 +32,44 @@ from pathlib import Path
 CRATE_ROOT = Path(__file__).resolve().parents[2]
 
 
-# Each entry: (relative_path, anchor_regex_with_two_groups, label).
-# Group 1 captures the leading count; group 2 captures the parenthetical
-# body. The body is parsed by extracting all `\d+` substrings and
-# summing them. Order- and count-agnostic — works for 2-class through
-# arbitrary-class partitions.
-CLAIMS: list[tuple[str, str, str]] = [
-    # SUBMISSION_CHECKLIST §1 (13/N) "11 claims (1 EXACT + 5 SCOPED + 1
-    # ACKN + 4 RELATIONAL)" — primary use case from 55th-pass #14. Now
-    # also subsumes Loop 133 A.iii's EXACT_PIN addition (the partition
-    # expands from 4 to 5 classes); class-count-agnostic parsing
-    # handles both.
+# Each entry: (relative_path, anchor_regex_with_two_groups, label,
+# [optional] frozen). Group 1 captures the leading count; group 2
+# captures the parenthetical body. The body is parsed by extracting
+# all `\d+` substrings and summing them. Order- and count-agnostic —
+# works for 2-class through arbitrary-class partitions.
+#
+# Loop 135 B (57th-pass SEV-2 fix #1): optional 4th `frozen` field.
+# Frozen entries are historical snapshots whose component distribution
+# may differ from the current live state; the arithmetic (sum == lead)
+# is still verified, but a `# INFO frozen` annotation flags the entry
+# so future readers don't infer current-state from a snapshot.
+#
+# Scope note: this gate handles **parenthetical-shaped** enumerations.
+# English-word partitions like F2 §E "seven appear ... other twenty
+# stages" are covered by `verify_stage_count_consistency.py`'s
+# DECOMPOSITION_CLAIMS (with `words_to_int` for English numerals).
+# The two gates are complementary; this one stays narrow on shape.
+CLAIMS: list[tuple] = [
+    # SUBMISSION_CHECKLIST §1 (13/N) cross-paper claim-class
+    # enumeration. Live mirror of verify_cross_paper_consistency.py's
+    # `*_CLAIMS` lists; the class-registry-binding gate further
+    # asserts the labels themselves resolve to actual classes.
     (
         "papers/SUBMISSION_CHECKLIST.md",
         r"(\d+) claims \(([^)]+)\)",
         "SUBMISSION_CHECKLIST §1 cross-paper claim-class enumeration",
     ),
-    # CHANGELOG mirror of the same partition (§10 Loop 131 B entry).
-    # This catches drift between the §1 sub-bullet and the §10
-    # historical narrative when one updates and the other lags.
+    # CHANGELOG §10 Loop 131 B entry. The Loop 131 B narrative
+    # documents the cross-paper class composition at THAT time
+    # (1+5+1+4=11); Loop 133 A.iii reclassified 3 SCOPED → EXACT_PIN.
+    # The arithmetic still holds (1+5+1+4 == 1+2+1+4+3 == 11) so the
+    # gate passes either way, but the frozen=True flag makes the
+    # historical-snapshot status explicit to future readers.
     (
         "papers/CHANGELOG.md",
         r"cross-paper claims now (\d+) across \d+ classes \(([^)]+)\)",
-        "CHANGELOG §10 cross-paper claim-class enumeration",
+        "CHANGELOG §10 Loop 131 B cross-paper class enumeration (frozen)",
+        True,  # frozen
     ),
 ]
 
@@ -84,7 +99,20 @@ def sum_parts(body: str) -> tuple[int, list[int]]:
 def main() -> int:
     mismatches: list[str] = []
     verified = 0
-    for rel, pattern, label in CLAIMS:
+    for entry in CLAIMS:
+        # Loop 135 B: tuple length disambiguates frozen flag.
+        # 3-tuple = live (default frozen=False); 4-tuple = explicit
+        # frozen value (typically True for historical snapshots).
+        if len(entry) == 3:
+            rel, pattern, label = entry
+            frozen = False
+        elif len(entry) == 4:
+            rel, pattern, label, frozen = entry
+        else:
+            mismatches.append(
+                f"CLAIMS registry entry has {len(entry)} fields; "
+                f"expected 3 (live) or 4 (with frozen flag). Update.")
+            continue
         path = CRATE_ROOT / rel
         found = find_claim(path, pattern)
         if found is None:
@@ -112,8 +140,10 @@ def main() -> int:
                   file=sys.stderr)
             continue
         verified += 1
-        print(f"# OK    {rel}:{line_no}  {label}: {leading} = "
-              f"{'+'.join(str(p) for p in parts)}")
+        tag = "OK   " if not frozen else "FROZ "
+        print(f"# {tag} {rel}:{line_no}  {label}: {leading} = "
+              f"{'+'.join(str(p) for p in parts)}"
+              f"{' (historical snapshot — does not track live state)' if frozen else ''}")
 
     if mismatches:
         print(f"# verify_cardinality_arithmetic.py — "

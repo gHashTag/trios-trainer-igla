@@ -828,37 +828,37 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (27 stages on disk as of Loop 134)
+The companion paper's CI gate (28 stages on disk as of Loop 135)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
 the actual `STAGES` array:
 
-- `verify_run_completeness.py` — implemented at Loop 116; checks
-  all 93 CSVs are present in `data/issue1021/run0/` and each
-  parses against the schema in §5.1. Pre-sweep runs (when the
-  run directory doesn't exist) exit 0 vacuously, mirroring
-  `verify_provenance.sh`'s pre-registration pattern.
-- `verify_report_consistency.py` — implemented at Loop 117 and
-  extended at Loop 119 to **6/6 report-class coverage at two
-  tiers**: 2 full numeric-claim checkers (h0_equivalence and
-  h1_superiority grounded in `pairwise_<stratum>.csv` on
-  `diff_mean` and `p_bh` at 2-decimal tolerance) plus 4
-  exists-and-heading-pattern stubs (h2_dominance, stratum_diff,
-  bridge_envelope, secondary_outcomes). Each stub asserts the
-  report file is present and contains expected section / table
-  headers; the stubs upgrade to full numeric checkers once the
-  run produces concrete report-row schemas. Pre-sweep runs exit
-  0 vacuously. **The 41st adversarial pass flagged that earlier
-  wording read as 6/6 full when the script then shipped 2/6**;
-  Loop 119 C closed the gap with the stub tier.
+- `verify_run_completeness.py` — checks all 93 CSVs are present
+  in `data/issue1021/run0/` and each parses against the schema
+  in §5.1. Pre-sweep runs (when the run directory doesn't exist)
+  exit 0 vacuously, mirroring `verify_provenance.sh`'s
+  pre-registration pattern.
+- `verify_report_consistency.py` — operates at **6/6 report-class
+  coverage at two tiers**: 2 full numeric-claim checkers
+  (h0_equivalence and h1_superiority grounded in
+  `pairwise_<stratum>.csv` on `diff_mean` and `p_bh` at 2-decimal
+  tolerance) plus 4 exists-and-heading-pattern stubs (h2_dominance,
+  stratum_diff, bridge_envelope, secondary_outcomes). Each stub
+  asserts the report file is present and contains expected
+  section / table headers; the stubs upgrade to full numeric
+  checkers once the run produces concrete report-row schemas.
+  Pre-sweep runs exit 0 vacuously. **The 41st adversarial pass
+  flagged that earlier wording read as 6/6 full when the script
+  then shipped 2/6**; a follow-up sweep closed the gap with the
+  stub tier (see companion paper's `papers/CHANGELOG.md` §10).
 
 All three originally pre-registered scripts have now shipped:
-`verify_provenance.sh` (Loop 115) gates W3C-PROV preambles on the
-two preamble-emitting producer classes; `verify_run_completeness.py`
-(Loop 116) gates the 93-CSV inventory at the run-result anchor;
-`verify_report_consistency.py` (Loop 117) gates each post-run
-report's numeric claims against source CSVs. All three are now
+`verify_provenance.sh` gates W3C-PROV preambles on the two
+preamble-emitting producer classes; `verify_run_completeness.py`
+gates the 93-CSV inventory at the run-result anchor;
+`verify_report_consistency.py` gates each post-run report's
+numeric claims against source CSVs. All three are now
 on disk in `papers/scripts/` and wired into the companion paper's
 CI gate; they run vacuously OK pre-sweep because the
 `data/issue1021/run0/` subtree does not exist on the methodology
@@ -873,15 +873,16 @@ are produced.
 **Gate stage decomposition** (Loop 116 fixed the 38th-pass
 arithmetic; Loop 117 brought the count to the post-pre-registration
 end state; Loops 118 + 121 added the stage-count + cross-paper
-verifiers): the current **27-stage on-disk gate** breaks down as
-**21 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+verifiers): the current **28-stage on-disk gate** breaks down as
+**22 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier, the cross-paper-gate
 meta-test, the submission-readiness verifier, the
 changelog-consistency verifier, the anonymizer-completeness
 verifier, the cardinality-arithmetic verifier, the
-generator-consistency verifier, and the class-registry-binding
+generator-consistency verifier, the class-registry-binding
+verifier, and the documented-vs-extracted-consistency
 verifier; per-introduction history is catalogued in the
 companion paper's `papers/CHANGELOG.md` §10) **+ 6 #1021-scoped
 stages already wired** into F2's `run_all_checks.sh`

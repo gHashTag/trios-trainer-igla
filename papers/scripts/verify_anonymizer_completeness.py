@@ -69,7 +69,7 @@ BASELINE_SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json
 # burn-down: 22 + 39 = 61.
 FALLBACK_BASELINES = {
     "papers/f2_methodology.md": 22,
-    "papers/phi_ladder_paper_intro_draft.md": 39,
+    "papers/phi_ladder_paper_intro_draft.md": 32,
 }
 
 
@@ -94,10 +94,26 @@ def _load_baselines() -> tuple[dict[str, int], list[str]]:
         return dict(FALLBACK_BASELINES), warnings
     out: dict[str, int] = {}
     for k, v in bl.items():
+        # Loop 135 — 58th-pass SEV-3 fix #5: validate keys explicitly.
+        # Without this, a typo'd path silently produces a `WARN file
+        # missing; skipping` downstream that an operator can miss.
+        if not isinstance(k, str) or not re.fullmatch(r"papers/.+\.md", k):
+            warnings.append(
+                f"sidecar baseline key {k!r} not 'papers/...md' shape; "
+                "skipping")
+            continue
+        abs_path = CRATE_ROOT / k
+        if not abs_path.exists():
+            warnings.append(
+                f"sidecar baseline key {k!r} points at non-existent "
+                f"file {abs_path.relative_to(CRATE_ROOT)}; skipping")
+            continue
         if isinstance(v, int) and v >= 0:
             out[k] = v
         else:
-            warnings.append(f"sidecar baseline {k!r}={v!r} not non-negative int; skipping")
+            warnings.append(
+                f"sidecar baseline {k!r}={v!r} not non-negative int; "
+                "skipping")
     return out, warnings
 
 

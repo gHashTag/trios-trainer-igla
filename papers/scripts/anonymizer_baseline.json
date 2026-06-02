@@ -2,6 +2,6 @@
   "_comment": "Baseline bare-anchor counts per TMLR-bound paper for verify_anonymizer_completeness.py. Loop 134 B migrated from in-code SCAN_TARGETS tuples to this sidecar. Edit a baseline only when a burn-down loop has reduced anchors below the previous value; the GOOD diagnostic in the gate names the new value to write.",
   "baselines": {
     "papers/f2_methodology.md": 22,
-    "papers/phi_ladder_paper_intro_draft.md": 39
+    "papers/phi_ladder_paper_intro_draft.md": 32
   }
 }
