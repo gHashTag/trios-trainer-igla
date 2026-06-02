@@ -147,7 +147,7 @@ def main() -> int:
                     f"{total}. Revert the historical numbers instead "
                     f"of bumping the leading; frozen entries should "
                     f"not be edited.")
-                print(f"# FAIL  froz! {label}: {leading} != {total}",
+                print(f"# FAIL  FROZ  {label}: {leading} != {total}",
                       file=sys.stderr)
             else:
                 mismatches.append(

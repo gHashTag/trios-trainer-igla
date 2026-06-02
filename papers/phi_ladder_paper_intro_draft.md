@@ -820,7 +820,7 @@ full 80-run matrix is **~240 GPU-hours**.
 
 The paper commits a `papers/issue1021/expected_test_compile_tmlr.pdftotext`
 snapshot at submission. The companion paper's `compile_tmlr_test.sh
---diff` machinery (Loop 98) is reused unchanged: any future commit
+--diff` machinery is reused unchanged: any future commit
 that changes the rendered PDF's textual content fails the
 regression suite. The snapshot captures the post-numeric-fill
 manuscript, so post-hoc edits to the empirical numbers will be
@@ -828,7 +828,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (28 stages on disk as of Loop 135)
+The companion paper's CI gate (29 stages on disk as of Loop 137)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -870,11 +870,12 @@ follow the same commit-order discipline as `f2_pairwise_perm`
 committed before any of the 80-cell champion-scale sweep CSVs
 are produced.
 
-**Gate stage decomposition** (Loop 116 fixed the 38th-pass
-arithmetic; Loop 117 brought the count to the post-pre-registration
-end state; Loops 118 + 121 added the stage-count + cross-paper
-verifiers): the current **28-stage on-disk gate** breaks down as
-**22 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+**Gate stage decomposition** (the 38th-pass arithmetic was
+fixed in an earlier pre-registration sweep; later loops added
+the stage-count + cross-paper verifiers — full per-loop history
+in the companion paper's `papers/CHANGELOG.md` §10): the current
+**29-stage on-disk gate** breaks down as
+**23 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier, the cross-paper-gate
@@ -882,10 +883,11 @@ meta-test, the submission-readiness verifier, the
 changelog-consistency verifier, the anonymizer-completeness
 verifier, the cardinality-arithmetic verifier, the
 generator-consistency verifier, the class-registry-binding
-verifier, and the documented-vs-extracted-consistency
-verifier; per-introduction history is catalogued in the
-companion paper's `papers/CHANGELOG.md` §10) **+ 6 #1021-scoped
-stages already wired** into F2's `run_all_checks.sh`
+verifier, the documented-vs-extracted-consistency verifier,
+and the burn-down-history verifier; per-introduction history
+is catalogued in the companion paper's `papers/CHANGELOG.md`
+§10) **+ 6 #1021-scoped stages already wired** into F2's
+`run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No
 further stages remain pre-registered** — all three originally-
@@ -894,9 +896,9 @@ verify_report_consistency.py) have shipped. The full gate must
 exit 0 on the run-result paper's anchor commit before any draft
 is exported for submission.
 
-37th adversarial pass (Loop 114) flagged that earlier drafts
+An earlier adversarial pass flagged that earlier drafts
 presented the three scripts as already-shipped when none were;
-Loop 115 A delivered the first (`verify_provenance.sh`).
+a follow-up sweep delivered the first (`verify_provenance.sh`).
 
 ---
 

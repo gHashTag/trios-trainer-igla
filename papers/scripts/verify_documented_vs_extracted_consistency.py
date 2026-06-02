@@ -62,10 +62,14 @@ def _parse_subbullet(k: int, description_regex: str
     sec_text = sec.group(0)
     sec_offset = sec.start()
     # Multi-line tolerant: capture from em-dash up to next `- [ ]`
-    # checkbox (start of next sub-bullet) or blank line. The §1 prose
-    # uses 2-space indent continuations for wrapped lines.
+    # checkbox (start of next sub-bullet), markdown heading, or blank
+    # line. The §1 prose uses 2-space indent continuations for wrapped
+    # lines.
+    # Loop 137 — 60th-pass SEV-3 fix #3: added `^##\s` to the
+    # alternation so a missing blank line before §2 doesn't cause the
+    # last bullet's description to swallow §2's heading.
     bullet_re = re.compile(
-        rf"^\s*-\s*\[\s*[ xX]\s*\]\s*\({k}/\d+\)\s+(.+?)\s+—\s+(.+?)(?=^\s*-\s*\[|\n\n|\Z)",
+        rf"^\s*-\s*\[\s*[ xX]\s*\]\s*\({k}/\d+\)\s+(.+?)\s+—\s+(.+?)(?=^\s*-\s*\[|^##\s|\n\n|\Z)",
         re.MULTILINE | re.DOTALL,
     )
     m = bullet_re.search(sec_text)
@@ -85,26 +89,16 @@ def _parse_subbullet(k: int, description_regex: str
 
 
 def _import_gate(name: str):
-    path = SCRIPTS_DIR / name
-    if not path.exists():
-        return None
-    spec = importlib.util.spec_from_file_location(
-        path.stem, str(path),
-    )
-    if spec is None or spec.loader is None:
-        return None
-    mod = importlib.util.module_from_spec(spec)
+    # Loop 137 A.iv: delegate to shared _gate_utils.import_gate helper
+    # so the traceback-emission fix lands in one place. Earlier copies
+    # of this helper drifted between gates (59th-pass #1 caught the
+    # Loop 135 C regression where the un-fixed pattern was duplicated).
+    sys.path.insert(0, str(SCRIPTS_DIR))
     try:
-        spec.loader.exec_module(mod)
-    except Exception:
-        # Loop 136 — 59th-pass SEV-3 fix #1: emit traceback to stderr
-        # before returning None. The 58th-pass closure #7 added this
-        # to verify_class_registry_binding.py but the duplicated
-        # helper here was missed, silently swallowing import errors.
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        return None
-    return mod
+        from _gate_utils import import_gate
+    finally:
+        sys.path.pop(0)
+    return import_gate(name)
 
 
 def extract_report_consistency_counts() -> tuple[int, int] | str:
@@ -260,11 +254,16 @@ def main() -> int:
                       f"{cl_counts}+{cl_decomp}+{cl_derived} = "
                       f"{ac_counts}+{ac_decomp}+{ac_derived} (matches)")
 
-    # Binding 4 (Loop 136 A.iv): (24/N) anonymizer — "X at Loop Y"
-    # leading number == sum of baselines in anonymizer_baseline.json.
+    # Binding 4 (Loop 136 A.iv): (24/N) anonymizer — "ratchet, N at
+    # Loop M" leading number == sum of baselines in
+    # anonymizer_baseline.json.
+    # Loop 137 — 60th-pass SEV-3 fix #2: anchor on "ratchet," prefix
+    # so if the description later carries multiple "(N at Loop M)"
+    # forms (e.g., burn-down history inline), regex picks the right
+    # one. The "ratchet, " phrase is part of the established §1 style.
     s4 = _parse_subbullet(
         24,
-        r"(\d+) at Loop \d+",
+        r"ratchet,\s*(\d+) at Loop \d+",
     )
     if isinstance(s4, str):
         mismatches.append(f"(24/N): {s4}")

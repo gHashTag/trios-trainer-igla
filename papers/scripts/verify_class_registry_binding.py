@@ -76,22 +76,18 @@ def load_gate_classes() -> tuple[dict[str, int], dict[str, str]] | str:
     """Import verify_cross_paper_consistency and return ({prefix:
     list_length}, CLASS_LABEL_ALIASES) for each discovered *_CLAIMS
     attribute. The aliases dict is the canonical source of label
-    normalization (Loop 134 SEV-4 fix #11)."""
-    spec = importlib.util.spec_from_file_location(
-        "verify_cross_paper_consistency", str(GATE_MODULE),
-    )
-    if spec is None or spec.loader is None:
-        return f"failed to load module spec for {GATE_MODULE}"
-    mod = importlib.util.module_from_spec(spec)
+    normalization (Loop 134 SEV-4 fix #11).
+
+    Loop 137 A.iv: import via shared _gate_utils.import_gate helper
+    so the traceback-emission fix (Loop 135 #7) stays in one place."""
+    sys.path.insert(0, str(GATE_MODULE.parent))
     try:
-        spec.loader.exec_module(mod)
-    except Exception as e:
-        # Loop 135 — 58th-pass SEV-3 fix #7: emit traceback before
-        # returning the error string so a syntax error in the gate
-        # module surfaces with full context for debugging.
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        return f"failed to import gate module: {e}"
+        from _gate_utils import import_gate
+    finally:
+        sys.path.pop(0)
+    mod = import_gate(GATE_MODULE.name)
+    if mod is None:
+        return f"failed to import {GATE_MODULE.name} (see traceback above)"
     classes: dict[str, int] = {}
     for name in dir(mod):
         if name.endswith("_CLAIMS"):
