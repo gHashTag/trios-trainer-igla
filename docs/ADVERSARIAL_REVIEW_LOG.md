@@ -1,14 +1,14 @@
 # Adversarial review log — F2 methodology paper
 
-**Update (Loop 141)**: this file documents the **first 18 passes
+**Update (Loop 142)**: this file documents the **first 18 passes
 (Loops 59-94) in detail**. The discipline continued across Loops
-95-141 to total **64 adversarial passes**; the post-94 passes
+95-142 to total **65 adversarial passes**; the post-94 passes
 are tracked in `papers/CHANGELOG.md` §7 (Reviewer-screen feedback
 loop) and §7.5 + §10 (per-loop CI gate evolution arcs). See also
 per-loop commit messages on the `f2-methodology` branch
 (run from the crate root: `cd crates/trios-trainer-igla && git log
 --oneline --grep="adversarial pass" --grep="round-"`) for passes
-19-64 individually.
+19-65 individually.
 
 This document consolidates the **first 18 adversarial review passes**
 that were dispatched across Loops 59-94 of the F2 paper
@@ -24,7 +24,7 @@ review pattern itself was structured.
 
 ## Headline statistics
 
-- **64 adversarial passes total** (Loops 59-141); detail below for
+- **65 adversarial passes total** (Loops 59-142); detail below for
   passes 1-18 covering Loops 59-94.
 - **18 adversarial passes (Loops 59-94)** documented in this file
 - **17 caught at least one issue** (Loops 59-93)

@@ -1,7 +1,7 @@
 # Phi-ladder vs. the quantization zoo at champion scale: a
 # pre-registered companion to F2 (DRAFT §1 only)
 
-**Status**: §1 draft, Loop 98 (2026-06-02). Frames Issue #1021 as
+**Status**: §1 draft (2026-06-02). Frames Issue #1021 as
 the empirical companion to `papers/f2_methodology.md`. **No
 champion-scale run has been executed yet** — this document is the
 introduction that would lead the protocol-only manuscript, against
@@ -151,8 +151,8 @@ We do not claim:
 
 - **No claim of phi-ladder superiority at any scale other than the
   pre-registered $\sim 1$B params $\times$ 50B FineWeb tokens
-  regime**. Loop 49 cautions explicitly against extrapolating
-  sandbox-scale ablation results.
+  regime**. Earlier sandbox-scale cautions explicitly warn against
+  extrapolating ablation results across regimes.
 - **No claim of optimality of the specific phi-ladder
   parameterization** (GFTernary → GF8 → GF16 → GF32). Other
   Fibonacci-basis quantizations (Fibbinary,
@@ -220,14 +220,13 @@ post-training. To our knowledge there is no widely-cited
 from-scratch INT4-W4A8 reference at $\geq$ 1B parameters; the
 zoo entry in §3.1 is therefore restricted to **INT8** (Jetfire's
 recipe) and we drop the INT4 entry. Earlier drafts of this
-manuscript (pre-Loop 105) cycled through two wrong attributions
-for the integer zoo entry — first attributing
-arXiv:2310.16836 to "Jetfire INT4-W4A8" (Loop 102 draft), then
-correcting the arXiv id to 2403.12422 while *retaining* the
-incorrect INT4-W4A8 description (Loop 104 patch). The 28th
-adversarial pass (Loop 105) caught both errors; we now use
-Jetfire as INT8 (its actual claim) and acknowledge there is no
-champion-scale from-scratch INT4 reference to compare against.
+manuscript cycled through two wrong attributions for the integer
+zoo entry — first attributing arXiv:2310.16836 to "Jetfire
+INT4-W4A8", then correcting the arXiv id to 2403.12422 while
+*retaining* the incorrect INT4-W4A8 description. The 28th
+adversarial pass caught both errors; we now use Jetfire as INT8
+(its actual claim) and acknowledge there is no champion-scale
+from-scratch INT4 reference to compare against.
 
 The integer family's strength is its alignment with existing
 hardware INT4/INT8 matmul kernels; its weakness is the
@@ -828,7 +827,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (34 stages on disk as of Loop 141)
+The companion paper's CI gate (36 stages on disk as of Loop 142)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -874,8 +873,8 @@ are produced.
 fixed in an earlier pre-registration sweep; later loops added
 the stage-count + cross-paper verifiers — full per-loop history
 in the companion paper's `papers/CHANGELOG.md` §10): the current
-**34-stage on-disk gate** breaks down as
-**28 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+**36-stage on-disk gate** breaks down as
+**30 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier, the cross-paper-gate
@@ -886,11 +885,12 @@ generator-consistency verifier, the class-registry-binding
 verifier, the documented-vs-extracted-consistency verifier,
 the burn-down-history verifier, the alias-round-trip verifier,
 the module-cache-consistency verifier, the floating-loop-
-anchor verifier, the anchor-loop-coverage verifier, and the
-dependency-graph verifier; per-introduction history is
-catalogued in the companion paper's `papers/CHANGELOG.md` §10)
-**+ 6 #1021-scoped stages already wired** into F2's
-`run_all_checks.sh`
+anchor verifier, the anchor-loop-coverage verifier, the
+dependency-graph verifier, the tier-classification verifier,
+and the burn-down-trajectory verifier; per-introduction
+history is catalogued in the companion paper's
+`papers/CHANGELOG.md` §10) **+ 6 #1021-scoped stages already
+wired** into F2's `run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No
 further stages remain pre-registered** — all three originally-

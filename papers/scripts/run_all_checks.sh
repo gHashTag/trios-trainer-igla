@@ -140,6 +140,8 @@ STAGES=(
     "floating loop anchors:python3 papers/scripts/verify_loop_floating_anchors.py"
     "anchor loop coverage:python3 papers/scripts/verify_anchor_loop_coverage.py"
     "dependency graph:python3 papers/scripts/verify_dependency_graph.py"
+    "tier classification:python3 papers/scripts/verify_tier_classification.py"
+    "burn-down trajectory:python3 papers/scripts/verify_burn_down_trajectory.py"
 )
 
 # Loop 141 C: lightweight tier classification. Each stage maps to one
@@ -156,7 +158,7 @@ STAGE_TIERS=(
     "submission"
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
-    "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline" "discipline" "discipline"
 )
 
 PASSED=0

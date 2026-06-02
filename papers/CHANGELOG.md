@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–141)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–142)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Sixty-four** independent
-passes total across Loops 59–141 (50-pass milestone reached at
-Loop 127; passes 51–64 dispatched at Loops 128–141). The first
+caught before reviewers saw them. **Sixty-five** independent
+passes total across Loops 59–142 (50-pass milestone reached at
+Loop 127; passes 51–65 dispatched at Loops 128–142). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–141 extended the discipline to round-N
+submission flow; Loops 86–142 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–64 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–141; per-pass detail lives in
+12–65 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–142; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–141 (49th pass flagged the un-widened grep covered only
-~35 of 64 passes; the two-pattern form widens reach).
+90–142 (49th pass flagged the un-widened grep covered only
+~35 of 65 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–141)
+### 10. CI gate evolution (Loops 87–142)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -552,8 +552,29 @@ Stage additions since the original 8-script catalogue:
   Per-stage tier badge in output (e.g., `[submission]`); per-tier
   PASS/FAIL counts in summary. Helps contributors see at-a-glance
   which class fired without re-reading 34 stage descriptions.
+- **Loop 142 A.iii** — phi_ladder §1/§2.3/§3.1 attribution drops:
+  removed `Loop 98` status anchor, `Loop 49` sandbox-caution
+  anchor, and Loop 102/104/105 integer-zoo attribution sequence
+  (6 anchors total dropped via 3 rewrites). Anonymizer baseline
+  24 → 18. Total legacy debt 30 → 24.
+- **Loop 142 A.iv** — `verify_tier_classification.py` added
+  (35th stage). Asserts STAGE_TIERS length matches STAGES + every
+  tier ∈ {submission, discipline}. Promotes the runtime WARN
+  (Loop 141 64th-pass fix #4) to a hard FAIL via this gate stage.
+- **Loop 142 B** — `verify_burn_down_trajectory.py` added (36th
+  stage). Asserts FALLBACK_BASELINES breadcrumb is (a) strictly
+  loop-monotonic and (b) totals are monotonically non-increasing.
+  Catches a regression where someone appends a higher-total entry
+  (e.g., misclick on --update-baseline) or an out-of-order Loop N.
+  Currently 10 entries: Loop 132 → 142, total 72 → 24.
+- **Loop 142 C** — `papers/scripts/GATE_AUTHORING_GUIDE.md` added
+  as internal methodology distillation (NOT a CI stage). Covers
+  when to add a gate, _gate_utils helpers, tempdir+subprocess
+  break-test pattern, tier classification, cascade discipline,
+  dependency-graph hygiene, breadcrumb maintenance. 6 stages +
+  bottom-line discipline rules.
 
-The on-disk gate now runs **34 stages** (verified by the new
+The on-disk gate now runs **36 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.
