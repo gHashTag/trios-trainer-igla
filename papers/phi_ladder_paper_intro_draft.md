@@ -116,21 +116,24 @@ deviates from this plan will be explicitly labeled exploratory.
 ### 1.3 What the F2 companion provides
 
 Our methodology companion paper provides four pieces of analysis
-machinery, of which this paper consumes two: (1) **stratified
-Pearl-CDE** via the same two strata (`canonical`, `wd0`) the F2
-sandbox-scale finding used; (2) the **additive bridge-score
-envelope** of Ohnishi & Li 2026 Thm 2 (`f2_mediation_sensitivity`,
-operated in total-effect mode for this paper — see §3.4). The
-F2 framework also provides (3) the **four-PSE nested-counterfactual
-decomposition** (`f2_dual_mediation`) and (4) the **cross-stratum
-comparator** (`f2_stratum_compare`); this paper does **not**
-deploy (3) for the format comparison because the candidate
-mediators (`lossy_conversions`, `wall_clock_s`) are deterministic
-functions of the format-choice $X$ and so violate the
-positivity/overlap assumption that nested-counterfactual
-identification requires — see §3.4 for the diagnostic and the
-total-effect reframe. The cross-stratum comparator (4) is
-applied at the (phi, zoo) total-effect level rather than per-PSE.
+machinery, of which this paper consumes two: (1) the **two-stratum
+contrast design** (`canonical`, `wd0`) that the F2 sandbox-scale
+finding used to surface format-WD interaction at the *total-effect*
+level (NOT Pearl CDE in the identification-of-mediator sense —
+this paper has no controlled mediator, see §3.4); (2) the
+**additive bridge-score envelope** of Ohnishi & Li 2026 Thm 2
+(`f2_mediation_sensitivity`, operated in total-effect mode for
+this paper — see §3.4). The F2 framework also provides (3) the
+**four-PSE nested-counterfactual decomposition**
+(`f2_dual_mediation`) and (4) the **cross-stratum comparator**
+(`f2_stratum_compare`); this paper does **not** deploy (3) for
+the format comparison because the candidate mediators
+(`lossy_conversions`, `wall_clock_s`) are deterministic functions
+of the format-choice $X$ and so violate the positivity/overlap
+assumption that nested-counterfactual identification requires —
+see §3.4 for the diagnostic and the total-effect reframe. The
+cross-stratum comparator (4) is applied at the (phi, zoo)
+total-effect level rather than per-PSE.
 The same 10 F2 binaries, 805 tests, and W3C-PROV preamble
 discipline that back the companion paper's sandbox-scale RmsNorm
 finding are the substrate this paper runs on at champion scale.
@@ -374,13 +377,17 @@ recipes.
 ### 3.3 Analysis machinery (sourced from F2 companion)
 
 The same 10 F2 binaries that back the companion paper run this
-study unmodified at the per-cell level:
+study unmodified at the per-cell level; six are deployed here
+(the seventh, `f2_dual_mediation`, is intentionally excluded —
+see §3.4 for the four-PSE identification issue that motivates
+the exclusion):
 
 - **Per-cell BPB recording**: `f2_ablation_sweep --config <slot>
   --stratum <s> --seed <i> --output cell_<s>_<slot>_<i>.csv`.
   Each cell emits a single-record CSV with `val_bpb`,
-  `train_bpb`, `wall_s`, `peak_memory_mb`, `lossy_conversions`,
-  and a W3C-PROV preamble.
+  `train_bpb`, `wall_s`, `peak_memory_mb`, `lossy_conversions`
+  (recorded as a diagnostic per §3.4, NOT used as a mediator in
+  this paper's analysis), and a W3C-PROV preamble.
 - **Per-stratum aggregation**: `f2_ablation_aggregate` reads the
   40 per-stratum cells and emits a long-form CSV with
   per-config mean ± SE on validation BPB.
@@ -453,13 +460,20 @@ that can be measured at champion scale (e.g., per-layer gradient
 norm under format perturbation), but we do not deploy it for
 the format-comparison protocol here.
 
-The wd0 stratum is the Pearl CDE that the companion paper
-demonstrates can flip signs. If quantization-format × WD
-interaction exists at the same magnitude as the companion paper's
-RmsNorm × WD interaction, we expect the wd0 stratum to either
-strengthen or weaken the phi-ladder advantage. The protocol
-explicitly admits both outcomes and reports both, with
-**canonical as the pre-registered primary stratum** (see §4.4).
+The wd0 stratum is a **total-effect contrast** under the wd=0
+training configuration, NOT a Pearl Controlled Direct Effect in
+the mediator-identification sense (this paper has no controlled
+mediator — see §3.4 above for the four-PSE drop). What we share
+with the companion F2 paper is the *strata pair* (canonical and
+wd0), not the *identification machinery* (which differs: F2
+deploys CDE-with-controlled-mediator; this paper deploys
+total-effect under stratified training configurations). If
+quantization-format × WD interaction exists at the same magnitude
+as the companion paper's RmsNorm × WD interaction, we expect the
+wd0 stratum's total-effect contrast to either strengthen or
+weaken the phi-ladder advantage. The protocol explicitly admits
+both outcomes and reports both, with **canonical as the
+pre-registered primary stratum** (see §4.4).
 
 ### 3.5 Reporting discipline
 
@@ -467,9 +481,27 @@ Every cell of the 80-run matrix is reported in the manuscript,
 including cells that produce non-finite BPB (NaN or +Inf — the
 protocol does not exclude these but flags them in a separate
 diagnostic table). The bridge-score envelope is reported at
-**Λ = 1.0 BPB** (the same scale-of-effect that the F2 companion
-adopts as its reporting baseline). Any cell whose `Γ_tip(Λ=1.0)
-< 1.25` is flagged as fragile in the bridge-score column.
+**Λ = 1.0 BPB** with the `Γ_tip(Λ=1.0) < 1.25` fragility cutoff.
+
+**On the choice of Λ = 1.0 for a total-effect estimand (30th
+adversarial pass discovery, Loop 107).** The companion F2 paper
+calibrates Λ = 1.0 BPB against a *per-PSE* (NDE) bound. This
+paper bounds the *total effect*, a category change: total effects
+can absorb residual confounding that a Pearl CDE would partition
+into NDE + NIE. By that logic the same Λ may be too loose for a
+total-effect bound. We retain Λ = 1.0 anyway because (i) the
+underlying scale — one full BPB of unmeasured confounder — is
+calibrated to the BPB axis itself, not to the estimand type;
+(ii) the relevant question for a reader is "how large a
+confounder would erase the result?", which is independent of
+whether the estimand is direct or total; (iii) tightening Λ
+post-hoc would be exactly the kind of researcher-degree-of-freedom
+the pre-registration protocol exists to prevent. Reviewers who
+prefer a tighter calibration can read the per-pair Γ_tip values
+at any Λ from the committed CSVs. **We do not claim the F2
+companion's per-PSE Λ calibration transfers automatically to
+this paper's total-effect estimand**, only that we pin the value
+ex-ante to prevent post-hoc tuning.
 
 ---
 
@@ -477,9 +509,12 @@ adopts as its reporting baseline). Any cell whose `Γ_tip(Λ=1.0)
 
 The protocol locks three nested hypotheses with explicit
 falsification criteria. Each hypothesis is tested at both strata
-(canonical and wd0) separately. Reporting will be **symmetric**:
-results that falsify a hypothesis appear in the paper with the
-same prominence as results that confirm one.
+(canonical and wd0) separately, but **canonical is the
+pre-registered primary stratum** per §4.4 — results at wd0 alone
+are exploratory, not publishable as positive. Within the primary
+stratum, **falsification is treated symmetrically with
+confirmation**: a result that falsifies a hypothesis appears in
+the paper with the same prominence as one that confirms it.
 
 ### 4.1 H0 — null (equivalence)
 

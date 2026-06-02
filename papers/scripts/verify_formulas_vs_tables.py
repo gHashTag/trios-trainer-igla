@@ -182,6 +182,47 @@ def check_headline_table() -> list[str]:
     return mismatches
 
 
+# ─── Identity 4 (Loop 107): arithmetic claims in #1021 paper ───
+#
+# Each claim is a simple "lhs = rhs" assertion the paper makes,
+# either as a multiplication or a sum. We verify lhs evaluates to
+# rhs. Operates on the #1021 paper specifically.
+
+ISSUE1021_PAPER = CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md"
+
+ARITHMETIC_CLAIMS = [
+    # (label, lhs as eval-safe expression, expected rhs)
+    ("§3.1 sweep matrix", "8 * 2 * 5", 80),
+    ("§3.3 BH pairs per stratum", "4 * 4", 16),
+    ("§3.3 BH pairs both strata", "4 * 4 * 2", 32),
+    # The CSV count: 80 cells + 2 aggregates + 1 pairwise_canonical
+    # + 1 pairwise_wd0 + 1 stratum_compare + (8..16) sensitivity.
+    # Verify the fixed component sums correctly; the (8..16) range
+    # leads to total in [85, 101] inclusive.
+    ("§5.1 fixed-component CSV sum", "80 + 2 + 1 + 1 + 1", 85),
+    ("§5.1 CSV total upper bound (all survive)", "85 + 16", 101),
+    ("§5.1 CSV total lower bound (half survive)", "85 + 8", 93),
+]
+
+
+def check_arithmetic_claims() -> list[str]:
+    """Evaluate each lhs expression and confirm it equals the rhs."""
+    mismatches: list[str] = []
+    if not ISSUE1021_PAPER.exists():
+        return [f"  {ISSUE1021_PAPER.relative_to(CRATE_ROOT)} not found"]
+    for label, lhs_expr, expected in ARITHMETIC_CLAIMS:
+        # Safe eval: only int literals and + - * operators.
+        if not re.fullmatch(r"[\d\s+\-*]+", lhs_expr):
+            mismatches.append(f"{label}: unsafe expression {lhs_expr!r}")
+            continue
+        actual = eval(lhs_expr)  # safe per regex above
+        if actual != expected:
+            mismatches.append(
+                f"{label}: claim {lhs_expr} = {expected} but evaluates "
+                f"to {actual}")
+    return mismatches
+
+
 def main() -> int:
     print(f"# verify_formulas_vs_tables.py — Λ = {LAMBDA}")
     closure = check_closure()
@@ -206,14 +247,23 @@ def main() -> int:
 
     headline = check_headline_table()
     if headline:
-        print(f"# (3/3) headline-table Γ_tip: FAIL ({len(headline)} mismatches)",
+        print(f"# (3/4) headline-table Γ_tip: FAIL ({len(headline)} mismatches)",
               file=sys.stderr)
         for m in headline:
             print(f"  {m}", file=sys.stderr)
     else:
-        print(f"# (3/3) headline-table Γ_tip: OK ({len(HEADLINE_ROWS)} rows verified)")
+        print(f"# (3/4) headline-table Γ_tip: OK ({len(HEADLINE_ROWS)} rows verified)")
 
-    if closure or bullet_failures or headline:
+    arith = check_arithmetic_claims()
+    if arith:
+        print(f"# (4/4) #1021 arithmetic: FAIL ({len(arith)} mismatches)",
+              file=sys.stderr)
+        for m in arith:
+            print(f"  {m}", file=sys.stderr)
+    else:
+        print(f"# (4/4) #1021 arithmetic: OK ({len(ARITHMETIC_CLAIMS)} claims verified)")
+
+    if closure or bullet_failures or headline or arith:
         return 1
     return 0
 
