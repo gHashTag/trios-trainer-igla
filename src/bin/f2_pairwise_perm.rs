@@ -30,6 +30,8 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write};
 use std::process::ExitCode;
 
+use trios_trainer::race::stats::exact_paired_sign_flip_perm as exact_paired_perm;
+
 #[derive(Debug)]
 struct InputRow {
     config: String,
@@ -39,42 +41,11 @@ struct InputRow {
     val_bpb: f64,
 }
 
-/// Exact paired-permutation test enumerating 2^N sign-flip vectors.
-///
-/// Returns (mean_diff, p_two_sided).
-/// At N=5 we enumerate all 32 ± assignments and count |mean| >= |observed|.
-///
-/// Loop 111 update: aligned with `f2_iloco_score::permutation_test_paired`:
-/// (i) drop N=1 (return NaN at N<2 per iloco — N=1 gives degenerate p∈{0.5,1.0});
-/// (ii) epsilon-tolerant >= 1e-15 comparison so IEEE-754 rounding doesn't drop
-///      genuinely tied permutations;
-/// (iii) clamp p to [0,1] for defense-in-depth on degenerate inputs.
-/// These align my primitive with the existing F2 primitive; the equivalence
-/// test below catches any future drift.
-fn exact_paired_perm(diffs: &[f64]) -> (f64, f64) {
-    let n = diffs.len();
-    if n < 2 {
-        return (f64::NAN, f64::NAN);
-    }
-    let observed_mean: f64 = diffs.iter().sum::<f64>() / n as f64;
-    let abs_observed = observed_mean.abs();
-
-    let total = 1u64 << n;
-    let mut at_least_as_extreme: u64 = 0;
-    for mask in 0..total {
-        let mut sum = 0.0;
-        for (i, d) in diffs.iter().enumerate() {
-            let flip = (mask >> i) & 1 == 1;
-            sum += if flip { -d } else { *d };
-        }
-        let m = sum / n as f64;
-        if m.abs() >= abs_observed - 1e-15 {
-            at_least_as_extreme += 1;
-        }
-    }
-    let p = at_least_as_extreme as f64 / total as f64;
-    (observed_mean, p.clamp(0.0, 1.0))
-}
+// Loop 112 C: the exact_paired_perm primitive lives in
+// `src/race/stats.rs::exact_paired_sign_flip_perm`. This binary
+// imports it via the `exact_paired_perm` alias above so that any
+// future drift is impossible — both binaries (this one and
+// f2_iloco_score, post-refactor) consume the same source.
 
 /// Student-t two-sided 95% CI on the seed-mean difference at N=5.
 fn ci95_t(diffs: &[f64]) -> (f64, f64) {
@@ -227,10 +198,10 @@ fn main() -> ExitCode {
         input, output).ok();
     writeln!(out, "# prov:agent_git_sha = {}", git_sha).ok();
     writeln!(out, "# prov:host = {}", host).ok();
-    writeln!(out,
-        "# prov:phi_configs = {} prov:zoo_configs = {}",
-        phi_list.join("|"), zoo_list.join("|")).ok();
-    writeln!(out, "# prov:trainer_internals_schema = 1").ok();
+    writeln!(out, "# prov:phi_configs = {}", phi_list.join("|")).ok();
+    writeln!(out, "# prov:zoo_configs = {}", zoo_list.join("|")).ok();
+    writeln!(out, "# prov:trainer_internals_schema = {}",
+        trios_trainer::race::multi_seed::TRAINER_INTERNALS_SCHEMA).ok();
     writeln!(out, "# prov:cargo_pkg_version = {}",
         env!("CARGO_PKG_VERSION")).ok();
     writeln!(out, "stratum,phi_config,zoo_config,n,diff_mean,ci_lo,ci_hi,p_raw,p_bh")

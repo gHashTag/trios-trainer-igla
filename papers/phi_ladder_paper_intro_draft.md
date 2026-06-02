@@ -427,7 +427,7 @@ epsilon-tolerant comparison shared with the F2 reference).
 **Pre-registration discipline for the new binary**. Because
 `f2_pairwise_perm` exists in the codebase before any of the
 80-cell champion-scale sweep CSVs are produced (Loop 110 commit
-predates the run), and because its `config_fingerprint` is
+predates the run), and because its `agent_git_sha` is
 captured in every output CSV's W3C-PROV preamble, the protocol
 satisfies the *commit-order* requirement of pre-registered
 analysis: a strict reviewer can verify the binary's contents are

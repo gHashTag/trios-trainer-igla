@@ -64,29 +64,18 @@ fn std_dev(v: &[f64]) -> f64 {
 /// Per arXiv:2205.01416 (Zmigrod, Vieira, Cotterell 2022), exhaustive 2^N
 /// permutation at N=5 enumerates 32 sign-flips → exact two-tailed tail.
 /// No df=4 underflow; no asymptotic assumption. Returns (mean_diff, p_two_tailed).
+///
+/// Loop 112 C refactor: the inner loop now delegates to the shared
+/// `trios_trainer::race::stats::exact_paired_sign_flip_perm` so that
+/// `f2_iloco_score` and `f2_pairwise_perm` can't drift apart. This wrapper
+/// keeps the (a, b) signature that iLOCO callers already use.
 fn permutation_test_paired(a: &[f64], b: &[f64]) -> (f64, f64) {
     let n = a.len().min(b.len());
-    // Loop 31 fix 4: align edge-case behavior with paired_t (which requires n≥2).
-    // n=1 has only 2 sign-flips (±1), gives p∈{0.5,1.0} — degenerate, drop it.
     if n < 2 {
         return (f64::NAN, f64::NAN);
     }
     let diffs: Vec<f64> = (0..n).map(|i| a[i] - b[i]).collect();
-    let observed: f64 = diffs.iter().sum();
-    let total: u64 = 1u64 << n; // 2^n sign-flips; OK for n ≤ 32
-    let mut ge_count: u64 = 0;
-    for mask in 0..total {
-        let mut s = 0.0_f64;
-        for i in 0..n {
-            let sign = if (mask >> i) & 1 == 1 { -1.0 } else { 1.0 };
-            s += sign * diffs[i];
-        }
-        if s.abs() >= observed.abs() - 1e-15 {
-            ge_count += 1;
-        }
-    }
-    let p = ge_count as f64 / total as f64;
-    (observed / n as f64, p.clamp(0.0, 1.0))
+    trios_trainer::race::stats::exact_paired_sign_flip_perm(&diffs)
 }
 
 /// Paired Student's t-test on differences (df=n-1).

@@ -64,6 +64,42 @@ pub fn pearson(x: &[f64], y: &[f64]) -> f64 {
 }
 
 /// Sample standard error of the mean = sqrt(s² / N). Returns NaN for N < 2.
+/// Exact paired-sign-flip permutation test (Zmigrod, Vieira & Cotterell 2022,
+/// arXiv:2205.01416). Returns `(mean_diff, p_two_sided)`.
+///
+/// `diffs` is the per-seed paired difference vector. At N=5 we enumerate all
+/// 2^5 = 32 ± assignments and count how many produce `|mean| >= |observed|`
+/// (epsilon-tolerant within 1e-15 to keep IEEE-754-tied permutations in the
+/// extreme tail). Returns NaN for N < 2 (degenerate).
+///
+/// Loop 112: extracted from `src/bin/f2_iloco_score.rs` and
+/// `src/bin/f2_pairwise_perm.rs` to a single source so the two binaries can't
+/// drift. The equivalence test in `f2_pairwise_perm.rs` was the catalyst.
+pub fn exact_paired_sign_flip_perm(diffs: &[f64]) -> (f64, f64) {
+    let n = diffs.len();
+    if n < 2 {
+        return (f64::NAN, f64::NAN);
+    }
+    let observed_mean: f64 = diffs.iter().sum::<f64>() / n as f64;
+    let abs_observed = observed_mean.abs();
+
+    let total = 1u64 << n;
+    let mut at_least_as_extreme: u64 = 0;
+    for mask in 0..total {
+        let mut sum = 0.0;
+        for (i, d) in diffs.iter().enumerate() {
+            let flip = (mask >> i) & 1 == 1;
+            sum += if flip { -d } else { *d };
+        }
+        let m = sum / n as f64;
+        if m.abs() >= abs_observed - 1e-15 {
+            at_least_as_extreme += 1;
+        }
+    }
+    let p = at_least_as_extreme as f64 / total as f64;
+    (observed_mean, p.clamp(0.0, 1.0))
+}
+
 pub fn sample_se(v: &[f64]) -> f64 {
     let n = v.len();
     if n < 2 {

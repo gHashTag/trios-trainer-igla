@@ -86,4 +86,32 @@ if [[ "$P_BH" != "$EXPECTED" ]]; then
     exit 1
 fi
 
-echo "# smoke_f2_pairwise_perm.sh — PASS (diff=-0.2, p_raw=p_bh=$EXPECTED)"
+echo "# smoke_f2_pairwise_perm.sh — primitive PASS (diff=-0.2, p_raw=p_bh=$EXPECTED)"
+
+# Loop 112 B: pipe output through f2_provenance_check.
+# Build the verifier if needed (release profile to match the binary).
+cargo build --release --bin f2_provenance_check > /dev/null 2>&1
+
+# Run with a known git SHA so agent_git_sha doesn't WARN. We accept
+# exit codes 0 (all PASS) and 1 (only WARN, e.g. unknown host). Reject
+# exit 2 (FAIL on a required field) and exit 3 (malformed preamble).
+F2_GIT_SHA="$(git rev-parse --short=7 HEAD 2>/dev/null || echo unknown)" \
+HOST="$(hostname 2>/dev/null || echo unknown)" \
+./target/release/f2_pairwise_perm \
+    --input "$INPUT" \
+    --output "$OUTPUT" \
+    --phi-configs GFTernary \
+    --zoo-configs bf16 > /dev/null 2>&1
+
+set +e
+./target/release/f2_provenance_check "$OUTPUT" > /tmp/prov_check_output.log 2>&1
+PROV_EXIT=$?
+set -e
+
+if [[ $PROV_EXIT -ge 2 ]]; then
+    echo "FAIL: f2_provenance_check exited $PROV_EXIT on smoke output" >&2
+    cat /tmp/prov_check_output.log >&2
+    exit 1
+fi
+
+echo "# smoke_f2_pairwise_perm.sh — provenance PASS (f2_provenance_check exit=$PROV_EXIT)"
