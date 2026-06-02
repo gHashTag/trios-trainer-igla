@@ -49,8 +49,13 @@ SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json"
 #   "Loop <N> [<optional label>]: <A> + <B> = <C>."
 # The label part is permissive — anything between the loop tag and the
 # colon (e.g., "A.iv (F2 §E catalogue)") is captured-but-ignored.
+# Loop 138 — 61st-pass SEV-4 fix #1: label-token class extended to
+# include em-dash (—), en-dash (–), and curly apostrophe (') so future
+# breadcrumb labels like "Loop 140 A.iii — second F2 pass:" don't
+# silently drop from arithmetic checks. The 61st-pass probe verified
+# that the prior class blocked em-dash and the gate under-reported.
 _ENTRY_RE = re.compile(
-    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-]*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
+    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–']*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
 )
 
 
