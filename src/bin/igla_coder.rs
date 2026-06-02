@@ -706,6 +706,12 @@ fn eval_val(model: &Model, val: &[usize], seq: usize) -> f32 {
 }
 
 fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
+    train_once_model(train, val, cfg).0
+}
+
+// Like train_once but also returns the trained model so the `generate`
+// subcommand can train-then-sample in one CPU process (Loop+4).
+fn train_once_model(train: &[usize], val: &[usize], cfg: &TrainCfg) -> (f32, Model) {
     let mut rng = StdRng::seed_from_u64(cfg.seed);
     let mut model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
     let mut opt = make_opt(&model, &cfg.arm, cfg.lr, cfg.beta1_ov, cfg.wd_ov);
@@ -756,7 +762,7 @@ fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
             cfg.arm, cfg.seed, final_val, best_val
         );
     }
-    final_val
+    (final_val, model)
 }
 
 // f64-precision forward-only loss (SUM over positions, nats) for gradcheck.
@@ -1049,6 +1055,192 @@ fn gradcheck_cfg(dd: usize, hh: usize, ll: usize) {
 }
 
 // ---------------- cli ----------------
+// ---------------- generation (Loop+4: the inference muscle) ----------------
+// Byte-level vocab sentinels, mirrored from coder_ablation/prep_t27_corpus.py.
+// 0..=255 raw bytes; 256 BOS, 257 EOS, 258 PRE, 259 SUF, 260 MID, 261 LANG, 262 PAD.
+const TOK_BOS: usize = 256;
+const TOK_EOS: usize = 257;
+const TOK_PRE: usize = 258;
+const TOK_SUF: usize = 259;
+const TOK_MID: usize = 260;
+const TOK_LANG: usize = 261;
+
+// Forward-only pass that returns the logits at the LAST position (length VOCAB).
+// Reuses the exact same math as fwd_bwd's forward half (pre-norm RMSNorm blocks,
+// causal per-position softmax attention, weight-tied LM head emb).
+fn forward_logits(m: &Model, tokens: &[usize]) -> Vec<f32> {
+    let d = m.d;
+    let h = m.heads;
+    let hd = d / h;
+    let t = tokens.len();
+    let scale = 1.0 / (hd as f32).sqrt();
+
+    let mut x = vec![0.0f32; t * d];
+    for (i, &tok) in tokens.iter().enumerate() {
+        for j in 0..d {
+            x[i * d + j] = m.emb[tok * d + j] + m.pos[i * d + j];
+        }
+    }
+    for layer in &m.layers {
+        let h_in = x.clone();
+        let (xn1, _inv1) = rmsnorm_fwd(&h_in, &layer.n1, d);
+        let q = matmul(&xn1, &layer.wq, t, d, d);
+        let k = matmul(&xn1, &layer.wk, t, d, d);
+        let v = matmul(&xn1, &layer.wv, t, d, d);
+        let mut ctx = vec![0.0f32; t * d];
+        for i in 0..t {
+            for head in 0..h {
+                let off = head * hd;
+                let mut scores = vec![0.0f32; i + 1];
+                let mut mx = f32::NEG_INFINITY;
+                for (jpos, sc) in scores.iter_mut().enumerate() {
+                    let mut s = 0.0;
+                    for e in 0..hd {
+                        s += q[i * d + off + e] * k[jpos * d + off + e];
+                    }
+                    s *= scale;
+                    *sc = s;
+                    if s > mx {
+                        mx = s;
+                    }
+                }
+                let mut sum = 0.0;
+                for sc in scores.iter_mut() {
+                    *sc = (*sc - mx).exp();
+                    sum += *sc;
+                }
+                for sc in scores.iter_mut() {
+                    *sc /= sum;
+                }
+                for e in 0..hd {
+                    let mut acc = 0.0;
+                    for (jpos, &w) in scores.iter().enumerate() {
+                        acc += w * v[jpos * d + off + e];
+                    }
+                    ctx[i * d + off + e] = acc;
+                }
+            }
+        }
+        let attn_out = matmul(&ctx, &layer.wo, t, d, d);
+        let mut r1 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            r1[idx] = h_in[idx] + attn_out[idx];
+        }
+        let (xn2, _inv2) = rmsnorm_fwd(&r1, &layer.n2, d);
+        let pre = matmul(&xn2, &layer.w1, t, d, m.dff);
+        let mut act = vec![0.0f32; t * m.dff];
+        for idx in 0..t * m.dff {
+            act[idx] = gelu(pre[idx]);
+        }
+        let mlp_out = matmul(&act, &layer.w2, t, m.dff, d);
+        let mut r2 = vec![0.0f32; t * d];
+        for idx in 0..t * d {
+            r2[idx] = r1[idx] + mlp_out[idx];
+        }
+        x = r2;
+    }
+    let (final_x, _inv_f) = rmsnorm_fwd(&x, &m.nf, d);
+    let last = t - 1;
+    let mut logits = vec![0.0f32; VOCAB];
+    for (vt, lg) in logits.iter_mut().enumerate() {
+        let mut s = 0.0;
+        for j in 0..d {
+            s += final_x[last * d + j] * m.emb[vt * d + j];
+        }
+        *lg = s;
+    }
+    logits
+}
+
+// Autoregressive generation with temperature + top-k sampling. temp<=0 == greedy.
+// Stops at TOK_EOS or max_new. Context is truncated to the last MAXSEQ-1 tokens.
+fn generate(
+    m: &Model,
+    prompt: &[usize],
+    max_new: usize,
+    temp: f32,
+    top_k: usize,
+    rng: &mut StdRng,
+) -> Vec<usize> {
+    let mut seq: Vec<usize> = prompt.to_vec();
+    let mut out: Vec<usize> = Vec::new();
+    for _ in 0..max_new {
+        let ctx_start = seq.len().saturating_sub(MAXSEQ - 1);
+        let logits = forward_logits(m, &seq[ctx_start..]);
+        let next = if temp <= 0.0 {
+            // greedy argmax
+            let mut bi = 0usize;
+            let mut bv = f32::NEG_INFINITY;
+            for (i, &l) in logits.iter().enumerate() {
+                if l > bv {
+                    bv = l;
+                    bi = i;
+                }
+            }
+            bi
+        } else {
+            // top-k over temperature-scaled softmax
+            let mut idx: Vec<usize> = (0..VOCAB).collect();
+            idx.sort_by(|&a, &b| logits[b].partial_cmp(&logits[a]).unwrap());
+            let k = top_k.clamp(1, VOCAB);
+            let keep = &idx[..k];
+            let mx = logits[keep[0]];
+            let mut probs: Vec<f32> = keep
+                .iter()
+                .map(|&i| ((logits[i] - mx) / temp).exp())
+                .collect();
+            let sum: f32 = probs.iter().sum();
+            for p in probs.iter_mut() {
+                *p /= sum;
+            }
+            let r: f32 = rng.gen::<f32>();
+            let mut acc = 0.0;
+            let mut chosen = keep[k - 1];
+            for (j, &p) in probs.iter().enumerate() {
+                acc += p;
+                if r <= acc {
+                    chosen = keep[j];
+                    break;
+                }
+            }
+            chosen
+        };
+        if next == TOK_EOS {
+            break;
+        }
+        seq.push(next);
+        out.push(next);
+    }
+    out
+}
+
+// Render a token stream back to a UTF-8 string: raw bytes pass through, sentinels
+// are shown as readable tags so FIM structure stays visible.
+fn detok(tokens: &[usize]) -> String {
+    let mut bytes: Vec<u8> = Vec::new();
+    for &t in tokens {
+        match t {
+            0..=255 => bytes.push(t as u8),
+            TOK_BOS => bytes.extend_from_slice(b"<BOS>"),
+            TOK_EOS => bytes.extend_from_slice(b"<EOS>"),
+            TOK_PRE => bytes.extend_from_slice(b"<PRE>"),
+            TOK_SUF => bytes.extend_from_slice(b"<SUF>"),
+            TOK_MID => bytes.extend_from_slice(b"<MID>"),
+            TOK_LANG => bytes.extend_from_slice(b"<LANG>"),
+            _ => bytes.extend_from_slice(b"<PAD>"),
+        }
+    }
+    String::from_utf8_lossy(&bytes).into_owned()
+}
+
+// Encode an ASCII/UTF-8 prompt into the byte-level vocab with a leading
+// BOS + LANG tag, matching the training-document head.
+fn encode_prompt(lang_id: usize, text: &str) -> Vec<usize> {
+    let mut v = vec![TOK_BOS, TOK_LANG, lang_id & 0xff];
+    v.extend(text.bytes().map(|b| b as usize));
+    v
+}
+
 fn arg(a: &[String], k: &str) -> Option<String> {
     a.iter()
         .position(|x| x == k)
@@ -1213,6 +1405,66 @@ fn main() {
         println!(
             "HONESTY: small n, code BPB only (not pass@1), not comparable to \
              tiny_shakespeare 2.2111. If arms overlap within CI -> phi NOT supported."
+        );
+        return;
+    }
+
+    if cmd == "generate" {
+        // Train on the corpus, then autoregressively complete a code prompt.
+        // This is the Loop+4 inference muscle: the model now produces code,
+        // not just a BPB number. CPU-only, single process.
+        let arm = arg(&args, "--optimizer").unwrap_or_else(|| "standard".into());
+        let seed: u64 = arg(&args, "--seed")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(42);
+        let max_new: usize = arg(&args, "--max-new")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(160);
+        let temp: f32 = arg(&args, "--temp")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0.0);
+        let top_k: usize = arg(&args, "--top-k")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(20);
+        let lang_id: usize = arg(&args, "--lang-id")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1); // 1 == c
+        let prompt_text = arg(&args, "--prompt")
+            .unwrap_or_else(|| "#include <stdint.h>\n".into());
+        let cfg = TrainCfg {
+            d,
+            heads,
+            layers,
+            seq,
+            steps,
+            batch,
+            lr,
+            arm: arm.clone(),
+            seed,
+            verbose: true,
+            beta1_ov,
+            wd_ov,
+            curve_stride,
+            eval_every,
+        };
+        let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
+        println!(
+            "=== IGLA-Coder generate === hidden={} heads={} layers={} params={} optimizer={} seed={}",
+            d, heads, layers, probe.param_count(), arm, seed
+        );
+        let (bpb, model) = train_once_model(&train, &val, &cfg);
+        println!("trained code_val_bpb={:.4}", bpb);
+        let prompt = encode_prompt(lang_id, &prompt_text);
+        let mut grng = StdRng::seed_from_u64(seed ^ 0xC0DE);
+        let gen = generate(&model, &prompt, max_new, temp, top_k, &mut grng);
+        println!(
+            "--- prompt (lang_id={} temp={} top_k={}) ---\n{}",
+            lang_id, temp, top_k, prompt_text
+        );
+        println!("--- completion ({} tokens) ---\n{}", gen.len(), detok(&gen));
+        println!(
+            "HONESTY: tiny CPU model on a small corpus; output is a smoke test of the \
+             generation path, not a quality claim. Anchor: phi^2 + phi^-2 = 3."
         );
         return;
     }
