@@ -55,6 +55,12 @@ REGISTRY: list[tuple[str, list[str]]] = [
     ("src/bin/f2_stratum_compare.rs", []),
     ("src/bin/f2_mediation_sensitivity.rs", []),
     ("src/bin/f2_dual_mediation.rs", []),
+    # Loop 115 D (38th pass A2): f2_pareto_sweep is issue #1021-scoped
+    # (per src/bin/f2_pareto_sweep.rs header) but is NOT deployed by
+    # this paper's pre-registered §3.1 sweep matrix. Listed here at []
+    # for registry completeness — currently emits zero preamble; if a
+    # future protocol revision adopts it, this row must update.
+    ("src/bin/f2_pareto_sweep.rs", []),
 ]
 
 

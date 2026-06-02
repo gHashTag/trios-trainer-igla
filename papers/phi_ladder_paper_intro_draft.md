@@ -751,11 +751,16 @@ exact field set varies by producer:
   `f2_pairwise_perm`'s output.
 
 The `verify_preamble_per_producer.py` script
-(`papers/scripts/`) gates the per-producer field set
-statically: it greps each binary's source and asserts the
-emitted `# prov:` fields match what this paragraph claims.
-Adding a producer to F2 without updating §5.1 (or §5.1
-without changing the binary) fails the gate immediately.
+(`papers/scripts/`) gates the per-producer field set with **two
+modes**: (i) static — greps each binary's source and asserts the
+emitted `# prov:` fields match what this paragraph claims; (ii)
+runtime — for cheap-to-invoke producers (currently
+`f2_pairwise_perm`), it builds and runs the binary on a tiny
+synthetic input and parses the live output, catching cases where
+a `writeln!(...# prov:...)` is present in source but gated by a
+runtime conditional. Adding a producer to F2 without updating
+§5.1 (or §5.1 without changing the binary) fails the gate
+immediately.
 
 The 6 post-run reports:
 
@@ -843,10 +848,19 @@ The two scripts above pre-registered as "(*to be implemented*)"
 follow the same commit-order discipline as `f2_pairwise_perm`
 (§3.3 "Pre-registration discipline for the new binary"):
 committed before any of the 80-cell champion-scale sweep CSVs
-are produced. The full gate (**18 stages total: 16 from F2 + 2
-remaining from this paper**, after the two scripts above are
-committed) must exit 0 on the run-result paper's anchor commit
-before any draft is exported for submission.
+are produced.
+
+**Gate stage decomposition** (the 38th adversarial pass flagged
+the earlier "15 + 3 = 18" arithmetic as internally inconsistent;
+fixed here): the current 16-stage on-disk gate breaks down as 12
+F2-scope stages (cross-ref/metadata/SHAs/lint/tables/formulas/
+label/preamble/inventory/xelatex/figures/supplementary) + 4
+#1021-scoped stages already wired into F2's `run_all_checks.sh`
+(verify_provenance/smoke_f2_pairwise_perm/#1021 cross-ref/#1021
+md-lint). Adding the two pre-registered scripts brings the
+end-state total to **18 stages**. The full gate must exit 0 on
+the run-result paper's anchor commit before any draft is
+exported for submission.
 
 37th adversarial pass (Loop 114) flagged that earlier drafts
 presented the three scripts as already-shipped when none were;
