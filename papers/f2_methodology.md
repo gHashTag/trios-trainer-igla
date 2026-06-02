@@ -486,7 +486,7 @@ discipline that is now part of the framework's binary contract:
 The three defensive mechanisms below address each incident in turn.
 
 **3.5.1 Provenance preamble (`# prov:*` lines).** Every CSV emitted by
-`f2_ablation_sweep` (Loop 32+) carries a W3C-PROV / Workflow Run RO-Crate
+`f2_ablation_sweep` carries a W3C-PROV / Workflow Run RO-Crate
 preamble (arXiv:2312.07852) of the form:
 
 ```
@@ -973,13 +973,13 @@ magnitude fragile under any unmeasured-confounder stress test of
 the bridge-score envelope at Λ ≥ 0.01 BPB".
 
 **On the prior 1.43 reported in earlier drafts.** Drafts prior to
-Loop 102 reported the wd0 row as `Γ_tip = 1.43`, computed using
+An earlier draft reported the wd0 row as `Γ_tip = 1.43`, computed using
 the *point estimate* (+0.43) instead of the *closer CI endpoint*
 (+0.01) in the §3.3 envelope inversion. The §3.3 formula
 `Γ_tip(Λ) = 1 + min(|CI_lo|, |CI_hi|) / Λ` mandates the CI
 endpoint, not the point estimate; the correct value at Λ = 1.0
 is `1 + 0.01 / 1.0 = 1.01`. The prior 1.43 was discovered by the
-25th adversarial pass (Loop 102) and corrected in the same loop.
+25th adversarial pass and corrected in the same loop.
 The implementation in `src/bin/f2_mediation_sensitivity.rs:236`
 has always used the CI-endpoint convention; the discrepancy was
 in the manuscript table, not the code.
@@ -1050,7 +1050,7 @@ the same conclusion under Gaussian.
 ### 6.3 Strata
 
 We chose `Wd0` and `Warmup0` based on prior mediation analyses
-(`docs/F2_RMS_CDE.md`, Loop 30) that identified WD and warmup as the
+(`docs/F2_RMS_CDE.md`) that identified WD and warmup as the
 two strongest mediators in the canonical ablation matrix. Three other
 candidate strata are pre-defined in the framework but not run for this
 paper:
@@ -1346,7 +1346,7 @@ reduction supplied by **Gao, Li & Luo** (2020, arXiv:2007.16031,
 Counterfactual Interaction Effect Framework"). Earlier drafts of this
 paper mis-attributed the decomposition to "Zhao-Luo"; that attribution
 was corrected to Daniel et al. (primary) + Gao-Li-Luo (no-interaction
-collapse) in a Loop 60 validation pass.
+collapse) in a follow-up validation pass.
 
 The delta-method linearization we use to derive per-PSE SEs is in the
 spirit of the **efficient-influence-function** treatment of Miles &
@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **29 stages**
+  cold**) — single-shot CI gate. Currently chains **30 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other twenty-two stages are gates
+  not a stage of itself); the **other twenty-three stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1758,10 +1758,13 @@ dependency; we do not stub any of them.
   (binds §1 sub-bullet description metadata like "6 reports
   (2 full + 4 stub)" to live verifier-source state), and the
   burn-down-history verifier (asserts the FALLBACK_BASELINES
-  trajectory most-recent entry matches the live sidecar state).
+  trajectory most-recent entry matches the live sidecar state),
+  and the alias-round-trip verifier (asserts CLASS_LABEL_ALIASES
+  is bijective on the gate's actual class names — every alias
+  resolves to a live class, every class has at least one alias).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 22 are documented in the follow-up paper's
+  the additional 23 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",

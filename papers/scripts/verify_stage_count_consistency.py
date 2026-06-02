@@ -152,41 +152,14 @@ def resolve_offset(key: str) -> int:
     raise ValueError(f"unknown offset key {key!r}")
 
 
-_UNITS = ["zero", "one", "two", "three", "four", "five", "six", "seven",
-          "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
-          "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"]
-_TENS = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
-         "eighty", "ninety"]
-
-
-def words_to_int(w: str) -> int | None:
-    """Convert English number words (0..99) + digits to int.
-
-    Loop 122 C (45th pass A5): extended from the original 0..20 cap so the
-    gate doesn't break silently when the on-disk stage count grows past 20.
-    Handles "twenty-one", "twenty one", "twenty 1" forms (the last via the
-    digit shortcut).
-    """
-    if w.isdigit():
-        return int(w)
-    w = w.lower().strip()
-    if not w:
-        # Loop 123 D (46th pass A1 SEV-4): empty string used to fall
-        # through to `_TENS.index("") * 10 = 0`. Reject explicitly.
-        return None
-    if w in _UNITS:
-        return _UNITS.index(w)
-    # Loop 123 D: _TENS[0] and _TENS[1] are both "" — only treat
-    # explicit ten-word matches as valid, never the empty placeholder.
-    if w in _TENS[2:]:
-        return _TENS.index(w) * 10
-    # Compound forms: "twenty-one", "thirty-five", etc.
-    for sep in ("-", " "):
-        if sep in w:
-            tens_part, _, units_part = w.partition(sep)
-            if tens_part in _TENS and units_part in _UNITS[1:10]:
-                return _TENS.index(tens_part) * 10 + _UNITS.index(units_part)
-    return None
+# Loop 138 A.iv: words_to_int extracted to shared _gate_utils.to_int.
+# Both prior copies (here + verify_changelog_consistency._to_int) now
+# delegate to the canonical implementation. Closes 60th-pass SEV-4 #6.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from _gate_utils import to_int as words_to_int  # noqa: E402
+finally:
+    sys.path.pop(0)
 
 
 def catalogued_as_stage_offset() -> int:

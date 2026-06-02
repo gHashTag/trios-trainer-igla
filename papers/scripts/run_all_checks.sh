@@ -135,6 +135,7 @@ STAGES=(
     "class registry binding:python3 papers/scripts/verify_class_registry_binding.py"
     "documented vs extracted:python3 papers/scripts/verify_documented_vs_extracted_consistency.py"
     "burn-down history:python3 papers/scripts/verify_burn_down_history.py"
+    "alias round-trip:python3 papers/scripts/verify_alias_round_trip.py"
 )
 
 PASSED=0

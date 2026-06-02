@@ -73,8 +73,9 @@ BASELINE_SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json
 #   Loop 135 A.iii (#1021 §5.4 second pass): 22 + 32 = 54.
 #   Loop 136 A.iii (F2 §E remaining + §3.2/§4/§6.1): 16 + 32 = 48.
 #   Loop 137 A.iii (#1021 §5.4 Gate-decomp prelude + 37th-pass refs): 16 + 27 = 43.
+#   Loop 138 A.iii (F2 §3.5/§4/§6.1 trailing attributions): 11 + 27 = 38.
 FALLBACK_BASELINES = {
-    "papers/f2_methodology.md": 16,
+    "papers/f2_methodology.md": 11,
     "papers/phi_ladder_paper_intro_draft.md": 27,
 }
 

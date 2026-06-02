@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–137)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–138)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Sixty** independent
-passes total across Loops 59–137 (50-pass milestone reached at
-Loop 127; passes 51–60 dispatched at Loops 128–137). The first
+caught before reviewers saw them. **Sixty-one** independent
+passes total across Loops 59–138 (50-pass milestone reached at
+Loop 127; passes 51–61 dispatched at Loops 128–138). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–137 extended the discipline to round-N
+submission flow; Loops 86–138 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–60 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–137; per-pass detail lives in
+12–61 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–138; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–137 (49th pass flagged the un-widened grep covered only
-~35 of 60 passes; the two-pattern form widens reach).
+90–138 (49th pass flagged the un-widened grep covered only
+~35 of 61 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–137)
+### 10. CI gate evolution (Loops 87–138)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -473,8 +473,28 @@ Stage additions since the original 8-script catalogue:
   doc-vs-extracted multi-line lookahead extended with `^##\s` to
   stop at markdown headings; FROZEN tag uppercased for visual
   consistency; EXCLUDE_PATHS extended with xelatex compile logs.
+- **Loop 138 A.iii** — F2 trailing-attributions burn-down: dropped
+  5 inline Loop-N anchors across §3.5 / §4 / §6.1 (Loop 32+ ablation
+  sweep, Loop 102 wd0/25th-pass refs, Loop 30 RMS-CDE doc anchor,
+  Loop 60 validation pass). Anonymizer baseline 16 → 11. Total
+  legacy debt 43 → 38.
+- **Loop 138 A.iv** — `_to_int` English-numeral helper extracted
+  from verify_changelog_consistency.py (was `_to_int`) AND
+  verify_stage_count_consistency.py (was `words_to_int`) into
+  `papers/scripts/_gate_utils.py` as `to_int`. Both prior callers
+  now delegate; closes 60th-pass SEV-4 #6 helper-extraction-
+  conventions class permanently.
+- **Loop 138 B** — `verify_alias_round_trip.py` added (30th stage).
+  Asserts CLASS_LABEL_ALIASES is bijective on the gate's actual
+  class names: every alias key resolves to a `*_CLAIMS` list AND
+  every `*_CLAIMS` list has at least one alias mapping to its
+  canonical name. Currently 6 aliases cover 5 classes.
+- **Loop 138 C** — `verify_pre_commit_hook.py` added as manual
+  tool. Detects whether `.git/hooks/pre-commit` or
+  `.husky/pre-commit` is installed and references the staged-only
+  gate. Supports `--install` flag to write a minimal hook script.
 
-The on-disk gate now runs **29 stages** (verified by the new
+The on-disk gate now runs **30 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

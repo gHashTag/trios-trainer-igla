@@ -36,38 +36,15 @@ from pathlib import Path
 CRATE_ROOT = Path(__file__).resolve().parents[2]
 
 
-# English word number support — covers the current §7 lead paragraph
-# which writes "Fifty-three" instead of "53". The other two sites use
-# digits; this dispatcher normalizes both forms into ints.
-_UNITS = [
-    "zero", "one", "two", "three", "four", "five", "six", "seven",
-    "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
-    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
-]
-_TENS = [
-    "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
-    "eighty", "ninety",
-]
-
-
-def _to_int(w: str) -> int | None:
-    """Accept "53" or "Fifty-three" or "fifty three" forms; return int.
-    Returns None on unrecognized input (caller fails the gate cleanly)."""
-    if w.isdigit():
-        return int(w)
-    w = w.lower().strip()
-    if not w:
-        return None
-    if w in _UNITS:
-        return _UNITS.index(w)
-    if w in _TENS[2:]:
-        return _TENS.index(w) * 10
-    for sep in ("-", " "):
-        if sep in w:
-            t, _, u = w.partition(sep)
-            if t in _TENS and u in _UNITS[1:10]:
-                return _TENS.index(t) * 10 + _UNITS.index(u)
-    return None
+# Loop 138 A.iv: English-numeral helper extracted to shared
+# _gate_utils.to_int. The sister copy in verify_stage_count_consistency.py
+# (`words_to_int`) was also superseded; both now delegate so future
+# extensions land in one place.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from _gate_utils import to_int as _to_int  # noqa: E402
+finally:
+    sys.path.pop(0)
 
 
 # Per-site claim: (path, regex with (count, last_loop) groups, label).

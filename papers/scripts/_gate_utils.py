@@ -9,11 +9,14 @@ fresh traceback fix.
 Currently exposes:
   import_gate(name)  — load a sibling gate module by filename; emits
                        traceback to stderr on import failure.
+  to_int(w)          — Loop 138 A.iv: extracted from
+                       verify_changelog_consistency.py's _to_int and
+                       verify_stage_count_consistency.py's words_to_int.
+                       Accepts digits, English 0..99 (incl. compound
+                       forms like 'twenty-one').
 
-Future candidates for extraction (left in their original homes for
-now to avoid touching too much in one loop):
+Future candidates for extraction (left in their original homes):
   - _parse_subbullet (verify_class_registry_binding + doc_vs_extracted)
-  - _to_int English-numeral helper (changelog + stage_count)
   - _load_baselines (anonymizer)
 """
 
@@ -49,3 +52,42 @@ def import_gate(name: str) -> types.ModuleType | None:
         traceback.print_exc(file=sys.stderr)
         return None
     return mod
+
+
+_UNITS = [
+    "zero", "one", "two", "three", "four", "five", "six", "seven",
+    "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+]
+_TENS = [
+    "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
+    "eighty", "ninety",
+]
+
+
+def to_int(w: str) -> int | None:
+    """Convert English number words (0..99) + digits to int.
+
+    Accepts "53", "Fifty-three", "fifty three", or "fifty 3" forms.
+    Returns None on unrecognized input. Hyphen and space both accepted
+    as compound separators (Loop 135 extension to handle "twenty-one").
+
+    Loop 138 A.iv: extracted from verify_changelog_consistency._to_int
+    (returning None on errors) and verify_stage_count_consistency.
+    words_to_int (same semantics). Single source of truth — closes
+    the 60th-pass SEV-4 #6 helper-extraction-conventions class."""
+    if w.isdigit():
+        return int(w)
+    w = w.lower().strip()
+    if not w:
+        return None
+    if w in _UNITS:
+        return _UNITS.index(w)
+    if w in _TENS[2:]:
+        return _TENS.index(w) * 10
+    for sep in ("-", " "):
+        if sep in w:
+            tens_part, _, units_part = w.partition(sep)
+            if tens_part in _TENS and units_part in _UNITS[1:10]:
+                return _TENS.index(tens_part) * 10 + _UNITS.index(units_part)
+    return None
