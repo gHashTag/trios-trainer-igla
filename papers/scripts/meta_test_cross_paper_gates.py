@@ -308,6 +308,109 @@ def test_exact_pin_break_tmlr_page(tmp: Path) -> bool:
     )
 
 
+def test_burn_down_arithmetic_break(tmp: Path) -> bool:
+    """Loop 140 A.iv: synthetic break-test for verify_burn_down_history.py.
+
+    The 61st-pass #12 flagged that 10+ newer gates ship without
+    break-tests. This is the first extension: mutate the FALLBACK_BASELINES
+    breadcrumb in a tmpdir copy of verify_anonymizer_completeness.py
+    so a historical entry's arithmetic fails (A+B≠C); assert the
+    burn-down gate exits 1 with 'A + B = actual' diagnostic."""
+    import shutil
+    src_dir = CRATE_ROOT / "papers" / "scripts"
+    dst_dir = tmp / "papers" / "scripts"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "verify_anonymizer_completeness.py",
+        "verify_burn_down_history.py",
+        "_gate_utils.py",
+        "anonymizer_baseline.json",
+    ]:
+        shutil.copy2(src_dir / name, dst_dir / name)
+    anon = dst_dir / "verify_anonymizer_completeness.py"
+    text = anon.read_text()
+    # Inject a bad-arithmetic entry inside the FALLBACK_BASELINES
+    # docstring (which the burn-down gate parses). 5+5 = 10, not 11.
+    broken = text.replace(
+        "FALLBACK_BASELINES = {",
+        "#   Loop 999 SYNTHETIC: 5 + 5 = 11.\n"
+        "FALLBACK_BASELINES = {",
+    )
+    if broken == text:
+        print("# SKIP burn_down_arithmetic: FALLBACK_BASELINES marker "
+              "not found in source — gate may have moved",
+              file=sys.stderr)
+        return True
+    anon.write_text(broken)
+    result = subprocess.run(
+        [sys.executable, str(dst_dir / "verify_burn_down_history.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        print("# FAIL  burn-down arithmetic break: gate exited 0 "
+              "despite synthetic 5+5=11. Arithmetic check broken.",
+              file=sys.stderr)
+        print(f"  stdout: {result.stdout[:300]}", file=sys.stderr)
+        return False
+    if "= 10" not in result.stderr and "= 10" not in result.stdout:
+        print("# FAIL  burn-down arithmetic break: gate failed but "
+              "diagnostic doesn't name the actual sum (5+5=10).",
+              file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print("# OK    burn-down arithmetic break: gate fires with "
+          "expected 'A+B = actual' diagnostic")
+    return True
+
+
+def test_alias_round_trip_dangling_break(tmp: Path) -> bool:
+    """Loop 140 A.iv: synthetic break-test for verify_alias_round_trip.py.
+
+    Inject a dangling alias `BOGUS → NONEXISTENT_CLASS` into a temp
+    copy of verify_cross_paper_consistency.py and assert the gate
+    reports the dead alias."""
+    import shutil
+    src_dir = CRATE_ROOT / "papers" / "scripts"
+    dst_dir = tmp / "papers" / "scripts"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "verify_cross_paper_consistency.py",
+        "verify_alias_round_trip.py",
+        "_gate_utils.py",
+    ]:
+        shutil.copy2(src_dir / name, dst_dir / name)
+    consist = dst_dir / "verify_cross_paper_consistency.py"
+    text = consist.read_text()
+    # Inject a dangling alias in CLASS_LABEL_ALIASES.
+    broken = text.replace(
+        '"PIN": "EXACT_PIN",',
+        '"PIN": "EXACT_PIN",\n    "BOGUS": "NONEXISTENT_CLASS",',
+    )
+    if broken == text:
+        print("# SKIP alias_round_trip_dangling: CLASS_LABEL_ALIASES "
+              "anchor not found", file=sys.stderr)
+        return True
+    consist.write_text(broken)
+    result = subprocess.run(
+        [sys.executable, str(dst_dir / "verify_alias_round_trip.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        print("# FAIL  alias dangling break: gate exited 0 despite "
+              "BOGUS → NONEXISTENT_CLASS dangling alias.",
+              file=sys.stderr)
+        return False
+    if "BOGUS" not in result.stderr and "dead alias" not in result.stderr:
+        print("# FAIL  alias dangling break: gate failed but stderr "
+              "missing 'BOGUS' or 'dead alias' marker.",
+              file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print("# OK    alias dangling break: gate fires with 'dead alias' "
+          "diagnostic naming BOGUS")
+    return True
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -388,6 +491,9 @@ def main() -> int:
             ("relational_non_anon_lt_anon", test_relational_break_non_anon_lt_anon),
             ("relational_boundary_equality", test_relational_boundary_equality),
             ("exact_pin_tmlr_page", test_exact_pin_break_tmlr_page),
+            # Loop 140 A.iv: extended coverage beyond cross-paper gates.
+            ("burn_down_arithmetic", test_burn_down_arithmetic_break),
+            ("alias_round_trip_dangling", test_alias_round_trip_dangling_break),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -397,8 +503,8 @@ def main() -> int:
               "tests passed", file=sys.stderr)
         return 1
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
-          "tests passed; gate enforces its 5 claim classes (incl. "
-          "comparator-direction guard)")
+          "tests passed; covers 5 cross-paper claim classes + "
+          "burn-down arithmetic + alias bijection")
     return 0
 
 

@@ -138,6 +138,7 @@ STAGES=(
     "alias round-trip:python3 papers/scripts/verify_alias_round_trip.py"
     "module cache:python3 papers/scripts/verify_module_cache_consistency.py"
     "floating loop anchors:python3 papers/scripts/verify_loop_floating_anchors.py"
+    "anchor loop coverage:python3 papers/scripts/verify_anchor_loop_coverage.py"
 )
 
 PASSED=0

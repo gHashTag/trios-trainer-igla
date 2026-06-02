@@ -196,10 +196,12 @@ def main() -> int:
                       f"{claimed_full} full + {claimed_stub} stub = "
                       f"{claimed_total} (matches verify_report_consistency.py)")
 
-    # Binding 2: (14/27) meta-test — "7 synthetic-break tests PASS (5 classes covered)"
+    # Binding 2: (14/N) meta-test — "9 synthetic-break tests PASS (5 cross-paper classes + ...)"
+    # Loop 140 — relaxed: the (N classes ...) parenthetical may
+    # contain additional category labels.
     s2 = _parse_subbullet(
         14,
-        r"(\d+) synthetic-break tests PASS \((\d+) classes",
+        r"(\d+) synthetic-break tests PASS \((\d+) (?:cross-paper )?classes",
     )
     if isinstance(s2, str):
         mismatches.append(f"(14/N): {s2}")

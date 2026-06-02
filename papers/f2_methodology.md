@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **32 stages**
+  cold**) — single-shot CI gate. Currently chains **33 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other twenty-five stages are gates
+  not a stage of itself); the **other twenty-six stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1763,12 +1763,14 @@ dependency; we do not stub any of them.
   bijective on the gate's actual class names — every alias resolves
   to a live class, every class has at least one alias), the
   module-cache-consistency verifier (asserts the _gate_utils
-  import_gate cache contract holds), and the floating-loop-anchor
+  import_gate cache contract holds), the floating-loop-anchor
   verifier (gates "as of Loop N" anchors against the §7 lead loop
-  with 1-loop in-flight tolerance).
+  with 1-loop in-flight tolerance), and the anchor-loop-coverage
+  verifier (asserts every CHANGELOG §10 Loop-N entry has ≥1
+  matching commit on the f2-methodology branch).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 25 are documented in the follow-up paper's
+  the additional 26 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",
