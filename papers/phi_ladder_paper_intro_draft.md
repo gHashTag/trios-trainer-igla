@@ -820,13 +820,8 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (15 stages on disk as of Loop 114)
-will be extended with three new stages for this run. **The three
-scripts below are NOT yet implemented on the methodology anchor
-commit**; they are pre-registered as part of this paper's protocol
-contribution and committed before the 80-cell sweep begins, on
-the same commit-order discipline as `f2_pairwise_perm` (§3.3
-"Pre-registration discipline for the new binary"):
+The companion paper's CI gate (16 stages on disk as of Loop 115)
+will be extended with two additional new stages for this run:
 
 - `verify_run_completeness.py` (*to be implemented*) — checks
   all 93 CSVs are present in `data/issue1021/run0/` and each
@@ -835,19 +830,27 @@ the same commit-order discipline as `f2_pairwise_perm` (§3.3
   each report's numeric claims against the source CSVs (a
   generalization of the per-table CSV-grounding script from
   Loop 99 of the companion paper).
-- `verify_provenance.sh` (*to be implemented*) — runs
-  `f2_provenance_check` against the two cell-level / pairwise
-  CSV classes that carry a W3C-PROV preamble (see §5.1 for the
-  per-producer field set); the aggregator binaries that emit no
-  preamble are not gated by this script.
 
-The full CI gate (18 stages total: 15 from F2 + 3 from this
-paper, after the three scripts above are committed) must exit 0
-on the run-result paper's anchor commit before any draft is
-exported for submission. 37th adversarial pass (Loop 114)
-flagged that earlier drafts presented the three scripts as
-already-shipped; fixed here with the "(*to be implemented*)"
-markers and the explicit pre-registration discipline framing.
+One stage — `verify_provenance.sh` — was originally pre-registered
+in this section as future work but was implemented in Loop 115
+and is now part of the companion paper's 16-stage gate (stage
+9/16). It runs `f2_provenance_check` against the two cell-level /
+pairwise CSV classes that carry a W3C-PROV preamble (see §5.1 for
+the per-producer field set); the aggregator binaries that emit no
+preamble are not gated by this script.
+
+The two scripts above pre-registered as "(*to be implemented*)"
+follow the same commit-order discipline as `f2_pairwise_perm`
+(§3.3 "Pre-registration discipline for the new binary"):
+committed before any of the 80-cell champion-scale sweep CSVs
+are produced. The full gate (**18 stages total: 16 from F2 + 2
+remaining from this paper**, after the two scripts above are
+committed) must exit 0 on the run-result paper's anchor commit
+before any draft is exported for submission.
+
+37th adversarial pass (Loop 114) flagged that earlier drafts
+presented the three scripts as already-shipped when none were;
+Loop 115 A delivered the first (`verify_provenance.sh`).
 
 ---
 
