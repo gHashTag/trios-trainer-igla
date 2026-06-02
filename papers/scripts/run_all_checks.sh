@@ -132,6 +132,7 @@ STAGES=(
     "report consistency:papers/scripts/verify_report_consistency.py"
     "stage count consistency:papers/scripts/verify_stage_count_consistency.py"
     "cross-paper consistency:papers/scripts/verify_cross_paper_consistency.py"
+    "cross-paper gate meta-test:papers/scripts/meta_test_cross_paper_gates.py"
     "f2_pairwise_perm smoke:papers/scripts/smoke_f2_pairwise_perm.sh"
     "#1021 cross-ref audit:papers/scripts/cross_reference_audit.py papers/phi_ladder_paper_intro_draft.md"
     "#1021 markdown lint:python3 papers/scripts/lint_paper_md.py papers/phi_ladder_paper_intro_draft.md"

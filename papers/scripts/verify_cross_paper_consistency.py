@@ -134,24 +134,24 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         800, 900,
         "F2 §8.2 grouped total",
     ),
-    # Loop 123 C: TMLR-class PDF page count sanity range (20-35pp is the
-    # plausible range for the F2 paper; outside this, something is wrong).
+    # Loop 124 D (47th pass A3 SEV-3): tightened from [20, 35] to [25, 30].
+    # Current TMLR-class is 27pp; the old [20, 35] admitted 30% growth
+    # silently. The new band tracks ±10% around the current observed
+    # value, requiring intentional bumps to be reviewed.
     (
         r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
         "TMLR class single-column",
-        20, 35,
+        25, 30,
         "SUBMISSION_CHECKLIST TMLR page sanity range",
     ),
-    # Loop 123 C: non-anonymized PDF should be 1.4-1.7× the TMLR-class
-    # (article wrapper is wider-margined, fewer pages... actually F2
-    # uses a single-column wrapper for both, so the multiplier is closer
-    # to 1.5×). Sanity-bound the non-anon page count to 30-55pp.
+    # Loop 124 D (47th pass A3 SEV-3): tightened from [30, 55] to [38, 46].
+    # Current non-anon is 42pp; old band admitted nearly 30% drift.
     (
         r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
         "article wrapper",
-        30, 55,
+        38, 46,
         "SUBMISSION_CHECKLIST non-anon page sanity range",
     ),
 ]

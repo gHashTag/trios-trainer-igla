@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **20 stages**
+  cold**) — single-shot CI gate. Currently chains **21 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other thirteen stages are gates
+  not a stage of itself); the **other fourteen stages are gates
   introduced after the §E 8-script catalogue crystallized at
   Loop 96, prior to the post-96 gate-evolution arc documented
   in CHANGELOG §10**:
@@ -1744,7 +1744,7 @@ dependency; we do not stub any of them.
   for its `f2_pairwise_perm` binary, and the supplementary-zip
   packer. Exits 0 only if every stage passes. The catalogue
   above is the original 8 the paper relied on at draft time;
-  the additional 13 are documented in the follow-up paper's
+  the additional 14 are documented in the follow-up paper's
   §5.4. (The 40th adversarial pass corrected an earlier
   "seven catalogued + ten additional" miscount.)
 

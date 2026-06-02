@@ -16,3 +16,7 @@ Cargo.lock.bak
 
 # Build cache
 .cargo/
+
+# Python bytecode (Loop 124 C — papers/scripts/ now compiles to .pyc)
+__pycache__/
+*.pyc

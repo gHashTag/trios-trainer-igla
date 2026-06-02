@@ -1471,8 +1471,8 @@ Markdown source; run xelatex + BibTeX 3-pass × 3 variants (non-anon, anon, real
 • papers/scripts/figure_regen.sh ( 10 s warm) — stage committed CSVs from data/loop49/
 and data/loop49_swap/ through f2_to_jsonl and f2_mediation_sensitivity; regenerate all six
 paper figures. Cold: 3–8 min (release-profile build of two F2 bins).
-• papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold) — single-shot CI gate. Currently chains 20 stages on disk. Of the eight scripts catalogued above, seven appear as individual
-stages (run_all_checks.sh itself is the orchestrator, not a stage of itself); the other thirteen
+• papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold) — single-shot CI gate. Currently chains 21 stages on disk. Of the eight scripts catalogued above, seven appear as individual
+stages (run_all_checks.sh itself is the orchestrator, not a stage of itself); the other fourteen
 stages are gates introduced after the §E 8-script catalogue crystallized at (internal ref), prior to the post-96 gate-evolution arc documented in CHANGELOG
 section
 10:
@@ -1489,7 +1489,7 @@ verify_run_completeness.py,
 verify_report_consistency.py), the stage-count-consistency verifier , the cross-paper-consistency
 verifier , the #1021 follow-up paper’s cross-reference audit, its markdown lint, the smoke test
 for its f2_pairwise_perm binary, and the supplementary-zip packer. Exits 0 only if every stage
-passes. The catalogue above is the original 8 the paper relied on at draft time; the additional 13
+passes. The catalogue above is the original 8 the paper relied on at draft time; the additional 14
 are documented in the follow-up paper’s section 5.4. (The 40th adversarial pass corrected an earlier
 ”seven catalogued + ten additional” miscount.)
 papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.sh +

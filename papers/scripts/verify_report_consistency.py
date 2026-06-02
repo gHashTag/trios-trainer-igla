@@ -143,7 +143,9 @@ def _strip_code_fences(text: str) -> str:
     out: list[str] = []
     inside = False
     for ln in lines:
-        if ln.lstrip().startswith("```"):
+        # Loop 124 D (47th pass A2 SEV-3): CommonMark §4.5 admits BOTH
+        # backtick and tilde code fences. Strip both.
+        if ln.lstrip().startswith(("```", "~~~")):
             inside = not inside
             out.append("")
             continue
