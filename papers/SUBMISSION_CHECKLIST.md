@@ -44,7 +44,7 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
 ## 2. Paper state
 
 - [ ] Anchor commit pinned (see top of file).
-- [ ] Non-anonymized PDF: **42 pages**, ~210 KB
+- [ ] Non-anonymized PDF: **43 pages**, ~213 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
 - [ ] Anonymized PDF: **42 pages**, ~208 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)

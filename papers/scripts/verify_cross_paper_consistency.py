@@ -110,17 +110,13 @@ EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
     # == val_b trivially. Removed and replaced with the SCOPED_DIFF
     # below at a hardcoded sanity-equal range [27, 27] so a one-line
     # bump fires the gate.
-    # Loop 123 C: non-anon and anon page counts should match each other
-    # (anonymization removes acknowledgments but adds the placeholder,
-    # net page change is typically zero). The checklist currently pins
-    # both to 42pp; gate the self-consistency.
-    (
-        r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
-        SUBMISSION_CHECKLIST,
-        r"Anonymized PDF: \*\*(\d+) pages\*\*",
-        SUBMISSION_CHECKLIST,
-        "SUBMISSION_CHECKLIST non-anon vs anon page count",
-    ),
+    # Loop 128 D (submission-readiness audit): the non-anon vs anon
+    # equality claim was wrong post-Loop-127. Anonymization replaces
+    # the §10.3 Acknowledgments body with a 1-line OMISSION placeholder;
+    # depending on prose layout that can shift the page count by ±1.
+    # Current: non-anon = 43, anon = 42. Each is now pinned individually
+    # via SCOPED_DIFF below; the cross-paper EXACT_MATCH between them is
+    # no longer a real invariant and has been removed.
 ]
 
 
@@ -187,13 +183,24 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         27, 27,
         "SUBMISSION_CHECKLIST TMLR page exact pin",
     ),
-    # Loop 126 D (48th pass A5 SEV-2): pinned exactly to current 42pp.
+    # Loop 128 D: non-anon currently 43pp (Loop 127 paper grew by 1
+    # page when CHANGELOG §10 + §7 expanded with milestone retrospective);
+    # anon stayed 42 because the §10.3 omission placeholder absorbs the
+    # difference. Pinned individually.
     (
         r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
         "article wrapper (pinned exactly)",
-        42, 42,
+        43, 43,
         "SUBMISSION_CHECKLIST non-anon page exact pin",
+    ),
+    # Loop 128 D: anon-PDF exact pin (separated from non-anon by Loop 128).
+    (
+        r"Anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "article wrapper, anonymized variant",
+        42, 42,
+        "SUBMISSION_CHECKLIST anon page exact pin",
     ),
 ]
 
