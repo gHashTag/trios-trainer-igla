@@ -213,11 +213,16 @@ def test_inventory_completeness() -> bool:
               "those classes.", file=sys.stderr)
         return False
     if extra:
-        # Tested classes not in gate is suspicious but not fatal — could
-        # be a leftover after a class was deleted from the gate.
-        print(f"# WARN  inventory_completeness: meta-test names classes "
+        # Loop 127 D (50th pass A2 SEV-3): tested classes not in gate
+        # are now a hard failure, not a WARN. The 47th-pass A4 follow-up
+        # intent was symmetric coverage; stale tests for deleted classes
+        # are dead code that could mask future regressions if the class
+        # is reintroduced under the old name.
+        print(f"# FAIL  inventory_completeness: meta-test names classes "
               f"{sorted(extra)} that don't exist in the gate (stale "
-              "test?)", file=sys.stderr)
+              "test code). Remove or rename the break-test.",
+              file=sys.stderr)
+        return False
     print(f"# OK    inventory_completeness: {len(registered_classes)} "
           f"claim classes registered ({sorted(registered_classes)}), "
           "all covered by break-tests")

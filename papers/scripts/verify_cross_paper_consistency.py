@@ -39,8 +39,15 @@ F2_PAPER = CRATE_ROOT / "papers" / "f2_methodology.md"
 ISSUE1021_PAPER = CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md"
 
 
+# Module-level constant so a future claim can request a wider window via
+# import + override; Loop 127 B (49th pass A5b SEV-4 — elevated from
+# magic per-call default).
+DEFAULT_MAX_CONTEXT_CHARS = 200
+
+
 def find_int_claim(path: Path, pattern: str,
-                   max_context_chars: int = 200) -> tuple[int, int] | None:
+                   max_context_chars: int | None = None
+                   ) -> tuple[int, int] | None:
     """Return (claimed_int, line_number) of the first match, or None.
 
     Loop 125 B (47th pass A4 SEV-4): the original used `re.DOTALL`,
@@ -49,15 +56,33 @@ def find_int_claim(path: Path, pattern: str,
     matching across paragraph boundaries. We now drop DOTALL and
     bound the match window via `max_context_chars` so each pattern
     must be self-contained within a single paragraph-ish span.
+
+    Loop 127 B (49th pass A5 SEV-4 fixes):
+    - max_context_chars now defaults to DEFAULT_MAX_CONTEXT_CHARS
+      (module-level constant) — no more magic per-call literal.
+    - When the pattern matches but its span exceeds the bound, the
+      function PRINTS a stderr diagnostic naming the path + span
+      before returning None. Previously the "no match" return was
+      ambiguous between "regex didn't match" and "match but
+      over-spanned"; now a debugger sees which case applies.
     """
+    if max_context_chars is None:
+        max_context_chars = DEFAULT_MAX_CONTEXT_CHARS
     pat = re.compile(pattern)
     text = path.read_text()
     m = pat.search(text)
     if not m:
         return None
-    # Bound: reject matches that span more than max_context_chars of source.
     span_chars = m.end() - m.start()
     if span_chars > max_context_chars:
+        # Loop 127 B (49th pass A5 SEV-4): disambiguate "over-spanned"
+        # from "no match" in stderr.
+        rel = path.relative_to(CRATE_ROOT) if path.is_absolute() else path
+        print(f"# WARN find_int_claim: {rel}: regex {pattern!r} matched "
+              f"but spans {span_chars} chars > max {max_context_chars} — "
+              "likely paragraph-crossing; rejected. To accept, pass an "
+              "explicit max_context_chars=... at the call site.",
+              file=sys.stderr)
         return None
     digit_pos = m.start(1)
     line_no = text[:digit_pos].count("\n") + 1
@@ -208,6 +233,18 @@ def check_acknowledges(spec: tuple) -> list[str]:
     behavior on missing claim — True → WARN to stderr but don't fail
     (for transitional periods); default False → FAIL.
     """
+    # Loop 127 D (50th pass A3 SEV-4): explicit spec-length validation.
+    # The shim in meta_test_cross_paper_gates.py uses *spec[1:] which is
+    # permissive about tuple length; the dispatcher previously had a
+    # binary 4-vs-else. A 6-tuple registration would silently propagate
+    # through the shim and crash here with a cryptic "too many values"
+    # ValueError. Make the contract explicit.
+    if len(spec) not in (4, 5):
+        return [
+            f"check_acknowledges: registry entry has {len(spec)} fields; "
+            "expected 4 (required) or 5 (with optional=True). Update the "
+            "registry or extend the dispatcher."
+        ]
     if len(spec) == 4:
         paper, claim_pat, ack_pat, label = spec
         optional = False

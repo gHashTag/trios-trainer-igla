@@ -116,8 +116,12 @@ passes total across Loops 59–124. The first 11 (Loops 59, 61,
 Loops 86–124 extended the discipline to round-N audits where
 each substantive patch is independently re-audited the loop after
 it lands. Detail on passes 1–11 below; passes 12–47 are summarized
-in §10 and the per-loop commit messages on the `f2-methodology`
-branch (`git log --oneline --grep="adversarial pass"`).
+in §10 (CI gate evolution arc Loops 87–118; subsequent passes
+documented in per-loop commit messages). The combined breadcrumb
+is `git log --oneline --grep="adversarial pass" --grep="round-"`
+which surfaces ≥35 commits across Loops 90–124 (49th pass
+flagged the un-widened grep covered only ~35 of 47 passes; the
+two-pattern form widens reach).
 
 - **Loop 59** derivation audit: re-attributed Miles-Shpitser
   citation (5 authors, not 2), explicit Γ/Λ uniform-scalar

@@ -135,21 +135,58 @@ EXISTS_STUBS: list[dict] = [
 ]
 
 
+def _fence_char_and_count(line: str) -> tuple[str | None, int]:
+    """Detect a CommonMark §4.5 fence opener/closer at the start of `line`
+    (after up to 3 leading spaces). Returns (fence_char, count) where
+    fence_char is "`" or "~" and count is ≥3, or (None, 0) if not a fence.
+    """
+    stripped = line.lstrip(" ")
+    if len(line) - len(stripped) > 3:
+        return (None, 0)
+    for ch in ("`", "~"):
+        if stripped.startswith(ch * 3):
+            n = 0
+            while n < len(stripped) and stripped[n] == ch:
+                n += 1
+            return (ch, n)
+    return (None, 0)
+
+
 def _strip_code_fences(text: str) -> str:
     """Remove fenced code blocks so table-row regexes don't match prose
     examples shown inside ```markdown ... ``` blocks (45th adversarial
-    pass A4)."""
+    pass A4).
+
+    Loop 127 C (48th pass A5 SEV-4): enforce CommonMark §4.5 parity.
+    A fence opened with N backticks (or N tildes) must be closed by
+    ≥N of the SAME character. Previous implementation toggled `inside`
+    on any fence-shaped line — so a ``` opener could be wrongly closed
+    by a ~~~ or vice versa.
+    """
     lines = text.splitlines(keepends=True)
     out: list[str] = []
-    inside = False
+    open_char: str | None = None
+    open_count: int = 0
     for ln in lines:
-        # Loop 124 D (47th pass A2 SEV-3): CommonMark §4.5 admits BOTH
-        # backtick and tilde code fences. Strip both.
-        if ln.lstrip().startswith(("```", "~~~")):
-            inside = not inside
+        ch, n = _fence_char_and_count(ln)
+        if open_char is None:
+            # Looking for an opener.
+            if ch is not None:
+                open_char = ch
+                open_count = n
+                out.append("")
+                continue
+            out.append(ln)
+        else:
+            # Looking for a same-char closer with ≥ open_count.
+            if ch == open_char and n >= open_count:
+                open_char = None
+                open_count = 0
+                out.append("")
+                continue
+            # Either non-fence line or different fence — both stripped
+            # since we're inside the code block.
             out.append("")
-            continue
-        out.append("" if inside else ln)
     return "".join(out)
 
 
