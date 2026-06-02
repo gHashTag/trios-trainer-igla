@@ -139,10 +139,32 @@ STAGES=(
     "module cache:python3 papers/scripts/verify_module_cache_consistency.py"
     "floating loop anchors:python3 papers/scripts/verify_loop_floating_anchors.py"
     "anchor loop coverage:python3 papers/scripts/verify_anchor_loop_coverage.py"
+    "dependency graph:python3 papers/scripts/verify_dependency_graph.py"
+)
+
+# Loop 141 C: lightweight tier classification. Each stage maps to one
+# of:
+#   submission  — must pass for submission readiness (1-21).
+#   discipline  — drift catchers + registry binders (22-34).
+# Parallel array indexed alongside STAGES; per-tier counters surface
+# in the summary so contributors see at-a-glance which class fired.
+STAGE_TIERS=(
+    "submission" "submission" "submission" "submission" "submission"
+    "submission" "submission" "submission" "submission" "submission"
+    "submission" "submission" "submission" "submission" "submission"
+    "submission" "submission" "submission" "submission" "submission"
+    "submission"
+    "discipline" "discipline" "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline"
 )
 
 PASSED=0
 FAILED=0
+SUB_PASS=0
+SUB_FAIL=0
+DISC_PASS=0
+DISC_FAIL=0
 declare -a FAIL_NAMES=()
 
 echo "# run_all_checks.sh — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -153,23 +175,36 @@ for stage in "${STAGES[@]}"; do
     i=$((i + 1))
     name="${stage%%:*}"
     cmd="${stage#*:}"
-    echo "# (${i}/${#STAGES[@]}) ${name}"
+    tier="${STAGE_TIERS[$((i - 1))]:-discipline}"
+    echo "# (${i}/${#STAGES[@]}) [${tier}] ${name}"
     logfile="/tmp/run_all_checks_${i}.log"
     if eval "$cmd" > "$logfile" 2>&1; then
         # Last line of stdout (often shows result summary).
         last=$(tail -1 "$logfile" 2>/dev/null | head -c 100)
         echo "  PASS  — ${last}"
         PASSED=$((PASSED + 1))
+        if [[ "$tier" == "submission" ]]; then
+            SUB_PASS=$((SUB_PASS + 1))
+        else
+            DISC_PASS=$((DISC_PASS + 1))
+        fi
     else
         echo "  FAIL  — see $logfile"
         FAIL_NAMES+=("$name")
         FAILED=$((FAILED + 1))
+        if [[ "$tier" == "submission" ]]; then
+            SUB_FAIL=$((SUB_FAIL + 1))
+        else
+            DISC_FAIL=$((DISC_FAIL + 1))
+        fi
         tail -5 "$logfile" >&2
     fi
 done
 
 echo
 echo "# Summary: $PASSED PASS / $FAILED FAIL of ${#STAGES[@]} stages"
+echo "#   submission tier: $SUB_PASS PASS / $SUB_FAIL FAIL"
+echo "#   discipline tier: $DISC_PASS PASS / $DISC_FAIL FAIL"
 if [[ $FAILED -gt 0 ]]; then
     echo "# FAILED stages: ${FAIL_NAMES[*]}" >&2
     exit 1

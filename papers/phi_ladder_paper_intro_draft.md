@@ -484,7 +484,7 @@ discuss below; this paper uses only the **total-effect** and
 **bridge-score envelope** machinery from the F2 framework.
 
 **Why four-PSE is dropped for this paper (28th adversarial pass
-discovery, Loop 105).** Pearl's four-PSE identification requires
+discovery).** Pearl's four-PSE identification requires
 positivity: $0 < P(M = m | X = x) < 1$ for the mediator values
 the decomposition integrates over. Two candidate mediators —
 `lossy_conversions` and `wall_clock_s` — are **deterministic
@@ -542,7 +542,7 @@ diagnostic table). The bridge-score envelope is reported at
 **Λ = 1.0 BPB** with the `Γ_tip(Λ=1.0) < 1.25` fragility cutoff.
 
 **On the choice of Λ = 1.0 for a total-effect estimand (30th
-adversarial pass discovery, Loop 107).** The companion F2 paper
+adversarial pass discovery).** The companion F2 paper
 calibrates Λ = 1.0 BPB against a *per-PSE* (NDE) bound. This
 paper bounds the *total effect*, a category change: total effects
 can absorb residual confounding that a Pearl CDE would partition
@@ -618,7 +618,7 @@ canonical alone as positive-determining, so falsification (the
 logical negation of "positive") must also be canonical-only.
 Failure at wd0 (with success at canonical) is reported as
 secondary evidence per §4.4, NOT as additional grounds for H1
-falsification. Loop 108 31st-pass correction: earlier drafts
+falsification. (31st-pass correction): earlier drafts
 required failure in both strata, which created a no-man's-land
 (canonical-fail + wd0-hold) classified as neither falsified nor
 positive — fixed here by aligning §4.2 falsification with §4.4
@@ -828,7 +828,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (33 stages on disk as of Loop 140)
+The companion paper's CI gate (34 stages on disk as of Loop 141)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -874,8 +874,8 @@ are produced.
 fixed in an earlier pre-registration sweep; later loops added
 the stage-count + cross-paper verifiers — full per-loop history
 in the companion paper's `papers/CHANGELOG.md` §10): the current
-**33-stage on-disk gate** breaks down as
-**27 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+**34-stage on-disk gate** breaks down as
+**28 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier, the cross-paper-gate
@@ -886,10 +886,11 @@ generator-consistency verifier, the class-registry-binding
 verifier, the documented-vs-extracted-consistency verifier,
 the burn-down-history verifier, the alias-round-trip verifier,
 the module-cache-consistency verifier, the floating-loop-
-anchor verifier, and the anchor-loop-coverage verifier;
-per-introduction history is catalogued in the companion
-paper's `papers/CHANGELOG.md` §10) **+ 6 #1021-scoped
-stages already wired** into F2's `run_all_checks.sh`
+anchor verifier, the anchor-loop-coverage verifier, and the
+dependency-graph verifier; per-introduction history is
+catalogued in the companion paper's `papers/CHANGELOG.md` §10)
+**+ 6 #1021-scoped stages already wired** into F2's
+`run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No
 further stages remain pre-registered** — all three originally-

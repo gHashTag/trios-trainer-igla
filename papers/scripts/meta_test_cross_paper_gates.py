@@ -415,6 +415,181 @@ def test_alias_round_trip_dangling_break(tmp: Path) -> bool:
     return True
 
 
+def test_documented_vs_extracted_break(tmp: Path) -> bool:
+    """Loop 141 A.iv: synthetic break for verify_documented_vs_extracted.
+    Mutate SUBMISSION_CHECKLIST (11/N) "6 reports" → "5 reports";
+    assert the gate fires with the claimed-vs-actual mismatch."""
+    import shutil
+    src_dir = CRATE_ROOT / "papers" / "scripts"
+    dst_dir = tmp / "papers" / "scripts"
+    dst_papers = tmp / "papers"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "verify_documented_vs_extracted_consistency.py",
+        "verify_report_consistency.py",
+        "_gate_utils.py",
+    ]:
+        shutil.copy2(src_dir / name, dst_dir / name)
+    # The gate also reads SUBMISSION_CHECKLIST relative to CRATE_ROOT
+    # (which it derives from __file__ → 2 parents up). Mirror it.
+    shutil.copy2(
+        CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md",
+        dst_papers / "SUBMISSION_CHECKLIST.md",
+    )
+    chk = dst_papers / "SUBMISSION_CHECKLIST.md"
+    text = chk.read_text()
+    broken = text.replace(
+        "report consistency — 6 reports (2 full + 4 stub coverage)",
+        "report consistency — 5 reports (1 full + 4 stub coverage)",
+    )
+    if broken == text:
+        print("# SKIP doc_vs_extracted: anchor not found",
+              file=sys.stderr)
+        return True
+    chk.write_text(broken)
+    result = subprocess.run(
+        [sys.executable, str(dst_dir / "verify_documented_vs_extracted_consistency.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        print("# FAIL  doc_vs_extracted break: gate exited 0 despite "
+              "5 reports != live 6.", file=sys.stderr)
+        return False
+    if "5" not in result.stderr or "6" not in result.stderr:
+        print("# FAIL  doc_vs_extracted break: stderr missing "
+              "claimed-vs-actual mismatch.",
+              file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print("# OK    doc_vs_extracted break: gate fires with "
+          "claimed-vs-actual mismatch")
+    return True
+
+
+def test_changelog_consistency_break(tmp: Path) -> bool:
+    """Loop 141 A.iv: synthetic break for verify_changelog_consistency.
+    Mutate CHANGELOG §7 lead 'Sixty-three' → 'Sixty-two' while
+    leaving the other sites at 63; assert the agreement check fires."""
+    import shutil
+    src_dir = CRATE_ROOT / "papers" / "scripts"
+    dst_dir = tmp / "papers" / "scripts"
+    dst_papers = tmp / "papers"
+    dst_docs = tmp / "docs"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    dst_docs.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(
+        src_dir / "verify_changelog_consistency.py",
+        dst_dir / "verify_changelog_consistency.py",
+    )
+    shutil.copy2(src_dir / "_gate_utils.py", dst_dir / "_gate_utils.py")
+    shutil.copy2(
+        CRATE_ROOT / "papers" / "CHANGELOG.md",
+        dst_papers / "CHANGELOG.md",
+    )
+    shutil.copy2(
+        CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md",
+        dst_papers / "SUBMISSION_CHECKLIST.md",
+    )
+    shutil.copy2(
+        CRATE_ROOT / "docs" / "ADVERSARIAL_REVIEW_LOG.md",
+        dst_docs / "ADVERSARIAL_REVIEW_LOG.md",
+    )
+    cl = dst_papers / "CHANGELOG.md"
+    text = cl.read_text()
+    # Mutate the §7 lead's count word. Replace whatever the current
+    # text uses ("Sixty-three", "Sixty-four", etc.) with "Sixty-two"
+    # so the agreement check fires against the other two sites.
+    import re
+    broken = re.sub(
+        r"\*\*[A-Za-z-]+\*\* independent\s+passes total",
+        "**Sixty-two** independent passes total",
+        text, count=1,
+    )
+    if broken == text:
+        print("# SKIP changelog_consistency: §7 lead anchor not found",
+              file=sys.stderr)
+        return True
+    cl.write_text(broken)
+    result = subprocess.run(
+        [sys.executable, str(dst_dir / "verify_changelog_consistency.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        print("# FAIL  changelog_consistency break: gate exited 0 "
+              "despite §7 disagreement.", file=sys.stderr)
+        return False
+    if "disagreement" not in result.stderr.lower() \
+            and "drift" not in result.stderr.lower():
+        print("# FAIL  changelog_consistency break: stderr missing "
+              "disagreement marker.", file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print("# OK    changelog_consistency break: gate fires with "
+          "disagreement/drift diagnostic")
+    return True
+
+
+def test_stage_count_break(tmp: Path) -> bool:
+    """Loop 141 A.iv: synthetic break for verify_stage_count_consistency.
+    Mutate F2 §E '**N stages**' to a count below actual; assert
+    the gate fires with the claimed-vs-actual mismatch."""
+    import shutil
+    src_dir = CRATE_ROOT / "papers" / "scripts"
+    dst_dir = tmp / "papers" / "scripts"
+    dst_papers = tmp / "papers"
+    dst_dir.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "verify_stage_count_consistency.py",
+        "_gate_utils.py",
+        "run_all_checks.sh",
+    ]:
+        shutil.copy2(src_dir / name, dst_dir / name)
+    for fname in (
+        "f2_methodology.md",
+        "phi_ladder_paper_intro_draft.md",
+        "CHANGELOG.md",
+        "SUBMISSION_CHECKLIST.md",
+    ):
+        shutil.copy2(
+            CRATE_ROOT / "papers" / fname,
+            dst_papers / fname,
+        )
+    f2 = dst_papers / "f2_methodology.md"
+    text = f2.read_text()
+    import re
+    # Match `Currently chains **NN stages**` and downshift by 5.
+    m = re.search(r"Currently chains \*\*(\d+) stages\*\*", text)
+    if not m:
+        print("# SKIP stage_count: §E count anchor not found",
+              file=sys.stderr)
+        return True
+    actual = int(m.group(1))
+    broken = text.replace(
+        f"Currently chains **{actual} stages**",
+        f"Currently chains **{actual - 5} stages**",
+        1,
+    )
+    f2.write_text(broken)
+    result = subprocess.run(
+        [sys.executable, str(dst_dir / "verify_stage_count_consistency.py")],
+        capture_output=True, text=True, timeout=30,
+    )
+    if result.returncode == 0:
+        print("# FAIL  stage_count break: gate exited 0 despite "
+              f"claim {actual - 5} != actual {actual}.",
+              file=sys.stderr)
+        return False
+    if str(actual - 5) not in result.stderr \
+            or str(actual) not in result.stderr:
+        print("# FAIL  stage_count break: stderr missing claimed-vs-"
+              "actual integers.", file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print("# OK    stage_count break: gate fires with claim-vs-actual "
+          "mismatch")
+    return True
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -498,6 +673,10 @@ def main() -> int:
             # Loop 140 A.iv: extended coverage beyond cross-paper gates.
             ("burn_down_arithmetic", test_burn_down_arithmetic_break),
             ("alias_round_trip_dangling", test_alias_round_trip_dangling_break),
+            # Loop 141 A.iv: extended coverage to 3 more newer gates.
+            ("doc_vs_extracted_drift", test_documented_vs_extracted_break),
+            ("changelog_consistency_drift", test_changelog_consistency_break),
+            ("stage_count_drift", test_stage_count_break),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -508,7 +687,8 @@ def main() -> int:
         return 1
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
           "tests passed; covers 5 cross-paper claim classes + "
-          "burn-down arithmetic + alias bijection")
+          "burn-down arithmetic + alias bijection + doc-vs-extracted "
+          "+ changelog consistency + stage count")
     return 0
 
 
