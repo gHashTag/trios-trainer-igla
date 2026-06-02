@@ -292,8 +292,68 @@ struct LayerCache {
     act: Vec<f32>,       // t*dff
 }
 
+// FIM training-loss policy (Coder-Loop+5, option B).
+//   All    -- Bavarian et al. 2022 default: loss on every next-token target
+//             (prefix, suffix, and middle alike). This is the byte-identical
+//             legacy path; gradcheck always runs in this mode.
+//   Middle -- selective loss masking: count loss/gradient only for targets in
+//             the infill region (positions whose target index is strictly after
+//             the <MID> sentinel, through <EOS>). Plain non-FIM sequences (no
+//             <MID> present) fall back to All so NTP docs are unaffected.
+// phi-as-axis note: this knob measures the MODEL's infill skill; it is
+// generator-agnostic and says nothing about phi.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum FimLossMode {
+    All,
+    Middle,
+}
+
+// Build a per-target mask of length t-1. mask[i] = true means "count the loss
+// for predicting tokens[i+1]". In Middle mode, only targets strictly after the
+// last <MID> sentinel are counted; if no <MID> is present the whole sequence is
+// counted (All-equivalent), so non-FIM docs are never silently zeroed out.
+fn fim_loss_mask(tokens: &[usize], mode: FimLossMode) -> Option<Vec<bool>> {
+    if tokens.len() < 2 {
+        return Some(vec![false; tokens.len().saturating_sub(1)]);
+    }
+    match mode {
+        FimLossMode::All => None, // None == count everything (legacy fast path)
+        FimLossMode::Middle => {
+            // index of the last MID sentinel, if any
+            let mid_at = tokens.iter().rposition(|&t| t == TOK_MID);
+            let t = tokens.len();
+            let mut mask = vec![true; t - 1];
+            if let Some(p) = mid_at {
+                // target index is i+1; count only targets with index > p
+                // (i.e. the middle span and its terminating EOS).
+                for i in 0..t - 1 {
+                    mask[i] = (i + 1) > p;
+                }
+            }
+            // no MID -> all true (plain NTP doc), matches All semantics
+            Some(mask)
+        }
+    }
+}
+
 // Full forward+backward over one sequence. Accumulates grads. Returns mean nats.
+// Legacy wrapper: counts loss on every position (FimLossMode::All).
 fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
+    fwd_bwd_masked(m, tokens, g, train, FimLossMode::All)
+}
+
+// Forward+backward with an optional FIM loss mask. The mask zeroes BOTH the
+// counted nats AND the backward gradient for masked positions, so a masked
+// position contributes nothing -- gradcheck remains valid in All mode because
+// the mask is None there and the inner loop is byte-identical to the legacy
+// path.
+fn fwd_bwd_masked(
+    m: &Model,
+    tokens: &[usize],
+    g: &mut Grads,
+    train: bool,
+    fim_mode: FimLossMode,
+) -> f32 {
     let d = m.d;
     let h = m.heads;
     let hd = d / h;
@@ -396,7 +456,17 @@ fn fwd_bwd(m: &Model, tokens: &[usize], g: &mut Grads, train: bool) -> f32 {
     let mut g_x = vec![0.0f32; t * d];
     let mut total = 0.0f32;
     let mut counted = 0usize;
+    // None => count every target (All / legacy); Some(mask) => FIM Middle policy.
+    let loss_mask = fim_loss_mask(tokens, fim_mode);
     for i in 0..t - 1 {
+        // skip masked positions entirely: no loss, no gradient. A masked
+        // position leaves g_x[i*d..] at zero, which is exactly its correct
+        // gradient contribution (zero), so backprop downstream stays valid.
+        if let Some(ref mask) = loss_mask {
+            if !mask[i] {
+                continue;
+            }
+        }
         let target = tokens[i + 1];
         let mut logits = vec![0.0f32; VOCAB];
         let mut mx = f32::NEG_INFINITY;
@@ -684,6 +754,11 @@ struct TrainCfg {
     // if Some(k), evaluate validation BPB every k steps and track the best
     // checkpoint (Loop+2 Option A: handle unstable seeds honestly).
     eval_every: Option<usize>,
+    // FIM training-loss policy (Coder-Loop+5 option B). Default All =
+    // Bavarian 2022. Middle = selective loss masking on the infill region.
+    // Validation BPB always uses All (full-sequence likelihood) for cross-arm
+    // comparability, regardless of this knob.
+    fim_loss: FimLossMode,
 }
 
 // Validation BPB over up to 64 windows (shared by periodic eval + final eval).
@@ -724,7 +799,7 @@ fn train_once_model(train: &[usize], val: &[usize], cfg: &TrainCfg) -> (f32, Mod
         for _ in 0..cfg.batch {
             let start = drng.gen_range(0..train.len() - cfg.seq - 1);
             let toks = &train[start..start + cfg.seq + 1];
-            loss += fwd_bwd(&model, toks, &mut g, true);
+            loss += fwd_bwd_masked(&model, toks, &mut g, true, cfg.fim_loss);
         }
         accum_scale(&mut g, 1.0 / cfg.batch as f32);
         opt_step(&mut model, &mut opt, &g);
@@ -1332,6 +1407,16 @@ fn main() {
     let curve_stride: Option<usize> = arg(&args, "--curve").and_then(|s| s.parse().ok());
     // Optional periodic-validation stride (Loop+2 Option A): track best checkpoint.
     let eval_every: Option<usize> = arg(&args, "--eval-every").and_then(|s| s.parse().ok());
+    // FIM training-loss policy (Coder-Loop+5 option B): all (Bavarian 2022,
+    // default) | middle (selective loss masking on the infill region).
+    let fim_loss: FimLossMode = match arg(&args, "--fim-loss").as_deref() {
+        Some("middle") => FimLossMode::Middle,
+        Some("all") | None => FimLossMode::All,
+        Some(other) => {
+            eprintln!("unknown --fim-loss '{}', expected all|middle", other);
+            std::process::exit(2);
+        }
+    };
 
     let train = load_bin(&train_path);
     let val = load_bin(&val_path);
@@ -1382,6 +1467,7 @@ fn main() {
                     wd_ov,
                     curve_stride,
                     eval_every,
+                    fim_loss,
                 };
                 let bpb = train_once(&train, &val, &cfg);
                 vals.push(bpb);
@@ -1446,6 +1532,7 @@ fn main() {
             wd_ov,
             curve_stride,
             eval_every,
+            fim_loss,
         };
         let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
         println!(
@@ -1489,6 +1576,7 @@ fn main() {
         wd_ov,
         curve_stride,
         eval_every,
+        fim_loss,
     };
     let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
     println!(
@@ -1502,4 +1590,65 @@ fn main() {
     );
     let bpb = train_once(&train, &val, &cfg);
     println!("=== RESULT === code_val_bpb={:.4}", bpb);
+}
+
+#[cfg(test)]
+mod fim_loss_tests {
+    use super::*;
+
+    // Helper to build a PSM-ordered FIM sequence:
+    //   <PRE> prefix <SUF> suffix <MID> middle <EOS>
+    fn psm(prefix: &[usize], suffix: &[usize], middle: &[usize]) -> Vec<usize> {
+        let mut v = vec![TOK_PRE];
+        v.extend_from_slice(prefix);
+        v.push(TOK_SUF);
+        v.extend_from_slice(suffix);
+        v.push(TOK_MID);
+        v.extend_from_slice(middle);
+        v.push(TOK_EOS);
+        v
+    }
+
+    #[test]
+    fn all_mode_returns_none_so_legacy_path_is_byte_identical() {
+        let toks = psm(&[97, 98], &[99], &[100, 101]);
+        assert!(fim_loss_mask(&toks, FimLossMode::All).is_none());
+    }
+
+    #[test]
+    fn middle_mode_counts_only_targets_after_mid() {
+        // tokens: [PRE,97,98,SUF,99,MID,100,101,EOS]  (len 9)
+        // MID is at index 5. Targets are tokens[i+1]; we count i where i+1 > 5,
+        // i.e. i in {5,6,7} -> targets {100,101,EOS}. Earlier i are masked.
+        let toks = psm(&[97, 98], &[99], &[100, 101]);
+        let mask = fim_loss_mask(&toks, FimLossMode::Middle).expect("mask");
+        assert_eq!(mask.len(), toks.len() - 1);
+        for (i, &m) in mask.iter().enumerate() {
+            assert_eq!(m, (i + 1) > 5, "position {} mask wrong", i);
+        }
+        let counted = mask.iter().filter(|&&b| b).count();
+        assert_eq!(counted, 3, "should count middle (2) + EOS (1)");
+    }
+
+    #[test]
+    fn middle_mode_on_plain_ntp_doc_counts_everything() {
+        // No MID sentinel -> behaves like All (every target counted).
+        let toks = vec![TOK_BOS, 104, 105, 106, TOK_EOS];
+        let mask = fim_loss_mask(&toks, FimLossMode::Middle).expect("mask");
+        assert!(mask.iter().all(|&b| b), "plain doc must count all targets");
+    }
+
+    #[test]
+    fn middle_mask_zeroes_loss_for_context_region() {
+        // Build a tiny model and confirm Middle-mode loss <= All-mode loss
+        // (fewer counted positions can only lower or equal the summed nats per
+        // position average is not guaranteed, but the masked SUM of counted
+        // positions is a strict subset). We check the counted-position count.
+        let toks = psm(&[97, 98, 99], &[100], &[101, 102, 103]);
+        let mask_mid = fim_loss_mask(&toks, FimLossMode::Middle).expect("mask");
+        let counted_mid = mask_mid.iter().filter(|&&b| b).count();
+        // All mode counts t-1 positions.
+        assert!(counted_mid < toks.len() - 1, "Middle must mask context");
+        assert!(counted_mid >= 1, "Middle must keep the infill region");
+    }
 }

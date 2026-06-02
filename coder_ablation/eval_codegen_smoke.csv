@@ -1,0 +1,7 @@
+# IGLA-Coder compile@1 eval -- generator-agnostic; phi^2 + phi^-2 = 3
+lang,lang_id,optimizer,seed,steps,compiles,status
+c,1,standard,42,150,0,checked
+python,2,standard,42,150,0,checked
+javascript,3,standard,42,150,0,checked
+rust,4,standard,42,150,0,checked
+fortran,5,standard,42,150,0,checked
