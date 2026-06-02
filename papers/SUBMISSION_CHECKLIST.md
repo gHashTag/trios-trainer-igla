@@ -17,7 +17,7 @@ placeholder below).
 
 ## 1. CI gates (all must PASS)
 
-Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
+Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
 
 - [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **34/34 PASS**
   - [ ] (1/34) cross-reference audit (F2/main paper) — 0 dangling refs

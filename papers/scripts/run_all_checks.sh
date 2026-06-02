@@ -170,12 +170,24 @@ declare -a FAIL_NAMES=()
 echo "# run_all_checks.sh — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo
 
+# Loop 141 — 64th-pass SEV-3/4 fix #4+#5: parity check between STAGES
+# and STAGE_TIERS arrays. A missing tier silently fell through to
+# "discipline" default, mis-classifying new submission-tier stages.
+# Now: empty tier on missing entry → emit `# WARN` and use "untiered".
+if [[ ${#STAGE_TIERS[@]} -ne ${#STAGES[@]} ]]; then
+    echo "# WARN  STAGE_TIERS has ${#STAGE_TIERS[@]} entries but STAGES has ${#STAGES[@]} — tier reporting will be unreliable" >&2
+fi
+
 i=0
 for stage in "${STAGES[@]}"; do
     i=$((i + 1))
     name="${stage%%:*}"
     cmd="${stage#*:}"
-    tier="${STAGE_TIERS[$((i - 1))]:-discipline}"
+    tier="${STAGE_TIERS[$((i - 1))]:-untiered}"
+    if [[ "$tier" == "untiered" ]]; then
+        echo "# WARN  stage ${i} (${name}) has no tier assignment; defaulting to discipline" >&2
+        tier="discipline"
+    fi
     echo "# (${i}/${#STAGES[@]}) [${tier}] ${name}"
     logfile="/tmp/run_all_checks_${i}.log"
     if eval "$cmd" > "$logfile" 2>&1; then

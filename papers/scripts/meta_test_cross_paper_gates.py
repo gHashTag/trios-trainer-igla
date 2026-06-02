@@ -455,9 +455,13 @@ def test_documented_vs_extracted_break(tmp: Path) -> bool:
         print("# FAIL  doc_vs_extracted break: gate exited 0 despite "
               "5 reports != live 6.", file=sys.stderr)
         return False
-    if "5" not in result.stderr or "6" not in result.stderr:
+    # Loop 141 — 64th-pass SEV-4 fix #9: pin to a unique fragment
+    # rather than bare digits "5"/"6" which appear in unrelated
+    # gate output (e.g., "(11/N)" stage labels).
+    if "claims 5 reports" not in result.stderr \
+            and "5 reports" not in result.stderr:
         print("# FAIL  doc_vs_extracted break: stderr missing "
-              "claimed-vs-actual mismatch.",
+              "'5 reports' fragment.",
               file=sys.stderr)
         print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
         return False

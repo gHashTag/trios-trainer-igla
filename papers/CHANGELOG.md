@@ -583,7 +583,7 @@ CHANGELOG section for the full enumeration.
 
 ```bash
 git checkout <anchor commit on f2-methodology>
-papers/scripts/run_all_checks.sh  # 22-stage CI gate, ~60 s warm
+papers/scripts/run_all_checks.sh  # 34-stage CI gate, ~30–60 s warm
 # Outputs:
 #   papers/tmlr_submission_kit/test_compile.pdf       (43 pp non-anon)
 #   papers/tmlr_submission_kit/test_compile_anon.pdf  (42 pp anon)
