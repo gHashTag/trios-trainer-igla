@@ -136,6 +136,8 @@ STAGES=(
     "documented vs extracted:python3 papers/scripts/verify_documented_vs_extracted_consistency.py"
     "burn-down history:python3 papers/scripts/verify_burn_down_history.py"
     "alias round-trip:python3 papers/scripts/verify_alias_round_trip.py"
+    "module cache:python3 papers/scripts/verify_module_cache_consistency.py"
+    "floating loop anchors:python3 papers/scripts/verify_loop_floating_anchors.py"
 )
 
 PASSED=0

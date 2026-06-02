@@ -469,16 +469,16 @@ Statistical-causal results are only as credible as the data lineage that
 produced them. Three Loop-32 audit incidents motivated a defensive provenance
 discipline that is now part of the framework's binary contract:
 
-1. **Identical-hash divergence (Loop 31)**. The same `config_fingerprint`
-   produced LOCO_wd estimates of 0.07 BPB on Loop 28 and 0.58 BPB on Loop 31
-   — an 8× shift at a byte-identical input. Investigation revealed an
-   uncommitted refactor of `src/transformer.rs` (the forward kernel) that
-   changed the integration of the model but not any field hashed into
-   `config_fingerprint`.
-2. **Silent provenance loss (Loop 32)**. CSVs produced by older runs of
+1. **Identical-hash divergence**. The same `config_fingerprint`
+   produced LOCO_wd estimates of 0.07 BPB on one run and 0.58 BPB on
+   a later run — an 8× shift at a byte-identical input. Investigation
+   revealed an uncommitted refactor of `src/transformer.rs` (the
+   forward kernel) that changed the integration of the model but not
+   any field hashed into `config_fingerprint`.
+2. **Silent provenance loss**. CSVs produced by older runs of
    `f2_ablation_sweep` carried no information about which trainer-internals
    version produced them. The hash matched; the BPB did not.
-3. **Silent stratum loss (Loop 47)**. When `f2_dual_mediation` consumes a
+3. **Silent stratum loss**. When `f2_dual_mediation` consumes a
    stratified CSV, the resulting PSE labels (NDE, NIE_M1, …) read like
    *marginal* effects but are actually **Pearl CDEs**. Without a stratum
    tag in the output, downstream tooling cannot distinguish.
@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **30 stages**
+  cold**) — single-shot CI gate. Currently chains **32 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other twenty-three stages are gates
+  not a stage of itself); the **other twenty-five stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1759,12 +1759,16 @@ dependency; we do not stub any of them.
   (2 full + 4 stub)" to live verifier-source state), and the
   burn-down-history verifier (asserts the FALLBACK_BASELINES
   trajectory most-recent entry matches the live sidecar state),
-  and the alias-round-trip verifier (asserts CLASS_LABEL_ALIASES
-  is bijective on the gate's actual class names — every alias
-  resolves to a live class, every class has at least one alias).
+  the alias-round-trip verifier (asserts CLASS_LABEL_ALIASES is
+  bijective on the gate's actual class names — every alias resolves
+  to a live class, every class has at least one alias), the
+  module-cache-consistency verifier (asserts the _gate_utils
+  import_gate cache contract holds), and the floating-loop-anchor
+  verifier (gates "as of Loop N" anchors against the §7 lead loop
+  with 1-loop in-flight tolerance).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 23 are documented in the follow-up paper's
+  the additional 25 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",

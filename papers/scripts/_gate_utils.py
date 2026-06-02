@@ -31,16 +31,34 @@ CRATE_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = CRATE_ROOT / "papers" / "scripts"
 
 
-def import_gate(name: str) -> types.ModuleType | None:
+# Loop 139 B: cache for import_gate. Keyed by `path.stem` so two
+# callers asking for the same gate share the module instance.
+# Closes 61st-pass #4 SEV-3: per-call exec_module duplicated module
+# bodies + risked silent state divergence for modules with import-time
+# state (counters, atexit hooks). Pass `cache=False` to bypass.
+_MODULE_CACHE: dict[str, types.ModuleType] = {}
+
+
+def import_gate(name: str, cache: bool = True
+                ) -> types.ModuleType | None:
     """Load a sibling gate module by filename (e.g., 'verify_foo.py').
 
     Returns the loaded module on success, None on any load failure.
     Emits the traceback to stderr before returning None so syntax
     errors surface with full context — closes the 58th-pass #7 SEV-3
-    that the 59th-pass #1 caught a regression of."""
+    that the 59th-pass #1 caught a regression of.
+
+    Loop 139 B: caching is on by default. The cache key is the path
+    stem (filename without .py); a future loop editing the gate
+    module mid-run gets a stale cache entry unless `cache=False` is
+    passed. The trade-off: 4× speedup for run_all_checks.sh sweeps
+    that import verify_cross_paper_consistency.py from three sister
+    gates."""
     path = SCRIPTS_DIR / name
     if not path.exists():
         return None
+    if cache and path.stem in _MODULE_CACHE:
+        return _MODULE_CACHE[path.stem]
     spec = importlib.util.spec_from_file_location(path.stem, str(path))
     if spec is None or spec.loader is None:
         return None
@@ -51,6 +69,8 @@ def import_gate(name: str) -> types.ModuleType | None:
         import traceback
         traceback.print_exc(file=sys.stderr)
         return None
+    if cache:
+        _MODULE_CACHE[path.stem] = mod
     return mod
 
 
