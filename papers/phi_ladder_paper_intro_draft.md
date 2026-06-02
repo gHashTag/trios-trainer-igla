@@ -378,16 +378,37 @@ recipes.
 
 ### 3.3 Analysis machinery (sourced from F2 companion)
 
-The companion F2 paper provides 10 binaries total: 7 analysis
-binaries + 3 infrastructure/helper binaries (`f2_provenance_check`,
-`f2_to_jsonl`, plus figure-script utilities). Of the **7 analysis
-binaries**, this study uses **6 unmodified at the per-cell level**:
-the 7th, `f2_dual_mediation`, is intentionally excluded because
-its four-PSE identification fails for our mediator candidates
-(see §3.4). `f2_provenance_check` is run over every emitted CSV
-as infrastructure, but contributes no analysis-level estimands.
+The companion F2 paper provides **12 binaries** on disk at the
+methodology anchor commit: 10 analysis binaries
+(`f2_ablation_sweep`, `f2_ablation_aggregate`, `f2_dual_mediation`,
+`f2_harness`, `f2_iloco_dot`, `f2_iloco_score`, `f2_mediation`,
+`f2_mediation_sensitivity`, `f2_pareto_sweep`, `f2_stratum_compare`)
+plus 2 infrastructure helpers (`f2_provenance_check`, `f2_to_jsonl`).
+The F2 paper's own §8.1 names a subset; this paper's protocol uses
+the on-disk inventory. Of the 10 analysis binaries, this study
+deploys **4 unmodified**: `f2_ablation_sweep`,
+`f2_ablation_aggregate`, `f2_stratum_compare`,
+`f2_mediation_sensitivity`. It **adds one new analysis binary**
+(`f2_pairwise_perm`) as part of this paper's contribution to the
+F2 framework, since the companion paper has no paired-permutation
+testing helper. `f2_dual_mediation` is intentionally **excluded**
+because its four-PSE identification fails for our mediator
+candidates (see §3.4); the remaining 5 (`f2_harness`, `f2_iloco_*`,
+`f2_mediation`, `f2_pareto_sweep`) are out-of-scope for this
+paper's protocol (they cover orthogonal F2 features —
+single-mediator legacy, iLOCO scoring, pareto sweeps).
+`f2_provenance_check` is run over every emitted CSV as
+infrastructure but contributes no analysis-level estimand.
 
-The six deployed analysis binaries:
+**New binary added by this paper's protocol**: `f2_pairwise_perm`
+implements the exact Zmigrod-Vieira-Cotterell (2022,
+arXiv:2205.01416) paired-permutation test on per-pair val_bpb
+differences plus the Benjamini-Hochberg correction per Liu, Leung
+& Shao (arXiv:1712.03305). The protocol commits this binary as
+part of the run-result paper's source-code release; the binary
+does not yet exist on the methodology anchor commit.
+
+The deployed analysis binaries:
 
 - **Per-cell BPB recording**: `f2_ablation_sweep --config <slot>
   --stratum <s> --seed <i> --output cell_<s>_<slot>_<i>.csv`.
@@ -398,14 +419,14 @@ The six deployed analysis binaries:
 - **Per-stratum aggregation**: `f2_ablation_aggregate` reads the
   40 per-stratum cells and emits a long-form CSV with
   per-config mean ± SE on validation BPB.
-- **Pairwise testing**: `f2_pairwise_perm` runs the exact
-  Zmigrod-Vieira-Cotterell paired-permutation test on each
-  (phi-config, zoo-config) pair within a stratum. With 5 seeds
-  the exact test enumerates $2^5 = 32$ sign-flip vectors,
-  producing exact p-values.
-- **BH correction**: `f2_pairwise_perm --bh` BH-corrects across
-  the 4 pairwise comparisons within each phi-config (vs the 4
-  zoo-config alternatives).
+- **Pairwise testing + BH correction**: `f2_pairwise_perm`
+  (new binary; see above) runs the exact paired-permutation test
+  on each (phi-config, zoo-config) pair within a stratum, then
+  applies `--bh` BH-correction over the 4 pairwise comparisons
+  within each phi-config (vs the 4 zoo-config alternatives). With
+  5 seeds the exact test enumerates $2^5 = 32$ sign-flip vectors,
+  producing exact p-values. Output: single CSV per stratum with
+  16 rows × {raw_p, bh_adjusted_p, diff, ci_lo, ci_hi}.
 - **Cross-stratum stability**: `f2_stratum_compare` takes the
   canonical and wd0 long-form CSVs and emits a
   `stable_across_strata` flag per (phi-config, zoo-config) pair.
@@ -414,7 +435,9 @@ The six deployed analysis binaries:
   the envelope is calibrated against the VanderWeele-Ding E-value
   for fragility/robustness reporting.
 
-The six F2 binaries above each produce a long-form CSV with
+The five F2 analysis binaries above (four reused unchanged from
+F2 plus one new `f2_pairwise_perm` introduced here) each produce
+a long-form CSV with
 W3C-PROV preamble per `f2_provenance_check`'s schema. The 80-cell
 matrix produces **80 + 2 + 1 + 1 + 1 + ≤16 = 85 to 101 CSVs**
 total (point estimate 93 under the F2 half-survival baseline; see
@@ -585,8 +608,17 @@ bf16), with all 4 pairwise differences significant at $p < 0.05$
 after BH correction over the 4 comparisons.
 
 **Falsified by**: every phi-config fails H2 against at least one
-zoo-config. This is the strongest hypothesis; falsification of H2
-while H1 holds is the most likely outcome.
+zoo-config **in the primary (canonical) stratum**. Same
+canonical-only logic as §4.2's H1 falsification: §4.4's
+asymmetric rule treats canonical alone as positive-determining,
+so H2 falsification must also be canonical-only. wd0 stratum
+outcomes (H2 success or failure) are reported as secondary
+evidence per §4.4 and do not contribute to the H2 falsification
+verdict. This is the strongest hypothesis; falsification of H2
+while H1 holds is the most likely outcome. Loop 109 32nd-pass
+correction: earlier drafts of §4.3 omitted the primary-stratum
+qualifier, creating the same logical no-man's-land that Loop 108
+fixed for §4.2.
 
 **Action if H2 holds**: this is the headline positive result. The
 paper reports the specific phi-config that dominates, with full
@@ -729,7 +761,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The 9-stage CI gate from the companion paper (Loop 99) is
+The 13-stage CI gate from the companion paper (Loop 108) is
 extended with three new stages for this run:
 
 - `verify_run_completeness.py` — checks all 93 CSVs are present
@@ -740,7 +772,7 @@ extended with three new stages for this run:
 - `verify_provenance.sh` — runs `f2_provenance_check` against
   every CSV; aborts if any preamble is missing or malformed.
 
-The full CI gate (12 stages total: 9 from F2 + 3 from this paper)
+The full CI gate (16 stages total: 13 from F2 + 3 from this paper)
 must exit 0 on the anchor commit before any draft is exported
 for submission.
 

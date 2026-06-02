@@ -90,6 +90,51 @@ DEPRECATIONS: list[tuple[str, str, str, list[str]]] = [
         "intro 'symmetric reporting' claim was inconsistent.",
         [],   # No allowed context — phrase should be gone.
     ),
+    # ─── Companion-paper deprecations (Loop 109) ───
+    (
+        "papers/f2_methodology.md",
+        r"\bZhao[- ]Luo\b",
+        "Loop 55 citation-hygiene corrected the two-mediator decomposition "
+        "attribution from 'Zhao-Luo' to Daniel et al. (2015) + Gao-Li-Luo "
+        "(no-interaction reduction).",
+        [
+            # Allowed: explicit "mis-attributed to Zhao-Luo" history mentions.
+            r"\bmis-?attribut(?:ed|ion)(?:[^\n]*)Zhao[- ]Luo\b",
+            r"\bZhao[- ]Luo(?:[^\n]*)mis-?attribut",
+            r"\bcorrected(?:[^\n]*)Zhao[- ]Luo",
+            r'"Zhao-Luo"',  # quoted historical reference
+        ],
+    ),
+    (
+        "papers/f2_methodology.md",
+        r"\bSchmidt[- ]Mengin\b",
+        "Loop 80 citation-hygiene caught Fibbinary attribution to "
+        "'Schmidt-Mengin et al.' as fabricated; actual is Fiandaca & Gomony.",
+        [
+            # Allowed: history mentions in audit logs.
+            r'"Schmidt-Mengin"',
+            r"\bfabricated(?:[^\n]*)Schmidt[- ]Mengin\b",
+            r"\bSchmidt[- ]Mengin(?:[^\n]*)fabricated",
+        ],
+    ),
+    (
+        "papers/f2_methodology.md",
+        r"\bInfiR2(?:[^\n]*)primary FP8\b",
+        "Loop 80 surfaced InfiR2 (arXiv:2509.22536) as WITHDRAWN; it can be "
+        "referenced as a historical context but not as primary FP8 source.",
+        [
+            r"\bWITHDRAWN(?:[^\n]*)InfiR2",
+            r"\bInfiR2(?:[^\n]*)withdrawn",
+            r"\bwithdrawn(?:[^\n]*)InfiR2",
+        ],
+    ),
+    (
+        "papers/f2_methodology.md",
+        r"\bsmoking[- ]cancer\b",
+        "Loop 59 derivation audit removed an unsupported smoking-cancer "
+        "benchmark comparison.",
+        [],   # Should not appear at all post-Loop-59.
+    ),
 ]
 
 

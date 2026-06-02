@@ -4,38 +4,59 @@ Single-page pre-submission gate. Designed for zero-thinking
 submission-day execution. If every box below is checked and every
 gate is green, the paper is ready.
 
-Anchor: `583b417` or any descendant on `f2-methodology` branch.
+**Empirical anchor**: `583b417` (earliest commit at which every
+empirical CSV referenced in the paper is committed).
+**Methodology anchor**: a descendant on `f2-methodology` branch
+(pinned to a specific SHA at submission day; pre-submission
+placeholder below).
+
+**Pre-submission anchor (FILL IN AT SUBMISSION TIME)**:
+`__________________` — branch HEAD commit on submission day.
 
 ---
 
 ## 1. CI gates (all must PASS)
 
-Run from the crate root. Each command independent. Total wall: ~46 s.
+Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
 
-- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with 7/7 PASS
-  - [ ] (1/7) cross-reference audit — 0 dangling refs
-  - [ ] (2/7) metadata verifier — title/tests/bib/figures parity
-  - [ ] (3/7) no fabricated SHAs — `git cat-file -e` on every paper-side SHA
-  - [ ] (4/7) test inventory regen — `cargo test --list` re-emits 805
-  - [ ] (5/7) xelatex 3-variant compile — non-anon, anon, real TMLR class
-  - [ ] (6/7) figure regen — all 6 figures rebuild from CSVs
-  - [ ] (7/7) supplementary pack — zip builds with 3-stage pre-flight
+- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **13/13 PASS**
+  - [ ] (1/13) cross-reference audit (companion paper) — 0 dangling refs
+  - [ ] (2/13) metadata verifier — title/tests/bib/figures parity
+  - [ ] (3/13) no fabricated SHAs — `git cat-file -e` per SHA-like token
+  - [ ] (4/13) markdown lint — 0 SEV-≥4 issues
+  - [ ] (5/13) tables vs CSVs — 6 tables × 119 numeric assertions verified
+  - [ ] (6/13) formulas vs tables — 4 algebraic identities (closure +
+        Γ_tip bullets + headline-table + #1021 arithmetic) — 44 assertions
+  - [ ] (7/13) label consistency — 7 deprecated-term rules, 0 leaks
+  - [ ] (8/13) #1021 cross-ref audit — informational
+  - [ ] (9/13) #1021 markdown lint — 0 SEV-≥4 issues
+  - [ ] (10/13) test inventory regen — `cargo test --list` re-emits 805
+  - [ ] (11/13) xelatex 3-variant compile — non-anon, anon, real TMLR class
+  - [ ] (12/13) figure regen — all 6 figures rebuild from CSVs
+  - [ ] (13/13) supplementary pack — zip builds with 3-stage pre-flight
+- [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
+      9/9 OK on submission machine (xelatex, bibtex, pdftotext,
+      python3 + matplotlib + numpy, zip, cargo, git)
+- [ ] (recommended) `papers/scripts/compile_tmlr_test.sh --diff` —
+      3 pdftotext snapshots match (regression check on rendered PDF)
 - [ ] GitHub Actions workflow `paper-checks.yml` green on latest commit
-- [ ] (optional) `papers/scripts/pre_commit_paper.sh` PASS on staged diff
 
 ## 2. Paper state
 
-- [ ] Anchor commit pinned: `583b417` (or any descendant of `f2-methodology`)
-- [ ] Non-anonymized PDF: 37 pages, compiled to
-      `papers/tmlr_submission_kit/test_compile.pdf`
-- [ ] Anonymized PDF: 34 pages,
-      `papers/tmlr_submission_kit/test_compile_anon.pdf`
-- [ ] Real-TMLR-class PDF: 23 pages,
-      `papers/tmlr_submission_kit/test_compile_tmlr.pdf`
-- [ ] Supplementary zip: 29 files, ~550 KB,
-      `papers/tmlr_submission_kit/f2_methodology_supp.zip`
-- [ ] `papers/CITATIONS.md` ledger: 24/25 VERIFIED + 1
-      VERIFIED-WITHDRAWN; 0 UNVERIFIED
+- [ ] Anchor commit pinned (see top of file).
+- [ ] Non-anonymized PDF: **42 pages**, ~210 KB
+      (`papers/tmlr_submission_kit/test_compile.pdf`)
+- [ ] Anonymized PDF: **42 pages**, ~208 KB
+      (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
+- [ ] Real-TMLR-class PDF: **27 pages**, ~195 KB
+      (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
+- [ ] Supplementary zip: **45 files**, ~1.25 MB
+      (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
+- [ ] `papers/CITATIONS.md` ledger: 26 VERIFIED + 1 VERIFIED-WITHDRAWN
+      (96%); 0 UNVERIFIED
+- [ ] **Adversarial review**: 31 passes across Loops 59-108
+      (`docs/ADVERSARIAL_REVIEW_LOG.md`). Last clean pass: Loop 108
+      31st pass; all prior passes addressed.
 
 ## 3. Anonymization (TMLR double-blind)
 
@@ -132,6 +153,18 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: Loops 81-84 (2026-06-02)
-- Branch HEAD at checklist creation: `55b28b3` (Loop 80)
+- Checklist version: **Loop 109 (2026-06-02)**
+- Branch HEAD at checklist update: `bc9713b` (Loop 108)
 - Next deadline: MLRC EOI soft 2026-06-04 AOE / hard TMLR 2026-09-30 AOE
+
+### Checklist change log
+
+- Loops 81-84: initial checklist (7-stage CI gate).
+- Loop 96: documented cold-clone wall-clock (15-30 min) + prereq probe.
+- Loop 99: stage count 8 → 9 (added tables-vs-CSVs).
+- Loop 103: stage count 9 → 10 (added formulas-vs-tables).
+- Loop 106: stage count 10 → 12 (added #1021 paper to CI gate).
+- Loop 108: stage count 12 → 13 (added label-consistency gate).
+- Loop 109: this update — page counts refreshed (27pp TMLR target was
+  23pp; non-anon was 37 → 42), supp zip 29 → 45 files, adversarial
+  pass count 18 → 31, anchor placeholders added.
