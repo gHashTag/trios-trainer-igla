@@ -1,0 +1,10 @@
+# IGLA-Coder phi-vs-standard ablation AFTER optimizer weight-decay fix (lr-scaled decoupled AdamW)
+# bug: optimizer.rs:121 applied weight_decay WITHOUT lr; fixed to lr*weight_decay
+# config: hidden=64 heads=4 layers=2 seq=64 steps=800 batch=8 lr=0.002 fim_loss=all
+arm,seed,code_val_bpb
+standard,42,2.7311
+standard,43,2.6970
+standard,44,2.5533
+phi,42,2.7947
+phi,43,2.7638
+phi,44,2.7462

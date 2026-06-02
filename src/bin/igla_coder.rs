@@ -208,6 +208,110 @@ impl Model {
                 })
                 .sum::<usize>()
     }
+
+    // ---- checkpoint serialization (Coder-Loop+6 wave A) ----
+    // Self-describing little-endian format so a checkpoint validates its own
+    // shape on load and a config mismatch fails loudly instead of silently
+    // corrupting weights:
+    //   magic u32 = 0x49474C43 ("IGLC")
+    //   version u32 = 1
+    //   d u32, heads u32, dff u32, n_layers u32
+    //   then each Vec<f32> as: len u32, then len * f32 LE
+    //   order: emb, pos, nf, then per layer (wq,wk,wv,wo,w1,w2,n1,n2)
+    fn save(&self, path: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        let mut buf: Vec<u8> = Vec::new();
+        buf.extend_from_slice(&0x49474C43u32.to_le_bytes());
+        buf.extend_from_slice(&1u32.to_le_bytes());
+        buf.extend_from_slice(&(self.d as u32).to_le_bytes());
+        buf.extend_from_slice(&(self.heads as u32).to_le_bytes());
+        buf.extend_from_slice(&(self.dff as u32).to_le_bytes());
+        buf.extend_from_slice(&(self.layers.len() as u32).to_le_bytes());
+        let mut put = |v: &[f32], b: &mut Vec<u8>| {
+            b.extend_from_slice(&(v.len() as u32).to_le_bytes());
+            for x in v {
+                b.extend_from_slice(&x.to_le_bytes());
+            }
+        };
+        put(&self.emb, &mut buf);
+        put(&self.pos, &mut buf);
+        put(&self.nf, &mut buf);
+        for l in &self.layers {
+            for v in [&l.wq, &l.wk, &l.wv, &l.wo, &l.w1, &l.w2, &l.n1, &l.n2] {
+                put(v, &mut buf);
+            }
+        }
+        let mut f = std::fs::File::create(path)?;
+        f.write_all(&buf)?;
+        Ok(())
+    }
+
+    fn load(path: &str) -> std::io::Result<Model> {
+        let bytes = std::fs::read(path)?;
+        let mut off = 0usize;
+        let mut ru32 = |b: &[u8], o: &mut usize| -> u32 {
+            let v = u32::from_le_bytes([b[*o], b[*o + 1], b[*o + 2], b[*o + 3]]);
+            *o += 4;
+            v
+        };
+        let magic = ru32(&bytes, &mut off);
+        if magic != 0x49474C43 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "bad magic (not an IGLC checkpoint)",
+            ));
+        }
+        let _ver = ru32(&bytes, &mut off);
+        let d = ru32(&bytes, &mut off) as usize;
+        let heads = ru32(&bytes, &mut off) as usize;
+        let dff = ru32(&bytes, &mut off) as usize;
+        let n_layers = ru32(&bytes, &mut off) as usize;
+        let mut get = |b: &[u8], o: &mut usize| -> Vec<f32> {
+            let n = u32::from_le_bytes([b[*o], b[*o + 1], b[*o + 2], b[*o + 3]]) as usize;
+            *o += 4;
+            let mut v = Vec::with_capacity(n);
+            for _ in 0..n {
+                v.push(f32::from_le_bytes([
+                    b[*o], b[*o + 1], b[*o + 2], b[*o + 3],
+                ]));
+                *o += 4;
+            }
+            v
+        };
+        let emb = get(&bytes, &mut off);
+        let pos = get(&bytes, &mut off);
+        let nf = get(&bytes, &mut off);
+        let mut layers = Vec::with_capacity(n_layers);
+        for _ in 0..n_layers {
+            let wq = get(&bytes, &mut off);
+            let wk = get(&bytes, &mut off);
+            let wv = get(&bytes, &mut off);
+            let wo = get(&bytes, &mut off);
+            let w1 = get(&bytes, &mut off);
+            let w2 = get(&bytes, &mut off);
+            let n1 = get(&bytes, &mut off);
+            let n2 = get(&bytes, &mut off);
+            layers.push(Layer {
+                wq,
+                wk,
+                wv,
+                wo,
+                w1,
+                w2,
+                n1,
+                n2,
+            });
+        }
+        Ok(Model {
+            d,
+            heads,
+            dff,
+            emb,
+            pos,
+            nf,
+            layers,
+        })
+    }
 }
 
 // matmul a[m,k] * b[k,n] -> [m,n]
@@ -799,6 +903,10 @@ fn train_once_model(train: &[usize], val: &[usize], cfg: &TrainCfg) -> (f32, Mod
         for _ in 0..cfg.batch {
             let start = drng.gen_range(0..train.len() - cfg.seq - 1);
             let toks = &train[start..start + cfg.seq + 1];
+            // fwd_bwd_masked returns PER-TOKEN mean nats (total/counted), so
+            // summing across the batch and dividing by batch yields the correct
+            // per-token mean. Do NOT divide by counted here -- that double-counts
+            // the normalization and collapses the number ~63x.
             loss += fwd_bwd_masked(&model, toks, &mut g, true, cfg.fim_loss);
         }
         accum_scale(&mut g, 1.0 / cfg.batch as f32);
@@ -1377,6 +1485,39 @@ fn main() {
         return;
     }
 
+    if cmd == "print-prior" {
+        // Coder-Loop+6 wave C: emit the config-prior-derived hparams for a
+        // generator so the ablation driver reads exact values from the single
+        // source of truth (src/config_prior.rs) instead of duplicating math.
+        // phi is the axis ORIGIN; g=2 / e / standard are control axes.
+        use trios_trainer::config_prior::{build, Generator};
+        let warmup_hint: usize = arg(&args, "--warmup-hint")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(21);
+        let gen = match arg(&args, "--generator").as_deref() {
+            Some("phi") | None => Generator::Phi,
+            Some("dyadic") | Some("g2") => Generator::Dyadic,
+            Some("standard") => Generator::Standard,
+            Some("e") => Generator::Custom(std::f64::consts::E),
+            Some(other) => match other.parse::<f64>() {
+                Ok(g) => Generator::Custom(g),
+                Err(_) => {
+                    eprintln!("unknown --generator '{}'", other);
+                    std::process::exit(2);
+                }
+            },
+        };
+        let c = build(gen, warmup_hint);
+        // machine-parseable single line for the Python driver
+        println!(
+            "prior beta1={:.10} beta2={:.10} weight_decay={:.10} grad_clip={:.10} \
+             warmup_steps={} lr_mult={:.10}",
+            c.beta1, c.beta2, c.weight_decay, c.grad_clip, c.warmup_steps, c.lr_mult
+        );
+        println!("anchor: phi^2 + phi^-2 = 3");
+        return;
+    }
+
     let train_path = arg(&args, "--train").unwrap_or_else(|| "data/code_train.bin".into());
     let val_path = arg(&args, "--val").unwrap_or_else(|| "data/code_val.bin".into());
     let d: usize = arg(&args, "--hidden")
@@ -1495,6 +1636,44 @@ fn main() {
         return;
     }
 
+    if cmd == "load-generate" {
+        // Coder-Loop+6 wave A: load a saved checkpoint and sample WITHOUT
+        // retraining. This is what makes a long CPU run reusable -- train once
+        // with `generate --save ckpt.bin`, then sample many prompts cheaply.
+        let ckpt = arg(&args, "--load").unwrap_or_else(|| {
+            eprintln!("load-generate requires --load <checkpoint>");
+            std::process::exit(2);
+        });
+        let seed: u64 = arg(&args, "--seed").and_then(|s| s.parse().ok()).unwrap_or(42);
+        let max_new: usize = arg(&args, "--max-new").and_then(|s| s.parse().ok()).unwrap_or(160);
+        let temp: f32 = arg(&args, "--temp").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+        let top_k: usize = arg(&args, "--top-k").and_then(|s| s.parse().ok()).unwrap_or(20);
+        let lang_id: usize = arg(&args, "--lang-id").and_then(|s| s.parse().ok()).unwrap_or(1);
+        let prompt_text = arg(&args, "--prompt")
+            .unwrap_or_else(|| "#include <stdint.h>\n".into());
+        let model = match Model::load(&ckpt) {
+            Ok(m) => m,
+            Err(e) => {
+                eprintln!("load failed: {}", e);
+                std::process::exit(1);
+            }
+        };
+        println!(
+            "=== IGLA-Coder load-generate === ckpt={} hidden={} heads={} params={}",
+            ckpt, model.d, model.heads, model.param_count()
+        );
+        let prompt = encode_prompt(lang_id, &prompt_text);
+        let mut grng = StdRng::seed_from_u64(seed ^ 0xC0DE);
+        let gen = generate(&model, &prompt, max_new, temp, top_k, &mut grng);
+        println!(
+            "--- prompt (lang_id={} temp={} top_k={}) ---\n{}",
+            lang_id, temp, top_k, prompt_text
+        );
+        println!("--- completion ({} tokens) ---\n{}", gen.len(), detok(&gen));
+        println!("anchor: phi^2 + phi^-2 = 3");
+        return;
+    }
+
     if cmd == "generate" {
         // Train on the corpus, then autoregressively complete a code prompt.
         // This is the Loop+4 inference muscle: the model now produces code,
@@ -1541,6 +1720,14 @@ fn main() {
         );
         let (bpb, model) = train_once_model(&train, &val, &cfg);
         println!("trained code_val_bpb={:.4}", bpb);
+        // Coder-Loop+6 wave A: optionally persist the trained checkpoint so a
+        // long CPU run can be reloaded by `load-generate` without retraining.
+        if let Some(p) = arg(&args, "--save") {
+            match model.save(&p) {
+                Ok(()) => println!("saved checkpoint -> {}", p),
+                Err(e) => eprintln!("save failed: {}", e),
+            }
+        }
         let prompt = encode_prompt(lang_id, &prompt_text);
         let mut grng = StdRng::seed_from_u64(seed ^ 0xC0DE);
         let gen = generate(&model, &prompt, max_new, temp, top_k, &mut grng);
@@ -1650,5 +1837,41 @@ mod fim_loss_tests {
         // All mode counts t-1 positions.
         assert!(counted_mid < toks.len() - 1, "Middle must mask context");
         assert!(counted_mid >= 1, "Middle must keep the infill region");
+    }
+}
+
+#[cfg(test)]
+mod ckpt_tests {
+    use super::*;
+    use rand::SeedableRng;
+
+    #[test]
+    fn save_load_roundtrip_is_bit_exact() {
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+        let m = Model::new(32, 4, 2, &mut rng);
+        let path = std::env::temp_dir().join("iglc_roundtrip_test.bin");
+        let p = path.to_str().unwrap();
+        m.save(p).expect("save");
+        let l = Model::load(p).expect("load");
+        std::fs::remove_file(p).ok();
+        assert_eq!(l.d, m.d);
+        assert_eq!(l.heads, m.heads);
+        assert_eq!(l.dff, m.dff);
+        assert_eq!(l.layers.len(), m.layers.len());
+        assert_eq!(l.emb, m.emb);
+        assert_eq!(l.pos, m.pos);
+        assert_eq!(l.nf, m.nf);
+        assert_eq!(l.layers[0].wq, m.layers[0].wq);
+        assert_eq!(l.layers[1].w2, m.layers[1].w2);
+        assert_eq!(l.param_count(), m.param_count());
+    }
+
+    #[test]
+    fn load_rejects_bad_magic() {
+        let path = std::env::temp_dir().join("iglc_badmagic_test.bin");
+        std::fs::write(&path, [0u8; 64]).unwrap();
+        let r = Model::load(path.to_str().unwrap());
+        std::fs::remove_file(&path).ok();
+        assert!(r.is_err(), "must reject a non-IGLC file");
     }
 }
