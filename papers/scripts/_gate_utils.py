@@ -51,9 +51,17 @@ def import_gate(name: str, cache: bool = True
     Loop 139 B: caching is on by default. The cache key is the path
     stem (filename without .py); a future loop editing the gate
     module mid-run gets a stale cache entry unless `cache=False` is
-    passed. The trade-off: 4× speedup for run_all_checks.sh sweeps
-    that import verify_cross_paper_consistency.py from three sister
-    gates."""
+    passed.
+
+    Loop 139 follow-up (62nd-pass SEV-2 fix #5): correcting the
+    earlier "4× speedup for run_all_checks.sh" claim. Each stage in
+    `run_all_checks.sh` is a SEPARATE Python subprocess, so the
+    in-process `_MODULE_CACHE` dict doesn't persist across stages.
+    The cache benefits multi-import patterns WITHIN a single gate's
+    process (notably `verify_module_cache_consistency.py` which
+    imports the same module multiple times to test the cache
+    contract). It is regression protection against a future
+    in-process orchestrator, not a runtime speedup today."""
     path = SCRIPTS_DIR / name
     if not path.exists():
         return None

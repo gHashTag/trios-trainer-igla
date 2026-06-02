@@ -45,10 +45,29 @@ finally:
 # (Loop 135 B introduced the convention with "(as of Loop 131 B;
 # superseded by Loop 133 A.iii)") — those are intentionally FROZEN
 # and excluded from this gate.
-SCAN_TARGETS = [
-    CRATE_ROOT / "papers" / "f2_methodology.md",
-    CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md",
-]
+# Loop 139 follow-up (62nd-pass SEV-4 fix #13): derive scan targets
+# from the anonymizer baseline sidecar so adding a new TMLR-bound
+# paper there auto-includes it here. Falls back to the explicit list
+# if the sidecar can't be loaded.
+def _scan_targets() -> list[Path]:
+    try:
+        import json
+        sidecar = (
+            CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json"
+        )
+        data = json.loads(sidecar.read_text())
+        bl = data.get("baselines")
+        if isinstance(bl, dict):
+            return [CRATE_ROOT / k for k in bl if isinstance(k, str)]
+    except Exception:
+        pass
+    return [
+        CRATE_ROOT / "papers" / "f2_methodology.md",
+        CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md",
+    ]
+
+
+SCAN_TARGETS = _scan_targets()
 
 
 # Match `as of Loop N` (capturing N) with optional context. The
