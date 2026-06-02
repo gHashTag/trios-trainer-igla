@@ -39,12 +39,25 @@ F2_PAPER = CRATE_ROOT / "papers" / "f2_methodology.md"
 ISSUE1021_PAPER = CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md"
 
 
-def find_int_claim(path: Path, pattern: str) -> tuple[int, int] | None:
-    """Return (claimed_int, line_number) of the first match, or None."""
-    pat = re.compile(pattern, re.DOTALL)
+def find_int_claim(path: Path, pattern: str,
+                   max_context_chars: int = 200) -> tuple[int, int] | None:
+    """Return (claimed_int, line_number) of the first match, or None.
+
+    Loop 125 B (47th pass A4 SEV-4): the original used `re.DOTALL`,
+    which let `.` cross arbitrary line boundaries. With 8+ claims
+    registered, future regexes with shared prefixes risk silently
+    matching across paragraph boundaries. We now drop DOTALL and
+    bound the match window via `max_context_chars` so each pattern
+    must be self-contained within a single paragraph-ish span.
+    """
+    pat = re.compile(pattern)
     text = path.read_text()
     m = pat.search(text)
     if not m:
+        return None
+    # Bound: reject matches that span more than max_context_chars of source.
+    span_chars = m.end() - m.start()
+    if span_chars > max_context_chars:
         return None
     digit_pos = m.start(1)
     line_no = text[:digit_pos].count("\n") + 1
@@ -94,8 +107,15 @@ EXACT_MATCH_CLAIMS: list[tuple[str, Path, str, Path, str]] = [
 # ACKNOWLEDGES: paper A says X, paper B says Y, where X ≠ Y is intentional
 # (different scopes). The gate requires that paper A explicitly acknowledges
 # the other paper's different scope, so that a TMLR reviewer reading both
-# in sequence isn't surprised. Each entry: (paper, regex, must_include_pattern, description).
-ACKNOWLEDGES_CLAIMS: list[tuple[Path, str, str, str]] = [
+# in sequence isn't surprised.
+#
+# Each entry: (paper, claim_pattern, ack_pattern, description, [optional]).
+# The optional 5th field (default False) controls behavior when claim_pattern
+# is not found: by default the gate FAILs (so that registry rot is loud);
+# set to True for transitional periods where the claim wording is in flux
+# and the gate should WARN-not-FAIL on the claim being missing. Loop 125 B
+# (47th pass A5b SEV-4) added this for registry growth UX.
+ACKNOWLEDGES_CLAIMS: list[tuple] = [
     # F2 §8.1 says "Ten F2 binaries"; #1021 §3.3 says "12 binaries on disk".
     # The discrepancy is legitimate (F2's documented set vs #1021's
     # on-disk inventory including new f2_pairwise_perm). #1021 §3.3 already
@@ -181,21 +201,34 @@ def check_exact_match(spec: tuple[str, Path, str, Path, str]) -> list[str]:
     return mismatches
 
 
-def check_acknowledges(spec: tuple[Path, str, str, str]) -> list[str]:
+def check_acknowledges(spec: tuple) -> list[str]:
     """Loop 123 D (46th pass A3 SEV-2 + SEV-3): the gate now fails if EITHER
     the claim is missing (claim was deleted without removing the
     acknowledgement-requirement registration) OR the claim is present but
     the acknowledgement isn't. Eliminates the silent-pass-on-claim-removal
-    class the 46th pass surfaced."""
-    paper, claim_pat, ack_pat, label = spec
+    class the 46th pass surfaced.
+
+    Loop 125 B (47th pass A5b SEV-4): optional 5th spec field controls
+    behavior on missing claim — True → WARN to stderr but don't fail
+    (for transitional periods); default False → FAIL.
+    """
+    if len(spec) == 4:
+        paper, claim_pat, ack_pat, label = spec
+        optional = False
+    else:
+        paper, claim_pat, ack_pat, label, optional = spec
     text = paper.read_text()
     if not re.search(claim_pat, text):
-        return [
+        msg = (
             f"{label}: claim {claim_pat!r} no longer present in "
             f"{paper.relative_to(CRATE_ROOT)} — either the paper deleted "
             "the claim without removing this registration, or the regex "
             "drifted. Update the registry to match current prose."
-        ]
+        )
+        if optional:
+            print(f"# WARN  ACKN   {msg}", file=sys.stderr)
+            return []
+        return [msg]
     if not re.search(ack_pat, text):
         return [
             f"{label}: claim {claim_pat!r} found in "

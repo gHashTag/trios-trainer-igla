@@ -107,10 +107,17 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–86)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–124)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Eleven** independent passes:
+caught before reviewers saw them. **Forty-seven** independent
+passes total across Loops 59–124. The first 11 (Loops 59, 61,
+75–85) targeted the original paper drafts and submission flow;
+Loops 86–124 extended the discipline to round-N audits where
+each substantive patch is independently re-audited the loop after
+it lands. Detail on passes 1–11 below; passes 12–47 are summarized
+in §10 and the per-loop commit messages on the `f2-methodology`
+branch (`git log --oneline --grep="adversarial pass"`).
 
 - **Loop 59** derivation audit: re-attributed Miles-Shpitser
   citation (5 authors, not 2), explicit Γ/Λ uniform-scalar
