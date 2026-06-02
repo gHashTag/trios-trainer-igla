@@ -89,6 +89,11 @@ EXISTS_STUBS: list[dict] = [
         "id": "h2_dominance",
         "path": "report_h2_dominance.md",
         # Promise: at least one "## Verdict" or "## Result" section.
+        # UPGRADE-PATH (Loop 121 C): source = pairwise_<stratum>.csv.
+        # Numeric anchor: for each phi_config row, verify ALL 4 zoo p_bh
+        # values < 0.05 (per §4.3 H2 falsification). Add to REPORT_SPECS
+        # with claim_re matching the row format "| phi | dominant: yes/no |
+        # min_p_bh | max_diff |".
         "required_headings": [r"^##\s+(Verdict|Result)"],
     },
     {
@@ -96,19 +101,36 @@ EXISTS_STUBS: list[dict] = [
         "path": "report_stratum_diff.md",
         # Promise: per-pair `stable_across_strata` table reading from
         # stratum_compare.csv.
-        "required_headings": [r"^##\s+", r"\| stratum"],
+        # UPGRADE-PATH (Loop 121 C): source = stratum_compare.csv.
+        # Numeric anchor: each row's stable_across_strata boolean must
+        # match the CSV's `stable_across_strata` column. Loop 121 C
+        # anchors the table-row regex with `^\|` to avoid matching
+        # prose mentions of "stratum".
+        "required_headings": [r"^##\s+", r"^\|\s*stratum\b"],
     },
     {
         "id": "bridge_envelope",
         "path": "report_bridge_envelope.md",
         # Promise: Γ_tip table per surviving pair.
-        "required_headings": [r"^##\s+", r"Γ_tip|gamma_tip"],
+        # UPGRADE-PATH (Loop 121 C): source = sensitivity_<phi>_vs_<zoo>.csv
+        # per pair (one file per surviving pair, 8-16 files total).
+        # Numeric anchor: for each table row, look up gamma_tip in the
+        # matching sensitivity CSV at Λ=1.0; 2-decimal tolerance. Loop
+        # 121 C anchors the table-row regex with `^\|` to require the
+        # Γ_tip header to appear in a table column, not in prose.
+        "required_headings": [r"^##\s+", r"^\|.*(?:Γ_tip|gamma_tip)"],
     },
     {
         "id": "secondary_outcomes",
         "path": "report_secondary_outcomes.md",
         # Promise: wall_s and peak_memory_mb columns.
-        "required_headings": [r"^##\s+", r"wall_s|peak_memory_mb"],
+        # UPGRADE-PATH (Loop 121 C): source = cell_*.csv files (80 total).
+        # Numeric anchor: each (config, stratum, seed) row's wall_s and
+        # peak_memory_mb values must agree with the corresponding cell
+        # CSV. Mean / SE per (config, stratum) cross-row aggregation is
+        # done by the report and gated at 2-decimal tolerance. Loop 121
+        # C anchors the regex with `^\|` for table-row context only.
+        "required_headings": [r"^##\s+", r"^\|.*(?:wall_s|peak_memory_mb)"],
     },
 ]
 

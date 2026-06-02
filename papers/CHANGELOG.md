@@ -215,9 +215,11 @@ into CI on every push touching `papers/`. PR #185 turns from
 ### 10. CI gate evolution (Loops 87–118)
 
 The 39th and 40th adversarial passes both surfaced that the
-F2 paper's §E catalogue, whose 8-script composition was last
-expanded at Loop 87 (`lint_paper_md.py` added there) and remained
-authoritative as a complete enumeration through Loop 98,
+F2 paper's §E catalogue, whose 8-script composition crystallized
+at Loop 96 (both `check_no_fabricated_shas.py` and `lint_paper_md.py`
+added to §E together at commit `c8e8707`; the gate had grown earlier
+but §E was synced then) and remained authoritative as a complete
+enumeration through Loop 98,
 diverged from the on-disk gate after subsequent loops added new
 stages. This section documents the trajectory per-loop so that
 the §E paragraph can point here for the additional gates rather
@@ -261,7 +263,7 @@ Stage additions since the original 8-script catalogue:
   count in `run_all_checks.sh`. Closes the SEV-2 prose-drift
   class that the 39th + 40th adversarial passes both surfaced.
 
-The on-disk gate now runs **19 stages** (verified by the new
+The on-disk gate now runs **20 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

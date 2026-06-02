@@ -71,6 +71,12 @@ CLAIMS: list[tuple[str, str, str]] = [
         r"\*\*(\d+)-stage on-disk gate\*\* breaks down",
         "#1021 §5.4 decomposition opener",
     ),
+    # CHANGELOG §10 "on-disk gate now runs **N stages**" (Loop 121 D).
+    (
+        "papers/CHANGELOG.md",
+        r"on-disk gate now runs \*\*(\d+) stages\*\*",
+        "CHANGELOG §10 on-disk gate count",
+    ),
 ]
 
 
@@ -96,7 +102,7 @@ DECOMPOSITION_CLAIMS: list[tuple[str, str, str]] = [
     (
         "papers/phi_ladder_paper_intro_draft.md",
         # "**13 F2-scope stages**" ... line wrap ... "+ 6 #1021-scoped\n stages"
-        r"\*\*(\d+) F2-scope stages\*\*[\s\S]*?\+ (\d+) #1021-scoped[\s\S]*?stages",
+        r"\*\*(\d+) F2-scope stages\*\*[\s\S]*?\+\s+(\d+)\s+#1021-scoped[\s\S]*?stages",
         "#1021 §5.4 decomposition partition",
     ),
     # F2 paper §E partition (Loop 120 B): "seven appear as individual stages

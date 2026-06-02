@@ -342,9 +342,13 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (13.53952pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/bx/n/10.95 86 gate-evolution arc documented in CHANGELOG section [][]10
-[][])\TU/lmr/m/n/10.95 :
+Overfull \hbox (0.42873pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 post-96 gate-evolution arc documented in CHANGELOG sec-
+
+Overfull \hbox (42.43465pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 tion [][]10[][]\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 verify
+_tables_against_csv.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify_formulas_vs
+_tables.py\TU/lmr/m/n/10.95 ,
 
 Overfull \hbox (9.56458pt too wide) in paragraph at lines 1689--1690
 \TU/lmtt/m/n/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/
@@ -354,9 +358,9 @@ Overfull \hbox (8.71268pt too wide) in paragraph at lines 1689--1690
 \TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
 
-Overfull \hbox (48.98686pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 cross-reference audit, its markdown lint, the smoke test for 
-its \TU/lmtt/m/n/10.95 f2_pairwise_perm
+Overfull \hbox (7.83458pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 the smoke test for its \TU/lmtt/m/n/10.95 f2_pairwise_perm \T
+U/lmr/m/n/10.95 binary, and the supplementary-
 [39])
 Overfull \hbox (139.8292pt too wide) in paragraph at lines 1692--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
