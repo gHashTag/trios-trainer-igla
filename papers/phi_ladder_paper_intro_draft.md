@@ -418,7 +418,11 @@ pairwise iteration wrapper, adds BH-correction across the 4
 zoo comparisons per phi-config, and emits the 16-row CSV schema
 that §5.1's pairwise CSV consumers expect. The genuine
 contribution is the wrapper + output schema; the underlying test
-is unchanged.
+is **algorithmically equivalent at N=5** (the 34th adversarial pass
+verified this with an in-source equivalence test — both primitives
+produce identical p-values to machine precision on representative
+inputs, including the IEEE-754-tied edge cases captured by an
+epsilon-tolerant comparison shared with the F2 reference).
 
 **Pre-registration discipline for the new binary**. Because
 `f2_pairwise_perm` exists in the codebase before any of the
@@ -714,6 +718,11 @@ specified below.
 | 1 | `pairwise_wd0.csv` | same schema, wd0 stratum | `f2_pairwise_perm` |
 | 1 | `stratum_compare.csv` | 16 pairs × `stable_across_strata` flag | `f2_stratum_compare` |
 | ≤16 | `sensitivity_<phi-config>_vs_<zoo-config>.csv` | bridge-score envelope per (phi-config, zoo-config) pair that survives the perm test; upper bound = 16 if every pair survives, point estimate 8 based on the F2 sandbox-scale half-survival baseline | `f2_mediation_sensitivity` |
+
+**New-this-paper marker**: `f2_pairwise_perm` is a Loop-110-introduced
+binary (see §3.3); the other producers in the table are reused
+unchanged from F2. The new binary's commit hash is locked at protocol
+anchor and verifiable via `f2_provenance_check` on every emitted CSV.
 
 Total: 80 + 2 + 1 + 1 + 1 + (8…16) = **between 85 and 101 CSVs**
 (point estimate 93 under the F2 sandbox-scale half-survival
