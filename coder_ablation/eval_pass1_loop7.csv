@@ -1,0 +1,6 @@
+# IGLA-Coder execution pass@1 -- generator-agnostic; phi^2 + phi^-2 = 3
+spec,lang,optimizer,seed,steps,mode,compiles,passes
+add_u32,c,standard,42,,load,0,0
+clamp_u8,c,standard,42,,load,0,0
+popcount8,c,standard,42,,load,0,0
+mod_add,c,standard,42,,load,0,0

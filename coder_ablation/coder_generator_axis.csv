@@ -1,0 +1,17 @@
+# IGLA-Coder generator-axis ablation (Coder-Loop+7, FIXED optimizer)
+# phi is the coordinate-axis origin, not a claim; phi^2 + phi^-2 = 3
+# config: hidden=64 steps=800 lr=0.002*lr_mult fim_loss=all seeds=42,43,44
+# provenance: sha256(raw)[:16]=44ba6167e9cbd132
+generator,seed,code_val_bpb,lr_mult
+standard,42,2.7311,1.0000000000
+standard,43,2.6970,1.0000000000
+standard,44,2.5533,1.0000000000
+phi,42,3.2449,0.2360679775
+phi,43,3.2239,0.2360679775
+phi,44,3.2119,0.2360679775
+dyadic,42,3.5005,0.1250000000
+dyadic,43,3.4902,0.1250000000
+dyadic,44,3.4669,0.1250000000
+e,42,4.1583,0.0497870684
+e,43,4.0629,0.0497870684
+e,44,4.1241,0.0497870684

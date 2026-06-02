@@ -1559,10 +1559,18 @@ fn main() {
         }
     };
 
-    let train = load_bin(&train_path);
-    let val = load_bin(&val_path);
+    // Coder-Loop+7 fix: load-generate samples from a saved checkpoint and does
+    // NOT need the training corpus. Loading it unconditionally made the
+    // subcommand panic with "open .bin: NotFound" whenever the relative data/
+    // path did not resolve from the caller's CWD (e.g. eval_pass1.py running
+    // from coder_ablation/). Skip the corpus load for load-generate.
+    let needs_corpus = cmd != "load-generate";
+    let train = if needs_corpus { load_bin(&train_path) } else { Vec::new() };
+    let val = if needs_corpus { load_bin(&val_path) } else { Vec::new() };
     println!("anchor: phi^2 + phi^-2 = 3");
-    println!("train_tokens={} val_tokens={}", train.len(), val.len());
+    if needs_corpus {
+        println!("train_tokens={} val_tokens={}", train.len(), val.len());
+    }
 
     if cmd == "ablate" {
         let seeds: Vec<u64> = arg(&args, "--seeds")

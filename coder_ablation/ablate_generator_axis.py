@@ -17,10 +17,14 @@
 #            -> phi NOT supported (negative result, reported first).
 #
 # HONESTY
-#   Carried result: phi is FALSIFIED on the coder track (phi^-3 decay CDE
-#   +3.544 BPB). This ablation is expected to reproduce "phi loses". The value
-#   is the clean, equal-budget, multi-axis control a referee would demand --
-#   not a hope that phi wins.
+#   The Loop+3 "+3.544 BPB phi^-3 decay CDE" claim was RETRACTED in Loop+6: it
+#   was an artifact of an unscaled-weight-decay optimizer bug, not a property of
+#   phi. On the FIXED optimizer (Loop+7) the axes rank strictly by the
+#   learning-rate multiplier each prescribes (standard lr_mult=1.0 best, then
+#   phi 0.236, dyadic 0.125, e 0.050): phi loses to standard by ~+0.57 BPB, but
+#   the loss is explained by phi's smaller prescribed lr at a fixed step budget,
+#   NOT by phi being uniquely bad. The value here is the clean, equal-budget,
+#   multi-axis control a referee would demand -- not a hope that phi wins.
 #
 # USAGE
 #   python3 ablate_generator_axis.py --bin ../target/release/igla_coder \
