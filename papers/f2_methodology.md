@@ -515,10 +515,10 @@ The convention is:
 > kernels, `cross_entropy_loss` numerics, BPB computation, or eval
 > tokenization.
 
-A lib test (`trainer_internals_schema_is_load_bearing`, Loop 33) verifies
+A lib test (`trainer_internals_schema_is_load_bearing`) verifies
 that mutating the constant changes the fingerprint output, so an
 intentional bump is detectable from CI. A mtime-drift advisory
-(Loop 39) compares the schema-string date against the on-disk mtime of
+compares the schema-string date against the on-disk mtime of
 `src/transformer.rs` and surfaces a stale-schema warning during
 `cargo test --lib`.
 
@@ -549,7 +549,7 @@ under `data/loop49_swap/`); any descendant on the branch is also a
 valid anchor.
 
 1. `git checkout 583b417` (or any descendant of `f2-methodology`).
-2. `cargo test --lib` exits 0 with 714 passing tests (Loop 69 verified).
+2. `cargo test --lib` exits 0 with 714 passing tests.
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
    of that input file against the value in the paper's appendix
@@ -657,7 +657,7 @@ Three reasons we deliberately chose the small configuration:
    structure;
    if it holds at sandbox scale, the same decomposition formulas apply
    at champion scale (only the numerical magnitudes change). The
-   `dual_mediation_no_interaction_residual_lock` test (Loop 34) confirms
+   `dual_mediation_no_interaction_residual_lock` test confirms
    the linearity assumption holds in our regime to within $10^{-6}$.
 
 3. **Sign-flip demonstration value.** The headline finding (RmsNorm NDE
@@ -996,8 +996,8 @@ intervals, and which strata we run. We address each in turn.
 ### 6.1 Mediator pair (M_1, M_2)
 
 The default decomposition uses `M_1 = wd, M_2 = warmup`, motivated by
-prior mediation analyses in this framework (Loop 30 and Loop 33) that
-identified WD and warmup as the two strongest mediators in the canonical
+prior mediation analyses in this framework that identified WD and
+warmup as the two strongest mediators in the canonical
 ablation matrix. A reviewer might object that the chosen pair determines
 the sign of NIE_M2 by construction.
 

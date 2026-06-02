@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–135)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–136)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty-eight** independent
-passes total across Loops 59–135 (50-pass milestone reached at
-Loop 127; passes 51–58 dispatched at Loops 128–135). The first
+caught before reviewers saw them. **Fifty-nine** independent
+passes total across Loops 59–136 (50-pass milestone reached at
+Loop 127; passes 51–59 dispatched at Loops 128–136). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–135 extended the discipline to round-N
+submission flow; Loops 86–136 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–58 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–135; per-pass detail lives in
+12–59 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–136; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–135 (49th pass flagged the un-widened grep covered only
-~35 of 58 passes; the two-pattern form widens reach).
+90–136 (49th pass flagged the un-widened grep covered only
+~35 of 59 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–135)
+### 10. CI gate evolution (Loops 87–136)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -404,6 +404,50 @@ Stage additions since the original 8-script catalogue:
   Operationalizes the "parallel generator vs hand-maintained
   drift" pattern (preserves Loop 132 B's generator as a binding
   artifact rather than informational only).
+- **Loop 134 A.iii** — phi_ladder §5.4 partition burn-down (−7
+  inline Loop-N attributions); anonymizer baseline 46 → 39.
+- **Loop 134 A.iv** — `verify_class_registry_binding.py` added
+  (27th stage). Binds §1 (13/M) class-class labels + counts to
+  live `*_CLAIMS` list lengths via CLASS_LABEL_ALIASES (single
+  source of truth in verify_cross_paper_consistency.py).
+- **Loop 134 B** — Anonymizer baselines migrated from in-code
+  SCAN_TARGETS tuple to JSON sidecar
+  `papers/scripts/anonymizer_baseline.json`. Ratchet semantics
+  preserved; FALLBACK_BASELINES rescue on parse failure.
+- **Loop 134 C** — `verify_committed_state_consistency.py` added
+  as manual pre-flight tool (NOT a CI stage — would fail every
+  mid-loop edit). Walks `git status --porcelain papers/ docs/`
+  and fails on tracked-file modifications.
+- **Loop 135 A.iii** — phi_ladder §5.4 second-pass burn-down
+  (−7 attributions in pre-registered-scripts bullets);
+  anonymizer baseline 39 → 32.
+- **Loop 135 B** — `verify_cardinality_arithmetic.py` CLAIMS
+  registry supports `frozen=True` 4-tuples for historical
+  snapshots. §10 Loop 131 B entry marked frozen with "(as of
+  Loop 131 B; superseded by Loop 133 A.iii)" annotation.
+- **Loop 135 C** — `verify_documented_vs_extracted_consistency.py`
+  added (28th stage). Binds §1 sub-bullet description metadata
+  to live verifier source state via importlib + regex extraction.
+  Initial bindings: (11/N) report consistency 6=2+4 vs
+  REPORT_SPECS + EXISTS_STUBS; (14/N) meta-test 7 = count of
+  `def test_*`.
+- **Loop 136 A.iii** — F2 §E remaining-anchors burn-down (−6
+  inline attributions across §3.2 / §3.5 / §4 / §6.1);
+  anonymizer baseline 22 → 16. Total legacy debt 54 → 48.
+- **Loop 136 A.iv** — doc-vs-extracted registry grown 2 → 4
+  bindings: (12/N) stage-count "5+2+1" → CLAIMS / DECOMPOSITION /
+  DERIVED list lengths; (24/N) anonymizer "48 at Loop 136" →
+  sum of sidecar baselines.
+- **Loop 136 B** — `verify_anonymizer_completeness.py
+  --update-baseline` flag. Atomically rewrites
+  anonymizer_baseline.json with current per-file counts (refused
+  on regression — cannot ratchet up). Closes 58th-pass #6.
+- **Loop 136 C** — `verify_committed_state_consistency.py
+  --staged-only` mode. Asserts every working-tree-modified
+  scope file is in the git index; passes during mid-loop edits
+  if staging is complete. Kept as manual pre-commit tool (NOT a
+  CI stage) because wiring into run_all_checks.sh would fail
+  every dev cycle that hasn't yet `git add`-ed all edits.
 
 The on-disk gate now runs **28 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names

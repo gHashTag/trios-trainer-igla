@@ -133,11 +133,28 @@ def main() -> int:
             print(f"# FAIL  empty {label}", file=sys.stderr)
             continue
         if total != leading:
-            mismatches.append(
-                f"{rel}:{line_no}: '{label}' leading {leading} != sum "
-                f"{'+'.join(str(p) for p in parts)} = {total}")
-            print(f"# FAIL  sum   {label}: {leading} != {total}",
-                  file=sys.stderr)
+            # Loop 136 — 59th-pass SEV-4 fix #8: differentiate diagnostic
+            # for frozen entries. A frozen entry's sum-drift is more
+            # likely "someone hand-edited the historical snapshot
+            # incorrectly" than a live-registry drift; the recommended
+            # action is "revert the historical entry", not "fix the live
+            # state".
+            if frozen:
+                mismatches.append(
+                    f"{rel}:{line_no}: FROZEN SNAPSHOT EDITED — "
+                    f"historical '{label}' had leading {leading} but "
+                    f"now sums to {'+'.join(str(p) for p in parts)} = "
+                    f"{total}. Revert the historical numbers instead "
+                    f"of bumping the leading; frozen entries should "
+                    f"not be edited.")
+                print(f"# FAIL  froz! {label}: {leading} != {total}",
+                      file=sys.stderr)
+            else:
+                mismatches.append(
+                    f"{rel}:{line_no}: '{label}' leading {leading} != sum "
+                    f"{'+'.join(str(p) for p in parts)} = {total}")
+                print(f"# FAIL  sum   {label}: {leading} != {total}",
+                      file=sys.stderr)
             continue
         verified += 1
         tag = "OK   " if not frozen else "FROZ "

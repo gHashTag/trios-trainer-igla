@@ -49,6 +49,7 @@ exceeds its registered baseline.
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -65,10 +66,14 @@ BASELINE_SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json
 
 # Files subject to TMLR anonymization. Per-file baselines come from
 # the sidecar (FALLBACK_BASELINES is the rescue value if the sidecar
-# can't be read). Loop 133 A.iv: 22 + 46 = 68. Loop 134 A.iii §5.4
-# burn-down: 22 + 39 = 61.
+# can't be read). Burn-down trajectory:
+#   Loop 132 C baseline: 29 + 43 = 72.
+#   Loop 133 A.iv (F2 §E catalogue): 22 + 43 = 65.
+#   Loop 134 A.iii (#1021 §5.4 partition): 22 + 39 = 61.
+#   Loop 135 A.iii (#1021 §5.4 second pass): 22 + 32 = 54.
+#   Loop 136 A.iii (F2 §E remaining + §3.2/§4/§6.1): 16 + 32 = 48.
 FALLBACK_BASELINES = {
-    "papers/f2_methodology.md": 22,
+    "papers/f2_methodology.md": 16,
     "papers/phi_ladder_paper_intro_draft.md": 32,
 }
 
@@ -225,10 +230,38 @@ def scan_file(path: Path) -> list[tuple[int, str]]:
     return leaks
 
 
+def _update_baseline_json(new_counts: dict[str, int]) -> None:
+    """Loop 136 B: atomically rewrite BASELINE_SIDECAR with new
+    per-file counts. Preserves the "_comment" key and any other
+    top-level metadata."""
+    if BASELINE_SIDECAR.exists():
+        data = json.loads(BASELINE_SIDECAR.read_text())
+    else:
+        data = {"baselines": {}}
+    data["baselines"] = new_counts
+    # Atomic write via temp file + rename.
+    tmp = BASELINE_SIDECAR.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(BASELINE_SIDECAR)
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--update-baseline", action="store_true",
+        help="On GOOD outcome (any file is below baseline), rewrite "
+             "anonymizer_baseline.json with the new lower counts and "
+             "exit 0 with 'ratchet re-armed' message. WARNING: this is "
+             "a destructive action — the ratchet re-arms at the new "
+             "lower bound and prevents a future regression to the "
+             "previous baseline.",
+    )
+    args = parser.parse_args()
+
     over_baseline = 0
     total_leaks = 0
     total_scanned = 0
+    new_counts: dict[str, int] = {}  # for --update-baseline
     # Loop 134 — 57th-pass SEV-4 fix #10: per-file disposition
     # tracking. Aggregate n_good/n_at/n_over so the final summary
     # surfaces all three counts; previously the summary lost burn-
@@ -246,6 +279,10 @@ def main() -> int:
         total_leaks += len(leaks)
         net_delta += len(leaks) - baseline
         rel = path.relative_to(CRATE_ROOT)
+        # Track new counts for --update-baseline. Always = current leak
+        # count (over-baseline files keep their elevated count, GOOD
+        # files lower, at-baseline stay same).
+        new_counts[str(rel)] = len(leaks)
         if len(leaks) > baseline:
             over_baseline += len(leaks) - baseline
             # Emit only the LAST diff (most likely new addition) to
@@ -273,6 +310,19 @@ def main() -> int:
             n_at += 1
     delta_str = (f"net Δ {net_delta:+d}" if net_delta != 0
                  else "net Δ 0")
+    if args.update_baseline:
+        if over_baseline > 0:
+            print(f"# --update-baseline refused: {over_baseline} new "
+                  f"bare anchor(s) beyond baseline. Fix the additions "
+                  "first (cannot ratchet a regression).",
+                  file=sys.stderr)
+            return 1
+        _update_baseline_json(new_counts)
+        new_total = sum(new_counts.values())
+        print(f"# verify_anonymizer_completeness.py — ratchet "
+              f"re-armed at new baselines: total {new_total} "
+              f"(was {sum(b for _, b in SCAN_TARGETS)}).")
+        return 0
     if over_baseline > 0:
         print(f"# verify_anonymizer_completeness.py — {over_baseline} "
               f"NEW bare Loop-N anchor(s) beyond baseline across "

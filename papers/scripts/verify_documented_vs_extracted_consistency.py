@@ -14,15 +14,18 @@ label). The extractor returns the live count by reading the
 corresponding verifier source / running the verifier and parsing
 output.
 
-Initial bindings:
-  (11/27) report consistency — 6 reports (2 full + 4 stub coverage)
-          → assert REPORT_SPECS + EXISTS_STUBS lengths in
-          verify_report_consistency.py match 2/4/6.
-  (14/27) cross-paper gate meta-test — 7 synthetic-break tests PASS
-          (5 classes covered)
-          → assert # of `def test_*` functions in
-          meta_test_cross_paper_gates.py matches 7 (the
-          inventory_completeness test counts as one).
+Active bindings (Loop 136 grown 2 → 4):
+  (11/N) report consistency — "6 reports (2 full + 4 stub coverage)"
+          → REPORT_SPECS + EXISTS_STUBS lengths in
+          verify_report_consistency.py.
+  (12/N) stage count consistency — "5 counts + 2 decompositions +
+          1 derived" → CLAIMS + DECOMPOSITION_CLAIMS + DERIVED_CLAIMS
+          list lengths in verify_stage_count_consistency.py.
+  (14/N) cross-paper gate meta-test — "7 synthetic-break tests PASS
+          (5 classes covered)" → count of `def test_*` functions in
+          meta_test_cross_paper_gates.py.
+  (24/N) anonymizer completeness — "48 at Loop 136" → sum of
+          baselines in papers/scripts/anonymizer_baseline.json.
 
 Usage: papers/scripts/verify_documented_vs_extracted_consistency.py
 
@@ -58,14 +61,18 @@ def _parse_subbullet(k: int, description_regex: str
         return "§1 'CI gates' section not found"
     sec_text = sec.group(0)
     sec_offset = sec.start()
+    # Multi-line tolerant: capture from em-dash up to next `- [ ]`
+    # checkbox (start of next sub-bullet) or blank line. The §1 prose
+    # uses 2-space indent continuations for wrapped lines.
     bullet_re = re.compile(
-        rf"^\s*-\s*\[\s*[ xX]\s*\]\s*\({k}/\d+\)\s+(.+?)\s+—\s+(.+?)$",
-        re.MULTILINE,
+        rf"^\s*-\s*\[\s*[ xX]\s*\]\s*\({k}/\d+\)\s+(.+?)\s+—\s+(.+?)(?=^\s*-\s*\[|\n\n|\Z)",
+        re.MULTILINE | re.DOTALL,
     )
     m = bullet_re.search(sec_text)
     if not m:
         return f"sub-bullet ({k}/N) not found in §1"
-    description = m.group(2)
+    # Collapse multi-line description into single line for regex matching.
+    description = re.sub(r"\s+", " ", m.group(2)).strip()
     line_no = (
         text[:sec_offset + m.start()].count("\n") + 1
     )
@@ -90,6 +97,12 @@ def _import_gate(name: str):
     try:
         spec.loader.exec_module(mod)
     except Exception:
+        # Loop 136 — 59th-pass SEV-3 fix #1: emit traceback to stderr
+        # before returning None. The 58th-pass closure #7 added this
+        # to verify_class_registry_binding.py but the duplicated
+        # helper here was missed, silently swallowing import errors.
+        import traceback
+        traceback.print_exc(file=sys.stderr)
         return None
     return mod
 
@@ -115,6 +128,46 @@ def extract_meta_test_count() -> int | str:
     # Match top-level `def test_<name>(` at column 0.
     matches = re.findall(r"^def (test_[A-Za-z0-9_]+)\(", text, re.MULTILINE)
     return len(matches)
+
+
+def extract_stage_count_counts() -> tuple[int, int, int] | str:
+    """Return (n_counts, n_decomp, n_derived) from
+    verify_stage_count_consistency.py CLAIMS / DECOMPOSITION_CLAIMS /
+    DERIVED_CLAIMS list lengths."""
+    mod = _import_gate("verify_stage_count_consistency.py")
+    if mod is None:
+        return "could not import verify_stage_count_consistency.py"
+    claims = getattr(mod, "CLAIMS", None)
+    decomp = getattr(mod, "DECOMPOSITION_CLAIMS", None)
+    derived = getattr(mod, "DERIVED_CLAIMS", None)
+    for name, v in (("CLAIMS", claims),
+                    ("DECOMPOSITION_CLAIMS", decomp),
+                    ("DERIVED_CLAIMS", derived)):
+        if not isinstance(v, list):
+            return f"{name} missing/non-list in verify_stage_count_consistency.py"
+    return len(claims), len(decomp), len(derived)
+
+
+def extract_anonymizer_total() -> int | str:
+    """Return total bare-anchor count across all SCAN_TARGETS by
+    reading the JSON sidecar. Operates from the live data, not from
+    re-running the scanner — the gate compares to §1 anyway."""
+    sidecar = SCRIPTS_DIR / "anonymizer_baseline.json"
+    if not sidecar.exists():
+        return f"sidecar {sidecar.name} missing"
+    import json
+    try:
+        data = json.loads(sidecar.read_text())
+    except json.JSONDecodeError as e:
+        return f"sidecar JSON parse error: {e}"
+    bl = data.get("baselines")
+    if not isinstance(bl, dict):
+        return "sidecar lacks 'baselines' dict"
+    total = 0
+    for k, v in bl.items():
+        if isinstance(v, int) and v >= 0:
+            total += v
+    return total
 
 
 def main() -> int:
@@ -177,6 +230,58 @@ def main() -> int:
                       f"{claimed_tests} tests = "
                       f"{actual_tests} def test_* (matches)")
 
+    # Binding 3 (Loop 136 A.iv): (12/N) stage count — "5 counts + 2
+    # decompositions + 1 derived" → CLAIMS + DECOMPOSITION_CLAIMS +
+    # DERIVED_CLAIMS list lengths in verify_stage_count_consistency.py.
+    s3 = _parse_subbullet(
+        12,
+        r"(\d+) counts \+ (\d+) decompositions \+ (\d+) derived",
+    )
+    if isinstance(s3, str):
+        mismatches.append(f"(12/N): {s3}")
+    else:
+        (cl_counts, cl_decomp, cl_derived), line_no = s3
+        actual = extract_stage_count_counts()
+        if isinstance(actual, str):
+            mismatches.append(f"(12/N) stage-count extract: {actual}")
+        else:
+            ac_counts, ac_decomp, ac_derived = actual
+            if (cl_counts, cl_decomp, cl_derived) != \
+               (ac_counts, ac_decomp, ac_derived):
+                mismatches.append(
+                    f"SUBMISSION_CHECKLIST:{line_no}: (12/N) stage "
+                    f"count claims {cl_counts} counts + {cl_decomp} "
+                    f"decompositions + {cl_derived} derived but "
+                    f"verify_stage_count_consistency.py has "
+                    f"{ac_counts} CLAIMS + {ac_decomp} "
+                    f"DECOMPOSITION_CLAIMS + {ac_derived} DERIVED_CLAIMS.")
+            else:
+                print(f"# OK    §1:{line_no} (12/N) stage count: "
+                      f"{cl_counts}+{cl_decomp}+{cl_derived} = "
+                      f"{ac_counts}+{ac_decomp}+{ac_derived} (matches)")
+
+    # Binding 4 (Loop 136 A.iv): (24/N) anonymizer — "X at Loop Y"
+    # leading number == sum of baselines in anonymizer_baseline.json.
+    s4 = _parse_subbullet(
+        24,
+        r"(\d+) at Loop \d+",
+    )
+    if isinstance(s4, str):
+        mismatches.append(f"(24/N): {s4}")
+    else:
+        (claimed_total,), line_no = s4
+        actual_total = extract_anonymizer_total()
+        if isinstance(actual_total, str):
+            mismatches.append(f"(24/N) anonymizer extract: {actual_total}")
+        elif claimed_total != actual_total:
+            mismatches.append(
+                f"SUBMISSION_CHECKLIST:{line_no}: (24/N) anonymizer "
+                f"ratchet claims {claimed_total} but sidecar sums to "
+                f"{actual_total}.")
+        else:
+            print(f"# OK    §1:{line_no} (24/N) anonymizer ratchet: "
+                  f"{claimed_total} = sum(sidecar baselines)")
+
     if mismatches:
         for m in mismatches:
             print(f"  {m}", file=sys.stderr)
@@ -185,8 +290,12 @@ def main() -> int:
               "metadata and verifier source state",
               file=sys.stderr)
         return 1
-    print(f"# verify_documented_vs_extracted_consistency.py — 2/2 "
-          "documented-vs-extracted binding(s) verified, 0 drift")
+    # Loop 136 — 59th-pass SEV-5 fix #19: name the gated file in the
+    # OK-path summary so a reader doesn't have to inspect the source
+    # to find which file was checked.
+    print(f"# verify_documented_vs_extracted_consistency.py — 4/4 "
+          f"documented-vs-extracted binding(s) verified against "
+          f"{SUBMISSION_CHECKLIST.relative_to(CRATE_ROOT)} §1, 0 drift")
     return 0
 
 

@@ -26,8 +26,8 @@ blocked by submodule's uncommitted `src/` modifications.
 
 Usage:
   papers/scripts/verify_committed_state_consistency.py
-  papers/scripts/verify_committed_state_consistency.py --allow-untracked
-    (default: untracked files don't fail the gate)
+  papers/scripts/verify_committed_state_consistency.py --fail-on-untracked
+  papers/scripts/verify_committed_state_consistency.py --staged-only
 
 Exit 0 on clean tracked state; 1 on modified/staged/deleted tracked
 files in scope.
@@ -58,6 +58,10 @@ EXCLUDE_PATHS = {
     # for archival, every CI run would mark them dirty.
     "papers/cross_reference_report.md",
     "papers/phi_ladder_paper_intro_draft_cross_reference_report.md",
+    # Loop 136 — 59th-pass SEV-3 fix #2: rewritten by stage 18's
+    # generate_appendix_d.sh with an embedded UTC timestamp on every
+    # CI run; would force a no-op commit on every cycle otherwise.
+    "papers/appendix_d_test_inventory.md",
 }
 
 
@@ -75,6 +79,35 @@ def porcelain_lines() -> list[str]:
     return [ln for ln in result.stdout.splitlines() if ln]
 
 
+def staged_paths() -> set[str]:
+    """Loop 136 C: return set of relative paths currently in the
+    git index (`git diff --name-only --cached`)."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "--cached"],
+            capture_output=True, text=True, check=True,
+            cwd=str(CRATE_ROOT),
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"# FAIL  git diff --cached failed: {e}", file=sys.stderr)
+        return set()
+    return {ln.strip() for ln in result.stdout.splitlines() if ln.strip()}
+
+
+def working_tree_modified_paths() -> set[str]:
+    """Return set of relative paths with working-tree mods vs index
+    (`git diff --name-only`). Distinct from staged_paths."""
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only"],
+            capture_output=True, text=True, check=True,
+            cwd=str(CRATE_ROOT),
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return set()
+    return {ln.strip() for ln in result.stdout.splitlines() if ln.strip()}
+
+
 def in_scope(rel_path: str) -> bool:
     if rel_path in EXCLUDE_PATHS:
         return False
@@ -90,8 +123,38 @@ def main() -> int:
     parser.add_argument("--fail-on-untracked", action="store_true",
                         help="Untracked tracked-scope paths fail the "
                              "gate (default: untracked is allowed).")
+    parser.add_argument(
+        "--staged-only", action="store_true",
+        help="Loop 136 C: assert that every working-tree-modified file "
+             "in scope is ALSO in the git index. Use this after "
+             "`git add` to verify the staging is complete before "
+             "commit. Passes during mid-loop edit cycles where "
+             "porcelain reports modifications but they're all staged."
+    )
     args = parser.parse_args()
     untracked_fails = args.fail_on_untracked
+
+    # Loop 136 C: staged-only mode. Check that every working-tree-
+    # modified scope file is in the index; succeed if staging is
+    # complete even when porcelain shows pending changes.
+    if args.staged_only:
+        wt_mod = {p for p in working_tree_modified_paths() if in_scope(p)}
+        staged = {p for p in staged_paths() if in_scope(p)}
+        unstaged = wt_mod - staged
+        if unstaged:
+            for p in sorted(unstaged):
+                print(f"# FAIL  staged-only: working-tree modified "
+                      f"but not staged: {p}", file=sys.stderr)
+            print(f"# verify_committed_state_consistency.py "
+                  f"--staged-only — {len(unstaged)} unstaged "
+                  "modification(s) in scope. Run `git add` to stage "
+                  "them or revert if unintended.",
+                  file=sys.stderr)
+            return 1
+        print(f"# verify_committed_state_consistency.py --staged-only "
+              f"— all {len(wt_mod)} scope-file modification(s) are "
+              "staged (ready to commit)")
+        return 0
 
     lines = porcelain_lines()
     if not lines:

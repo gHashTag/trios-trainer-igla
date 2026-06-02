@@ -47,7 +47,7 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
   - [ ] (23/28) changelog consistency — CHANGELOG §7 ↔ §2 ↔
         ADVERSARIAL_REVIEW_LOG agree on (pass_count, last_loop)
   - [ ] (24/28) anonymizer completeness — bare `Loop N` anchor count
-        per-file ≤ baseline (legacy debt ratchet, 54 at Loop 135)
+        per-file ≤ baseline (legacy debt ratchet, 48 at Loop 136)
   - [ ] (25/28) cardinality arithmetic — N items (a+b+...) sum-equality
         with frozen-historical-entry distinction
   - [ ] (26/28) generator consistency — regen_changelog_section7.py
@@ -78,9 +78,9 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 26 VERIFIED + 1 VERIFIED-WITHDRAWN
       (96%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 58 passes across Loops 59-135
+- [ ] **Adversarial review**: 59 passes across Loops 59-136
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-58 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-59 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -180,9 +180,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 135 (2026-06-02)**
+- Checklist version: **Loop 136 (2026-06-02)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 135 A/B/C commits on `f2-methodology`
+  Loop 136 A/B/C commits on `f2-methodology`
 - Next deadline: MLRC EOI soft 2026-06-04 AOE / hard TMLR 2026-09-30 AOE
 
 ### Checklist change log
@@ -237,7 +237,7 @@ If rejected:
   partition bare-anchor burn-down −7 (anonymizer baseline 46
   → 39); anonymizer baselines migrated to JSON sidecar; manual
   pre-flight `verify_committed_state_consistency.py` added.
-- Loop 135: this update — stage count 27 → 28 (added
+- Loop 135: stage count 27 → 28 (added
   `verify_documented_vs_extracted_consistency.py` binding §1
   description metadata to live verifier source); phi_ladder §5.4
   second-pass burn-down −7 (anonymizer baseline 39 → 32);
@@ -245,3 +245,9 @@ If rejected:
   snapshots; 6 quick SEV-3/4 closures (sidecar validation,
   traceback emission, dead flag, EXCLUDE_PATHS, "as of Loop X"
   annotation, docstring clarity).
+- Loop 136: this update — stage count stays 28 (committed-state
+  staged-only kept as manual pre-commit tool, not CI stage);
+  F2 §E remaining-anchors burn-down −6 (anonymizer baseline
+  22 → 16); doc-vs-extracted registry grown 2 → 4 bindings
+  (added (12) stage-count + (24) anonymizer); --update-baseline
+  flag added to anonymizer for automated ratchet re-arm.
