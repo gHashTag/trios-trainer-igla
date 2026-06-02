@@ -838,18 +838,19 @@ the actual `STAGES` array:
   parses against the schema in §5.1. Pre-sweep runs (when the
   run directory doesn't exist) exit 0 vacuously, mirroring
   `verify_provenance.sh`'s pre-registration pattern.
-- `verify_report_consistency.py` — implemented at Loop 117 with
-  **2 of 6 report classes** registered (h0_equivalence and
-  h1_superiority both grounded in `pairwise_<stratum>.csv` on
-  `diff_mean` and `p_bh` at 2-decimal tolerance). The remaining
-  four report classes (h2_dominance, stratum_diff,
-  bridge_envelope, secondary_outcomes) are deferred to a
-  follow-up loop because their report-row schemas crystallize
-  only once the run produces concrete outputs. The script's
-  REPORT_SPECS registry will be extended at that point;
-  pre-sweep runs exit 0 vacuously today. **The 41st adversarial
-  pass flagged that earlier wording read as 6/6 coverage when
-  the script ships 2/6**; corrected here.
+- `verify_report_consistency.py` — implemented at Loop 117 and
+  extended at Loop 119 to **6/6 report-class coverage at two
+  tiers**: 2 full numeric-claim checkers (h0_equivalence and
+  h1_superiority grounded in `pairwise_<stratum>.csv` on
+  `diff_mean` and `p_bh` at 2-decimal tolerance) plus 4
+  exists-and-heading-pattern stubs (h2_dominance, stratum_diff,
+  bridge_envelope, secondary_outcomes). Each stub asserts the
+  report file is present and contains expected section / table
+  headers; the stubs upgrade to full numeric checkers once the
+  run produces concrete report-row schemas. Pre-sweep runs exit
+  0 vacuously. **The 41st adversarial pass flagged that earlier
+  wording read as 6/6 full when the script then shipped 2/6**;
+  Loop 119 C closed the gap with the stub tier.
 
 All three originally pre-registered scripts have now shipped:
 `verify_provenance.sh` (Loop 115) gates W3C-PROV preambles on the

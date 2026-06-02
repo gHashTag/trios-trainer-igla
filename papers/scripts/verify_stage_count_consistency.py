@@ -89,6 +89,30 @@ def find_claim(path: Path, pattern: str) -> tuple[int, int] | None:
     return int(m.group(1)), line_no
 
 
+# Decomposition claims of the form "N1 F2-scope ... + N2 #1021-scoped = N total".
+# Loop 119 B: gate the partition arithmetic, not just the total. Catches drift
+# in claims like "12 F2 + 6 #1021 = 18" when stages are added to either bucket.
+DECOMPOSITION_CLAIMS: list[tuple[str, str, str]] = [
+    (
+        "papers/phi_ladder_paper_intro_draft.md",
+        # "**13 F2-scope stages**" ... line wrap ... "+ 6 #1021-scoped\n stages"
+        r"\*\*(\d+) F2-scope stages\*\*[\s\S]*?\+ (\d+) #1021-scoped[\s\S]*?stages",
+        "#1021 §5.4 decomposition partition",
+    ),
+]
+
+
+def find_decomposition(path: Path, pattern: str) -> tuple[int, int, int] | None:
+    """Return (n1, n2, line_no_of_n1) or None."""
+    pat = re.compile(pattern, re.DOTALL)
+    text = path.read_text()
+    m = pat.search(text)
+    if not m:
+        return None
+    line_no = text[:m.start(1)].count("\n") + 1
+    return int(m.group(1)), int(m.group(2)), line_no
+
+
 def main() -> int:
     actual = actual_stage_count()
     print(f"# verify_stage_count_consistency.py — STAGES array has {actual} entries")
@@ -112,6 +136,27 @@ def main() -> int:
         else:
             print(f"# OK  {rel}:{line_no}  — {desc} = {claimed}")
 
+    # Loop 119 B: decomposition arithmetic.
+    for rel, pattern, desc in DECOMPOSITION_CLAIMS:
+        path = CRATE_ROOT / rel
+        if not path.exists():
+            mismatches.append(f"{rel}: file missing for decomposition '{desc}'")
+            continue
+        found = find_decomposition(path, pattern)
+        if found is None:
+            mismatches.append(
+                f"{rel}: no match for decomposition '{desc}' "
+                f"(pattern {pattern!r}) — paper claim might have moved or been reworded")
+            continue
+        n1, n2, line_no = found
+        partition_sum = n1 + n2
+        if partition_sum != actual:
+            mismatches.append(
+                f"{rel}:{line_no}: '{desc}' claims {n1}+{n2}={partition_sum} "
+                f"but actual STAGES total is {actual}")
+        else:
+            print(f"# OK  {rel}:{line_no}  — {desc} = {n1}+{n2}={partition_sum}")
+
     if mismatches:
         print(f"# FAIL  {len(mismatches)} stage-count drift(s) "
               f"vs actual {actual}:", file=sys.stderr)
@@ -119,7 +164,8 @@ def main() -> int:
             print(f"  {m}", file=sys.stderr)
         return 1
     print(f"# verify_stage_count_consistency.py — "
-          f"{len(CLAIMS)} claims verified, 0 drift")
+          f"{len(CLAIMS)} counts + {len(DECOMPOSITION_CLAIMS)} "
+          f"decompositions verified, 0 drift")
     return 0
 
 

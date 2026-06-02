@@ -78,6 +78,56 @@ REPORT_SPECS = [
 ]
 
 
+# Loop 119 C — exists-only stubs for the 4 deferred report classes. These
+# check that the report file is present and contains a minimum number of
+# expected section headers / table headers, without parsing the numeric
+# claims (which require run-result schemas to crystallize). When the run
+# produces concrete outputs, these stubs upgrade to full REPORT_SPECS
+# entries with their own claim_re + csv_match wiring.
+EXISTS_STUBS: list[dict] = [
+    {
+        "id": "h2_dominance",
+        "path": "report_h2_dominance.md",
+        # Promise: at least one "## Verdict" or "## Result" section.
+        "required_headings": [r"^##\s+(Verdict|Result)"],
+    },
+    {
+        "id": "stratum_diff",
+        "path": "report_stratum_diff.md",
+        # Promise: per-pair `stable_across_strata` table reading from
+        # stratum_compare.csv.
+        "required_headings": [r"^##\s+", r"\| stratum"],
+    },
+    {
+        "id": "bridge_envelope",
+        "path": "report_bridge_envelope.md",
+        # Promise: Γ_tip table per surviving pair.
+        "required_headings": [r"^##\s+", r"Γ_tip|gamma_tip"],
+    },
+    {
+        "id": "secondary_outcomes",
+        "path": "report_secondary_outcomes.md",
+        # Promise: wall_s and peak_memory_mb columns.
+        "required_headings": [r"^##\s+", r"wall_s|peak_memory_mb"],
+    },
+]
+
+
+def check_exists_stub(spec: dict, root: Path) -> list[str]:
+    rpath = root / spec["path"]
+    if not rpath.exists():
+        return []   # vacuous OK pre-sweep
+    text = rpath.read_text()
+    mismatches: list[str] = []
+    for pat in spec["required_headings"]:
+        if not re.search(pat, text, re.MULTILINE):
+            mismatches.append(
+                f"{spec['id']}: report exists but missing expected "
+                f"pattern {pat!r} — schema may have drifted, or this "
+                "stub needs upgrade to full numeric check")
+    return mismatches if mismatches else [f"# (stub-checked report exists)"]
+
+
 def to_float(s: str) -> float:
     return float(s.replace("−", "-").replace("–", "-"))
 
@@ -163,18 +213,35 @@ def main() -> int:
         else:
             print(f"# OK    {spec['id']} — {notes[0] if notes else ''}")
 
+    # Loop 119 C: exists-only stubs for the 4 deferred reports.
+    n_stubs_seen = 0
+    for spec in EXISTS_STUBS:
+        results = check_exists_stub(spec, root)
+        if not results:
+            continue
+        n_stubs_seen += 1
+        failures = [r for r in results if not r.startswith("#")]
+        if failures:
+            all_mismatches.extend(failures)
+            print(f"# FAIL  {spec['id']} (stub)", file=sys.stderr)
+            for m in failures:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            print(f"# OK    {spec['id']} (stub) — exists + heading patterns OK")
+
     if all_mismatches:
         print(f"# verify_report_consistency.py — "
               f"{len(all_mismatches)} mismatches across {n_reports_seen} reports",
               file=sys.stderr)
         return 1
 
-    if n_reports_seen == 0:
+    if n_reports_seen == 0 and n_stubs_seen == 0:
         print("# verify_report_consistency.py: no reports found under "
               f"{root.relative_to(CRATE_ROOT)} — vacuously OK")
     else:
         print(f"# verify_report_consistency.py — "
-              f"{n_reports_seen} reports verified, 0 mismatches")
+              f"{n_reports_seen} full + {n_stubs_seen} stub reports "
+              "verified, 0 mismatches")
     return 0
 
 

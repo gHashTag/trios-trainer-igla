@@ -1741,7 +1741,7 @@ dependency; we do not stub any of them.
   lint, the smoke test for its `f2_pairwise_perm` binary, and
   the supplementary-zip packer. Exits 0 only if every stage passes. The catalogue
   above is the original 8 the paper relied on at draft time;
-  the additional 10 are documented in the follow-up paper's
+  the additional 12 are documented in the follow-up paper's
   §5.4. (The 40th adversarial pass corrected an earlier
   "seven catalogued + ten additional" miscount.)
 
