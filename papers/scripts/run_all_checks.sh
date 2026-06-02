@@ -3,27 +3,14 @@
 # verification. Intended use: before any submission, run this script
 # and only proceed if it exits 0.
 #
-# Stages (each must PASS):
-#   (1) cross_reference_audit.py — §X.Y refs + arXiv format + file paths
-#   (2) verify_paper_metadata.py — title parity, test count, BibTeX,
-#       figure files
-#   (3) check_no_fabricated_shas.py — git cat-file -e per SHA-like token
-#   (4) lint_paper_md.py         — Markdown lint (6 checks, upstream of
-#       LaTeX render)
-#   (5) verify_tables_against_csv.py — Loop 99: every numeric row in a
-#       registered table matches its source CSV at 2-decimal tolerance
-#   (6) verify_formulas_vs_tables.py — Loop 103: four-PSE closure +
-#       §3.3 envelope Γ_tip claims re-derived from CIs
-#   (7) #1021 cross-ref audit — Loop 106: cross_reference_audit.py
-#       run on phi_ladder_paper_intro_draft.md (multi-paper mode)
-#   (8) #1021 markdown lint — Loop 106: lint_paper_md.py on the
-#       same draft (multi-paper mode)
-#   (9) generate_appendix_d.sh   — rebuild test inventory (Appendix D)
-#   (10) compile_tmlr_test.sh    — xelatex compile all 3 variants
-#       (non-anon, anon, real TMLR class)
-#   (11) figure_regen.sh         — regenerate all 6 figures
-#   (12) pack_supplementary.sh   — bundle supplementary zip (which
-#       itself runs the 3-stage pre-flight from Loop 72)
+# Stages (each must PASS): full ordered list is the STAGES=( ... )
+# array below; the count is verified against paper claims by
+# `verify_stage_count_consistency.py` (stage 12) and against the
+# SUBMISSION_CHECKLIST.md §1 sub-bullet enumeration by
+# `verify_submission_readiness.py` (stage 22). The §E catalogue in
+# `papers/f2_methodology.md` references this script as the
+# orchestrator; see `papers/CHANGELOG.md` §10 for the per-loop
+# additions since the 8-script §E catalogue crystallized at Loop 96.
 #
 # Output: PASS/FAIL summary on stdout. Exit 0 if every stage passes,
 # 1 if any stage fails.
@@ -140,6 +127,7 @@ STAGES=(
     "xelatex 3-variant compile:papers/scripts/compile_tmlr_test.sh"
     "figure regen:papers/scripts/figure_regen.sh"
     "supplementary pack:papers/tmlr_submission_kit/pack_supplementary.sh --skip-regen"
+    "submission readiness:python3 papers/scripts/verify_submission_readiness.py"
 )
 
 PASSED=0

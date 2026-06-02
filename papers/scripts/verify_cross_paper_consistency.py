@@ -205,6 +205,76 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
 ]
 
 
+# RELATIONAL: two integer claims must satisfy a relational invariant.
+# Loop 130 B closes the 52nd-pass deferred SEV-3: the non-anon vs anon
+# page counts are now pinned individually as SCOPED_DIFFs (Loop 128 D),
+# but the structural invariant — non-anon must be ≥ anon, because
+# anonymization can only replace content with the equal-or-shorter
+# placeholder "[OMITTED FOR DOUBLE-BLIND REVIEW]" — wasn't enforced.
+# An exact-pin would catch absolute drift but miss the legitimacy
+# constraint when both numbers were bumped together. This class
+# expresses such structural invariants directly.
+#
+# Each entry: (regex_a, paper_a, regex_b, paper_b, comparator, label)
+# Comparator is one of "ge", "gt", "le", "lt", "eq" (resolved via
+# COMPARATORS dict).
+COMPARATORS = {
+    "ge": (lambda a, b: a >= b, ">="),
+    "gt": (lambda a, b: a > b, ">"),
+    "le": (lambda a, b: a <= b, "<="),
+    "lt": (lambda a, b: a < b, "<"),
+    "eq": (lambda a, b: a == b, "=="),
+}
+
+RELATIONAL_CLAIMS: list[tuple[str, Path, str, Path, str, str]] = [
+    # Non-anon ≥ anon page count: §10.3 Acknowledgments is replaced by
+    # a 1-line OMISSION placeholder during anonymization. Removing
+    # content can never grow the document, so non-anon must dominate.
+    # If a future loop introduces author-block changes that GROW the
+    # anonymized version above the non-anon (e.g., placeholder is
+    # longer than original §10.3 text), this gate fires and forces
+    # an explicit review.
+    (
+        r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        r"Anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "ge",
+        "Non-anon ≥ anon page count (structural anonymization invariant)",
+    ),
+]
+
+
+def check_relational(spec: tuple[str, Path, str, Path, str, str]) -> list[str]:
+    pat_a, paper_a, pat_b, paper_b, cmp_name, label = spec
+    found_a = find_int_claim(paper_a, pat_a)
+    found_b = find_int_claim(paper_b, pat_b)
+    mismatches: list[str] = []
+    if found_a is None:
+        mismatches.append(
+            f"{label}: pattern not found in {paper_a.relative_to(CRATE_ROOT)} "
+            f"({pat_a!r})")
+        return mismatches
+    if found_b is None:
+        mismatches.append(
+            f"{label}: pattern not found in {paper_b.relative_to(CRATE_ROOT)} "
+            f"({pat_b!r})")
+        return mismatches
+    val_a, line_a = found_a
+    val_b, line_b = found_b
+    if cmp_name not in COMPARATORS:
+        mismatches.append(
+            f"{label}: unknown comparator {cmp_name!r}; expected one of "
+            f"{sorted(COMPARATORS)}")
+        return mismatches
+    fn, sym = COMPARATORS[cmp_name]
+    if not fn(val_a, val_b):
+        mismatches.append(
+            f"{label}: {paper_a.name}:{line_a} = {val_a} {sym} "
+            f"{paper_b.name}:{line_b} = {val_b} — invariant violated")
+    return mismatches
+
+
 def check_exact_match(spec: tuple[str, Path, str, Path, str]) -> list[str]:
     pat_a, paper_a, pat_b, paper_b, label = spec
     found_a = find_int_claim(paper_a, pat_a)
@@ -331,13 +401,24 @@ def main() -> int:
         else:
             print(f"# OK    ACKN   {label}")
 
+    for spec in RELATIONAL_CLAIMS:
+        ms = check_relational(spec)
+        label = spec[-1]
+        if ms:
+            all_mismatches.extend(ms)
+            print(f"# FAIL  RELAT  {label}", file=sys.stderr)
+            for m in ms:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            print(f"# OK    RELAT  {label}")
+
     if all_mismatches:
         print(f"# verify_cross_paper_consistency.py — "
               f"{len(all_mismatches)} cross-paper drift(s)",
               file=sys.stderr)
         return 1
     n_total = (len(EXACT_MATCH_CLAIMS) + len(SCOPED_DIFF_CLAIMS) +
-               len(ACKNOWLEDGES_CLAIMS))
+               len(ACKNOWLEDGES_CLAIMS) + len(RELATIONAL_CLAIMS))
     print(f"# verify_cross_paper_consistency.py — "
           f"{n_total} cross-paper claims verified, 0 drift")
     return 0

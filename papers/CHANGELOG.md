@@ -107,24 +107,30 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–127)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–130)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty** independent passes
-total across Loops 59–127 (50-pass milestone reached at Loop
-127). The first 11 (Loops 59, 61, 75–85) targeted the original
-paper drafts and submission flow; Loops 86–127 extended the
-discipline to round-N audits where each substantive patch is
-independently re-audited the loop after it lands. Detail on
-passes 1–11 below; passes 12–50 are summarized in §10 (CI gate
-evolution arc Loops 87–118; subsequent passes documented in
-per-loop commit messages). The combined breadcrumb is
-`git log --oneline --grep="adversarial pass" --grep="round-"`
-which surfaces ≥35 commits across Loops 90–127 (49th pass
-flagged the un-widened grep covered only ~35 of 50 passes; the
-two-pattern form widens reach).
+caught before reviewers saw them. **Fifty-three** independent
+passes total across Loops 59–130 (50-pass milestone reached at
+Loop 127; passes 51–53 dispatched at Loops 128–130). The first
+11 (Loops 59, 61, 75–85) targeted the original paper drafts and
+submission flow; Loops 86–130 extended the discipline to round-N
+audits where each substantive patch is independently re-audited
+the loop after it lands. Detail on passes 1–11 below; passes
+12–53 are summarized in §10 (CI gate evolution arc Loops 87–130;
+subsequent passes documented in per-loop commit messages). The
+combined breadcrumb is `git log --oneline --grep="adversarial
+pass" --grep="round-"` which surfaces ≥35 commits across Loops
+90–130 (49th pass flagged the un-widened grep covered only
+~35 of 53 passes; the two-pattern form widens reach).
 
 #### 50-pass milestone (Loop 127, 2026-06-02)
+
+*Postscript (Loop 130)*: 3 additional passes (51 at Loop 128, 52 at
+Loop 129, 53 at Loop 130) were dispatched after this milestone was
+recorded; the lead paragraph above tracks the current cumulative
+count (53). The retrospective below documents the cycle that led to
+the 50-pass mark and is preserved as a frozen historical record.
 
 The 27→50 audit cycle (rounds N=1..23 across Loops 104–127)
 followed a productive pattern: each substantive patch was
@@ -261,7 +267,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–118)
+### 10. CI gate evolution (Loops 87–130)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -314,8 +320,38 @@ Stage additions since the original 8-script catalogue:
   paper claims of "N stages" against the actual `STAGES` array
   count in `run_all_checks.sh`. Closes the SEV-2 prose-drift
   class that the 39th + 40th adversarial passes both surfaced.
+- **Loop 121** — `verify_cross_paper_consistency.py` added with 3
+  claim classes (EXACT_MATCH, SCOPED_DIFF, ACKNOWLEDGES). Gates
+  cross-paper numeric claims (F2 ↔ #1021) for self-consistency
+  and explicit acknowledgement of intentional scope differences.
+- **Loop 124** — `meta_test_cross_paper_gates.py` added. Synthetic-
+  failure tests for each class of cross-paper gate. Closes the
+  46th-pass "gate ships with no enforcement" class (originally a
+  `\\bf12` regex typo that made the ACKN gate a no-op).
+- **Loop 129 C** — `verify_stage_count_consistency.py` registry
+  extended with `SUBMISSION_CHECKLIST.md` §1 "exits 0 with **N/N
+  PASS**" pattern. Closes the 52nd-pass submission-readiness audit
+  finding that §1's `13/13` count drifted silently as new stages
+  were added.
+- **Loop 130 C** — `verify_submission_readiness.py` added (22nd
+  stage). Parses SUBMISSION_CHECKLIST.md §1 sub-bullet enumeration
+  `(k/M) <name> — <desc>` and asserts: (1) sub-bullet count equals
+  STAGES count, (2) every `M` denominator matches the actual count,
+  (3) `k` numerators are exactly `[1..N]` monotonic, (4) per-position
+  name overlap (Jaccard ≥ 0.30, case-folded, stop-word filtered)
+  between sub-bullet and STAGES entry. Operationalizes the audit
+  finding fully: the §1 N/N gate added in Loop 129 only caught the
+  top-line; this gate catches every sub-list drift class.
+- **Loop 130 B** — `verify_cross_paper_consistency.py` extended with
+  `RELATIONAL_CLAIMS` class. First entry: non-anon ≥ anon page
+  count (anonymization can only replace content with an
+  equal-or-shorter `[OMITTED FOR DOUBLE-BLIND REVIEW]` placeholder,
+  so the non-anon page count must dominate). `meta_test_cross_paper_gates.py`
+  extended in lock-step with a synthetic break-test, keeping the
+  Loop 126 B inventory-completeness check green (4/4 classes
+  covered → 5/5 break-tests pass).
 
-The on-disk gate now runs **21 stages** (verified by the new
+The on-disk gate now runs **22 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.
@@ -345,11 +381,11 @@ CHANGELOG section for the full enumeration.
 
 ```bash
 git checkout <anchor commit on f2-methodology>
-papers/scripts/run_all_checks.sh  # 6-stage CI gate, ~30 s
+papers/scripts/run_all_checks.sh  # 22-stage CI gate, ~60 s warm
 # Outputs:
-#   papers/tmlr_submission_kit/test_compile.pdf       (37 pp non-anon)
-#   papers/tmlr_submission_kit/test_compile_anon.pdf  (34 pp anon)
-#   papers/tmlr_submission_kit/test_compile_tmlr.pdf  (23 pp TMLR class)
+#   papers/tmlr_submission_kit/test_compile.pdf       (43 pp non-anon)
+#   papers/tmlr_submission_kit/test_compile_anon.pdf  (42 pp anon)
+#   papers/tmlr_submission_kit/test_compile_tmlr.pdf  (27 pp TMLR class)
 #   papers/tmlr_submission_kit/f2_methodology_supp.zip
 #   papers/figures/fig{1,2,3,4,5,6}_*.png             (regenerated)
 #   papers/appendix_d_test_inventory.md               (regenerated)

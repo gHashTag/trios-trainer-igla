@@ -34,6 +34,7 @@ Usage:
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -91,6 +92,21 @@ g.ACKNOWLEDGES_CLAIMS = [
     )
     for spec in _saved_ackn
 ]
+g.RELATIONAL_CLAIMS = [
+    (
+        regex_a,
+        (g.F2_PAPER if paper_a == _orig_f2 else
+         (g.ISSUE1021_PAPER if paper_a == _orig_i1021
+          else g.SUBMISSION_CHECKLIST)),
+        regex_b,
+        (g.F2_PAPER if paper_b == _orig_f2 else
+         (g.ISSUE1021_PAPER if paper_b == _orig_i1021
+          else g.SUBMISSION_CHECKLIST)),
+        cmp_name,
+        label,
+    )
+    for (regex_a, paper_a, regex_b, paper_b, cmp_name, label) in _saved_rel
+]
 sys.exit(g.main())
 """
     # The shim references _orig_f2/_orig_i1021/_saved_* — prepend the
@@ -101,6 +117,7 @@ _orig_i1021 = Path({str(ISSUE1021)!r})
 _saved_exact = list(g.EXACT_MATCH_CLAIMS)
 _saved_scoped = list(g.SCOPED_DIFF_CLAIMS)
 _saved_ackn = list(g.ACKNOWLEDGES_CLAIMS)
+_saved_rel = list(g.RELATIONAL_CLAIMS)
 """
     full = shim.replace(
         "g.EXACT_MATCH_CLAIMS = [",
@@ -161,6 +178,44 @@ def test_scoped_diff_break_lib_count(tmp: Path) -> bool:
     )
 
 
+def test_relational_break_non_anon_lt_anon(tmp: Path) -> bool:
+    """Mutate SUBMISSION_CHECKLIST so non-anon < anon (impossible by the
+    anonymization invariant) and assert the gate fires.
+
+    Loop 130 B (52nd-pass deferred SEV-3 closure): adds RELATIONAL class
+    coverage so the meta-test's inventory_completeness check stays green
+    when the new class is registered."""
+    chk_tmp = tmp / "checklist_inverted.md"
+    text = CHECKLIST.read_text()
+    # Set non-anon to 30, anon to 50 — clearly violates the ≥ invariant
+    # without trampling other SCOPED_DIFF exact pins (which are also in
+    # the same file but use different regexes that will fail to extract
+    # the new values gracefully via SCOPED_DIFF failure rather than
+    # masking the RELATIONAL failure).
+    broken = re.sub(
+        r"Non-anonymized PDF: \*\*\d+ pages\*\*",
+        "Non-anonymized PDF: **30 pages**",
+        text, count=1,
+    )
+    broken = re.sub(
+        r"Anonymized PDF: \*\*\d+ pages\*\*",
+        "Anonymized PDF: **50 pages**",
+        broken, count=1,
+    )
+    if broken == text:
+        print("# SKIP relational break: SUBMISSION_CHECKLIST didn't "
+              "contain the expected page-count patterns",
+              file=sys.stderr)
+        return True
+    chk_tmp.write_text(broken)
+    rc, err = run_gate(checklist_override=chk_tmp)
+    return assert_fails_with(
+        "RELATIONAL break (non-anon < anon)",
+        "invariant violated",
+        rc, err,
+    )
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -203,7 +258,7 @@ def test_inventory_completeness() -> bool:
         if name.endswith("_CLAIMS") and isinstance(getattr(g, name), list)
     }
     # Each class must have at least one break-test below.
-    tested_classes = {"EXACT_MATCH", "SCOPED_DIFF", "ACKNOWLEDGES"}
+    tested_classes = {"EXACT_MATCH", "SCOPED_DIFF", "ACKNOWLEDGES", "RELATIONAL"}
     missing = registered_classes - tested_classes
     extra = tested_classes - registered_classes
     if missing:
@@ -237,6 +292,7 @@ def main() -> int:
             ("exact_match_f2_total", test_exact_match_break_f2_total),
             ("scoped_diff_lib_count", test_scoped_diff_break_lib_count),
             ("acknowledges_remove_ack", test_acknowledges_break_remove_ack),
+            ("relational_non_anon_lt_anon", test_relational_break_non_anon_lt_anon),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -246,7 +302,7 @@ def main() -> int:
               "tests passed", file=sys.stderr)
         return 1
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
-          "tests passed; gate enforces its 3 claim classes")
+          "tests passed; gate enforces its 4 claim classes")
     return 0
 
 
