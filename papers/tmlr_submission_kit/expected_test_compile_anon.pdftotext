@@ -1588,11 +1588,17 @@ CSVs from data/loop49/ and data/loop49_swap/ through f2_to_jsonl
 and f2_mediation_sensitivity; regenerate all six paper figures. Cold:
 3–8 min (release-profile build of two F2 bins).
 • papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold)
-— single-shot CI gate chaining all seven scripts above plus pack_supplementary.sh;
-exits 0 only if every stage passes.
+— single-shot CI gate. Currently chains 17 stages on disk (the seven
 39
 
-papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
+scripts catalogued above plus additional gates introduced after this paper was originally drafted: Markdown lint, label-consistency, formulavs-table, per-producer preamble verification, smoke tests for the #1021
+follow-up paper’s binaries, the #1021 paper’s cross-reference audit,
+and the supplementary-zip packer). Exits 0 only if every stage passes.
+The catalogue above is the original 7 the paper relied on at draft time;
+the additional 10 are documented in this paper’s CHANGELOG.md
+?? and in the follow-up paper’s section 5.4.
+
+papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
 + f2_provenance_check + papers/scripts/verify_paper_metadata.py
 as a three-stage pre-flight before building the supplementary zip; any single
 failure aborts the pack. The intent is that no supplementary artifact ever
@@ -1612,16 +1618,18 @@ quantization work we know of, in any domain.
 Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for
 two mediators: A natural counterfactual interaction effect framework.
 arXiv preprint arXiv:2007.16031, 2020. Published as PMC9139468; nointeraction reduction supplies the four-PSE collapse used in F2 §3.2.
-Michael Hagmann, Stefan Meier, and Stefan Riezler. Towards inferential reproducibility of machine learning research. arXiv preprint
-arXiv:2302.04054, 2023. Seed-stability motivation for F2 provenance discipline.
+Michael Hagmann, Stefan Meier, and Stefan Riezler.
+ential reproducibility of machine learning research.
+40
+
+Towards inferarXiv preprint
+
+arXiv:2302.04054, 2023. Seed-stability motivation for F2 provenance discipline.
 Guanglei Hong, Fan Yang, and Xu Qin. Posttreatment confounding in
 causal mediation studies: A cutting-edge problem and a novel solution
 via sensitivity analysis. Biometrics, 2023. doi: 10.1111/biom.13705.
 arXiv:2107.11014 preprint.
-
-40
-
-InfiR2 Authors. InfiR2: A comprehensive FP8 training recipe for reasoningenhanced language models. arXiv preprint arXiv:2509.22536, 2025.
+InfiR2 Authors. InfiR2: A comprehensive FP8 training recipe for reasoningenhanced language models. arXiv preprint arXiv:2509.22536, 2025.
 WITHDRAWN by authors 2025-10-17 due to a data processing pipeline
 bug invalidating reported results. Retained here only as historical context
 for FP8 training-recipe attempts; F2 §9.4 cites with an explicit withdrawal
@@ -1645,15 +1653,16 @@ paper) — Loop 55 caught this conflation in F2 §9.
 Caleb H. Miles, Ilya Shpitser, Phyllis Kanki, Seema Meloni, and Eric J.
 Tchetgen Tchetgen. On semiparametric estimation of a path-specific effect in the presence of mediator-outcome confounding. arXiv preprint
 arXiv:1710.02011, 2017. Eﬀicient influence function basis for the deltamethod reduction used in §3.2 (no-interaction regime).
-Yuki Ohnishi and Fan Li. Sensitivity analysis for causal mediation:
+
+41
+
+Yuki Ohnishi and Fan Li. Sensitivity analysis for causal mediation:
 bridge score, sharp sensitivity bounds, and calibration. arXiv preprint
 arXiv:2605.18724, 2026. arXiv title corrected against the live arXiv record
 at Loop 97 (was previously paraphrased as ”Additive bridge- score sensitivity envelopes for path-specific effects”, which conflated the framing
 in our §3.3 with the source title). Theorem 2 / Eq. (5) supplies the additive bound we use in F2 §3.3; uniform-scalar reduction Γ := sup γa ,
 Λ := sup ηa described in §3.3.
-41
-
-Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv
+Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv
 preprint arXiv:2508.10083, 2025. Motivates Student-t default over BCa
 at N=5 by documenting BCa undercoverage.
 Andrei Panferov, Jiale Chen, Soroush Tabesh, Roberto L. Castro, Mahdi

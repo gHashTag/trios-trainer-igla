@@ -1471,7 +1471,10 @@ Markdown source; run xelatex + BibTeX 3-pass × 3 variants (non-anon, anon, real
 • papers/scripts/figure_regen.sh ( 10 s warm) — stage committed CSVs from data/loop49/
 and data/loop49_swap/ through f2_to_jsonl and f2_mediation_sensitivity; regenerate all six
 paper figures. Cold: 3–8 min (release-profile build of two F2 bins).
-• papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold) — single-shot CI gate chaining all seven scripts above plus pack_supplementary.sh; exits 0 only if every stage passes.
+• papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold) — single-shot CI gate. Currently chains 17 stages on disk (the seven scripts catalogued above plus additional gates introduced
+after this paper was originally drafted: Markdown lint, label-consistency, formula-vs-table, perproducer preamble verification, smoke tests for the #1021 follow-up paper’s binaries, the #1021
+paper’s cross-reference audit, and the supplementary-zip packer). Exits 0 only if every stage passes.
+The catalogue above is the original 7 the paper relied on at draft time; the additional 10 are documented in this paper’s CHANGELOG.md ?? and in the follow-up paper’s section 5.4.
 papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.sh +
 f2_provenance_check + papers/scripts/verify_paper_metadata.py as a three-stage pre-flight before
 building the supplementary zip; any single failure aborts the pack. The intent is that no supplementary
@@ -1491,12 +1494,12 @@ radio receivers. arXiv preprint arXiv:2511.01921, 2025. Loop 80 corrected attrib
 Fibonacci-binary quantization work we know of, in any domain.
 Iordanis Fostiropoulos and Laurent Itti. ABLATOR: Robust horizontal-scaling of machine learning ablation experiments. In Proceedings of the 2nd International Conference on Automated Machine Learning
 (AutoML), 2023. Closest infrastructure work to F2; stops at multi-seed ranking without mediation decomposition.
-Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for two mediators: A natural counterfactual interaction effect framework. arXiv preprint arXiv:2007.16031, 2020. Published as PMC9139468;
-no-interaction reduction supplies the four-PSE collapse used in F2 §3.2.
 25
 
 Under review as submission to TMLR
 
+Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for two mediators: A natural counterfactual interaction effect framework. arXiv preprint arXiv:2007.16031, 2020. Published as PMC9139468;
+no-interaction reduction supplies the four-PSE collapse used in F2 §3.2.
 Hao Guo, Wei Liu, et al. Sensitivity analysis for unmeasured confounding in causal mediation analysis with
 survival outcome. Statistics in Medicine, 45(8-9):e70548, 2026. doi: 10.1002/sim.70548. Author order
 verified; check final journal record at proof time for the full author list.
@@ -1537,12 +1540,12 @@ and calibration. arXiv preprint arXiv:2605.18724, 2026. arXiv title corrected ag
 at Loop 97 (was previously paraphrased as ”Additive bridge- score sensitivity envelopes for path-specific
 effects”, which conflated the framing in our §3.3 with the source title). Theorem 2 / Eq. (5) supplies the
 additive bound we use in F2 §3.3; uniform-scalar reduction Γ := sup γa , Λ := sup ηa described in §3.3.
-Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv preprint arXiv:2508.10083, 2025.
-Motivates Student-t default over BCa at N=5 by documenting BCa undercoverage.
 26
 
 Under review as submission to TMLR
 
+Art B. Owen. Better bootstrap-t confidence intervals for the mean. arXiv preprint arXiv:2508.10083, 2025.
+Motivates Student-t default over BCa at N=5 by documenting BCa undercoverage.
 Andrei Panferov, Jiale Chen, Soroush Tabesh, Roberto L. Castro, Mahdi Nikdan, and Dan Alistarh. QuEST:
 Stable training of LLMs with 1-bit weights and activations. arXiv preprint arXiv:2502.05003, 2025. Loop
 80 corrected: 6-author list verified; title is about stable 1-bit training (not ”scaling laws”). F2 cites loosely

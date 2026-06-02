@@ -1727,8 +1727,17 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate chaining all seven scripts above
-  plus `pack_supplementary.sh`; exits 0 only if every stage passes.
+  cold**) — single-shot CI gate. Currently chains **17 stages**
+  on disk (the seven scripts catalogued above plus additional
+  gates introduced after this paper was originally drafted:
+  Markdown lint, label-consistency, formula-vs-table,
+  per-producer preamble verification, smoke tests for the #1021
+  follow-up paper's binaries, the #1021 paper's cross-reference
+  audit, and the supplementary-zip packer). Exits 0 only if
+  every stage passes. The catalogue above is the original 7
+  the paper relied on at draft time; the additional 10 are
+  documented in this paper's CHANGELOG.md §7.5 and in the
+  follow-up paper's §5.4.
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +

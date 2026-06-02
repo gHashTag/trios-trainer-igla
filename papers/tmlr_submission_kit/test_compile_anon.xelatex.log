@@ -342,18 +342,21 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (64.04846pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 — single-shot CI gate chaining all seven scripts above plus \
-TU/lmtt/m/n/10.95 pack_supplementary.sh\TU/lmr/m/n/10.95 ;
-)
+LaTeX Warning: Reference `sec:7.5' on page 1 undefined on input line 1689.
+
+[39])
 Overfull \hbox (139.8292pt too wide) in paragraph at lines 1692--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
 /n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
-[39] (./test_compile_anon.bbl [40]
+(./test_compile_anon.bbl [40]
 Underfull \hbox (badness 2564) in paragraph at lines 92--98
 []\TU/lmr/m/n/10.95 Microsoft.  BitNet b1.58 2B4T technical report.  \TU/lmr/m/
 it/10.95 arXiv preprint
-[41]) [42] (./test_compile_anon.aux) )
+[41]) [42] (./test_compile_anon.aux)
+
+LaTeX Warning: There were undefined references.
+
+ )
 (see the transcript file for additional information)
 Output written on test_compile_anon.pdf (42 pages).
 Transcript written on test_compile_anon.log.

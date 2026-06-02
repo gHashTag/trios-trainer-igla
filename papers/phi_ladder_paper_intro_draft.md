@@ -758,9 +758,11 @@ runtime — for cheap-to-invoke producers (currently
 `f2_pairwise_perm`), it builds and runs the binary on a tiny
 synthetic input and parses the live output, catching cases where
 a `writeln!(...# prov:...)` is present in source but gated by a
-runtime conditional. Adding a producer to F2 without updating
-§5.1 (or §5.1 without changing the binary) fails the gate
-immediately.
+runtime conditional. **Either mode's failure exits non-zero and
+fails the CI gate's preamble-per-producer stage** (39th
+adversarial pass, Loop 116, clarified this behavior was
+unstated). Adding a producer to F2 without updating §5.1 (or §5.1
+without changing the binary) fails the gate immediately.
 
 The 6 post-run reports:
 
@@ -828,9 +830,11 @@ caught and require an explicit `--update-snapshot` to refresh.
 The companion paper's CI gate (16 stages on disk as of Loop 115)
 will be extended with two additional new stages for this run:
 
-- `verify_run_completeness.py` (*to be implemented*) — checks
+- `verify_run_completeness.py` — implemented at Loop 116; checks
   all 93 CSVs are present in `data/issue1021/run0/` and each
-  parses against the schema in §5.1.
+  parses against the schema in §5.1. Pre-sweep runs (when the
+  run directory doesn't exist) exit 0 vacuously, mirroring
+  `verify_provenance.sh`'s pre-registration pattern.
 - `verify_report_consistency.py` (*to be implemented*) — checks
   each report's numeric claims against the source CSVs (a
   generalization of the per-table CSV-grounding script from

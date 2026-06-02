@@ -1615,8 +1615,13 @@ CSVs from data/loop49/ and data/loop49_swap/ through f2_to_jsonl
 and f2_mediation_sensitivity; regenerate all six paper figures. Cold:
 3–8 min (release-profile build of two F2 bins).
 • papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold)
-— single-shot CI gate chaining all seven scripts above plus pack_supplementary.sh;
-exits 0 only if every stage passes.
+— single-shot CI gate. Currently chains 17 stages on disk (the seven
+scripts catalogued above plus additional gates introduced after this paper was originally drafted: Markdown lint, label-consistency, formulavs-table, per-producer preamble verification, smoke tests for the #1021
+follow-up paper’s binaries, the #1021 paper’s cross-reference audit,
+and the supplementary-zip packer). Exits 0 only if every stage passes.
+The catalogue above is the original 7 the paper relied on at draft time;
+the additional 10 are documented in this paper’s CHANGELOG.md
+?? and in the follow-up paper’s section 5.4.
 
 papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
 + f2_provenance_check + papers/scripts/verify_paper_metadata.py
@@ -1631,11 +1636,11 @@ system identifies 38% of original ablations). Orthogonal to F2’s analysisof-gi
 Iván Díaz, Nima S. Hejazi, Kara E. Rudolph, and Mark J. van der Laan.
 Non-parametric eﬀicient causal mediation with intermediate confounders.
 Biometrika, 108(3):627–641, 2021. arXiv:1912.09936 preprint.
-Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
-arXiv:2511.01921, 2025. Loop 80 corrected attribution from ”SchmidtMengin et al.” (fabricated). Paper applies Fibonacci-code-word quantization to NEURAL RADIO RECEIVERS, not transformer LLMs. F2 §9.4
 40
 
-cites with the correct narrow scope — the only published Fibonacci-binary
+Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
+arXiv:2511.01921, 2025. Loop 80 corrected attribution from ”SchmidtMengin et al.” (fabricated). Paper applies Fibonacci-code-word quantization to NEURAL RADIO RECEIVERS, not transformer LLMs. F2 §9.4
+cites with the correct narrow scope — the only published Fibonacci-binary
 quantization work we know of, in any domain.
 Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for
 two mediators: A natural counterfactual interaction effect framework.
@@ -1658,16 +1663,17 @@ preamble convention adopted in F2 §3.5.1. Loop 80 corrected the firstauthor att
 an 18-author group.
 Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101, 2017. Pre-ICLR preprint of
 loshchilov2019adamw.
-Shuming Ma et al. The era of 1-bit LLMs: All large language models are in
+
+41
+
+Shuming Ma et al. The era of 1-bit LLMs: All large language models are in
 1.58 bits. arXiv preprint arXiv:2402.17764, 2024. Original BitNet b1.58
 paper.
 Microsoft.
 BitNet b1.58 2B4T technical report.
 arXiv preprint
 arXiv:2504.12285, 2025. 2B parameter, 4T token instantiation of the
-41
-
-b1.58 recipe. NOT to be confused with arXiv:2402.17764 (the original
+b1.58 recipe. NOT to be confused with arXiv:2402.17764 (the original
 paper) — Loop 55 caught this conflation in F2 §9.
 Caleb H. Miles, Ilya Shpitser, Phyllis Kanki, Seema Meloni, and Eric J.
 Tchetgen Tchetgen. On semiparametric estimation of a path-specific effect in the presence of mediator-outcome confounding. arXiv preprint
@@ -1692,6 +1698,5 @@ mediation effects under intermediate confounding and monotonicity constraints. B
 preprint.
 Amit Sharma and Emre Kıcıman. DoWhy: An end-to-end library for
 causal inference. arXiv preprint arXiv:2011.04216, 2020. Flat-recordper-estimate JSONL convention adopted by f2_to_jsonl.
-
 42
 

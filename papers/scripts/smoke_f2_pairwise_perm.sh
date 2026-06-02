@@ -120,11 +120,25 @@ if [[ $PROV_EXIT -ge 2 ]]; then
     exit 1
 fi
 
-# Loop 114 B: also reject WARN-on-agent_git_sha specifically. If the
+# Loop 114 B: reject WARN-on-agent_git_sha specifically. If the
 # preamble's agent_git_sha somehow differs from the env-fed SHA, the
 # checker emits a WARN line; we treat that as a smoke failure since
 # the SHA mismatch indicates a silent regression in the binary's
 # preamble writer.
+#
+# Loop 116 C (38th pass A3 hardening): defense-in-depth — first
+# assert that f2_provenance_check actually examined agent_git_sha
+# (it should emit a PASS/WARN/FAIL line for it). A negative-only
+# grep can't distinguish "no WARN found" from "no agent_git_sha
+# check ran at all", which can happen if the checker's output
+# format changes (JSON mode, colorization, key rename). This positive
+# assertion catches all three classes.
+if ! grep -E "^(PASS|WARN|FAIL) +agent_git_sha" /tmp/prov_check_output.log > /dev/null; then
+    echo "FAIL: f2_provenance_check did not check agent_git_sha at all" \
+         "— output format may have changed (JSON mode, colorization, key rename)" >&2
+    cat /tmp/prov_check_output.log >&2
+    exit 1
+fi
 if grep -E "^WARN +agent_git_sha" /tmp/prov_check_output.log > /dev/null; then
     echo "FAIL: f2_provenance_check WARN on agent_git_sha — preamble" \
          "SHA does not match the F2_GIT_SHA env var passed to the binary" >&2
