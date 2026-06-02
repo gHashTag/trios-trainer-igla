@@ -77,6 +77,14 @@ CLAIMS: list[tuple[str, str, str]] = [
         r"on-disk gate now runs \*\*(\d+) stages\*\*",
         "CHANGELOG §10 on-disk gate count",
     ),
+    # SUBMISSION_CHECKLIST.md §1 "exits 0 with **N/N PASS**" (Loop 129 C —
+    # operationalizes the submission-readiness audit finding that §1's
+    # "13/13" wording drifted silently as new stages were added).
+    (
+        "papers/SUBMISSION_CHECKLIST.md",
+        r"exits 0 with \*\*(\d+)/\d+ PASS\*\*",
+        "SUBMISSION_CHECKLIST §1 exit-message stage count",
+    ),
 ]
 
 

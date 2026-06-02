@@ -19,21 +19,29 @@ placeholder below).
 
 Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
 
-- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **13/13 PASS**
-  - [ ] (1/13) cross-reference audit (companion paper) — 0 dangling refs
-  - [ ] (2/13) metadata verifier — title/tests/bib/figures parity
-  - [ ] (3/13) no fabricated SHAs — `git cat-file -e` per SHA-like token
-  - [ ] (4/13) markdown lint — 0 SEV-≥4 issues
-  - [ ] (5/13) tables vs CSVs — 6 tables × 119 numeric assertions verified
-  - [ ] (6/13) formulas vs tables — 4 algebraic identities (closure +
+- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **21/21 PASS**
+  - [ ] (1/21) cross-reference audit (companion paper) — 0 dangling refs
+  - [ ] (2/21) metadata verifier — title/tests/bib/figures parity
+  - [ ] (3/21) no fabricated SHAs — `git cat-file -e` per SHA-like token
+  - [ ] (4/21) markdown lint — 0 SEV-≥4 issues
+  - [ ] (5/21) tables vs CSVs — 6 tables × 119 numeric assertions verified
+  - [ ] (6/21) formulas vs tables — 4 algebraic identities (closure +
         Γ_tip bullets + headline-table + #1021 arithmetic) — 44 assertions
-  - [ ] (7/13) label consistency — 7 deprecated-term rules, 0 leaks
-  - [ ] (8/13) #1021 cross-ref audit — informational
-  - [ ] (9/13) #1021 markdown lint — 0 SEV-≥4 issues
-  - [ ] (10/13) test inventory regen — `cargo test --list` re-emits 805
-  - [ ] (11/13) xelatex 3-variant compile — non-anon, anon, real TMLR class
-  - [ ] (12/13) figure regen — all 6 figures rebuild from CSVs
-  - [ ] (13/13) supplementary pack — zip builds with 3-stage pre-flight
+  - [ ] (7/21) label consistency — 7 deprecated-term rules, 0 leaks
+  - [ ] (8/21) preamble per producer — static + runtime W3C-PROV gate
+  - [ ] (9/21) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
+  - [ ] (10/21) run completeness — 93-CSV inventory check (vacuous pre-sweep)
+  - [ ] (11/21) report consistency — 6 reports (2 full + 4 stub coverage)
+  - [ ] (12/21) stage count consistency — 4 counts + 2 decompositions + 1 derived
+  - [ ] (13/21) cross-paper consistency — 7 claims (1 EXACT + 5 SCOPED + 1 ACKN)
+  - [ ] (14/21) cross-paper gate meta-test — 4 synthetic-break tests PASS
+  - [ ] (15/21) f2_pairwise_perm smoke — end-to-end binary test + prov check
+  - [ ] (16/21) #1021 cross-ref audit — informational
+  - [ ] (17/21) #1021 markdown lint — 0 SEV-≥4 issues
+  - [ ] (18/21) test inventory regen — `cargo test --list` re-emits 809
+  - [ ] (19/21) xelatex 3-variant compile — non-anon, anon, real TMLR class
+  - [ ] (20/21) figure regen — all 6 figures rebuild from CSVs
+  - [ ] (21/21) supplementary pack — zip builds with 3-stage pre-flight
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -54,9 +62,12 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 26 VERIFIED + 1 VERIFIED-WITHDRAWN
       (96%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 31 passes across Loops 59-108
-      (`docs/ADVERSARIAL_REVIEW_LOG.md`). Last clean pass: Loop 108
-      31st pass; all prior passes addressed.
+- [ ] **Adversarial review**: 52 passes across Loops 59-129
+      (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
+      passes 19-52 documented in `papers/CHANGELOG.md` §7 50-pass
+      milestone retrospective and per-loop commit messages). All
+      passes addressed; gate-design SEV catches surface in round-N
+      audits at N≥5.
 
 ## 3. Anonymization (TMLR double-blind)
 
