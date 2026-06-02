@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–133)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–134)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty-six** independent
-passes total across Loops 59–133 (50-pass milestone reached at
-Loop 127; passes 51–56 dispatched at Loops 128–133). The first
+caught before reviewers saw them. **Fifty-seven** independent
+passes total across Loops 59–134 (50-pass milestone reached at
+Loop 127; passes 51–57 dispatched at Loops 128–134). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–133 extended the discipline to round-N
+submission flow; Loops 86–134 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–56 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–133; per-pass detail lives in
+12–57 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–134; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–133 (49th pass flagged the un-widened grep covered only
-~35 of 56 passes; the two-pattern form widens reach).
+90–134 (49th pass flagged the un-widened grep covered only
+~35 of 57 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–133)
+### 10. CI gate evolution (Loops 87–134)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -404,7 +404,7 @@ Stage additions since the original 8-script catalogue:
   drift" pattern (preserves Loop 132 B's generator as a binding
   artifact rather than informational only).
 
-The on-disk gate now runs **26 stages** (verified by the new
+The on-disk gate now runs **27 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

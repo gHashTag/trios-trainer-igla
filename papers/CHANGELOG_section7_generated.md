@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **44**; distinct loops referenced: **38**.
+Total commits matched: **46**; distinct loops referenced: **40**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -44,3 +44,5 @@ Total commits matched: **44**; distinct loops referenced: **38**.
 | 129 | `296d6e6` | fix(f2): SUBMISSION_CHECKLIST §1 stage-count gate + STALE deferrals (Loop 129) |
 | 130 | `8fbb6dc` | feat(f2): 22nd CI stage + RELATIONAL invariant + 53rd-pass closures (Loop 130) |
 | 131 | `bc715f0` | feat(f2): 23rd CI stage + RELATIONAL growth + 54th-pass closures (Loop 131) |
+| 132 | `5b43230` | feat(f2): 24th CI stage + 55th-pass closures + ratchet anonymizer (Loop 132) |
+| 133 | `baf24c4` | feat(f2): 25/26th CI stages + EXACT_PIN class + §E burn-down (Loop 133) |

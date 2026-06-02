@@ -216,7 +216,36 @@ def check_exact_pin(spec: tuple[str, Path, int, str]) -> list[str]:
         return [
             f"{label}: {paper.name}:{line_no} = {val} != expected pin {expected}"
         ]
+    # Loop 134 — 57th-pass SEV-4 fix #9: assert the pattern matches
+    # exactly once in the document. Multiple matches mean the gate is
+    # picking the first one by convention; a future bump of the
+    # primary anchor while a stale duplicate (e.g., footnote, appendix)
+    # stays at the old value would silently pass.
+    text = paper.read_text()
+    n_matches = len(re.findall(pat, text))
+    if n_matches > 1:
+        return [
+            f"{label}: pattern {pat!r} matches {n_matches}× in "
+            f"{paper.name} — ambiguous which occurrence is the pin. "
+            "Tighten the regex with surrounding context to select one."
+        ]
     return []
+
+
+# Loop 134 — 57th-pass SEV-4 fix #11: canonical label aliases moved
+# here as the single source of truth. Paper prose uses abbreviated
+# labels (EXACT, SCOPED, ACKN, RELATIONAL, EXACT_PIN); the gate's
+# *_CLAIMS list names use the canonical longer forms. Other scripts
+# (e.g., verify_class_registry_binding.py) import this mapping.
+CLASS_LABEL_ALIASES: dict[str, str] = {
+    "EXACT": "EXACT_MATCH",
+    "SCOPED": "SCOPED_DIFF",
+    "ACKN": "ACKNOWLEDGES",
+    "RELATIONAL": "RELATIONAL",
+    "EXACT_PIN": "EXACT_PIN",
+    # Legacy alias for the early Loop 133 drafts that used "PIN" alone.
+    "PIN": "EXACT_PIN",
+}
 
 
 # RELATIONAL: two integer claims must satisfy a relational invariant.

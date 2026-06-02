@@ -49,30 +49,69 @@ exceeds its registered baseline.
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
 
 CRATE_ROOT = Path(__file__).resolve().parents[2]
 
-# Files subject to TMLR anonymization, with per-file BASELINE bare-
-# anchor counts. Order matters only for stable diagnostic output.
-#
-# Ratchet rule: file's current leak count must be ≤ BASELINE. New
-# additions fail the gate. Reductions below baseline are reported
-# as informational "good news" — but DO NOT auto-lower BASELINE
-# here; that requires an explicit Loop-N commit so the burn-down is
-# visible in git log. Lowering without commit would silently re-arm
-# the ratchet at the new lower bound.
-#
-# Baseline snapshot. Loop 132: 72 total (29 + 43). Loop 133 A.iv
-# burn-down on f2_methodology: 29 → 22 (−7, F2 §E catalogue rewrite).
-# Loop 133 added 3 phi_ladder §5.4 partition Loop-N refs for the
-# meta-test + Loop 133 B/C verifiers (43 → 46). Total now 68.
-SCAN_TARGETS: list[tuple[Path, int]] = [
-    (CRATE_ROOT / "papers" / "f2_methodology.md", 22),
-    (CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md", 46),
-]
+# Loop 134 B: baselines now live in a JSON sidecar so a burn-down
+# loop's baseline bump is a one-line diff to data, not a code edit.
+# The sidecar path is fixed; if the file is missing or malformed,
+# the gate falls back to FALLBACK_BASELINES and warns. This preserves
+# the ratchet semantics — the gate never silently auto-lowers.
+BASELINE_SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json"
+
+# Files subject to TMLR anonymization. Per-file baselines come from
+# the sidecar (FALLBACK_BASELINES is the rescue value if the sidecar
+# can't be read). Loop 133 A.iv: 22 + 46 = 68. Loop 134 A.iii §5.4
+# burn-down: 22 + 39 = 61.
+FALLBACK_BASELINES = {
+    "papers/f2_methodology.md": 22,
+    "papers/phi_ladder_paper_intro_draft.md": 39,
+}
+
+
+def _load_baselines() -> tuple[dict[str, int], list[str]]:
+    """Read sidecar JSON; return (baselines, warnings)."""
+    warnings: list[str] = []
+    if not BASELINE_SIDECAR.exists():
+        warnings.append(
+            f"sidecar {BASELINE_SIDECAR.relative_to(CRATE_ROOT)} missing; "
+            "using FALLBACK_BASELINES (in-code defaults)")
+        return dict(FALLBACK_BASELINES), warnings
+    try:
+        data = json.loads(BASELINE_SIDECAR.read_text())
+    except json.JSONDecodeError as e:
+        warnings.append(
+            f"sidecar JSON parse error ({e}); using FALLBACK_BASELINES")
+        return dict(FALLBACK_BASELINES), warnings
+    bl = data.get("baselines")
+    if not isinstance(bl, dict):
+        warnings.append(
+            "sidecar lacks 'baselines' dict; using FALLBACK_BASELINES")
+        return dict(FALLBACK_BASELINES), warnings
+    out: dict[str, int] = {}
+    for k, v in bl.items():
+        if isinstance(v, int) and v >= 0:
+            out[k] = v
+        else:
+            warnings.append(f"sidecar baseline {k!r}={v!r} not non-negative int; skipping")
+    return out, warnings
+
+
+def _scan_targets() -> list[tuple[Path, int]]:
+    """Resolve baselines into (absolute_path, baseline) tuples."""
+    bl, warnings = _load_baselines()
+    for w in warnings:
+        print(f"# WARN  {w}", file=sys.stderr)
+    return [(CRATE_ROOT / rel, count) for rel, count in bl.items()]
+
+
+# Computed at module-init for backward compatibility with old import
+# patterns that expected SCAN_TARGETS to be a module-level constant.
+SCAN_TARGETS = _scan_targets()
 
 
 # Strip ATX-style code fences and HTML comments before pattern
@@ -174,6 +213,13 @@ def main() -> int:
     over_baseline = 0
     total_leaks = 0
     total_scanned = 0
+    # Loop 134 — 57th-pass SEV-4 fix #10: per-file disposition
+    # tracking. Aggregate n_good/n_at/n_over so the final summary
+    # surfaces all three counts; previously the summary lost burn-
+    # down signal when one file went below baseline and another
+    # stayed at-baseline.
+    n_good = n_at = n_over = 0
+    net_delta = 0  # sum of (current - baseline) across all files
     for path, baseline in SCAN_TARGETS:
         if not path.exists():
             print(f"# WARN  {path.relative_to(CRATE_ROOT)}: file missing; "
@@ -182,6 +228,7 @@ def main() -> int:
         leaks = scan_file(path)
         total_scanned += 1
         total_leaks += len(leaks)
+        net_delta += len(leaks) - baseline
         rel = path.relative_to(CRATE_ROOT)
         if len(leaks) > baseline:
             over_baseline += len(leaks) - baseline
@@ -195,28 +242,33 @@ def main() -> int:
                   f"baseline {baseline}. New additions must use "
                   "section-header or `(internal ref)` form.",
                   file=sys.stderr)
+            n_over += 1
         elif len(leaks) < baseline:
             print(f"# GOOD  {rel}: {len(leaks)} bare anchors < "
                   f"baseline {baseline} — debt reduced by "
-                  f"{baseline - len(leaks)}. Edit SCAN_TARGETS in "
-                  f"verify_anonymizer_completeness.py to "
-                  f"(path, {len(leaks)}) so the ratchet re-arms at "
-                  f"the new lower bound.")
+                  f"{baseline - len(leaks)}. Edit the baseline in "
+                  f"papers/scripts/anonymizer_baseline.json to "
+                  f"{len(leaks)} so the ratchet re-arms at the new "
+                  f"lower bound.")
+            n_good += 1
         else:
             print(f"# OK    {rel}: {len(leaks)} bare anchors == "
                   f"baseline {baseline} (legacy debt unchanged)")
+            n_at += 1
+    delta_str = (f"net Δ {net_delta:+d}" if net_delta != 0
+                 else "net Δ 0")
     if over_baseline > 0:
         print(f"# verify_anonymizer_completeness.py — {over_baseline} "
               f"NEW bare Loop-N anchor(s) beyond baseline across "
-              f"{total_scanned} TMLR-bound papers. Total leak count "
-              f"{total_leaks}. Allowed contexts: section header, "
-              "(internal ref / adversarial-pass) parenthetical, HTML "
-              "comment, fenced code.",
+              f"{total_scanned} TMLR-bound papers ({n_over} over, "
+              f"{n_at} at-baseline, {n_good} below; {delta_str}). "
+              f"Total leak count {total_leaks}.",
               file=sys.stderr)
         return 1
     print(f"# verify_anonymizer_completeness.py — {total_scanned} "
-          f"TMLR-bound papers scanned, {total_leaks} leak(s) at-or-"
-          "below baseline (legacy debt ratchet)")
+          f"TMLR-bound papers scanned ({n_at} at-baseline, "
+          f"{n_good} below; {delta_str}); {total_leaks} leak(s) "
+          "at-or-below baseline (legacy debt ratchet)")
     return 0
 
 

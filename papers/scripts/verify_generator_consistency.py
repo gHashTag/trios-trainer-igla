@@ -140,12 +140,18 @@ def main() -> int:
                   f"terminal {range_end} − 1 — 1-loop in-flight lag "
                   "(expected during Loop N pre-commit cycle).")
         if max_loop > range_end:
-            # This is the legitimate case where the lead is intentionally
-            # pinned to the documented cumulative loop; generator picks
-            # up later commits. Print as INFO not FAIL.
-            print(f"# INFO  generator max Loop {max_loop} > breadcrumb "
-                  f"terminal {range_end} — generator includes commits "
-                  "after the §7 lead's last documented loop.")
+            # Loop 134 — 57th-pass SEV-3 fix #5: flip INFO → FAIL.
+            # max_loop > range_end is the silent-drift case the gate
+            # was built to catch: commits with Loop N+1 tags landed
+            # without bumping the §7 breadcrumb terminal. The
+            # operator must either bump §7 to {max_loop} or register
+            # the intentional pin in a future allow-list mechanism.
+            errors.append(
+                f"generator's max Loop ({max_loop}) is ABOVE §7's "
+                f"breadcrumb range terminal ({range_end}); commits "
+                f"with Loop ≥{range_end + 1} have landed without "
+                "updating §7's lead paragraph. Bump §7 lead to "
+                f"reflect Loop {max_loop} cumulative state.")
 
         if errors:
             for e in errors:
