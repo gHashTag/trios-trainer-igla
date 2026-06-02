@@ -1615,14 +1615,21 @@ CSVs from data/loop49/ and data/loop49_swap/ through f2_to_jsonl
 and f2_mediation_sensitivity; regenerate all six paper figures. Cold:
 3–8 min (release-profile build of two F2 bins).
 • papers/scripts/run_all_checks.sh ( 60 s warm; 15–30 min cold)
-— single-shot CI gate. Currently chains 18 stages on disk (the eight
-scripts catalogued above plus ten additional gates introduced after
-this paper was originally drafted: Markdown lint, label-consistency,
-formula-vs-table, per-producer preamble verification, three follow-uppaper pre-registered scripts (verify_provenance.sh, verify_run_completeness.py,
-verify_report_consistency.py), the #1021 follow-up paper’s crossreference audit, its markdown lint, and the smoke test for its f2_pairwise_perm
-binary). Exits 0 only if every stage passes. The catalogue above is the
-original 8 the paper relied on at draft time; the additional 10 are documented in the follow-up paper’s section 5.4. (The 40th adversarial pass
-corrected an earlier ”seven catalogued + ten additional” miscount.)
+— single-shot CI gate. Currently chains 19 stages on disk. Of
+the eight scripts catalogued above, seven appear as individual stages
+(run_all_checks.sh itself is the orchestrator, not a stage of itself);
+the other twelve stages are gates introduced after this paper
+was originally drafted: verify_tables_against_csv.py, verify_formulas_vs_tables.py,
+verify_label_consistency.py, verify_preamble_per_producer.py,
+three follow-up-paper pre-registered scripts (verify_provenance.sh,
+verify_run_completeness.py, verify_report_consistency.py), the
+stage-count-consistency verifier itself (Loop 118), the #1021 follow-up
+paper’s cross-reference audit, its markdown lint, the smoke test for its
+f2_pairwise_perm binary, and the supplementary-zip packer. Exits
+0 only if every stage passes. The catalogue above is the original 8 the
+paper relied on at draft time; the additional 10 are documented in the
+follow-up paper’s section 5.4. (The 40th adversarial pass corrected an
+earlier ”seven catalogued + ten additional” miscount.)
 
 papers/tmlr_submission_kit/pack_supplementary.sh chains papers/scripts/figure_regen.
 + f2_provenance_check + papers/scripts/verify_paper_metadata.py
@@ -1632,12 +1639,11 @@ ships without all invariants verified at bundle time.
 
 References
 Talor Abramovich and Gal Chechik. AblationBench: Evaluating automated planning of ablations in empirical AI research. arXiv preprint
-arXiv:2507.08038, 2025. LM-agent benchmark for ablation planning (best
-system identifies 38% of original ablations). Orthogonal to F2’s analysisof-given-ablations question. Loop 79 corrected the earlier mis-description.
-
 40
 
-Iván Díaz, Nima S. Hejazi, Kara E. Rudolph, and Mark J. van der Laan.
+arXiv:2507.08038, 2025. LM-agent benchmark for ablation planning (best
+system identifies 38% of original ablations). Orthogonal to F2’s analysisof-given-ablations question. Loop 79 corrected the earlier mis-description.
+Iván Díaz, Nima S. Hejazi, Kara E. Rudolph, and Mark J. van der Laan.
 Non-parametric eﬀicient causal mediation with intermediate confounders.
 Biometrika, 108(3):627–641, 2021. arXiv:1912.09936 preprint.
 Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
@@ -1661,12 +1667,11 @@ note. Loop 80 verified.
 Simone Leo, Stian Soiland-Reyes, et al. Workflow Run RO-Crate: an extension of RO-Crate and Schema.org to capture the provenance of the
 execution of computational workflows. arXiv preprint arXiv:2312.07852;
 published in PLoS ONE 19(9), 2024, 2024. W3C-PROV / RO-Crate
-preamble convention adopted in F2 §3.5.1. Loop 80 corrected the firstauthor attribution from ”Sefton” (wrong) to Leo + Soiland-Reyes lead of
-an 18-author group.
-
 41
 
-Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101, 2017. Pre-ICLR preprint of
+preamble convention adopted in F2 §3.5.1. Loop 80 corrected the firstauthor attribution from ”Sefton” (wrong) to Leo + Soiland-Reyes lead of
+an 18-author group.
+Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101, 2017. Pre-ICLR preprint of
 loshchilov2019adamw.
 Shuming Ma et al. The era of 1-bit LLMs: All large language models are in
 1.58 bits. arXiv preprint arXiv:2402.17764, 2024. Original BitNet b1.58
@@ -1695,12 +1700,12 @@ weights and activations. arXiv preprint arXiv:2502.05003, 2025. Loop
 80 corrected: 6-author list verified; title is about stable 1-bit training
 (not ”scaling laws”). F2 cites loosely as closest QAT precision-vs-stability
 reference.
-Kara E. Rudolph and Iván Díaz. Eﬀicient and flexible estimation of natural
-mediation effects under intermediate confounding and monotonicity constraints. Biometrics, 2023. doi: 10.1111/biom.13850. arXiv:2205.04408
-preprint.
 42
 
-Amit Sharma and Emre Kıcıman. DoWhy: An end-to-end library for
+Kara E. Rudolph and Iván Díaz. Eﬀicient and flexible estimation of natural
+mediation effects under intermediate confounding and monotonicity constraints. Biometrics, 2023. doi: 10.1111/biom.13850. arXiv:2205.04408
+preprint.
+Amit Sharma and Emre Kıcıman. DoWhy: An end-to-end library for
 causal inference. arXiv preprint arXiv:2011.04216, 2020. Flat-recordper-estimate JSONL convention adopted by f2_to_jsonl.
 
 43

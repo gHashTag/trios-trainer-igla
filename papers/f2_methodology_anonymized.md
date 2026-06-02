@@ -1706,16 +1706,19 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **18 stages**
-  on disk (the **eight scripts catalogued above** plus ten
-  additional gates introduced after this paper was originally
-  drafted: Markdown lint, label-consistency, formula-vs-table,
-  per-producer preamble verification, three follow-up-paper
-  pre-registered scripts (`verify_provenance.sh`,
+  cold**) — single-shot CI gate. Currently chains **19 stages**
+  on disk. Of the eight scripts catalogued above, seven appear as
+  individual stages (`run_all_checks.sh` itself is the orchestrator,
+  not a stage of itself); the **other twelve stages are gates
+  introduced after this paper was originally drafted**:
+  `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
+  `verify_label_consistency.py`, `verify_preamble_per_producer.py`,
+  three follow-up-paper pre-registered scripts (`verify_provenance.sh`,
   `verify_run_completeness.py`, `verify_report_consistency.py`),
-  the #1021 follow-up paper's cross-reference audit, its
-  markdown lint, and the smoke test for its `f2_pairwise_perm`
-  binary). Exits 0 only if every stage passes. The catalogue
+  the stage-count-consistency verifier itself , the
+  #1021 follow-up paper's cross-reference audit, its markdown
+  lint, the smoke test for its `f2_pairwise_perm` binary, and
+  the supplementary-zip packer. Exits 0 only if every stage passes. The catalogue
   above is the original 8 the paper relied on at draft time;
   the additional 10 are documented in the follow-up paper's
   §5.4. (The 40th adversarial pass corrected an earlier

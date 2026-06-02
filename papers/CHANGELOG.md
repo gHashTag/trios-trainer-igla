@@ -212,6 +212,58 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
+### 10. CI gate evolution (Loops 87–118)
+
+The 39th and 40th adversarial passes both surfaced that the
+F2 paper's §E catalogue, which was authoritative through Loop 86,
+diverged from the on-disk gate after subsequent loops added new
+stages. This section documents the trajectory per-loop so that
+the §E paragraph can point here for the additional gates rather
+than reciting them inline.
+
+Stage additions since the original 8-script catalogue:
+
+- **Loop 87** — Markdown lint (`lint_paper_md.py`) added upstream of
+  the LaTeX render to catch SEV-4 table-truncation and structural
+  issues before xelatex parses the body.
+- **Loop 99** — `verify_tables_against_csv.py` added: numerical
+  table claims gated against source CSVs at 2-decimal tolerance.
+  Operationalized the Loop 98 22nd-adversarial-pass catch.
+- **Loop 103** — `verify_formulas_vs_tables.py` added: four-PSE
+  algebraic closure + §3.3 envelope Γ_tip claims re-derived from
+  CSV CIs. Operationalized Loop 102's 25th-pass catch on the
+  manuscript Γ_tip = 1.43 vs derived 1.01 discrepancy.
+- **Loop 108** — `verify_label_consistency.py` added: deprecated-
+  term grep with allowed-context regex. Catches retired
+  terminology (Pearl-CDE post-§3.4-drop, Zhao-Luo pre-Loop-55
+  correction, etc.) drifting back into the body.
+- **Loop 111** — `smoke_f2_pairwise_perm.sh` added: end-to-end
+  test of the #1021 paper's new binary, exact-match assertions
+  on the synthetic 5-seed input's expected p-value.
+- **Loop 114** — `verify_preamble_per_producer.py` added with
+  static + runtime modes. Gates per-producer W3C-PROV preamble
+  schema against the actual binary source.
+- **Loop 115** — `verify_provenance.sh` (first of three #1021
+  pre-registered scripts) added. Walks `data/issue1021/run0/`
+  and pipes preamble-emitting CSVs through `f2_provenance_check`.
+- **Loop 116** — `verify_run_completeness.py` added. Asserts
+  §5.1 artifact inventory at the run-result anchor (80 cell + 2
+  aggregate + 2 pairwise + 1 stratum_compare + 8-16 sensitivity
+  CSVs).
+- **Loop 117** — `verify_report_consistency.py` added. Gates
+  numeric claims in the 6 post-run reports against source CSVs
+  (2/6 reports registered at draft time; remaining 4 deferred
+  until the run produces concrete outputs).
+- **Loop 118** — `verify_stage_count_consistency.py` added. Gates
+  paper claims of "N stages" against the actual `STAGES` array
+  count in `run_all_checks.sh`. Closes the SEV-2 prose-drift
+  class that the 39th + 40th adversarial passes both surfaced.
+
+The on-disk gate now runs **19 stages** (verified by the new
+stage-count gate above). The #1021 follow-up paper's §5.4 names
+the 6 stages it contributes; the F2 §E paragraph references this
+CHANGELOG section for the full enumeration.
+
 ---
 
 ## Submission status (at the time of this changelog)

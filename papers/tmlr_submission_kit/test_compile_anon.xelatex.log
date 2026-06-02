@@ -342,14 +342,22 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (75.6588pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 paper pre-registered scripts (\TU/lmtt/m/n/10.95 verify_prove
-nance.sh\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lm
-r/m/n/10.95 ,
+Overfull \hbox (122.13237pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 was originally drafted\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95
+ verify_tables_against_csv.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify_form
+ulas_vs_tables.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (42.16502pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 reference audit, its markdown lint, and the smoke test for it
-s \TU/lmtt/m/n/10.95 f2_pairwise_perm
+Overfull \hbox (9.56458pt too wide) in paragraph at lines 1689--1690
+\TU/lmtt/m/n/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/
+10.95 verify_preamble_per_producer.py\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (8.71268pt too wide) in paragraph at lines 1689--1690
+\TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
+0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
+
+Overfull \hbox (48.98686pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 cross-reference audit, its markdown lint, the smoke test for 
+its \TU/lmtt/m/n/10.95 f2_pairwise_perm
 [39])
 Overfull \hbox (139.8292pt too wide) in paragraph at lines 1692--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
