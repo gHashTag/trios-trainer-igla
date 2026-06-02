@@ -3266,16 +3266,20 @@ mod tests {
         };
         let phi = run_multi_seed(&phi_cfg);
         let zoo = run_multi_seed(&zoo_cfg);
-        // Loop 20 baseline (after label smoothing ε=0.1 + WD=0.1 + RMSNorm): phi ≈ 5.93, zoo ≈ 5.83.
-        // Methodology fixes shifted absolute BPB values but kept arms in literature range.
-        // Tolerance 0.15 BPB to allow small drift between loops without breaking pin every time.
+        // Coder-Loop+8 re-baseline. The previous pin (phi ~= 5.93, zoo ~= 5.83)
+        // was itself a weight-decay-bug artifact: AdamWCpu applied decoupled
+        // decay WITHOUT the learning-rate factor (optimizer.rs:121), so at
+        // WD=0.1 the weights collapsed toward zero every step and inflated BPB.
+        // After the lr-scaled decay fix the arms train normally and the honest
+        // post-fix baseline is phi ~= 2.78, zoo ~= 2.29 (5 seeds, steps=200,
+        // d_model=128, vocab=64). Tolerance 0.15 BPB preserves the drift pin.
         assert!(
-            (phi.mean_val_bpb - 5.93).abs() < 0.15,
+            (phi.mean_val_bpb - 2.78).abs() < 0.15,
             "phi BPB drifted: {}",
             phi.mean_val_bpb
         );
         assert!(
-            (zoo.mean_val_bpb - 5.83).abs() < 0.15,
+            (zoo.mean_val_bpb - 2.29).abs() < 0.15,
             "zoo BPB drifted: {}",
             zoo.mean_val_bpb
         );
