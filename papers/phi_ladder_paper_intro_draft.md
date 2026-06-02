@@ -728,9 +728,21 @@ Total: 80 + 2 + 1 + 1 + 1 + (8…16) = **between 85 and 101 CSVs**
 (point estimate 93 under the F2 sandbox-scale half-survival
 baseline; actual count reported at the run-result paper). Each
 CSV has the
-F2 W3C-PROV preamble (timestamp, anchor commit, config_hash,
-seed, training-token-budget), parseable by
-`f2_provenance_check`.
+F2 W3C-PROV preamble parseable by `f2_provenance_check`. The
+exact field set varies by producer: cell-level CSVs from
+`f2_ablation_sweep` carry `generatedAt`, `agent_git_sha`,
+`config_hash`, `seed`, `trainer_internals_schema`, and the
+training-token budget; aggregator CSVs from
+`f2_ablation_aggregate`, `f2_pairwise_perm`,
+`f2_stratum_compare`, and `f2_mediation_sensitivity` carry
+`generatedAt`, `wasGeneratedBy`, `agent_git_sha`, `host`,
+`trainer_internals_schema`, and `cargo_pkg_version` (seeds and
+config_hash live in the data rows the aggregator consumed,
+not the aggregator's own preamble). 36th adversarial pass
+(Loop 113) flagged that earlier drafts listed the cell-level
+field set as if it applied to every CSV, which contradicted
+the actual binary emissions; this paragraph now scopes the
+field set per producer class.
 
 The 6 post-run reports:
 

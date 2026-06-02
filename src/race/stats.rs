@@ -370,6 +370,50 @@ mod tests {
         assert!(student_t_cdf_upper(f64::NAN, 4.0).is_nan());
     }
 
+    // ─── Loop 113 B: direct lib-level coverage for the shared
+    //     paired-permutation primitive extracted in Loop 112 C. ───
+
+    #[test]
+    fn exact_paired_perm_all_positive_diffs_recovers_2_over_32() {
+        // Diffs all positive → only the all-positive sign-flip assignment
+        // and its all-negative complement match |mean| ≥ |observed|.
+        // p_two_sided = 2 / 2^5 = 0.0625.
+        let diffs = [1.0, 2.0, 3.0, 4.0, 5.0];
+        let (mean, p) = exact_paired_sign_flip_perm(&diffs);
+        assert!((mean - 3.0).abs() < 1e-12);
+        assert!((p - 2.0 / 32.0).abs() < 1e-12, "p = {p}");
+    }
+
+    #[test]
+    fn exact_paired_perm_alternating_signs_returns_p_one() {
+        // Diffs with mean = 0 → every sign-flip is at least as extreme.
+        let diffs = [1.0, -1.0, 1.0, -1.0, 0.0];
+        let (mean, p) = exact_paired_sign_flip_perm(&diffs);
+        assert!(mean.abs() < 1e-12);
+        assert!((p - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn exact_paired_perm_drops_n_lt_2() {
+        // N = 0 and N = 1 must both return NaN; N = 1 enumerates only ± and
+        // gives degenerate p ∈ {0.5, 1.0} so the function explicitly drops it.
+        let (m0, p0) = exact_paired_sign_flip_perm(&[]);
+        assert!(m0.is_nan() && p0.is_nan());
+        let (m1, p1) = exact_paired_sign_flip_perm(&[1.0]);
+        assert!(m1.is_nan() && p1.is_nan());
+    }
+
+    #[test]
+    fn exact_paired_perm_epsilon_tolerant_on_machine_epsilon_ties() {
+        // Mixed-sign diffs known to hit the IEEE-754-tied case where the
+        // strict comparator under-counts permutations relative to the
+        // epsilon-tolerant comparator. With epsilon tolerance, p = 0.5.
+        // (Loop 111 caught this exact divergence on a strict comparator.)
+        let diffs = [0.1, -0.1, 0.2, 0.0, 0.05];
+        let (_mean, p) = exact_paired_sign_flip_perm(&diffs);
+        assert!((p - 0.5).abs() < 1e-12, "p = {p} (epsilon tolerance broken)");
+    }
+
     #[test]
     fn student_t_critical_handles_alpha_one_in_a_thousand() {
         // alpha = 0.001 (two-tailed), df=29 → 3.659 per published two-sided

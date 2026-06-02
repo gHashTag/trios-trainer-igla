@@ -302,15 +302,16 @@ mod tests {
         assert!((adj[3] - 0.20).abs() < 1e-12);
     }
 
-    /// Reference implementation copied verbatim from
-    /// `src/bin/f2_iloco_score.rs:67-90`. Loop 111 33rd/34th-pass
-    /// audit established that f2_pairwise_perm's primitive should
-    /// agree with this reference for inputs that don't hit edge
-    /// cases (N>=2, no float-tie-to-machine-epsilon). This module-local
-    /// copy is kept in sync via the equivalence test below; if the
-    /// upstream primitive changes, this test will diverge and surface
-    /// the drift.
-    fn iloco_permutation_test_paired_reference(a: &[f64], b: &[f64]) -> (f64, f64) {
+    /// Loop 110-vintage snapshot of `f2_iloco_score::permutation_test_paired`,
+    /// kept for regression purposes: it freezes the behavior that the shared
+    /// primitive must match if any future refactor inadvertently changes the
+    /// algorithm. Loop 112 C extracted the live implementation into
+    /// `src/race/stats.rs::exact_paired_sign_flip_perm`; both binaries now
+    /// import that single source. This snapshot is therefore NOT live code
+    /// either binary calls in production — it exists only to guard against
+    /// silent algorithmic drift on the shared `stats.rs` primitive (e.g., a
+    /// future change to the epsilon tolerance would surface here first).
+    fn loop_110_vintage_snapshot(a: &[f64], b: &[f64]) -> (f64, f64) {
         let n = a.len().min(b.len());
         if n < 2 {
             return (f64::NAN, f64::NAN);
@@ -334,30 +335,31 @@ mod tests {
     }
 
     #[test]
-    fn primitive_matches_f2_iloco_score_reference() {
-        // Loop 111 C: verify f2_pairwise_perm's exact_paired_perm primitive
-        // agrees with f2_iloco_score's permutation_test_paired reference
-        // on representative inputs.
+    fn shared_primitive_matches_loop_110_vintage_snapshot() {
+        // Loop 113 C: this test was Loop 111's "f2_pairwise_perm vs
+        // f2_iloco_score equivalence" check. After the Loop 112 C
+        // refactor (both binaries now import from src/race/stats.rs)
+        // the two are identical *by construction*. The test is
+        // repurposed as a guard against unintended changes to the
+        // shared primitive: if a future commit changes the algorithm
+        // in src/race/stats.rs, this test will diverge from the
+        // Loop-110-vintage snapshot and surface the drift.
         let cases: &[(&[f64], &[f64])] = &[
             (&[1.20, 1.18, 1.22, 1.19, 1.21], &[1.40, 1.38, 1.42, 1.39, 1.41]),
-            // Symmetric input — should give p = 1.0 in both.
             (&[1.0, 2.0, 3.0, 4.0, 5.0], &[1.0, 2.0, 3.0, 4.0, 5.0]),
-            // All-positive diffs — p = 2/32 = 0.0625 in both.
             (&[5.0, 4.0, 3.0, 2.0, 1.0], &[0.0, 0.0, 0.0, 0.0, 0.0]),
-            // Mixed-sign diffs.
             (&[1.1, 0.9, 1.2, 1.0, 1.05], &[1.0, 1.0, 1.0, 1.0, 1.0]),
-            // Different N (>=2): N=3, N=4.
             (&[1.5, 2.5, 3.5], &[1.0, 2.0, 3.0]),
             (&[10.0, 20.0, 30.0, 40.0], &[12.0, 18.0, 32.0, 38.0]),
         ];
         for (i, (a, b)) in cases.iter().enumerate() {
             let diffs: Vec<f64> = (0..a.len()).map(|k| a[k] - b[k]).collect();
-            let (m_ours, p_ours) = exact_paired_perm(&diffs);
-            let (m_ref, p_ref) = iloco_permutation_test_paired_reference(a, b);
-            assert!((m_ours - m_ref).abs() < 1e-12,
-                "case {i}: mean diff {m_ours} vs ref {m_ref}");
-            assert!((p_ours - p_ref).abs() < 1e-12,
-                "case {i}: p {p_ours} vs ref {p_ref} (diffs={diffs:?})");
+            let (m_live, p_live) = exact_paired_perm(&diffs);
+            let (m_snap, p_snap) = loop_110_vintage_snapshot(a, b);
+            assert!((m_live - m_snap).abs() < 1e-12,
+                "case {i}: live mean {m_live} drifted from snapshot {m_snap}");
+            assert!((p_live - p_snap).abs() < 1e-12,
+                "case {i}: live p {p_live} drifted from snapshot {p_snap} (diffs={diffs:?})");
         }
     }
 
