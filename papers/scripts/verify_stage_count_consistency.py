@@ -99,18 +99,62 @@ DECOMPOSITION_CLAIMS: list[tuple[str, str, str]] = [
         r"\*\*(\d+) F2-scope stages\*\*[\s\S]*?\+ (\d+) #1021-scoped[\s\S]*?stages",
         "#1021 §5.4 decomposition partition",
     ),
+    # F2 paper §E partition (Loop 120 B): "seven appear as individual stages
+    # ... the other twelve stages are gates introduced". The pattern matches
+    # the numeric pair within the run_all_checks.sh paragraph; the 42nd pass
+    # caught a "twelve" + "additional 10" residue in this paragraph that the
+    # initial #1021-only gate could not catch. \s+ tolerates the line wrap
+    # between "appear as" and "individual stages".
+    (
+        "papers/f2_methodology.md",
+        r"(\w+)\s+appear\s+as\s+individual\s+stages[\s\S]*?other\s+(\w+)\s+stages\s+are\s+gates",
+        "F2 §E catalogue partition (words)",
+    ),
 ]
 
 
+# DERIVED_CLAIMS: each claim's expected value is `actual - constant_offset`.
+# Used for F2 §E's "additional N" sentence whose N should match the
+# "non-catalogue" stage count = actual - 7 (the 7 catalogued-as-stage
+# count out of 8 catalogue bullets; the 8th is run_all_checks.sh itself).
+DERIVED_CLAIMS: list[tuple[str, str, int, str]] = [
+    (
+        "papers/f2_methodology.md",
+        # "the additional N are documented" — N should equal actual - 7
+        r"the additional (\d+) are documented",
+        7,   # constant_offset: actual - 7 catalogued-as-stage = additional
+        "F2 §E follow-up additional count (= actual - 7 catalogued-as-stage)",
+    ),
+]
+
+
+def words_to_int(w: str) -> int | None:
+    """Convert English number words (zero..twenty) + digits to int."""
+    table = {
+        "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+        "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+        "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+        "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18,
+        "nineteen": 19, "twenty": 20,
+    }
+    if w.isdigit():
+        return int(w)
+    return table.get(w.lower())
+
+
 def find_decomposition(path: Path, pattern: str) -> tuple[int, int, int] | None:
-    """Return (n1, n2, line_no_of_n1) or None."""
+    """Return (n1, n2, line_no_of_n1) or None. Accepts digits or English words."""
     pat = re.compile(pattern, re.DOTALL)
     text = path.read_text()
     m = pat.search(text)
     if not m:
         return None
     line_no = text[:m.start(1)].count("\n") + 1
-    return int(m.group(1)), int(m.group(2)), line_no
+    n1 = words_to_int(m.group(1))
+    n2 = words_to_int(m.group(2))
+    if n1 is None or n2 is None:
+        return None
+    return n1, n2, line_no
 
 
 def main() -> int:
@@ -133,6 +177,26 @@ def main() -> int:
         if claimed != actual:
             mismatches.append(
                 f"{rel}:{line_no}: '{desc}' claims {claimed} but actual is {actual}")
+        else:
+            print(f"# OK  {rel}:{line_no}  — {desc} = {claimed}")
+
+    # Loop 120 B: derived claims (N == actual - constant_offset).
+    for rel, pattern, offset, desc in DERIVED_CLAIMS:
+        path = CRATE_ROOT / rel
+        if not path.exists():
+            mismatches.append(f"{rel}: file missing for derived '{desc}'")
+            continue
+        found = find_claim(path, pattern)
+        if found is None:
+            mismatches.append(
+                f"{rel}: no match for derived '{desc}' (pattern {pattern!r})")
+            continue
+        claimed, line_no = found
+        expected = actual - offset
+        if claimed != expected:
+            mismatches.append(
+                f"{rel}:{line_no}: '{desc}' claims {claimed} but expected "
+                f"{expected} (= {actual} - {offset})")
         else:
             print(f"# OK  {rel}:{line_no}  — {desc} = {claimed}")
 
@@ -165,7 +229,8 @@ def main() -> int:
         return 1
     print(f"# verify_stage_count_consistency.py — "
           f"{len(CLAIMS)} counts + {len(DECOMPOSITION_CLAIMS)} "
-          f"decompositions verified, 0 drift")
+          f"decompositions + {len(DERIVED_CLAIMS)} derived verified, "
+          "0 drift")
     return 0
 
 

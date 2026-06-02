@@ -342,10 +342,9 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (122.13237pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/bx/n/10.95 was originally drafted\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95
- verify_tables_against_csv.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify_form
-ulas_vs_tables.py\TU/lmr/m/n/10.95 ,
+Overfull \hbox (13.53952pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 86 gate-evolution arc documented in CHANGELOG section [][]10
+[][])\TU/lmr/m/n/10.95 :
 
 Overfull \hbox (9.56458pt too wide) in paragraph at lines 1689--1690
 \TU/lmtt/m/n/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/

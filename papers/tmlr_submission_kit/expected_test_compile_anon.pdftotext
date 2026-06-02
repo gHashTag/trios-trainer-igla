@@ -1593,8 +1593,8 @@ and f2_mediation_sensitivity; regenerate all six paper figures. Cold:
 
 the eight scripts catalogued above, seven appear as individual stages
 (run_all_checks.sh itself is the orchestrator, not a stage of itself);
-the other twelve stages are gates introduced after this paper
-was originally drafted: verify_tables_against_csv.py, verify_formulas_vs_tables.py,
+the other twelve stages are gates introduced after the §E catalogue was originally written ((internal ref), prior to the post86 gate-evolution arc documented in CHANGELOG section 10):
+verify_tables_against_csv.py, verify_formulas_vs_tables.py,
 verify_label_consistency.py, verify_preamble_per_producer.py,
 three follow-up-paper pre-registered scripts (verify_provenance.sh,
 verify_run_completeness.py, verify_report_consistency.py), the
@@ -1621,11 +1621,11 @@ Non-parametric eﬀicient causal mediation with intermediate confounders.
 Biometrika, 108(3):627–641, 2021. arXiv:1912.09936 preprint.
 Roberta Fiandaca and Manil Dev Gomony. Fibbinary-based compression and quantization for eﬀicient neural radio receivers. arXiv preprint
 arXiv:2511.01921, 2025. Loop 80 corrected attribution from ”SchmidtMengin et al.” (fabricated). Paper applies Fibonacci-code-word quantization to NEURAL RADIO RECEIVERS, not transformer LLMs. F2 §9.4
-cites with the correct narrow scope — the only published Fibonacci-binary
-quantization work we know of, in any domain.
 40
 
-Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for
+cites with the correct narrow scope — the only published Fibonacci-binary
+quantization work we know of, in any domain.
+Yi Gao, Fang Li, and Sheng Luo. Decomposition of the total effect for
 two mediators: A natural counterfactual interaction effect framework.
 arXiv preprint arXiv:2007.16031, 2020. Published as PMC9139468; nointeraction reduction supplies the four-PSE collapse used in F2 §3.2.
 Michael Hagmann, Stefan Meier, and Stefan Riezler. Towards inferential reproducibility of machine learning research. arXiv preprint
@@ -1653,11 +1653,11 @@ Microsoft.
 BitNet b1.58 2B4T technical report.
 arXiv preprint
 arXiv:2504.12285, 2025. 2B parameter, 4T token instantiation of the
-b1.58 recipe. NOT to be confused with arXiv:2402.17764 (the original
-paper) — Loop 55 caught this conflation in F2 §9.
 41
 
-Caleb H. Miles, Ilya Shpitser, Phyllis Kanki, Seema Meloni, and Eric J.
+b1.58 recipe. NOT to be confused with arXiv:2402.17764 (the original
+paper) — Loop 55 caught this conflation in F2 §9.
+Caleb H. Miles, Ilya Shpitser, Phyllis Kanki, Seema Meloni, and Eric J.
 Tchetgen Tchetgen. On semiparametric estimation of a path-specific effect in the presence of mediator-outcome confounding. arXiv preprint
 arXiv:1710.02011, 2017. Eﬀicient influence function basis for the deltamethod reduction used in §3.2 (no-interaction regime).
 Yuki Ohnishi and Fan Li. Sensitivity analysis for causal mediation:

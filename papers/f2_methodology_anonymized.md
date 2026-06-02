@@ -1710,7 +1710,9 @@ dependency; we do not stub any of them.
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
   not a stage of itself); the **other twelve stages are gates
-  introduced after this paper was originally drafted**:
+  introduced after the §E catalogue was originally written
+  ((internal ref), prior to the post-86 gate-evolution arc documented
+  in CHANGELOG §10)**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
   `verify_label_consistency.py`, `verify_preamble_per_producer.py`,
   three follow-up-paper pre-registered scripts (`verify_provenance.sh`,
