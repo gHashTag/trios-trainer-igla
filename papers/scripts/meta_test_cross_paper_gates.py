@@ -107,6 +107,17 @@ g.RELATIONAL_CLAIMS = [
     )
     for (regex_a, paper_a, regex_b, paper_b, cmp_name, label) in _saved_rel
 ]
+g.EXACT_PIN_CLAIMS = [
+    (
+        regex,
+        (g.F2_PAPER if paper == _orig_f2 else
+         (g.ISSUE1021_PAPER if paper == _orig_i1021
+          else g.SUBMISSION_CHECKLIST)),
+        expected,
+        label,
+    )
+    for (regex, paper, expected, label) in _saved_pin
+]
 sys.exit(g.main())
 """
     # The shim references _orig_f2/_orig_i1021/_saved_* — prepend the
@@ -118,6 +129,7 @@ _saved_exact = list(g.EXACT_MATCH_CLAIMS)
 _saved_scoped = list(g.SCOPED_DIFF_CLAIMS)
 _saved_ackn = list(g.ACKNOWLEDGES_CLAIMS)
 _saved_rel = list(g.RELATIONAL_CLAIMS)
+_saved_pin = list(g.EXACT_PIN_CLAIMS)
 """
     full = shim.replace(
         "g.EXACT_MATCH_CLAIMS = [",
@@ -270,6 +282,32 @@ def test_relational_boundary_equality(tmp: Path) -> bool:
     return True
 
 
+def test_exact_pin_break_tmlr_page(tmp: Path) -> bool:
+    """Mutate the TMLR-class page exact pin (27) to a different value
+    and assert the EXACT_PIN gate fires.
+
+    Loop 133-A SEV-4 fix #7 closure: keeps inventory_completeness green
+    when the new EXACT_PIN class is registered."""
+    chk_tmp = tmp / "checklist_tmlr_pin.md"
+    text = CHECKLIST.read_text()
+    broken = re.sub(
+        r"Real-TMLR-class PDF: \*\*\d+ pages\*\*",
+        "Real-TMLR-class PDF: **99 pages**",
+        text, count=1,
+    )
+    if broken == text:
+        print("# SKIP exact_pin: TMLR page pattern not in CHECKLIST",
+              file=sys.stderr)
+        return True
+    chk_tmp.write_text(broken)
+    rc, err = run_gate(checklist_override=chk_tmp)
+    return assert_fails_with(
+        "EXACT_PIN break (TMLR page pinned 27 → 99)",
+        "!= expected pin",
+        rc, err,
+    )
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -312,7 +350,8 @@ def test_inventory_completeness() -> bool:
         if name.endswith("_CLAIMS") and isinstance(getattr(g, name), list)
     }
     # Each class must have at least one break-test below.
-    tested_classes = {"EXACT_MATCH", "SCOPED_DIFF", "ACKNOWLEDGES", "RELATIONAL"}
+    tested_classes = {"EXACT_MATCH", "SCOPED_DIFF", "ACKNOWLEDGES",
+                      "RELATIONAL", "EXACT_PIN"}
     missing = registered_classes - tested_classes
     extra = tested_classes - registered_classes
     if missing:
@@ -348,6 +387,7 @@ def main() -> int:
             ("acknowledges_remove_ack", test_acknowledges_break_remove_ack),
             ("relational_non_anon_lt_anon", test_relational_break_non_anon_lt_anon),
             ("relational_boundary_equality", test_relational_boundary_equality),
+            ("exact_pin_tmlr_page", test_exact_pin_break_tmlr_page),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -357,7 +397,7 @@ def main() -> int:
               "tests passed", file=sys.stderr)
         return 1
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
-          "tests passed; gate enforces its 4 claim classes (incl. "
+          "tests passed; gate enforces its 5 claim classes (incl. "
           "comparator-direction guard)")
     return 0
 

@@ -152,9 +152,10 @@ ACKNOWLEDGES_CLAIMS: list[tuple] = [
 ]
 
 
-# SCOPED_DIFF: claims that intentionally differ between papers; we just
-# assert each claim matches its declared scope. Tracks discrepancies
-# that should be sanity-checked rather than equated.
+# SCOPED_DIFF: claims that intentionally differ between papers and
+# legitimately span a sanity range (lo < hi). For exact-equality
+# claims (lo == hi), use EXACT_PIN_CLAIMS instead — clearer semantics
+# and lower per-entry boilerplate.
 # Each entry: (regex, paper, expected_scope_description, sanity_floor, sanity_ceiling, label)
 SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
     # F2 §3.5.4 reproducibility: "714 passing tests" refers to src/lib.rs.
@@ -173,39 +174,49 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         800, 900,
         "F2 §8.2 grouped total",
     ),
-    # Loop 126 D (48th pass A5 SEV-2): pinned exactly to current 27pp.
-    # Any single-page drift fires the gate, requiring intentional review
-    # of the SUBMISSION_CHECKLIST. Replaces Loop 124's [25, 30] range
-    # which admitted 1-2pp silent drift; the SCOPED_DIFF [27, 27] form is
-    # an exact pin disguised as a range so it slots cleanly into the
-    # existing SCOPED_DIFF infrastructure.
+]
+
+
+# EXACT_PIN: claim pinned to a single value. Loop 133-A SEV-4 fix #7:
+# reclassifies the three [N, N] SCOPED_DIFFs that were exact-pins
+# disguised as ranges (Loop 128 D acknowledged the disguise in
+# comments). Each entry: (regex, paper, expected_value, label).
+EXACT_PIN_CLAIMS: list[tuple[str, Path, int, str]] = [
     (
         r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        "TMLR class single-column (pinned exactly)",
-        27, 27,
+        27,
         "SUBMISSION_CHECKLIST TMLR page exact pin",
     ),
-    # Loop 128 D: non-anon currently 43pp (Loop 127 paper grew by 1
-    # page when CHANGELOG §10 + §7 expanded with milestone retrospective);
-    # anon stayed 42 because the §10.3 omission placeholder absorbs the
-    # difference. Pinned individually.
     (
         r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        "article wrapper (pinned exactly)",
-        43, 43,
+        43,
         "SUBMISSION_CHECKLIST non-anon page exact pin",
     ),
-    # Loop 128 D: anon-PDF exact pin (separated from non-anon by Loop 128).
     (
         r"Anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        "article wrapper, anonymized variant",
-        42, 42,
+        42,
         "SUBMISSION_CHECKLIST anon page exact pin",
     ),
 ]
+
+
+def check_exact_pin(spec: tuple[str, Path, int, str]) -> list[str]:
+    pat, paper, expected, label = spec
+    found = find_int_claim(paper, pat)
+    if found is None:
+        return [
+            f"{label}: pattern not found in {paper.relative_to(CRATE_ROOT)} "
+            f"({pat!r})"
+        ]
+    val, line_no = found
+    if val != expected:
+        return [
+            f"{label}: {paper.name}:{line_no} = {val} != expected pin {expected}"
+        ]
+    return []
 
 
 # RELATIONAL: two integer claims must satisfy a relational invariant.
@@ -455,13 +466,25 @@ def main() -> int:
         else:
             print(f"# OK    RELAT  {label}")
 
+    for spec in EXACT_PIN_CLAIMS:
+        ms = check_exact_pin(spec)
+        label = spec[-1]
+        if ms:
+            all_mismatches.extend(ms)
+            print(f"# FAIL  PIN    {label}", file=sys.stderr)
+            for m in ms:
+                print(f"  {m}", file=sys.stderr)
+        else:
+            print(f"# OK    PIN    {label}")
+
     if all_mismatches:
         print(f"# verify_cross_paper_consistency.py — "
               f"{len(all_mismatches)} cross-paper drift(s)",
               file=sys.stderr)
         return 1
     n_total = (len(EXACT_MATCH_CLAIMS) + len(SCOPED_DIFF_CLAIMS) +
-               len(ACKNOWLEDGES_CLAIMS) + len(RELATIONAL_CLAIMS))
+               len(ACKNOWLEDGES_CLAIMS) + len(RELATIONAL_CLAIMS) +
+               len(EXACT_PIN_CLAIMS))
     print(f"# verify_cross_paper_consistency.py — "
           f"{n_total} cross-paper claims verified, 0 drift")
     return 0

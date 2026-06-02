@@ -180,17 +180,27 @@ def main() -> int:
     # check but not to `counts`.
     loop_range_rows: list[tuple[str, int, int]] = []
     for path, pattern, label in LOOP_RANGE_SITES:
+        # Loop 133-A SEV-3 fix #2: emit stderr `# FAIL parse` line on
+        # every error path, mirroring the SITES loop above. Without
+        # this, an operator gets a generic "X parse error(s)" summary
+        # but no per-site detail telling which entry broke.
         if not path.exists():
-            errors.append(f"{label}: file missing at {path.relative_to(CRATE_ROOT)}")
+            msg = f"{label}: file missing at {path.relative_to(CRATE_ROOT)}"
+            print(f"# FAIL  parse  {msg}", file=sys.stderr)
+            errors.append(msg)
             continue
         text = path.read_text()
         m = re.search(pattern, text)
         if not m:
-            errors.append(f"{label}: regex did not match {path.name}")
+            msg = f"{label}: regex did not match {path.name}"
+            print(f"# FAIL  parse  {msg}", file=sys.stderr)
+            errors.append(msg)
             continue
         last_loop = _to_int(m.group(1))
         if last_loop is None:
-            errors.append(f"{label}: last-loop token {m.group(1)!r} not recognized")
+            msg = f"{label}: last-loop token {m.group(1)!r} not recognized"
+            print(f"# FAIL  parse  {msg}", file=sys.stderr)
+            errors.append(msg)
             continue
         line_no = text[:m.start()].count("\n") + 1
         loop_range_rows.append((label, last_loop, line_no))

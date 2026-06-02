@@ -65,15 +65,13 @@ CRATE_ROOT = Path(__file__).resolve().parents[2]
 # visible in git log. Lowering without commit would silently re-arm
 # the ratchet at the new lower bound.
 #
-# Baseline snapshot at Loop 132 commit. Total 72 legacy bare anchors:
-#   f2_methodology.md: 28 historical + 1 §E catalogue Loop 132 C ref
-#     (kept for human readability; could be rewritten to internal-ref
-#     parenthetical in a future burn-down loop)
-#   phi_ladder_paper_intro_draft.md: 42 historical + 1 §5.4 partition
-#     Loop 132 C ref (same rationale)
+# Baseline snapshot. Loop 132: 72 total (29 + 43). Loop 133 A.iv
+# burn-down on f2_methodology: 29 → 22 (−7, F2 §E catalogue rewrite).
+# Loop 133 added 3 phi_ladder §5.4 partition Loop-N refs for the
+# meta-test + Loop 133 B/C verifiers (43 → 46). Total now 68.
 SCAN_TARGETS: list[tuple[Path, int]] = [
-    (CRATE_ROOT / "papers" / "f2_methodology.md", 29),
-    (CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md", 43),
+    (CRATE_ROOT / "papers" / "f2_methodology.md", 22),
+    (CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md", 46),
 ]
 
 
@@ -200,9 +198,10 @@ def main() -> int:
         elif len(leaks) < baseline:
             print(f"# GOOD  {rel}: {len(leaks)} bare anchors < "
                   f"baseline {baseline} — debt reduced by "
-                  f"{baseline - len(leaks)}. Update BASELINE in a "
-                  f"follow-up commit so the ratchet re-arms at the "
-                  f"new lower bound.")
+                  f"{baseline - len(leaks)}. Edit SCAN_TARGETS in "
+                  f"verify_anonymizer_completeness.py to "
+                  f"(path, {len(leaks)}) so the ratchet re-arms at "
+                  f"the new lower bound.")
         else:
             print(f"# OK    {rel}: {len(leaks)} bare anchors == "
                   f"baseline {baseline} (legacy debt unchanged)")

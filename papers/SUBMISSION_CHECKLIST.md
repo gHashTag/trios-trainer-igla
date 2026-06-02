@@ -19,35 +19,39 @@ placeholder below).
 
 Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
 
-- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **24/24 PASS**
-  - [ ] (1/24) cross-reference audit (F2/main paper) — 0 dangling refs
-  - [ ] (2/24) metadata verifier — title/tests/bib/figures parity
-  - [ ] (3/24) no fabricated SHAs — `git cat-file -e` per SHA-like token
-  - [ ] (4/24) markdown lint — 0 SEV-≥4 issues
-  - [ ] (5/24) tables vs CSVs — 6 tables × 119 numeric assertions verified
-  - [ ] (6/24) formulas vs tables — 4 algebraic identities (closure +
+- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **26/26 PASS**
+  - [ ] (1/26) cross-reference audit (F2/main paper) — 0 dangling refs
+  - [ ] (2/26) metadata verifier — title/tests/bib/figures parity
+  - [ ] (3/26) no fabricated SHAs — `git cat-file -e` per SHA-like token
+  - [ ] (4/26) markdown lint — 0 SEV-≥4 issues
+  - [ ] (5/26) tables vs CSVs — 6 tables × 119 numeric assertions verified
+  - [ ] (6/26) formulas vs tables — 4 algebraic identities (closure +
         Γ_tip bullets + headline-table + #1021 arithmetic) — 44 assertions
-  - [ ] (7/24) label consistency — 7 deprecated-term rules, 0 leaks
-  - [ ] (8/24) preamble per producer — static + runtime W3C-PROV gate
-  - [ ] (9/24) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
-  - [ ] (10/24) run completeness — 93-CSV inventory check (vacuous pre-sweep)
-  - [ ] (11/24) report consistency — 6 reports (2 full + 4 stub coverage)
-  - [ ] (12/24) stage count consistency — 5 counts + 2 decompositions + 1 derived
-  - [ ] (13/24) cross-paper consistency — 11 claims (1 EXACT + 5 SCOPED + 1 ACKN + 4 RELATIONAL)
-  - [ ] (14/24) cross-paper gate meta-test — 6 synthetic-break tests PASS (4 classes covered)
-  - [ ] (15/24) f2_pairwise_perm smoke — end-to-end binary test + prov check
-  - [ ] (16/24) #1021 cross-ref audit — informational
-  - [ ] (17/24) #1021 markdown lint — 0 SEV-≥4 issues
-  - [ ] (18/24) test inventory regen — `cargo test --list` re-emits 809
-  - [ ] (19/24) xelatex 3-variant compile — non-anon, anon, real TMLR class
-  - [ ] (20/24) figure regen — all 6 figures rebuild from CSVs
-  - [ ] (21/24) supplementary pack — zip builds with 3-stage pre-flight
-  - [ ] (22/24) submission readiness — §1 ↔ STAGES alignment gate
+  - [ ] (7/26) label consistency — 7 deprecated-term rules, 0 leaks
+  - [ ] (8/26) preamble per producer — static + runtime W3C-PROV gate
+  - [ ] (9/26) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
+  - [ ] (10/26) run completeness — 93-CSV inventory check (vacuous pre-sweep)
+  - [ ] (11/26) report consistency — 6 reports (2 full + 4 stub coverage)
+  - [ ] (12/26) stage count consistency — 5 counts + 2 decompositions + 1 derived
+  - [ ] (13/26) cross-paper consistency — 11 claims (1 EXACT + 2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN)
+  - [ ] (14/26) cross-paper gate meta-test — 7 synthetic-break tests PASS (5 classes covered)
+  - [ ] (15/26) f2_pairwise_perm smoke — end-to-end binary test + prov check
+  - [ ] (16/26) #1021 cross-ref audit — informational
+  - [ ] (17/26) #1021 markdown lint — 0 SEV-≥4 issues
+  - [ ] (18/26) test inventory regen — `cargo test --list` re-emits 809
+  - [ ] (19/26) xelatex 3-variant compile — non-anon, anon, real TMLR class
+  - [ ] (20/26) figure regen — all 6 figures rebuild from CSVs
+  - [ ] (21/26) supplementary pack — zip builds with 3-stage pre-flight
+  - [ ] (22/26) submission readiness — §1 ↔ STAGES alignment gate
         (count + sub-bullet renumbering + per-position nearest-neighbor)
-  - [ ] (23/24) changelog consistency — CHANGELOG §7 ↔ §2 ↔
+  - [ ] (23/26) changelog consistency — CHANGELOG §7 ↔ §2 ↔
         ADVERSARIAL_REVIEW_LOG agree on (pass_count, last_loop)
-  - [ ] (24/24) anonymizer completeness — bare `Loop N` anchor count
-        per-file ≤ baseline (legacy debt ratchet, 72 at Loop 132)
+  - [ ] (24/26) anonymizer completeness — bare `Loop N` anchor count
+        per-file ≤ baseline (legacy debt ratchet, 68 at Loop 133)
+  - [ ] (25/26) cardinality arithmetic — N items (a+b+...) sum-equality
+        across registered paper-body anchors
+  - [ ] (26/26) generator consistency — regen_changelog_section7.py
+        output agrees with §7 lead commit floor + range terminal
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -68,9 +72,9 @@ Run from the crate root. Total wall: ~25 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 26 VERIFIED + 1 VERIFIED-WITHDRAWN
       (96%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 55 passes across Loops 59-132
+- [ ] **Adversarial review**: 56 passes across Loops 59-133
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-55 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-56 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -170,9 +174,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 132 (2026-06-02)**
+- Checklist version: **Loop 133 (2026-06-02)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 132 B/C commits on `f2-methodology`
+  Loop 133 A/B/C commits on `f2-methodology`
 - Next deadline: MLRC EOI soft 2026-06-04 AOE / hard TMLR 2026-09-30 AOE
 
 ### Checklist change log
@@ -209,9 +213,15 @@ If rejected:
   reporting cumulative pass count); RELATIONAL class grown
   1 → 4 entries (TMLR ≤ anon chain; lib ≤ grouped subset;
   #1021 binary ≥ F2 binary superset).
-- Loop 132: this update — stage count 23 → 24 (added
+- Loop 132: stage count 23 → 24 (added
   `verify_anonymizer_completeness.py` ratchet gate against legacy
   70-bare-anchor baseline); `regen_changelog_section7.py` added as
   informational tool producing the auto-generated §7 breadcrumb;
   nearest-neighbor + stop-word extension + `[x]` regex + cold-clone
   errors landed in submission-readiness gate (54th-pass closures).
+- Loop 133: this update — stage count 24 → 26 (added
+  `verify_cardinality_arithmetic.py` and `verify_generator_consistency.py`);
+  EXACT_PIN_CLAIMS class extracted from 3 disguised SCOPED_DIFFs
+  (cross-paper claims now 11 across 5 classes); F2 §E
+  catalogue bare-anchor burn-down −7; 56th-pass UX/regex polish
+  on changelog-consistency and submission-readiness gates.

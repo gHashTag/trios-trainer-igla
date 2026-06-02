@@ -1727,34 +1727,37 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **24 stages**
+  cold**) — single-shot CI gate. Currently chains **26 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other seventeen stages are gates
-  introduced after the §E 8-script catalogue crystallized at
-  Loop 96, prior to the post-96 gate-evolution arc documented
-  in CHANGELOG §10**:
+  not a stage of itself); the **other nineteen stages are gates
+  introduced after the original 8-script catalogue crystallized,
+  during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
   `verify_label_consistency.py`, `verify_preamble_per_producer.py`,
   three follow-up-paper pre-registered scripts (`verify_provenance.sh`,
   `verify_run_completeness.py`, `verify_report_consistency.py`),
-  the stage-count-consistency verifier (Loop 118), the
-  cross-paper-consistency verifier (Loop 121), the cross-paper-gate
-  meta-test (Loop 124), the #1021 follow-up paper's cross-reference
+  the stage-count-consistency verifier, the
+  cross-paper-consistency verifier, the cross-paper-gate
+  meta-test, the #1021 follow-up paper's cross-reference
   audit, its markdown lint, the smoke test for its
   `f2_pairwise_perm` binary, the supplementary-zip packer, the
-  submission-readiness verifier (Loop 130 C, gates SUBMISSION_CHECKLIST
-  §1 against the STAGES array), the changelog-consistency verifier
-  (Loop 131 C, binds CHANGELOG §7 ↔ SUBMISSION_CHECKLIST §2 ↔
+  submission-readiness verifier (gates SUBMISSION_CHECKLIST §1
+  against the STAGES array), the changelog-consistency verifier
+  (binds CHANGELOG §7 ↔ SUBMISSION_CHECKLIST §2 ↔
   ADVERSARIAL_REVIEW_LOG headline pass-count triple), and the
-  anonymizer-completeness verifier (Loop 132 C, ratchets bare
-  `Loop N` anchor count per-file against a fixed baseline). Exits
-  0 only if every stage passes. The catalogue above is the
-  original 8 the paper relied on at draft time; the additional
-  17 are documented
-  in the follow-up paper's §5.4. (The 40th adversarial pass
-  corrected an earlier "seven catalogued + ten additional"
-  miscount.)
+  anonymizer-completeness verifier (ratchets bare `Loop N` anchor
+  count per-file against a fixed baseline), the cardinality-
+  arithmetic verifier (gates "N items (a + b + c)" sum-equality
+  across paper bodies), and the generator-consistency verifier
+  (binds the regen_changelog_section7.py output to the §7 lead
+  breadcrumb). Exits 0 only if every stage passes. The catalogue
+  above is the original 8 the paper relied on at draft time; the
+  additional 19 are documented
+  in the follow-up paper's §5.4. Per-introduction history (which
+  loop added which gate) is enumerated in `papers/CHANGELOG.md`
+  §10. (Earlier drafts wrote "seven catalogued + ten additional",
+  which an adversarial pass corrected.)
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +

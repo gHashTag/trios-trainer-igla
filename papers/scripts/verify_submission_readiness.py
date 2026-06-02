@@ -175,16 +175,19 @@ def main() -> int:
     # which ties admit silently when STAGES contains a literal
     # duplicate (a copy-paste mistake). Catch the underlying issue
     # before the NN loop runs.
-    seen: dict[str, int] = {}
+    # Loop 133-A SEV-4 fix #6: group duplicates by name so the
+    # diagnostic emits one line per duplicated name with ALL positions,
+    # rather than O(d²) pairwise messages.
+    positions: dict[str, list[int]] = {}
     for i, name in enumerate(stages):
-        if name in seen:
+        positions.setdefault(name, []).append(i)
+    for name, idxs in positions.items():
+        if len(idxs) > 1:
             mismatches.append(
                 f"papers/scripts/run_all_checks.sh STAGES has duplicate "
-                f"entry '{name}' at positions {seen[name]} and {i}. "
-                f"Each stage name must be unique; otherwise the §1 "
-                f"nearest-neighbor match is ambiguous.")
-        else:
-            seen[name] = i
+                f"entry '{name}' at positions {idxs}. Each stage name "
+                f"must be unique; otherwise the §1 nearest-neighbor "
+                f"match is ambiguous.")
 
     # Loop 131-A SEV-4 fix #6: dedicated diagnostic when sub-bullets
     # are marked `[x]`. The readiness audit assumes all-or-none
@@ -270,26 +273,31 @@ def main() -> int:
                       f"'{stage_name}' (jaccard={score:.2f}, "
                       f"best_other={best_other_score:.2f})")
 
-    # Loop 132-A SEV-3 fix #14: gate the §1 (13/M) "N claims (X EXACT +
-    # Y SCOPED + Z ACKN + W RELATIONAL)" enumeration so the leading N
-    # matches the sum X+Y+Z+W. Drift example: adding a 5th RELATIONAL
-    # invariant (W: 4→5) without bumping the leading "11 claims" → 12.
+    # Loop 132-A SEV-3 fix #14, refined Loop 133-A fix #4: gate the
+    # §1 (13/M) "N claims (...)" enumeration via a two-stage parse —
+    # find anchor + parenthetical, then sum all integers inside the
+    # parenthetical. Class-count-agnostic and order-agnostic, so
+    # future loops can add classes (e.g., EXACT_PIN) or reorder
+    # without breaking the gate.
     try:
         text = SUBMISSION_CHECKLIST.read_text()
     except FileNotFoundError:
         text = ""
     if text:
-        enum_re = re.compile(
-            r"(\d+) claims \((\d+) EXACT \+ (\d+) SCOPED "
-            r"\+ (\d+) ACKN \+ (\d+) RELATIONAL\)"
-        )
+        enum_re = re.compile(r"(\d+) claims \(([^)]+)\)")
         m = enum_re.search(text)
         if m:
             leading = int(m.group(1))
-            parts = [int(m.group(j)) for j in range(2, 6)]
+            body = m.group(2)
+            parts = [int(n) for n in re.findall(r"\d+", body)]
             total = sum(parts)
             line_no = text[:m.start()].count("\n") + 1
-            if leading != total:
+            if not parts:
+                mismatches.append(
+                    f"SUBMISSION_CHECKLIST.md:{line_no}: §1 "
+                    f"enumeration parenthetical '{body}' contains no "
+                    f"integers; arithmetic check undefined.")
+            elif leading != total:
                 mismatches.append(
                     f"SUBMISSION_CHECKLIST.md:{line_no}: §1 enumeration "
                     f"'{leading} claims ({'+'.join(str(p) for p in parts)})' "

@@ -148,7 +148,10 @@ def main() -> int:
     rendered = render_table(commits)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(rendered)
-    rel = args.output.relative_to(CRATE_ROOT) if args.output.is_absolute() else args.output
+    try:
+        rel = args.output.relative_to(CRATE_ROOT) if args.output.is_absolute() else args.output
+    except ValueError:
+        rel = args.output
     print(f"# regen_changelog_section7.py — wrote {rel}: "
           f"{len(commits)} commit(s) across "
           f"{len(set(c[2] for c in commits))} loop(s) "

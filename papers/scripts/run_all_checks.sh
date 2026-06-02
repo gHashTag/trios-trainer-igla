@@ -130,6 +130,8 @@ STAGES=(
     "submission readiness:python3 papers/scripts/verify_submission_readiness.py"
     "changelog consistency:python3 papers/scripts/verify_changelog_consistency.py"
     "anonymizer completeness:python3 papers/scripts/verify_anonymizer_completeness.py"
+    "cardinality arithmetic:python3 papers/scripts/verify_cardinality_arithmetic.py"
+    "generator consistency:python3 papers/scripts/verify_generator_consistency.py"
 )
 
 PASSED=0

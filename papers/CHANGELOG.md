@@ -107,22 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–132)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–133)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty-five** independent
-passes total across Loops 59–132 (50-pass milestone reached at
-Loop 127; passes 51–55 dispatched at Loops 128–132). The first
+caught before reviewers saw them. **Fifty-six** independent
+passes total across Loops 59–133 (50-pass milestone reached at
+Loop 127; passes 51–56 dispatched at Loops 128–133). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–132 extended the discipline to round-N
+submission flow; Loops 86–133 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–55 are summarized in §10 (CI gate evolution arc Loops 87–132;
-subsequent passes documented in per-loop commit messages). The
+12–56 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–133; per-pass detail lives in
+the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–132 (49th pass flagged the un-widened grep covered only
-~35 of 55 passes; the two-pattern form widens reach).
+90–133 (49th pass flagged the un-widened grep covered only
+~35 of 56 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -263,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–132)
+### 10. CI gate evolution (Loops 87–133)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -379,8 +380,31 @@ Stage additions since the original 8-script catalogue:
   bare anchors at Loop 132 baseline) is allowed; new additions
   fail the gate. Closes the 54th-pass catch #9 *class*
   (anonymization-leak through bare Loop-N anchors).
+- **Loop 133 A.iii** — `EXACT_PIN_CLAIMS` class extracted from the
+  three [N, N] SCOPED_DIFFs that were exact-pins disguised as
+  ranges (the 48th-pass A5 comment explicitly acknowledged the
+  disguise). 11 cross-paper claims now span 5 classes (1 EXACT +
+  2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN). `meta_test_*`
+  extended with EXACT_PIN break-test → 7/7 synthetic-break tests.
+- **Loop 133 A.iv** — Bare-anchor burn-down in F2 §E catalogue:
+  the paragraph at `f2_methodology.md:1730+` was rewritten to drop
+  7 inline Loop-N attributions (Loop 96, 118, 121, 124, 130 C,
+  131 C, 132 C); the per-loop introduction history is now
+  centralized in this §10 alone. `verify_anonymizer_completeness.py`
+  baseline lowered 29 → 22 for f2_methodology.md (total 65).
+- **Loop 133 B** — `verify_cardinality_arithmetic.py` added (25th
+  stage). Generalizes the 55th-pass #14 catch (§1 claim-class
+  enum specifically) to a registry of "N items (a + b + c)"
+  claims with class-count-agnostic + order-agnostic two-stage
+  parsing. Closes the 56th-pass #4 rigidity catch.
+- **Loop 133 C** — `verify_generator_consistency.py` added (26th
+  stage). Runs `regen_changelog_section7.py` and asserts agreement
+  on commit floor + range terminal with the §7 lead breadcrumb.
+  Operationalizes the "parallel generator vs hand-maintained
+  drift" pattern (preserves Loop 132 B's generator as a binding
+  artifact rather than informational only).
 
-The on-disk gate now runs **24 stages** (verified by the new
+The on-disk gate now runs **26 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.
