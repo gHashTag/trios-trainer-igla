@@ -107,21 +107,59 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–124)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–127)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Forty-seven** independent
-passes total across Loops 59–124. The first 11 (Loops 59, 61,
-75–85) targeted the original paper drafts and submission flow;
-Loops 86–124 extended the discipline to round-N audits where
-each substantive patch is independently re-audited the loop after
-it lands. Detail on passes 1–11 below; passes 12–47 are summarized
-in §10 (CI gate evolution arc Loops 87–118; subsequent passes
-documented in per-loop commit messages). The combined breadcrumb
-is `git log --oneline --grep="adversarial pass" --grep="round-"`
-which surfaces ≥35 commits across Loops 90–124 (49th pass
-flagged the un-widened grep covered only ~35 of 47 passes; the
+caught before reviewers saw them. **Fifty** independent passes
+total across Loops 59–127 (50-pass milestone reached at Loop
+127). The first 11 (Loops 59, 61, 75–85) targeted the original
+paper drafts and submission flow; Loops 86–127 extended the
+discipline to round-N audits where each substantive patch is
+independently re-audited the loop after it lands. Detail on
+passes 1–11 below; passes 12–50 are summarized in §10 (CI gate
+evolution arc Loops 87–118; subsequent passes documented in
+per-loop commit messages). The combined breadcrumb is
+`git log --oneline --grep="adversarial pass" --grep="round-"`
+which surfaces ≥35 commits across Loops 90–127 (49th pass
+flagged the un-widened grep covered only ~35 of 50 passes; the
 two-pattern form widens reach).
+
+#### 50-pass milestone (Loop 127, 2026-06-02)
+
+The 27→50 audit cycle (rounds N=1..23 across Loops 104–127)
+followed a productive pattern: each substantive patch was
+re-audited the next loop; round-N audits at N≥5 still found
+new SEV classes the prior N-1 had missed. Bug-class
+retrospective:
+
+- **Citation drift** (Loops 79, 80, 93, 97): 5 distinct error
+  modes — fabricated authors, withdrawn papers, mis-categorized
+  semantic claims, bib title paraphrasing, primary-source
+  attribution.
+- **Numeric / arithmetic drift** (Loops 98, 102, 117, 124): 4
+  modes — CSV-vs-table mismatch, formula-vs-table inconsistency,
+  cross-paper test count drift, stage-count partition arithmetic.
+- **Code-vs-text contradiction** (Loops 110, 112, 114, 115): 4
+  modes — claimed binary doesn't exist, claimed preamble fields
+  not emitted, primitive equivalence claimed but not enforced,
+  CI-gate scripts named but not implemented.
+- **Label / framing residue** (Loops 95, 100, 107): 3 modes —
+  Pearl-CDE label survival after §3.4 drop, "originally drafted"
+  anchor ambiguity, asymmetric reporting framing leftover.
+- **Gate-design fragility** (Loops 122, 125, 127): 3 modes —
+  ACKN regex typo making gate a no-op, shim-vs-dispatcher tuple
+  arity drift, CommonMark fence parity violation.
+
+**Bug classes static gates CANNOT catch** (require adversarial
+reads): pre-registration honesty (does §5.4 actually pre-register
+what it claims?), framing emphasis (does §1 over-promise relative
+to §5 delivery?), conceptual coherence (does the Pearl-CDE
+identification machinery actually apply to the new dataset?),
+reader-experience flow (does §3→§5 traversal land where promised?).
+Estimated ~30% of the 50 passes caught issues in this category
+that no static check would surface. The recurring meta-finding:
+**static gates catch what passes catch on the loop they're
+introduced, but every patch needs the round-after audit**.
 
 - **Loop 59** derivation audit: re-attributed Miles-Shpitser
   citation (5 authors, not 2), explicit Γ/Λ uniform-scalar
