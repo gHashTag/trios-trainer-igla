@@ -136,7 +136,7 @@ assumption that nested-counterfactual identification requires —
 see §3.4 for the diagnostic and the total-effect reframe. The
 cross-stratum comparator (4) is applied at the (phi, zoo)
 total-effect level rather than per-PSE.
-The same 10 F2 binaries, 805 tests, and W3C-PROV preamble
+The same 10 F2 binaries, 809 tests, and W3C-PROV preamble
 discipline that back the companion paper's sandbox-scale RmsNorm
 finding are the substrate this paper runs on at champion scale.
 A reader who has not yet seen F2 should treat §3 of this paper
@@ -827,26 +827,32 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (16 stages on disk as of Loop 115)
-will be extended with two additional new stages for this run:
+The companion paper's CI gate (18 stages on disk as of Loop 117)
+includes all three pre-registered #1021 scripts now that the third
+has been committed:
 
 - `verify_run_completeness.py` — implemented at Loop 116; checks
   all 93 CSVs are present in `data/issue1021/run0/` and each
   parses against the schema in §5.1. Pre-sweep runs (when the
   run directory doesn't exist) exit 0 vacuously, mirroring
   `verify_provenance.sh`'s pre-registration pattern.
-- `verify_report_consistency.py` (*to be implemented*) — checks
-  each report's numeric claims against the source CSVs (a
-  generalization of the per-table CSV-grounding script from
-  Loop 99 of the companion paper).
+- `verify_report_consistency.py` — implemented at Loop 117; for
+  each of the 6 post-run reports (`report_h0_equivalence.md`,
+  ...), parses the numeric claim rows, looks up matching source
+  CSV values, and asserts agreement at 2-decimal tolerance (BPB
+  and p-value alike). Generalizes Loop 99's per-table CSV-
+  grounding script. Pre-sweep runs exit 0 vacuously.
 
-One stage — `verify_provenance.sh` — was originally pre-registered
-in this section as future work but was implemented in Loop 115
-and is now part of the companion paper's 16-stage gate (stage
-9/16). It runs `f2_provenance_check` against the two cell-level /
-pairwise CSV classes that carry a W3C-PROV preamble (see §5.1 for
-the per-producer field set); the aggregator binaries that emit no
-preamble are not gated by this script.
+All three originally pre-registered scripts have now shipped:
+`verify_provenance.sh` (Loop 115) gates W3C-PROV preambles on the
+two preamble-emitting producer classes; `verify_run_completeness.py`
+(Loop 116) gates the 93-CSV inventory at the run-result anchor;
+`verify_report_consistency.py` (Loop 117) gates each post-run
+report's numeric claims against source CSVs. All three are now
+on disk in `papers/scripts/` and wired into the companion paper's
+CI gate; they run vacuously OK pre-sweep because the
+`data/issue1021/run0/` subtree does not exist on the methodology
+anchor commit.
 
 The two scripts above pre-registered as "(*to be implemented*)"
 follow the same commit-order discipline as `f2_pairwise_perm`
@@ -854,17 +860,19 @@ follow the same commit-order discipline as `f2_pairwise_perm`
 committed before any of the 80-cell champion-scale sweep CSVs
 are produced.
 
-**Gate stage decomposition** (the 38th adversarial pass flagged
-the earlier "15 + 3 = 18" arithmetic as internally inconsistent;
-fixed here): the current 16-stage on-disk gate breaks down as 12
-F2-scope stages (cross-ref/metadata/SHAs/lint/tables/formulas/
-label/preamble/inventory/xelatex/figures/supplementary) + 4
-#1021-scoped stages already wired into F2's `run_all_checks.sh`
-(verify_provenance/smoke_f2_pairwise_perm/#1021 cross-ref/#1021
-md-lint). Adding the two pre-registered scripts brings the
-end-state total to **18 stages**. The full gate must exit 0 on
-the run-result paper's anchor commit before any draft is
-exported for submission.
+**Gate stage decomposition** (Loop 116 fixed the 38th-pass
+arithmetic; Loop 117 brings the count to the post-pre-registration
+end state): the current **18-stage on-disk gate** breaks down as
+**12 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+formulas/label/preamble/inventory/xelatex/figures/supplementary)
+**+ 6 #1021-scoped stages already wired** into F2's
+`run_all_checks.sh` (verify_provenance/verify_run_completeness/
+verify_report_consistency/smoke_f2_pairwise_perm/#1021 cross-ref/
+#1021 md-lint). **No further stages remain pre-registered** — all
+three originally-future scripts (verify_provenance.sh,
+verify_run_completeness.py, verify_report_consistency.py) have
+shipped. The full gate must exit 0 on the run-result paper's
+anchor commit before any draft is exported for submission.
 
 37th adversarial pass (Loop 114) flagged that earlier drafts
 presented the three scripts as already-shipped when none were;

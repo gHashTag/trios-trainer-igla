@@ -129,6 +129,7 @@ STAGES=(
     "preamble per producer:python3 papers/scripts/verify_preamble_per_producer.py"
     "provenance gate:papers/scripts/verify_provenance.sh"
     "run completeness:papers/scripts/verify_run_completeness.py"
+    "report consistency:papers/scripts/verify_report_consistency.py"
     "f2_pairwise_perm smoke:papers/scripts/smoke_f2_pairwise_perm.sh"
     "#1021 cross-ref audit:papers/scripts/cross_reference_audit.py papers/phi_ladder_paper_intro_draft.md"
     "#1021 markdown lint:python3 papers/scripts/lint_paper_md.py papers/phi_ladder_paper_intro_draft.md"
