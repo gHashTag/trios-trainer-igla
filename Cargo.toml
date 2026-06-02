@@ -326,6 +326,11 @@ path = "src/bin/f2_mediation.rs"
 name = "f2_provenance_check"
 path = "src/bin/f2_provenance_check.rs"
 
+# Loop 110 -- ZVC exact paired-permutation test (arXiv:2205.01416) for #1021
+[[bin]]
+name = "f2_pairwise_perm"
+path = "src/bin/f2_pairwise_perm.rs"
+
 # Loop 34 -- Zhao-Luo two-mediator path-specific decomposition (arXiv:2007.16031)
 [[bin]]
 name = "f2_dual_mediation"

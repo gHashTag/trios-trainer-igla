@@ -401,12 +401,36 @@ single-mediator legacy, iLOCO scoring, pareto sweeps).
 infrastructure but contributes no analysis-level estimand.
 
 **New binary added by this paper's protocol**: `f2_pairwise_perm`
-implements the exact Zmigrod-Vieira-Cotterell (2022,
-arXiv:2205.01416) paired-permutation test on per-pair val_bpb
-differences plus the Benjamini-Hochberg correction per Liu, Leung
-& Shao (arXiv:1712.03305). The protocol commits this binary as
-part of the run-result paper's source-code release; the binary
-does not yet exist on the methodology anchor commit.
+(committed in Loop 110, src/bin/f2_pairwise_perm.rs) implements
+the exact Zmigrod-Vieira-Cotterell (2022, arXiv:2205.01416)
+paired-permutation test on per-pair val_bpb differences plus the
+Benjamini-Hochberg correction per Liu, Leung & Shao
+(arXiv:1712.03305).
+
+**On algorithmic novelty (33rd adversarial pass discovery,
+Loop 110).** The companion F2 framework already exposes the exact
+paired-sign-flip permutation primitive inside `f2_iloco_score`
+(src/bin/f2_iloco_score.rs, `permutation_test_paired()`), citing
+the same arXiv:2205.01416. `f2_pairwise_perm` is therefore a
+**re-packaging exercise**, not a research artifact: it lifts the
+permutation primitive into a standalone (phi-config, zoo-config)
+pairwise iteration wrapper, adds BH-correction across the 4
+zoo comparisons per phi-config, and emits the 16-row CSV schema
+that §5.1's pairwise CSV consumers expect. The genuine
+contribution is the wrapper + output schema; the underlying test
+is unchanged.
+
+**Pre-registration discipline for the new binary**. Because
+`f2_pairwise_perm` exists in the codebase before any of the
+80-cell champion-scale sweep CSVs are produced (Loop 110 commit
+predates the run), and because its `config_fingerprint` is
+captured in every output CSV's W3C-PROV preamble, the protocol
+satisfies the *commit-order* requirement of pre-registered
+analysis: a strict reviewer can verify the binary's contents are
+fixed at the protocol-lock commit by reading git history. The
+binary's 4 unit tests (paired-permutation known-result,
+null-result, BH monotonicity, CI95 sanity) are included in the
+test inventory.
 
 The deployed analysis binaries:
 
@@ -618,7 +642,8 @@ verdict. This is the strongest hypothesis; falsification of H2
 while H1 holds is the most likely outcome. Loop 109 32nd-pass
 correction: earlier drafts of §4.3 omitted the primary-stratum
 qualifier, creating the same logical no-man's-land that Loop 108
-fixed for §4.2.
+fixed for §4.2; fixed analogously here by aligning §4.3
+falsification with §4.4 primary-determining logic.
 
 **Action if H2 holds**: this is the headline positive result. The
 paper reports the specific phi-config that dominates, with full
