@@ -729,20 +729,33 @@ Total: 80 + 2 + 1 + 1 + 1 + (8…16) = **between 85 and 101 CSVs**
 baseline; actual count reported at the run-result paper). Each
 CSV has the
 F2 W3C-PROV preamble parseable by `f2_provenance_check`. The
-exact field set varies by producer: cell-level CSVs from
-`f2_ablation_sweep` carry `generatedAt`, `agent_git_sha`,
-`config_hash`, `seed`, `trainer_internals_schema`, and the
-training-token budget; aggregator CSVs from
-`f2_ablation_aggregate`, `f2_pairwise_perm`,
-`f2_stratum_compare`, and `f2_mediation_sensitivity` carry
-`generatedAt`, `wasGeneratedBy`, `agent_git_sha`, `host`,
-`trainer_internals_schema`, and `cargo_pkg_version` (seeds and
-config_hash live in the data rows the aggregator consumed,
-not the aggregator's own preamble). 36th adversarial pass
-(Loop 113) flagged that earlier drafts listed the cell-level
-field set as if it applied to every CSV, which contradicted
-the actual binary emissions; this paragraph now scopes the
-field set per producer class.
+exact field set varies by producer:
+
+- **Cell-level CSVs from `f2_ablation_sweep`** carry the full
+  preamble: `generatedAt`, `wasGeneratedBy`, `agent_git_sha`,
+  `host`, `trainer_internals_schema`, `cargo_pkg_version`.
+- **`f2_pairwise_perm` (this paper's new binary, Loop 110)**
+  carries the same field set plus two additional informational
+  fields, `phi_configs` and `zoo_configs`, that name the
+  enumeration the aggregator operated over.
+- **Other aggregator binaries** (`f2_ablation_aggregate`,
+  `f2_stratum_compare`, `f2_mediation_sensitivity`,
+  `f2_dual_mediation`) **do NOT currently emit a W3C-PROV
+  preamble**. Their outputs inherit provenance via the per-cell
+  CSVs they consume (each cell-level CSV's preamble is verifiable
+  via `f2_provenance_check`, and the aggregator's `delta_x`
+  and CI bounds are deterministic functions of those cells).
+  37th adversarial pass (Loop 114) discovered this gap; the
+  protocol acknowledges it transparently and the §5.4 CI gate
+  runs `f2_provenance_check` only on the cell-level CSVs plus
+  `f2_pairwise_perm`'s output.
+
+The `verify_preamble_per_producer.py` script
+(`papers/scripts/`) gates the per-producer field set
+statically: it greps each binary's source and asserts the
+emitted `# prov:` fields match what this paragraph claims.
+Adding a producer to F2 without updating §5.1 (or §5.1
+without changing the binary) fails the gate immediately.
 
 The 6 post-run reports:
 
@@ -807,20 +820,34 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The 13-stage CI gate from the companion paper (Loop 108) is
-extended with three new stages for this run:
+The companion paper's CI gate (15 stages on disk as of Loop 114)
+will be extended with three new stages for this run. **The three
+scripts below are NOT yet implemented on the methodology anchor
+commit**; they are pre-registered as part of this paper's protocol
+contribution and committed before the 80-cell sweep begins, on
+the same commit-order discipline as `f2_pairwise_perm` (§3.3
+"Pre-registration discipline for the new binary"):
 
-- `verify_run_completeness.py` — checks all 93 CSVs are present
-  in `data/issue1021/run0/` and each parses against the schema in §5.1.
-- `verify_report_consistency.py` — checks each report's numeric
-  claims against the source CSVs (a generalization of the
-  per-table CSV-grounding script from Loop 99).
-- `verify_provenance.sh` — runs `f2_provenance_check` against
-  every CSV; aborts if any preamble is missing or malformed.
+- `verify_run_completeness.py` (*to be implemented*) — checks
+  all 93 CSVs are present in `data/issue1021/run0/` and each
+  parses against the schema in §5.1.
+- `verify_report_consistency.py` (*to be implemented*) — checks
+  each report's numeric claims against the source CSVs (a
+  generalization of the per-table CSV-grounding script from
+  Loop 99 of the companion paper).
+- `verify_provenance.sh` (*to be implemented*) — runs
+  `f2_provenance_check` against the two cell-level / pairwise
+  CSV classes that carry a W3C-PROV preamble (see §5.1 for the
+  per-producer field set); the aggregator binaries that emit no
+  preamble are not gated by this script.
 
-The full CI gate (16 stages total: 13 from F2 + 3 from this paper)
-must exit 0 on the anchor commit before any draft is exported
-for submission.
+The full CI gate (18 stages total: 15 from F2 + 3 from this
+paper, after the three scripts above are committed) must exit 0
+on the run-result paper's anchor commit before any draft is
+exported for submission. 37th adversarial pass (Loop 114)
+flagged that earlier drafts presented the three scripts as
+already-shipped; fixed here with the "(*to be implemented*)"
+markers and the explicit pre-registration discipline framing.
 
 ---
 
