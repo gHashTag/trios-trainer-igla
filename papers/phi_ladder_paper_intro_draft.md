@@ -643,11 +643,12 @@ so H2 falsification must also be canonical-only. wd0 stratum
 outcomes (H2 success or failure) are reported as secondary
 evidence per §4.4 and do not contribute to the H2 falsification
 verdict. This is the strongest hypothesis; falsification of H2
-while H1 holds is the most likely outcome. Loop 109 32nd-pass
-correction: earlier drafts of §4.3 omitted the primary-stratum
-qualifier, creating the same logical no-man's-land that Loop 108
-fixed for §4.2; fixed analogously here by aligning §4.3
-falsification with §4.4 primary-determining logic.
+while H1 holds is the most likely outcome. (Internal ref —
+adversarial-pass correction documented in `papers/CHANGELOG.md`
+§10): earlier drafts of §4.3 omitted the primary-stratum
+qualifier, creating the same logical no-man's-land that an
+analogous prior pass fixed for §4.2; fixed analogously here by
+aligning §4.3 falsification with §4.4 primary-determining logic.
 
 **Action if H2 holds**: this is the headline positive result. The
 paper reports the specific phi-config that dominates, with full
@@ -827,7 +828,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (22 stages on disk as of Loop 130)
+The companion paper's CI gate (23 stages on disk as of Loop 131)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -872,12 +873,13 @@ are produced.
 **Gate stage decomposition** (Loop 116 fixed the 38th-pass
 arithmetic; Loop 117 brought the count to the post-pre-registration
 end state; Loops 118 + 121 added the stage-count + cross-paper
-verifiers): the current **22-stage on-disk gate** breaks down as
-**16 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+verifiers): the current **23-stage on-disk gate** breaks down as
+**17 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
-the cross-paper consistency verifier added in Loop 121, and the
-submission-readiness verifier added in Loop 130 C) **+ 6
+the cross-paper consistency verifier added in Loop 121, the
+submission-readiness verifier added in Loop 130 C, and the
+changelog-consistency verifier added in Loop 131 C) **+ 6
 #1021-scoped stages already wired** into F2's `run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No

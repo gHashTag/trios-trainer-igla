@@ -43,7 +43,14 @@ SUBMISSION_CHECKLIST = CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md"
 
 def parse_stages() -> list[str]:
     """Return ordered list of stage names from STAGES=( ... ) block."""
-    text = RUN_ALL_CHECKS.read_text()
+    try:
+        text = RUN_ALL_CHECKS.read_text()
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"run_all_checks.sh missing at {RUN_ALL_CHECKS.relative_to(CRATE_ROOT)} "
+            "— gate cannot verify §1 ↔ STAGES alignment without the source "
+            "of truth for STAGES. Ensure papers/scripts/ is fully checked out."
+        ) from None
     m = re.search(r"STAGES=\(\s*\n(.*?)\n\)", text, re.DOTALL)
     if not m:
         raise RuntimeError("STAGES=( ... ) block not found in run_all_checks.sh")
@@ -56,20 +63,36 @@ def parse_stages() -> list[str]:
 # require it explicitly. Using `[—-]` here is wrong because it includes
 # ASCII hyphen and would terminate names like "cross-reference audit"
 # at the first hyphen.
+# Loop 131-A SEV-4 fix #6: accept both `[ ]` (unchecked) and `[x]` /
+# `[X]` (checked). Without the broadening, a single checked item would
+# silently drop from `subs` and cause a confusing count-mismatch
+# diagnostic instead of a dedicated "checked items detected" message.
 _SUBBULLET_RE = re.compile(
-    r"^\s*-\s*\[\s*\]\s*\((\d+)/(\d+)\)\s+(.+?)\s+—\s+",
+    r"^\s*-\s*\[\s*([ xX])\s*\]\s*\((\d+)/(\d+)\)\s+(.+?)\s+—\s+",
     re.MULTILINE,
 )
 
 
-def parse_subbullets() -> list[tuple[int, int, str, int]]:
-    """Return list of (k, M, name, line_no) for each §1 sub-bullet.
+def parse_subbullets() -> tuple[list[tuple[int, int, str, int]], list[int]]:
+    """Return (sub-bullet list, checked-line-numbers).
 
     Constrained to §1 — we extract the section bounded by the §1 heading
     and the next "## " heading so unrelated `(k/M)` patterns elsewhere
     in the file don't bleed in.
+
+    Loop 131-A SEV-4 fix #6: also report which sub-bullets are marked
+    `[x]` / `[X]` so main() can emit a dedicated diagnostic rather than
+    let a single checked item cascade into a count-mismatch message.
     """
-    text = SUBMISSION_CHECKLIST.read_text()
+    try:
+        text = SUBMISSION_CHECKLIST.read_text()
+    except FileNotFoundError:
+        raise RuntimeError(
+            f"SUBMISSION_CHECKLIST.md missing at "
+            f"{SUBMISSION_CHECKLIST.relative_to(CRATE_ROOT)} — gate cannot "
+            "verify §1 ↔ STAGES alignment. Ensure papers/ is fully "
+            "checked out."
+        ) from None
     sec = re.search(
         r"^##\s*1\.\s+CI gates\b.*?(?=^##\s|\Z)",
         text,
@@ -78,18 +101,20 @@ def parse_subbullets() -> list[tuple[int, int, str, int]]:
     if not sec:
         raise RuntimeError("§1 'CI gates' section not found in SUBMISSION_CHECKLIST.md")
     sec_text = sec.group(0)
-    # Offset of §1 within the full file (for accurate line numbers).
     sec_offset = sec.start()
     out: list[tuple[int, int, str, int]] = []
+    checked: list[int] = []
     for m in _SUBBULLET_RE.finditer(sec_text):
-        k = int(m.group(1))
-        big_m = int(m.group(2))
-        name = m.group(3).strip()
-        # File-level line number: lines before (sec_offset + m.start()).
+        marker = m.group(1)
+        k = int(m.group(2))
+        big_m = int(m.group(3))
+        name = m.group(4).strip()
         abs_pos = sec_offset + m.start()
         line_no = text[:abs_pos].count("\n") + 1
         out.append((k, big_m, name, line_no))
-    return out
+        if marker in ("x", "X"):
+            checked.append(line_no)
+    return out, checked
 
 
 def _tokenize(s: str) -> set[str]:
@@ -98,13 +123,21 @@ def _tokenize(s: str) -> set[str]:
     Strip common decorations (#1021, parenthesized hints) so a checklist
     label like "cross-reference audit (companion paper)" tokenizes the
     same way as the STAGES entry "cross-ref audit".
+
+    Loop 131-A SEV-4 fix #4: stop-word set extended symmetrically.
+    Criterion: ≤3 chars AND grammatical-glue role (preposition,
+    conjunction, copula). Was previously asymmetric (had "of" but
+    missed "in", "by", "with", "at", "as", "or", "per") — a future
+    rename like "preamble per producer" → "preamble in producer" would
+    silently pass while semantically distinct.
     """
     s = s.lower()
-    s = re.sub(r"\(.*?\)", " ", s)        # drop parenthetical hints
-    s = re.sub(r"[^a-z0-9#]+", " ", s)    # keep #1021 etc.
-    # Loop 130 C: strip very common short-words that add noise without
-    # signal so token-overlap doesn't false-pass on stop-word matches.
-    stop = {"the", "a", "and", "of", "vs", "to", "on", "for"}
+    s = re.sub(r"\(.*?\)", " ", s)
+    s = re.sub(r"[^a-z0-9#]+", " ", s)
+    stop = {
+        "the", "a", "an", "and", "of", "or", "vs",
+        "to", "on", "in", "at", "by", "as", "per", "with", "for", "is",
+    }
     return {t for t in s.split() if t and t not in stop}
 
 
@@ -116,23 +149,38 @@ def jaccard(a: set[str], b: set[str]) -> float:
     return len(a & b) / len(a | b)
 
 
-# Loop 130 C: per-index name-similarity threshold. Checklist short-names
-# are written for humans (e.g., "cross-reference audit") while STAGES
-# names are written for grep (e.g., "cross-ref audit"); we want fuzzy
-# enough to ignore "ref vs reference" but strict enough to catch a
-# whole-stage swap (e.g., checklist says "metadata verify" but STAGES[1]
-# is now "preamble per producer").
+# Loop 130 C: per-index absolute floor for token-overlap. Catches
+# whole-stage swap (e.g., §1 says "metadata verify" but STAGES[1] is now
+# "preamble per producer" → Jaccard 0.0).
 JACCARD_FLOOR = 0.30
+
+
+def _name_match_score(sub_tokens: set[str], stage_tokens: set[str]
+                      ) -> float:
+    """Wrap jaccard so it's the only place we declare the metric."""
+    return jaccard(sub_tokens, stage_tokens)
 
 
 def main() -> int:
     stages = parse_stages()
-    subs = parse_subbullets()
+    subs, checked = parse_subbullets()
     actual_n = len(stages)
     print(f"# verify_submission_readiness.py — STAGES={actual_n}, "
-          f"§1 sub-bullets={len(subs)}")
+          f"§1 sub-bullets={len(subs)} ({len(checked)} marked [x])")
 
     mismatches: list[str] = []
+
+    # Loop 131-A SEV-4 fix #6: dedicated diagnostic when sub-bullets
+    # are marked `[x]`. The readiness audit assumes all-or-none
+    # unchecked state (because a partially-checked checklist is a
+    # mid-submission artifact that shouldn't pass the gate).
+    if checked:
+        mismatches.append(
+            f"SUBMISSION_CHECKLIST.md §1: {len(checked)} sub-bullet(s) "
+            f"marked [x] at line(s) {checked} — readiness audit "
+            f"assumes all-or-none unchecked state. If submission is "
+            f"in progress, this gate should be excluded from the CI run; "
+            f"if accidental, replace [x] → [ ].")
 
     # (A) Sub-bullet count must equal stage count.
     if len(subs) != actual_n:
@@ -158,12 +206,30 @@ def main() -> int:
                 f"{idx} claims numerator {k}; expected {idx} (monotonic "
                 f"renumbering required).")
 
-    # (D) Fuzzy name match at each position (only when counts agree;
-    # otherwise the per-index pairing is undefined).
+    # (D) Name match at each position. Loop 131-A SEV-3 fix #1:
+    # the Jaccard floor alone admits adjacent-swap silent-pass when two
+    # stage names happen to share one token (e.g., "tables vs CSVs" ↔
+    # "formulas vs tables" both have "tables" → Jaccard 1/3 = 0.333,
+    # above the 0.30 floor). To catch this class, we additionally
+    # require **nearest-neighbor**: the score for the §1 sub-bullet at
+    # position i vs STAGES[i] must be ≥ max score vs STAGES[j] for any
+    # j ≠ i. After a swap of stages i↔i+1, the §1 sub-bullet at i will
+    # match STAGES[i+1] strictly better than STAGES[i], firing the
+    # nearest-neighbor check.
     if len(subs) == actual_n:
+        stage_tokens = [_tokenize(s) for s in stages]
         for i, (k, big_m, sub_name, line_no) in enumerate(subs):
+            sub_tok = _tokenize(sub_name)
             stage_name = stages[i]
-            score = jaccard(_tokenize(sub_name), _tokenize(stage_name))
+            score = _name_match_score(sub_tok, stage_tokens[i])
+            # Find the maximum score against any OTHER stage.
+            other_scores = [
+                (j, _name_match_score(sub_tok, stage_tokens[j]))
+                for j in range(actual_n) if j != i
+            ]
+            best_other_idx, best_other_score = max(
+                other_scores, key=lambda p: p[1]
+            ) if other_scores else (-1, 0.0)
             if score < JACCARD_FLOOR:
                 mismatches.append(
                     f"SUBMISSION_CHECKLIST.md:{line_no}: §1 stage {k} "
@@ -171,9 +237,22 @@ def main() -> int:
                     f"STAGES[{i}] '{stage_name}' — below floor "
                     f"{JACCARD_FLOOR}. Either rename one to match or "
                     f"confirm the stages have actually been reordered.")
+            elif score < best_other_score:
+                # Nearest-neighbor violation: §1 sub-bullet at position i
+                # is MORE similar to a different STAGES entry than to
+                # STAGES[i]. Most-likely cause: STAGES were reordered
+                # without updating §1.
+                mismatches.append(
+                    f"SUBMISSION_CHECKLIST.md:{line_no}: §1 stage {k} "
+                    f"'{sub_name}' matches STAGES[{i}] '{stage_name}' "
+                    f"with Jaccard {score:.2f}, but matches STAGES["
+                    f"{best_other_idx}] '{stages[best_other_idx]}' with "
+                    f"{best_other_score:.2f} (higher). Reorder the §1 "
+                    f"sub-bullets to track the current STAGES order.")
             else:
                 print(f"# OK  ({k}/{actual_n}) '{sub_name}' ~ STAGES[{i}] "
-                      f"'{stage_name}' (jaccard={score:.2f})")
+                      f"'{stage_name}' (jaccard={score:.2f}, "
+                      f"best_other={best_other_score:.2f})")
 
     if mismatches:
         print(f"# verify_submission_readiness.py — "

@@ -128,6 +128,7 @@ STAGES=(
     "figure regen:papers/scripts/figure_regen.sh"
     "supplementary pack:papers/tmlr_submission_kit/pack_supplementary.sh --skip-regen"
     "submission readiness:python3 papers/scripts/verify_submission_readiness.py"
+    "changelog consistency:python3 papers/scripts/verify_changelog_consistency.py"
 )
 
 PASSED=0

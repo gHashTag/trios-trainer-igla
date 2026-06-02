@@ -107,31 +107,26 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–130)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–131)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Fifty-three** independent
-passes total across Loops 59–130 (50-pass milestone reached at
-Loop 127; passes 51–53 dispatched at Loops 128–130). The first
+caught before reviewers saw them. **Fifty-four** independent
+passes total across Loops 59–131 (50-pass milestone reached at
+Loop 127; passes 51–54 dispatched at Loops 128–131). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–130 extended the discipline to round-N
+submission flow; Loops 86–131 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–53 are summarized in §10 (CI gate evolution arc Loops 87–130;
+12–54 are summarized in §10 (CI gate evolution arc Loops 87–131;
 subsequent passes documented in per-loop commit messages). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–130 (49th pass flagged the un-widened grep covered only
-~35 of 53 passes; the two-pattern form widens reach).
+90–131 (49th pass flagged the un-widened grep covered only
+~35 of 54 passes; the two-pattern form widens reach).
 
-#### 50-pass milestone (Loop 127, 2026-06-02)
+#### Adversarial review retrospective (50-pass milestone Loop 127; current cumulative count tracked in lead paragraph)
 
-*Postscript (Loop 130)*: 3 additional passes (51 at Loop 128, 52 at
-Loop 129, 53 at Loop 130) were dispatched after this milestone was
-recorded; the lead paragraph above tracks the current cumulative
-count (53). The retrospective below documents the cycle that led to
-the 50-pass mark and is preserved as a frozen historical record.
-
+As of the Loop 127 50-pass milestone:
 The 27→50 audit cycle (rounds N=1..23 across Loops 104–127)
 followed a productive pattern: each substantive patch was
 re-audited the next loop; round-N audits at N≥5 still found
@@ -162,10 +157,11 @@ what it claims?), framing emphasis (does §1 over-promise relative
 to §5 delivery?), conceptual coherence (does the Pearl-CDE
 identification machinery actually apply to the new dataset?),
 reader-experience flow (does §3→§5 traversal land where promised?).
-Estimated ~30% of the 50 passes caught issues in this category
-that no static check would surface. The recurring meta-finding:
-**static gates catch what passes catch on the loop they're
-introduced, but every patch needs the round-after audit**.
+Estimated ~30% of the (then-)50 passes caught issues in this
+category that no static check would surface (Loop 127 anchor; see
+lead paragraph for current cumulative count). The recurring
+meta-finding: **static gates catch what passes catch on the loop
+they're introduced, but every patch needs the round-after audit**.
 
 - **Loop 59** derivation audit: re-attributed Miles-Shpitser
   citation (5 authors, not 2), explicit Γ/Λ uniform-scalar
@@ -350,8 +346,24 @@ Stage additions since the original 8-script catalogue:
   extended in lock-step with a synthetic break-test, keeping the
   Loop 126 B inventory-completeness check green (4/4 classes
   covered → 5/5 break-tests pass).
+- **Loop 131 B** — `RELATIONAL_CLAIMS` grown from 1 → 4 entries:
+  TMLR-class ≤ anon page count (article-wrapper wider than tmlr.sty
+  single-column tight layout); F2 §8.2 grouped total ≥ §3.5.4
+  lib-only (lib tests are a subset of cumulative); #1021 §3.3
+  binary count ≥ F2 §D 10-binary inventory (#1021 superset). Total
+  cross-paper claims now 11 across 4 classes (1 EXACT + 5 SCOPED +
+  1 ACKN + 4 RELATIONAL).
+- **Loop 131 C** — `verify_changelog_consistency.py` added (23rd
+  stage). Binds the adversarial-pass count + loop-range terminal
+  cursor across three sites: CHANGELOG §7 lead paragraph (uses
+  English word like "Fifty-three"), SUBMISSION_CHECKLIST §2
+  (digits), ADVERSARIAL_REVIEW_LOG headline (digits). Closes the
+  53rd-pass catch #1 (CHANGELOG §7 was 20 loops stale at "Fifty"
+  while the other two sites had been refreshed to "52" at Loop
+  129) — operationalizes "no single doc owns the canonical count;
+  the gate is the only canonical source".
 
-The on-disk gate now runs **22 stages** (verified by the new
+The on-disk gate now runs **23 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

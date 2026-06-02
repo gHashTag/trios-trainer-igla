@@ -216,6 +216,60 @@ def test_relational_break_non_anon_lt_anon(tmp: Path) -> bool:
     )
 
 
+def test_relational_boundary_equality(tmp: Path) -> bool:
+    """Loop 131-A SEV-4 fix #5: guard against silent direction-flip in
+    COMPARATORS. The "ge" comparator must accept equality (a == b).
+    Mutate SUBMISSION_CHECKLIST so non-anon == anon == 42 (the
+    boundary case) and assert the gate exits 0 — confirming "ge"
+    semantics are inclusive, not strictly-greater.
+
+    Without this test, a registry author who flips "ge" → "gt" would
+    introduce a subtle false-FAIL at the equality boundary that the
+    existing far-from-boundary break-test (non-anon=30, anon=50)
+    cannot expose. Equality boundary is the canonical regression
+    surface for comparator semantics."""
+    chk_tmp = tmp / "checklist_equal.md"
+    text = CHECKLIST.read_text()
+    broken = re.sub(
+        r"Non-anonymized PDF: \*\*\d+ pages\*\*",
+        "Non-anonymized PDF: **42 pages**",
+        text, count=1,
+    )
+    broken = re.sub(
+        r"Anonymized PDF: \*\*\d+ pages\*\*",
+        "Anonymized PDF: **42 pages**",
+        broken, count=1,
+    )
+    # Also pin the SCOPED_DIFF exact-pin entries so they don't fail
+    # independently — we're testing RELATIONAL behavior in isolation.
+    # The SUBMISSION_CHECKLIST non-anon SCOPED_DIFF pin is [43, 43];
+    # this test legitimately violates it. We accept the SCOPED_DIFF
+    # failure as collateral and check ONLY that the RELATIONAL "ge"
+    # comparator does NOT produce a "invariant violated" diagnostic
+    # in the stderr output. If "ge" were flipped to "gt", non-anon=42
+    # would not be > anon=42 → "invariant violated" would appear.
+    chk_tmp.write_text(broken)
+    rc, err = run_gate(checklist_override=chk_tmp)
+    # The SCOPED_DIFF fires on the 42 vs 43 pin — rc will be 1.
+    # But the RELATIONAL "Non-anon ≥ anon" must NOT appear in the
+    # mismatch list, because 42 >= 42 is true.
+    if "Non-anon ≥ anon page count" in err and "invariant violated" in err:
+        # Find the line that mentions "invariant violated" and check
+        # if it's the non-anon-ge-anon one.
+        lines = err.splitlines()
+        for line in lines:
+            if "Non-anon ≥ anon" in line and "invariant violated" in line:
+                print(f"# FAIL  RELATIONAL boundary equality: gate "
+                      f"reported '{line.strip()}' for non-anon=anon=42 "
+                      "— 'ge' comparator should ACCEPT equality. This "
+                      "indicates the comparator may have been flipped "
+                      "to 'gt' or similar.", file=sys.stderr)
+                return False
+    print("# OK    RELATIONAL boundary equality: 'ge' accepts a==b "
+          "(non-anon=anon=42 case)")
+    return True
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -293,6 +347,7 @@ def main() -> int:
             ("scoped_diff_lib_count", test_scoped_diff_break_lib_count),
             ("acknowledges_remove_ack", test_acknowledges_break_remove_ack),
             ("relational_non_anon_lt_anon", test_relational_break_non_anon_lt_anon),
+            ("relational_boundary_equality", test_relational_boundary_equality),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -302,7 +357,8 @@ def main() -> int:
               "tests passed", file=sys.stderr)
         return 1
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
-          "tests passed; gate enforces its 4 claim classes")
+          "tests passed; gate enforces its 4 claim classes (incl. "
+          "comparator-direction guard)")
     return 0
 
 

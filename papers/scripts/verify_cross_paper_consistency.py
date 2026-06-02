@@ -242,6 +242,46 @@ RELATIONAL_CLAIMS: list[tuple[str, Path, str, Path, str, str]] = [
         "ge",
         "Non-anon ≥ anon page count (structural anonymization invariant)",
     ),
+    # Loop 131 B: anon ≥ TMLR-class page count. The TMLR class uses
+    # single-column tight layout; the article wrapper used for anon/
+    # non-anon is multi-line wider. Same content always renders
+    # shorter in TMLR class, so TMLR_pp ≤ anon_pp must hold. This
+    # binds the page-count chain TMLR ≤ anon ≤ non-anon, catching any
+    # future PDF-rendering inversion in one extra check.
+    (
+        r"Anonymized PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
+        SUBMISSION_CHECKLIST,
+        "ge",
+        "Anon ≥ TMLR-class page count (article-wrapper-wider-than-tmlr invariant)",
+    ),
+    # Loop 131 B: F2 §8.2 grouped total (cargo test --lib + per-bin +
+    # integration = 809) ≥ §3.5.4 lib-only count (cargo test --lib =
+    # 714). Lib tests are a strict subset of the cumulative total;
+    # if a future loop drops integration tests without also reducing
+    # the §3.5.4 lib number, this gate fires.
+    (
+        r"lists (\d+) tests grouped\s+by",
+        F2_PAPER,
+        r"cargo test --lib`? exits 0 with (\d+) passing tests",
+        F2_PAPER,
+        "ge",
+        "F2 §8.2 grouped total ≥ §3.5.4 lib-only (subset invariant)",
+    ),
+    # Loop 131 B: #1021 §3.3 on-disk binary count ≥ F2 §D test-inventory
+    # "10 F2 binaries". #1021 names a superset (10 F2 + 2 new #1021
+    # binaries including f2_pairwise_perm + 1 more); F2 names only its
+    # documented set. Subset invariant: #1021's count cannot drop below
+    # F2's without removing a binary outright.
+    (
+        r"\*\*(\d+) binaries\*\* on disk",
+        ISSUE1021_PAPER,
+        r"809 tests across `src/lib\.rs`, (\d+) F2 binaries",
+        F2_PAPER,
+        "ge",
+        "#1021 §3.3 binary count ≥ F2 §D 10-binary inventory (superset invariant)",
+    ),
 ]
 
 
