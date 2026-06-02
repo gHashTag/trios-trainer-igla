@@ -32,10 +32,15 @@ CHANGELOG = CRATE_ROOT / "papers" / "CHANGELOG.md"
 
 
 # Match `- **Loop N <suffix>**` at the start of a CHANGELOG §10 list
-# item. The suffix may be empty, "A", "A.iii", "C", "B" etc. We capture
-# just the integer for grep purposes; the suffix is informational.
+# item. The suffix may be empty, "A", "A.iii", "C", "B", "A.iv (#1021
+# §5.4)" etc. We capture just the integer for grep purposes; the
+# suffix is informational.
+# Loop 140 — 63rd-pass SEV-4 fix #4+#6: extended suffix class with
+# `#§/` (for parenthetical scope tags) and full `a-z` lowercase
+# (the prior class only allowed `iv` for Roman numerals, silently
+# dropping any entry that used `.ix`, `.x`, or other lowercase).
 _LOOP_ENTRY_RE = re.compile(
-    r"^- \*\*Loop (\d+)(?:[A-Z. ()0-9iv]*)?\*\*",
+    r"^- \*\*Loop (\d+)(?:[A-Za-z. ()0-9#§/]*)?\*\*",
     re.MULTILINE,
 )
 
@@ -65,8 +70,13 @@ def parse_section10_loops() -> tuple[list[int], int] | str:
 
 
 def commits_mentioning_loop(n: int) -> int:
-    """Return count of commits on the current branch whose message
-    contains 'Loop {n}'. Falls back to 0 on git error."""
+    """Return count of commits on the current branch (HEAD) whose
+    message contains 'Loop {n}'. Falls back to 0 on git error.
+
+    Loop 140 — 63rd-pass SEV-4 fix #9: docstring clarified that
+    scope is HEAD (the current branch), not specifically
+    `f2-methodology`. A detached HEAD or sibling branch sees
+    only its own reachable history."""
     try:
         result = subprocess.run(
             ["git", "log", "--oneline", f"--grep=Loop {n}\\b", "HEAD"],

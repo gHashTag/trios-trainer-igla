@@ -57,7 +57,12 @@ def _scan_targets() -> list[Path]:
         )
         data = json.loads(sidecar.read_text())
         bl = data.get("baselines")
-        if isinstance(bl, dict):
+        # Loop 140 — 63rd-pass SEV-4 fix #3: require non-empty dict.
+        # An empty `{"baselines": {}}` previously yielded `[]` and
+        # silently scanned 0 files (gate would pass with "0 live
+        # anchors all within tolerance"). Now falls through to the
+        # explicit 2-paper fallback in that case.
+        if isinstance(bl, dict) and bl:
             return [CRATE_ROOT / k for k in bl if isinstance(k, str)]
     except Exception:
         pass

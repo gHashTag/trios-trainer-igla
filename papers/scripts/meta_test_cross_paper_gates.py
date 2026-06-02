@@ -331,10 +331,14 @@ def test_burn_down_arithmetic_break(tmp: Path) -> bool:
     text = anon.read_text()
     # Inject a bad-arithmetic entry inside the FALLBACK_BASELINES
     # docstring (which the burn-down gate parses). 5+5 = 10, not 11.
+    # Loop 140 — 63rd-pass SEV-4 fix #12: inject at a NON-most-recent
+    # position so the most-recent-binding check doesn't fire (it
+    # would mask the arithmetic shape-check). Insert AFTER an early
+    # entry, so the latest live entry remains the actual most-recent.
     broken = text.replace(
-        "FALLBACK_BASELINES = {",
-        "#   Loop 999 SYNTHETIC: 5 + 5 = 11.\n"
-        "FALLBACK_BASELINES = {",
+        "Loop 132 C baseline: 29 + 43 = 72.",
+        "Loop 132 C baseline: 29 + 43 = 72.\n"
+        "#   Loop 99 SYNTHETIC: 5 + 5 = 11.",
     )
     if broken == text:
         print("# SKIP burn_down_arithmetic: FALLBACK_BASELINES marker "

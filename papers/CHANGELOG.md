@@ -499,8 +499,11 @@ Stage additions since the original 8-script catalogue:
   Anonymizer baseline 11 → 6. Total legacy debt 38 → 33.
 - **Loop 139 B** — `_gate_utils.import_gate` extended with optional
   `_MODULE_CACHE`. Default cache=True; pass cache=False to bypass.
-  4× speedup for run_all_checks.sh sweeps that import
-  verify_cross_paper_consistency.py from three sister gates.
+  Regression protection against future in-process orchestrators
+  (each stage today is a separate subprocess, so the cache is
+  exercised within `verify_module_cache_consistency.py` itself —
+  the earlier "4× speedup for run_all_checks.sh sweeps" claim was
+  inaccurate and corrected at the 62nd-pass closure).
   `verify_module_cache_consistency.py` added (31st stage) asserting
   the cache contract: cache=True same instance, cache=False distinct,
   cache=True after cache=False not poisoned.
@@ -522,10 +525,10 @@ Stage additions since the original 8-script catalogue:
   break-tests now).
 - **Loop 140 B** — `verify_anchor_loop_coverage.py` added (33rd
   stage). Parses CHANGELOG §10 for `**Loop N <suffix>**` entries
-  and asserts each one has ≥1 commit on f2-methodology branch
+  and asserts each one has ≥1 commit on HEAD (the current branch)
   via `git log --grep="Loop N\b"`. Most-recent loop exempted
   for in-flight lag. Catches "narrative is ahead of history"
-  drift. Currently 22 historical entries all with ≥1 commit.
+  drift. Currently 23 historical entries all with ≥1 commit.
 - **Loop 140 C** — `test_gate_composition.sh` added as a minimal
   shell smoke wrapper. Runs `run_all_checks.sh` and asserts
   exit 0. NOT a CI stage (recursive invocation would loop).
