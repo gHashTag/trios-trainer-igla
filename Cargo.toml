@@ -169,6 +169,10 @@ path = "src/bin/tri.rs"
 name = "f2_harness"
 path = "src/bin/f2_harness.rs"
 
+[[bin]]
+name = "f2_dual_mediation"
+path = "src/bin/f2_dual_mediation.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []

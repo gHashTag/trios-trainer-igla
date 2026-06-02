@@ -1,0 +1,11 @@
+# W3C-PROV: source = trios-trainer-igla@9f8a8a1, mode = optimizer_factorial_wd0
+# INPUT STRATUM = wd0
+# CDE-framing: wd0 stratum -- weight_decay pinned to 0; the momentum PSE is a Pearl CDE along non-decay paths
+# generator = igla_coder ablation; outcome = code_val_bpb (bits-per-byte, lower better)
+mode,arm,seed,x_phi_prior,m1_momentum,m2_decay,beta1,wd,hidden,n_steps,lr,code_val_bpb
+optimizer_factorial_wd0,standard,42,0,0,0,0.9000000000,0.0000000000,64,300,0.03,3.7767
+optimizer_factorial_wd0,standard,43,0,0,0,0.9000000000,0.0000000000,64,300,0.03,3.6408
+optimizer_factorial_wd0,standard,44,0,0,0,0.9000000000,0.0000000000,64,300,0.03,3.6165
+optimizer_factorial_wd0,phi_b1,42,1,1,0,0.6180339887,0.0000000000,64,300,0.03,3.4530
+optimizer_factorial_wd0,phi_b1,43,1,1,0,0.6180339887,0.0000000000,64,300,0.03,3.3494
+optimizer_factorial_wd0,phi_b1,44,1,1,0,0.6180339887,0.0000000000,64,300,0.03,3.4277

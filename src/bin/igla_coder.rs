@@ -681,6 +681,28 @@ struct TrainCfg {
     wd_ov: Option<f64>,
     // if Some(stride), print a `curve` line every `stride` steps (Loop+1 Option B)
     curve_stride: Option<usize>,
+    // if Some(k), evaluate validation BPB every k steps and track the best
+    // checkpoint (Loop+2 Option A: handle unstable seeds honestly).
+    eval_every: Option<usize>,
+}
+
+// Validation BPB over up to 64 windows (shared by periodic eval + final eval).
+fn eval_val(model: &Model, val: &[usize], seq: usize) -> f32 {
+    let mut vg = zeros_like(model);
+    let mut nats = 0.0f32;
+    let mut wins = 0usize;
+    let mut i = 0;
+    while i + seq + 1 < val.len() && wins < 64 {
+        let toks = &val[i..i + seq + 1];
+        nats += fwd_bwd(model, toks, &mut vg, false);
+        wins += 1;
+        i += seq;
+    }
+    if wins == 0 {
+        f32::NAN
+    } else {
+        (nats / wins as f32) / std::f32::consts::LN_2
+    }
 }
 
 fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
@@ -688,6 +710,7 @@ fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
     let mut model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
     let mut opt = make_opt(&model, &cfg.arm, cfg.lr, cfg.beta1_ov, cfg.wd_ov);
     let mut drng = StdRng::seed_from_u64(cfg.seed ^ 0x9e37);
+    let mut best_val = f32::INFINITY;
 
     for step in 0..cfg.steps {
         let mut g = zeros_like(&model);
@@ -712,24 +735,28 @@ fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
                 );
             }
         }
+        if let Some(k) = cfg.eval_every {
+            if k > 0 && (step % k == 0 || step == cfg.steps - 1) {
+                let v = eval_val(&model, val, cfg.seq);
+                if v < best_val {
+                    best_val = v;
+                }
+            }
+        }
     }
 
-    // validation BPB
-    let mut vg = zeros_like(&model);
-    let mut nats = 0.0f32;
-    let mut wins = 0usize;
-    let mut i = 0;
-    while i + cfg.seq + 1 < val.len() && wins < 64 {
-        let toks = &val[i..i + cfg.seq + 1];
-        nats += fwd_bwd(&model, toks, &mut vg, false);
-        wins += 1;
-        i += cfg.seq;
+    let final_val = eval_val(&model, val, cfg.seq);
+    if cfg.eval_every.is_some() {
+        if final_val < best_val {
+            best_val = final_val;
+        }
+        // machine-parseable best-checkpoint readout (Loop+2 Option A)
+        println!(
+            "bestval arm={} seed={} final_val_bpb={:.4} best_val_bpb={:.4}",
+            cfg.arm, cfg.seed, final_val, best_val
+        );
     }
-    if wins == 0 {
-        f32::NAN
-    } else {
-        (nats / wins as f32) / std::f32::consts::LN_2
-    }
+    final_val
 }
 
 // f64-precision forward-only loss (SUM over positions, nats) for gradcheck.
@@ -1111,6 +1138,8 @@ fn main() {
     let wd_ov: Option<f64> = arg(&args, "--wd").and_then(|s| s.parse().ok());
     // Optional training-curve stride (Loop+1 Option B): prints `curve` lines.
     let curve_stride: Option<usize> = arg(&args, "--curve").and_then(|s| s.parse().ok());
+    // Optional periodic-validation stride (Loop+2 Option A): track best checkpoint.
+    let eval_every: Option<usize> = arg(&args, "--eval-every").and_then(|s| s.parse().ok());
 
     let train = load_bin(&train_path);
     let val = load_bin(&val_path);
@@ -1160,6 +1189,7 @@ fn main() {
                     beta1_ov,
                     wd_ov,
                     curve_stride,
+                    eval_every,
                 };
                 let bpb = train_once(&train, &val, &cfg);
                 vals.push(bpb);
@@ -1206,6 +1236,7 @@ fn main() {
         beta1_ov,
         wd_ov,
         curve_stride,
+        eval_every,
     };
     let probe = Model::new(d, heads, layers, &mut StdRng::seed_from_u64(0));
     println!(
