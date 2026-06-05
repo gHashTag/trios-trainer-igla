@@ -8,6 +8,7 @@ pub mod gf64;
 pub mod gf8;
 pub mod gfternary;
 pub mod phi_constants;
+pub mod posit16;
 pub mod scale_aware;
 
 pub use fibonacci_dims::*;
@@ -15,6 +16,7 @@ pub use gf32::GF32;
 pub use gf64::GF64;
 pub use gf8::GF8;
 pub use gfternary::GFTernary;
+pub use posit16::Posit16;
 pub use phi_constants::*;
 pub use scale_aware::{fake_quantize_ternary_scale_aware, ScaleAwareTernary};
 
