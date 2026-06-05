@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–142)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–143)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Sixty-five** independent
-passes total across Loops 59–142 (50-pass milestone reached at
-Loop 127; passes 51–65 dispatched at Loops 128–142). The first
+caught before reviewers saw them. **Sixty-six** independent
+passes total across Loops 59–143 (50-pass milestone reached at
+Loop 127; passes 51–66 dispatched at Loops 128–143). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–142 extended the discipline to round-N
+submission flow; Loops 86–143 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–65 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–142; per-pass detail lives in
+12–66 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–143; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–142 (49th pass flagged the un-widened grep covered only
-~35 of 65 passes; the two-pattern form widens reach).
+90–143 (49th pass flagged the un-widened grep covered only
+~35 of 66 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–142)
+### 10. CI gate evolution (Loops 87–143)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -574,8 +574,32 @@ Stage additions since the original 8-script catalogue:
   break-test pattern, tier classification, cascade discipline,
   dependency-graph hygiene, breadcrumb maintenance. 6 stages +
   bottom-line discipline rules.
+- **Loop 143 A.iii** — `meta_test_cross_paper_gates.py` extracted
+  shared helpers `_copy_to_tmp` + `_run_gate` + `_assert_fires` at
+  module level. Closes 64th-pass #8 SEV-4 (boilerplate refactor).
+  Existing 5 break-tests not yet migrated to keep diff focused;
+  future loops can refactor.
+- **Loop 143 A.iv** — Two new break-tests in
+  `meta_test_cross_paper_gates.py`: `test_tier_classification_parity_break`
+  (drops a STAGE_TIERS entry → asserts FAIL) and
+  `test_burn_down_trajectory_monotonicity_break` (appends a
+  synthetic Loop 999 with 50+50=100 → asserts FAIL on total >
+  previous). Meta-test 12 → 14 break-tests. Closes 65th-pass #5
+  (stages 35/36 missing break-tests).
+- **Loop 143 B** — Re-classified stages 22-24 from discipline →
+  submission. STAGE_TIERS split is now 24/12 (was 21/15). Submission
+  tier: anonymization-breaking drift (24), §1↔STAGES alignment (22),
+  CHANGELOG/§2/log agreement (23). Extended `verify_tier_classification.py`
+  with contiguity check (all submission entries must precede any
+  discipline entry). Closes 65th-pass #7 SEV-3 + #8 SEV-3.
+- **Loop 143 C** — `verify_changelog_section10_authority.py` added
+  (37th stage). Asserts every `verify_*.py` stage in STAGES has a
+  matching CHANGELOG §10 entry (legacy gates exempted via
+  LEGACY_ALLOWLIST). Closes the "is §10 actually authoritative?"
+  question — every gate addition must land with a §10 entry in
+  the same commit.
 
-The on-disk gate now runs **36 stages** (verified by the new
+The on-disk gate now runs **37 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

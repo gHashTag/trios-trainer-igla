@@ -48,6 +48,57 @@ ISSUE1021 = CRATE_ROOT / "papers" / "phi_ladder_paper_intro_draft.md"
 CHECKLIST = CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md"
 
 
+# Loop 143 A.iii: shared helpers for tempdir+subprocess break-tests.
+# The 64th-pass #8 SEV-4 flagged that each of the 5 newer break-tests
+# (Loops 140+141) duplicated ~15 LOC. The helpers below collapse the
+# pattern to ~5 LOC per new test. Existing tests are not migrated in
+# this loop to keep the diff focused; future loops can refactor.
+def _copy_to_tmp(tmp: Path,
+                 scripts: list[str] | None = None,
+                 papers: list[str] | None = None,
+                 docs: list[str] | None = None) -> Path:
+    """Copy the named files into a tmp mirror of crate layout and
+    return the dst papers/scripts path for further mutation."""
+    dst_scripts = tmp / "papers" / "scripts"
+    dst_papers = tmp / "papers"
+    dst_docs = tmp / "docs"
+    dst_scripts.mkdir(parents=True, exist_ok=True)
+    for name in (scripts or []):
+        shutil.copy2(
+            CRATE_ROOT / "papers" / "scripts" / name, dst_scripts / name,
+        )
+    for name in (papers or []):
+        shutil.copy2(CRATE_ROOT / "papers" / name, dst_papers / name)
+    if docs:
+        dst_docs.mkdir(parents=True, exist_ok=True)
+        for name in docs:
+            shutil.copy2(CRATE_ROOT / "docs" / name, dst_docs / name)
+    return dst_scripts
+
+
+def _run_gate(scripts_dir: Path, gate_name: str
+              ) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [sys.executable, str(scripts_dir / gate_name)],
+        capture_output=True, text=True, timeout=30,
+    )
+
+
+def _assert_fires(result: subprocess.CompletedProcess,
+                  fragment: str, label: str) -> bool:
+    if result.returncode == 0:
+        print(f"# FAIL  {label}: gate exited 0 unexpectedly",
+              file=sys.stderr)
+        return False
+    if fragment not in result.stderr:
+        print(f"# FAIL  {label}: stderr missing {fragment!r}",
+              file=sys.stderr)
+        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
+        return False
+    print(f"# OK    {label}: gate fires with expected diagnostic")
+    return True
+
+
 def run_gate(f2_override: Path | None = None,
              issue1021_override: Path | None = None,
              checklist_override: Path | None = None) -> tuple[int, str]:
@@ -594,6 +645,60 @@ def test_stage_count_break(tmp: Path) -> bool:
     return True
 
 
+def test_tier_classification_parity_break(tmp: Path) -> bool:
+    """Loop 143 A.iv: synthetic break for verify_tier_classification.
+    Mutate run_all_checks.sh STAGE_TIERS to remove one entry;
+    assert the parity check fires. Uses Loop 143 A.iii shared helpers."""
+    dst = _copy_to_tmp(tmp, scripts=[
+        "verify_tier_classification.py", "run_all_checks.sh",
+    ])
+    shell = dst / "run_all_checks.sh"
+    text = shell.read_text()
+    # Drop the LAST tier entry to create an off-by-one.
+    broken = re.sub(
+        r'(\s+)"discipline"\s*\n\)',
+        r'\n)',
+        text, count=1,
+    )
+    if broken == text:
+        print("# SKIP tier_classification: STAGE_TIERS anchor not found",
+              file=sys.stderr)
+        return True
+    shell.write_text(broken)
+    result = _run_gate(dst, "verify_tier_classification.py")
+    return _assert_fires(
+        result, "STAGE_TIERS length",
+        "tier_classification parity break",
+    )
+
+
+def test_burn_down_trajectory_monotonicity_break(tmp: Path) -> bool:
+    """Loop 143 A.iv: synthetic break for verify_burn_down_trajectory.
+    Append a 'Loop 999: 50 + 50 = 100' entry which violates total
+    non-increasing (100 > current total 24). Asserts gate fires."""
+    dst = _copy_to_tmp(tmp, scripts=[
+        "verify_burn_down_trajectory.py",
+        "verify_anonymizer_completeness.py",
+    ])
+    anon = dst / "verify_anonymizer_completeness.py"
+    text = anon.read_text()
+    broken = text.replace(
+        "FALLBACK_BASELINES = {",
+        "#   Loop 999 SYNTHETIC: 50 + 50 = 100.\n"
+        "FALLBACK_BASELINES = {",
+    )
+    if broken == text:
+        print("# SKIP burn_down_trajectory: FALLBACK_BASELINES marker "
+              "not found", file=sys.stderr)
+        return True
+    anon.write_text(broken)
+    result = _run_gate(dst, "verify_burn_down_trajectory.py")
+    return _assert_fires(
+        result, "total 100 > previous",
+        "burn_down_trajectory monotonicity break",
+    )
+
+
 def test_acknowledges_break_remove_ack(tmp: Path) -> bool:
     """Delete the acknowledgement sentence from #1021 paper."""
     i1021_tmp = tmp / "i1021_no_ack.md"
@@ -681,6 +786,10 @@ def main() -> int:
             ("doc_vs_extracted_drift", test_documented_vs_extracted_break),
             ("changelog_consistency_drift", test_changelog_consistency_break),
             ("stage_count_drift", test_stage_count_break),
+            # Loop 143 A.iv: break-tests for stages 35 + 36, using the
+            # shared helpers extracted in 143 A.iii.
+            ("tier_classification_parity", test_tier_classification_parity_break),
+            ("burn_down_trajectory_monotonicity", test_burn_down_trajectory_monotonicity_break),
         ]
         results = [(name, fn(tmp)) for name, fn in tests]
     n_pass = sum(1 for _, ok in results if ok)
@@ -692,7 +801,8 @@ def main() -> int:
     print(f"# meta_test_cross_paper_gates.py — {n_total}/{n_total} synthetic-break "
           "tests passed; covers 5 cross-paper claim classes + "
           "burn-down arithmetic + alias bijection + doc-vs-extracted "
-          "+ changelog consistency + stage count")
+          "+ changelog consistency + stage count + tier parity + "
+          "burn-down monotonicity")
     return 0
 
 

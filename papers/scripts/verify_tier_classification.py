@@ -12,7 +12,12 @@ deploy.
 Asserts:
   (a) len(STAGE_TIERS) == len(STAGES).
   (b) Every tier ∈ {"submission", "discipline"}.
-  (c) Reports per-tier count for visibility (submission, discipline).
+  (c) Tier contiguity: all "submission" entries precede any
+      "discipline" entry. The summary's per-tier count is only
+      meaningful when the partition is contiguous; a reordering
+      that interleaves the two would still report a numeric
+      total but obscure the actual gating boundary.
+  (d) Reports per-tier count for visibility (submission, discipline).
 
 Usage: papers/scripts/verify_tier_classification.py
 
@@ -80,7 +85,31 @@ def main() -> int:
                 f"STAGE_TIERS[{i}] = {tier!r} not in allowed set "
                 f"{sorted(ALLOWED_TIERS)}.")
 
-    # (c) Per-tier count reporting.
+    # (c) Tier contiguity. Loop 143 B (65th-pass SEV-3 #8 closure):
+    # all "submission" entries must precede any "discipline" entry.
+    # The summary's per-tier counter is only meaningful when the
+    # partition is contiguous.
+    last_submission_idx = -1
+    first_discipline_idx = len(tiers)
+    for i, tier in enumerate(tiers):
+        if tier == "submission":
+            last_submission_idx = i
+        elif tier == "discipline" and i < first_discipline_idx:
+            first_discipline_idx = i
+    if (last_submission_idx >= 0 and first_discipline_idx < len(tiers)
+            and last_submission_idx > first_discipline_idx):
+        mismatches.append(
+            f"tier contiguity violated: last submission entry at "
+            f"index {last_submission_idx} > first discipline entry "
+            f"at index {first_discipline_idx}. The partition must "
+            "be contiguous (all submission entries before any "
+            "discipline entry).")
+    else:
+        print(f"# OK    contiguity: submission ends at "
+              f"{last_submission_idx}, discipline starts at "
+              f"{first_discipline_idx}")
+
+    # (d) Per-tier count reporting.
     if not mismatches:
         from collections import Counter
         counts = Counter(tiers)

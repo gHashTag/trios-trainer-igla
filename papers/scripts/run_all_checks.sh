@@ -142,6 +142,7 @@ STAGES=(
     "dependency graph:python3 papers/scripts/verify_dependency_graph.py"
     "tier classification:python3 papers/scripts/verify_tier_classification.py"
     "burn-down trajectory:python3 papers/scripts/verify_burn_down_trajectory.py"
+    "§10 authority:python3 papers/scripts/verify_changelog_section10_authority.py"
 )
 
 # Loop 141 C: lightweight tier classification. Each stage maps to one
@@ -153,14 +154,21 @@ STAGES=(
 # Parallel array indexed alongside STAGES; per-tier counters surface
 # in the summary so contributors see at-a-glance which class fired.
 STAGE_TIERS=(
+    # Loop 143 B (65th-pass SEV-3 #7 closure): re-classified stages
+    # 22-24 from discipline → submission. Submission-readiness
+    # (22), changelog-consistency (23), and anonymizer-completeness
+    # (24) all fail in submission-blocking ways: §1↔STAGES drift
+    # invalidates the go/no-go checklist; CHANGELOG/§2/log
+    # disagreement misreports the pass count in the abstract; bare
+    # Loop-N anchors leak through anonymization. New split: 24/12.
     "submission" "submission" "submission" "submission" "submission"
     "submission" "submission" "submission" "submission" "submission"
     "submission" "submission" "submission" "submission" "submission"
     "submission" "submission" "submission" "submission" "submission"
-    "submission"
+    "submission" "submission" "submission" "submission"
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
-    "discipline" "discipline" "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline"
 )
 
 PASSED=0
