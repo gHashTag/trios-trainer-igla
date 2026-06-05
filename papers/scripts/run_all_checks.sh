@@ -144,6 +144,7 @@ STAGES=(
     "burn-down trajectory:python3 papers/scripts/verify_burn_down_trajectory.py"
     "§10 authority:python3 papers/scripts/verify_changelog_section10_authority.py"
     "guide drift:python3 papers/scripts/verify_gate_authoring_guide_drift.py"
+    "deadline freshness:python3 papers/scripts/verify_deadline_freshness.py"
 )
 
 # Loop 141 C: lightweight tier classification. Each stage maps to one
@@ -162,6 +163,9 @@ STAGE_TIERS=(
     # invalidates the go/no-go checklist; CHANGELOG/§2/log
     # disagreement misreports the pass count in the abstract; bare
     # Loop-N anchors leak through anonymization. New split: 24/12.
+    # Loop 144 promoted nothing; stage 38 (guide drift) lands in
+    # discipline (24/14). Loop 145 stage 39 (deadline freshness) lands
+    # in discipline → 24/15 (current).
     "submission" "submission" "submission" "submission" "submission"
     "submission" "submission" "submission" "submission" "submission"
     "submission" "submission" "submission" "submission" "submission"
@@ -169,7 +173,7 @@ STAGE_TIERS=(
     "submission" "submission" "submission" "submission"
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
-    "discipline" "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline" "discipline" "discipline"
 )
 
 PASSED=0

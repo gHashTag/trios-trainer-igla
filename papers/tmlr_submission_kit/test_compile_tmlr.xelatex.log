@@ -165,6 +165,14 @@ Overfull \hbox (30.50005pt too wide) in paragraph at lines 1655--1661
 []\TU/lmr/m/n/10 Two load-bearing regression locks are highlighted in section [
 ]8.2[]: \TU/lmtt/m/n/10 dual_mediation_no_interaction_residual_lock
 [24]
+Underfull \hbox (badness 1248) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10 as individual stages (\TU/lmtt/m/n/10 run_all_checks.sh \TU/lmr/
+m/n/10 itself is the orchestrator, not a stage of itself);
+
+Underfull \hbox (badness 1033) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10 logue crystallized, during the gate-evolution arc documented in
+ CHANGELOG
+
 Underfull \hbox (badness 10000) in paragraph at lines 1689--1690
 \TU/lmr/bx/n/10 section []10[]\TU/lmr/m/n/10 : \TU/lmtt/m/n/10 verify_tables_ag
 ainst_csv.py\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 verify_formulas_vs_tables.py\TU/lm
@@ -177,11 +185,19 @@ ify_preamble_per_producer.py\TU/lmr/m/n/10 , three follow-up-
 Underfull \hbox (badness 10000) in paragraph at lines 1689--1690
 \TU/lmr/m/n/10 paper pre-registered scripts (\TU/lmtt/m/n/10 verify_provenance.
 sh\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 verify_run_completeness.py\TU/lmr/m/n/10 ,
-)
+
+Underfull \hbox (badness 2134) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10 the submission-readiness verifier (gates SUBMISSION_CHECKLIST se
+ction []1[] against the
+
+Underfull \hbox (badness 1590) in paragraph at lines 1689--1690
+\TU/lmtt/m/n/10 _CLAIMS \TU/lmr/m/n/10 lists), the documented-vs-extracted-cons
+istency verifier (binds section []1[] sub-bullet
+[25])
 Underfull \hbox (badness 2970) in paragraph at lines 1692--33
 []\TU/lmtt/m/n/10 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m/n/
 10 chains \TU/lmtt/m/n/10 papers/scripts/figure_regen.sh \TU/lmr/m/n/10 +
-(./test_compile_tmlr.bbl [25] [26]) [27] (./test_compile_tmlr.aux) )
+(./test_compile_tmlr.bbl [26] [27]) [28] (./test_compile_tmlr.aux) )
 (see the transcript file for additional information)
-Output written on test_compile_tmlr.pdf (27 pages).
+Output written on test_compile_tmlr.pdf (28 pages).
 Transcript written on test_compile_tmlr.log.

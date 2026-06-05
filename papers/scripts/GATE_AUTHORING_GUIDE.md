@@ -1,6 +1,6 @@
 # Paper-side CI gate authoring guide
 
-Distillation of ~14 loops of gate-evolution learnings (Loops 128–142).
+Distillation of ~17 loops of gate-evolution learnings (Loops 128–145).
 This guide is for adding a new `verify_*.py` stage to
 `papers/scripts/run_all_checks.sh` without retreading the patterns
 the prior 30+ gates already exercise.

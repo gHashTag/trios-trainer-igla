@@ -134,6 +134,33 @@ def main() -> int:
               "`(deprecated)` annotation)",
               file=sys.stderr)
 
+    # (c) Loop 145 A.ii — 67th-pass SEV-3 #4 closure (MANUAL_TOOL
+    # inverse check). Every entry in MANUAL_TOOL_ALLOWLIST MUST:
+    #   - exist as a file in papers/scripts/
+    #   - be referenced in §10 prose
+    # Otherwise the allowlist silently accumulates dead entries for
+    # deleted/renamed manual tools — the same silent-drift class the
+    # gate was built to catch in the first place.
+    scripts_dir = CRATE_ROOT / "papers" / "scripts"
+    for tool in sorted(MANUAL_TOOL_ALLOWLIST):
+        tool_path = scripts_dir / tool
+        if not tool_path.exists():
+            mismatches.append(
+                f"MANUAL_TOOL_ALLOWLIST entry `{tool}` does not exist "
+                f"at {tool_path.relative_to(CRATE_ROOT)}. Remove from "
+                "allowlist or restore the file.")
+        if tool not in section10:
+            mismatches.append(
+                f"MANUAL_TOOL_ALLOWLIST entry `{tool}` is not "
+                "mentioned in CHANGELOG §10. Allowlisted manual "
+                "tools must be documented in §10 with their loop of "
+                "introduction (that documentation is what makes the "
+                "entry 'legitimate' and not a stale allowlist line).")
+    if not [m for m in mismatches if "MANUAL_TOOL_ALLOWLIST" in m]:
+        print(f"# OK    all {len(MANUAL_TOOL_ALLOWLIST)} manual-tool "
+              "allowlist entries exist on disk and are documented "
+              "in §10")
+
     if mismatches:
         for m in mismatches:
             print(f"  {m}", file=sys.stderr)

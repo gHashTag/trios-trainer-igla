@@ -471,16 +471,16 @@ Statistical-causal results are only as credible as the data lineage that
 produced them. Three Loop-32 audit incidents motivated a defensive provenance
 discipline that is now part of the framework's binary contract:
 
-1. **Identical-hash divergence **. The same `config_fingerprint`
-   produced LOCO_wd estimates of 0.07 BPB on (internal ref) and 0.58 BPB on (internal ref)
-   — an 8× shift at a byte-identical input. Investigation revealed an
-   uncommitted refactor of `src/transformer.rs` (the forward kernel) that
-   changed the integration of the model but not any field hashed into
-   `config_fingerprint`.
-2. **Silent provenance loss **. CSVs produced by older runs of
+1. **Identical-hash divergence**. The same `config_fingerprint`
+   produced LOCO_wd estimates of 0.07 BPB on one run and 0.58 BPB on
+   a later run — an 8× shift at a byte-identical input. Investigation
+   revealed an uncommitted refactor of `src/transformer.rs` (the
+   forward kernel) that changed the integration of the model but not
+   any field hashed into `config_fingerprint`.
+2. **Silent provenance loss**. CSVs produced by older runs of
    `f2_ablation_sweep` carried no information about which trainer-internals
    version produced them. The hash matched; the BPB did not.
-3. **Silent stratum loss **. When `f2_dual_mediation` consumes a
+3. **Silent stratum loss**. When `f2_dual_mediation` consumes a
    stratified CSV, the resulting PSE labels (NDE, NIE_M1, …) read like
    *marginal* effects but are actually **Pearl CDEs**. Without a stratum
    tag in the output, downstream tooling cannot distinguish.
@@ -488,7 +488,7 @@ discipline that is now part of the framework's binary contract:
 The three defensive mechanisms below address each incident in turn.
 
 **3.5.1 Provenance preamble (`# prov:*` lines).** Every CSV emitted by
-`f2_ablation_sweep` ((internal ref)+) carries a W3C-PROV / Workflow Run RO-Crate
+`f2_ablation_sweep` carries a W3C-PROV / Workflow Run RO-Crate
 preamble (arXiv:2312.07852) of the form:
 
 ```
@@ -517,10 +517,10 @@ The convention is:
 > kernels, `cross_entropy_loss` numerics, BPB computation, or eval
 > tokenization.
 
-A lib test (`trainer_internals_schema_is_load_bearing`, (internal ref)) verifies
+A lib test (`trainer_internals_schema_is_load_bearing`) verifies
 that mutating the constant changes the fingerprint output, so an
 intentional bump is detectable from CI. A mtime-drift advisory
- compares the schema-string date against the on-disk mtime of
+compares the schema-string date against the on-disk mtime of
 `src/transformer.rs` and surfaces a stale-schema warning during
 `cargo test --lib`.
 
@@ -551,7 +551,7 @@ under `data/loop49_swap/`); any descendant on the branch is also a
 valid anchor.
 
 1. `git checkout [anchor]` (or any descendant of `[branch]`).
-2. `cargo test --lib` exits 0 with 714 passing tests .
+2. `cargo test --lib` exits 0 with 714 passing tests.
 3. Pick any figure script in `papers/figures/`; run with no flags.
 4. The script reads from the embedded `--input` default; verify the SHA
    of that input file against the value in the paper's appendix
@@ -975,7 +975,7 @@ magnitude fragile under any unmeasured-confounder stress test of
 the bridge-score envelope at Λ ≥ 0.01 BPB".
 
 **On the prior 1.43 reported in earlier drafts.** Drafts prior to
-(internal ref) reported the wd0 row as `Γ_tip = 1.43`, computed using
+An earlier draft reported the wd0 row as `Γ_tip = 1.43`, computed using
 the *point estimate* (+0.43) instead of the *closer CI endpoint*
 (+0.01) in the §3.3 envelope inversion. The §3.3 formula
 `Γ_tip(Λ) = 1 + min(|CI_lo|, |CI_hi|) / Λ` mandates the CI
@@ -998,8 +998,8 @@ intervals, and which strata we run. We address each in turn.
 ### 6.1 Mediator pair (M_1, M_2)
 
 The default decomposition uses `M_1 = wd, M_2 = warmup`, motivated by
-prior mediation analyses in this framework that
-identified WD and warmup as the two strongest mediators in the canonical
+prior mediation analyses in this framework that identified WD and
+warmup as the two strongest mediators in the canonical
 ablation matrix. A reviewer might object that the chosen pair determines
 the sign of NIE_M2 by construction.
 
@@ -1052,7 +1052,7 @@ the same conclusion under Gaussian.
 ### 6.3 Strata
 
 We chose `Wd0` and `Warmup0` based on prior mediation analyses
-(`docs/F2_RMS_CDE.md`, (internal ref)) that identified WD and warmup as the
+(`docs/F2_RMS_CDE.md`) that identified WD and warmup as the
 two strongest mediators in the canonical ablation matrix. Three other
 candidate strata are pre-defined in the framework but not run for this
 paper:
@@ -1348,7 +1348,7 @@ reduction supplied by **Gao, Li & Luo** (2020, arXiv:2007.16031,
 Counterfactual Interaction Effect Framework"). Earlier drafts of this
 paper mis-attributed the decomposition to "Zhao-Luo"; that attribution
 was corrected to Daniel et al. (primary) + Gao-Li-Luo (no-interaction
-collapse) in a (internal ref) validation pass.
+collapse) in a follow-up validation pass.
 
 The delta-method linearization we use to derive per-PSE SEs is in the
 spirit of the **efficient-influence-function** treatment of Miles &
@@ -1706,26 +1706,66 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **21 stages**
+  cold**) — single-shot CI gate. Currently chains **39 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other fourteen stages are gates
-  introduced after the §E 8-script catalogue crystallized at
-  (internal ref), prior to the post-96 gate-evolution arc documented
-  in CHANGELOG §10**:
+  not a stage of itself); the **other thirty-two stages are gates
+  introduced after the original 8-script catalogue crystallized,
+  during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
   `verify_label_consistency.py`, `verify_preamble_per_producer.py`,
   three follow-up-paper pre-registered scripts (`verify_provenance.sh`,
   `verify_run_completeness.py`, `verify_report_consistency.py`),
-  the stage-count-consistency verifier , the
-  cross-paper-consistency verifier , the #1021 follow-up
-  paper's cross-reference audit, its markdown lint, the smoke test
-  for its `f2_pairwise_perm` binary, and the supplementary-zip
-  packer. Exits 0 only if every stage passes. The catalogue
-  above is the original 8 the paper relied on at draft time;
-  the additional 14 are documented in the follow-up paper's
-  §5.4. (The 40th adversarial pass corrected an earlier
-  "seven catalogued + ten additional" miscount.)
+  the stage-count-consistency verifier, the
+  cross-paper-consistency verifier, the cross-paper-gate
+  meta-test, the #1021 follow-up paper's cross-reference
+  audit, its markdown lint, the smoke test for its
+  `f2_pairwise_perm` binary, the supplementary-zip packer, the
+  submission-readiness verifier (gates SUBMISSION_CHECKLIST §1
+  against the STAGES array), the changelog-consistency verifier
+  (binds CHANGELOG §7 ↔ SUBMISSION_CHECKLIST §2 ↔
+  ADVERSARIAL_REVIEW_LOG headline pass-count triple), and the
+  anonymizer-completeness verifier (ratchets bare `Loop N` anchor
+  count per-file against a fixed baseline), the cardinality-
+  arithmetic verifier (gates "N items (a + b + c)" sum-equality
+  across paper bodies), the generator-consistency verifier
+  (binds the regen_changelog_section7.py output to the §7 lead
+  breadcrumb), and the class-registry-binding verifier (asserts
+  §1 sub-bullet class-class enumeration labels and counts agree
+  with the live `verify_cross_paper_consistency.py` `_CLAIMS`
+  lists), the documented-vs-extracted-consistency verifier
+  (binds §1 sub-bullet description metadata like "6 reports
+  (2 full + 4 stub)" to live verifier-source state), and the
+  burn-down-history verifier (asserts the FALLBACK_BASELINES
+  trajectory most-recent entry matches the live sidecar state),
+  the alias-round-trip verifier (asserts CLASS_LABEL_ALIASES is
+  bijective on the gate's actual class names — every alias resolves
+  to a live class, every class has at least one alias), the
+  module-cache-consistency verifier (asserts the _gate_utils
+  import_gate cache contract holds), the floating-loop-anchor
+  verifier (gates "as of Loop N" anchors against the §7 lead loop
+  with 1-loop in-flight tolerance), the anchor-loop-coverage
+  verifier (asserts every CHANGELOG §10 Loop-N entry has ≥1
+  matching commit on HEAD), the dependency-graph verifier
+  (asserts the inter-gate import topology is acyclic and respects
+  STAGES execution order), the tier-classification verifier
+  (asserts STAGES/STAGE_TIERS parity + contiguity), the
+  burn-down-trajectory verifier (asserts the breadcrumb is
+  loop-monotonic + non-increasing), the §10-authority verifier
+  (asserts every CI-gate verify_*.py stage has a matching
+  CHANGELOG §10 entry), the gate-authoring-guide-drift
+  verifier (asserts the discipline doc and live code agree on
+  the breadcrumb label-class regex), and the deadline-freshness
+  verifier (asserts every dated AOE deadline in
+  `papers/SUBMISSION_CHECKLIST.md` §4 is today-or-future or
+  annotated as historical).
+  Exits 0 only if every stage passes. The catalogue above is the
+  original 8 the paper relied on at draft time;
+  the additional 32 are documented in the follow-up paper's
+  §5.4. Per-introduction history (which loop added which gate)
+  is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
+  wrote "seven catalogued + ten additional",
+  which an adversarial pass corrected.)
 
 `papers/tmlr_submission_kit/pack_supplementary.sh` chains
 `papers/scripts/figure_regen.sh` + `f2_provenance_check` +

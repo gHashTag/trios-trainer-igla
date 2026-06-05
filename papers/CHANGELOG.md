@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–144)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–145)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Sixty-seven** independent
-passes total across Loops 59–144 (50-pass milestone reached at
-Loop 127; passes 51–67 dispatched at Loops 128–144). The first
+caught before reviewers saw them. **Sixty-eight** independent
+passes total across Loops 59–145 (50-pass milestone reached at
+Loop 127; passes 51–68 dispatched at Loops 128–145). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–144 extended the discipline to round-N
+submission flow; Loops 86–145 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–67 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–144; per-pass detail lives in
+12–68 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–145; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–144 (49th pass flagged the un-widened grep covered only
-~35 of 67 passes; the two-pattern form widens reach).
+90–145 (49th pass flagged the un-widened grep covered only
+~35 of 68 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–144)
+### 10. CI gate evolution (Loops 87–145)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -619,8 +619,25 @@ Stage additions since the original 8-script catalogue:
 - **Loop 144 C** — `gate_dashboard.sh` added as manual project-
   health snapshot tool (NOT a CI stage). Reports stages + tier
   split + pass count + anonymizer total + deadlines.
+- **Loop 145 A** — anonymized PDF body + all three TMLR variants
+  recompiled after parallel-agent content drift in
+  `f2_methodology_anonymized.md`. Page counts refreshed:
+  non-anon 43 → 44, anon 42 → 43, real-TMLR 27 → 28. Closes
+  67th-pass SEV-2 #2 (stale body.tex) + SEV-1 #3 (PDFs behind
+  source).
+- **Loop 145 B** — `verify_changelog_section10_authority.py`
+  gains MANUAL_TOOL_ALLOWLIST inverse check: every allowlisted
+  manual tool must exist on disk AND be mentioned in §10. Closes
+  67th-pass SEV-3 #4 (allowlist silent-drift after rename/delete).
+- **Loop 145 C** — `verify_deadline_freshness.py` added
+  (39th stage). Asserts every `YYYY-MM-DD AOE` token in
+  `SUBMISSION_CHECKLIST.md` §4 + `Anchor / version` is today-or-
+  future (or carries `(passed)` / `(historical)` / `has passed`
+  annotation). Soft EOI 2026-06-04 has now aged out; the gate
+  enforces the annotation discipline going forward. Closes 67th-
+  pass SEV-4 #6.
 
-The on-disk gate now runs **38 stages** (verified by the new
+The on-disk gate now runs **39 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

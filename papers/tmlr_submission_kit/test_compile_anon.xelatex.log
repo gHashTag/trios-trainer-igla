@@ -120,9 +120,9 @@ Overfull \hbox (3.61656pt too wide) in paragraph at lines 438--441
 \TU/lmr/m/n/10.95 test \TU/lmtt/m/n/10.95 tipping_point_matches_closer_endpoint
 _over_lambda \TU/lmr/m/n/10.95 validates the
 [10]
-Overfull \hbox (43.54031pt too wide) in paragraph at lines 476--477
-[]\TU/lmr/bx/n/10.95 Silent provenance loss \TU/lmr/m/n/10.95 . CSVs produced b
-y older runs of \TU/lmtt/m/n/10.95 f2_ablation_sweep
+Overfull \hbox (40.74442pt too wide) in paragraph at lines 476--477
+[]\TU/lmr/bx/n/10.95 Silent provenance loss\TU/lmr/m/n/10.95 . CSVs produced by
+ older runs of \TU/lmtt/m/n/10.95 f2_ablation_sweep
 
 Overfull \hbox (65.40741pt too wide) in paragraph at lines 496--496
 []\TU/lmtt/m/n/10.95 # prov:wasGeneratedBy = f2_ablation_sweep --mode wd_strati
@@ -141,10 +141,6 @@ Overfull \hbox (41.69414pt too wide) in paragraph at lines 512--517
 []\TU/lmr/m/n/10.95 > Bump \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA \TU/lmr/
 m/n/10.95 (e.g. \TU/lmtt/m/n/10.95 v1_2026_06_01 -> v2_2026_06_15\TU/lmr/m/n/10
 .95 )
-
-Overfull \hbox (7.17097pt too wide) in paragraph at lines 518--524
-[]\TU/lmr/m/n/10.95 A lib test (\TU/lmtt/m/n/10.95 trainer_internals_schema_is_
-load_bearing\TU/lmr/m/n/10.95 , (internal ref))
 
 Overfull \hbox (134.3924pt too wide) in paragraph at lines 538--538
 []\TU/lmtt/m/n/10.95 sweep CSV --> f2_dual_mediation --> dual CSV --> f2_mediat
@@ -209,11 +205,15 @@ idual_lock \TU/lmr/m/n/10.95 test (section [][]8.2[][])
 Overfull \hbox (17.67328pt too wide) in paragraph at lines 908--910
 []\TU/lmr/m/n/10.95 Per section [][]3.3[][], we report tipping-point \TU/lmtt/m
 /n/10.95 Γ_tip(Λ=1.0) \TU/lmr/m/n/10.95 and the VanderWeele-
-[21] [22] [23] [24]
-Overfull \hbox (39.12752pt too wide) in paragraph at lines 1065--1070
+[21] [22]
+Overfull \hbox (1.89743pt too wide) in paragraph at lines 995--1006
+\TU/lmr/m/n/10.95 loop. The implementation in \TU/lmtt/m/n/10.95 src/bin/f2_med
+iation_sensitivity.rs:236
+[23] [24]
+Overfull \hbox (40.34297pt too wide) in paragraph at lines 1065--1070
 \TU/lmr/m/n/10.95 We chose \TU/lmtt/m/n/10.95 Wd0 \TU/lmr/m/n/10.95 and \TU/lmt
 t/m/n/10.95 Warmup0 \TU/lmr/m/n/10.95 based on prior mediation analyses (\TU/lm
-tt/m/n/10.95 docs/F2_RMS_CDE.md\TU/lmr/m/n/10.95 ,
+tt/m/n/10.95 docs/F2_RMS_CDE.md\TU/lmr/m/n/10.95 )
 
 Overfull \hbox (215.20338pt too wide) in paragraph at lines 1095--1104
 \TU/lmtt/m/n/10.95 dropout} \TU/lmr/m/n/10.95 across all three strata; outputs 
@@ -342,34 +342,51 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (0.42873pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/bx/n/10.95 post-96 gate-evolution arc documented in CHANGELOG sec-
+Overfull \hbox (80.91301pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 arc documented in CHANGELOG section [][]10[][]\TU/lmr/m/n/10
+.95 : \TU/lmtt/m/n/10.95 verify_tables_against_csv.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (42.43465pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/bx/n/10.95 tion [][]10[][]\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 verify
-_tables_against_csv.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify_formulas_vs
-_tables.py\TU/lmr/m/n/10.95 ,
-
-Overfull \hbox (9.56458pt too wide) in paragraph at lines 1689--1690
-\TU/lmtt/m/n/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/
-10.95 verify_preamble_per_producer.py\TU/lmr/m/n/10.95 ,
+Overfull \hbox (176.24762pt too wide) in paragraph at lines 1689--1690
+\TU/lmtt/m/n/10.95 verify_formulas_vs_tables.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n
+/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify
+_preamble_per_producer.py\TU/lmr/m/n/10.95 ,
 
 Overfull \hbox (8.71268pt too wide) in paragraph at lines 1689--1690
 \TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
 
-Overfull \hbox (7.83458pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 the smoke test for its \TU/lmtt/m/n/10.95 f2_pairwise_perm \T
-U/lmr/m/n/10.95 binary, and the supplementary-
-[39])
+Overfull \hbox (22.08272pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 reference audit, its markdown lint, the smoke test for its \T
+U/lmtt/m/n/10.95 f2_pairwise_perm
+
+Overfull \hbox (2.02983pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 IAL_REVIEW_LOG headline pass-count triple), and the anonymize
+r-
+
+Overfull \hbox (5.22507pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 completeness verifier (ratchets bare \TU/lmtt/m/n/10.95 Loop 
+N \TU/lmr/m/n/10.95 anchor count per-file against
+
+Overfull \hbox (58.57684pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 live sidecar state), the alias-round-trip verifier (asserts C
+LASS_LABEL_ALIASES
+
+Overfull \hbox (6.72641pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 burn-down-trajectory verifier (asserts the breadcrumb is loop
+-monotonic
+
+Overfull \hbox (138.58507pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 deadline-freshness verifier (asserts every dated AOE deadline
+ in \TU/lmtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
+[39] [40])
 Overfull \hbox (139.8292pt too wide) in paragraph at lines 1692--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
 /n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
-(./test_compile_anon.bbl [40]
+(./test_compile_anon.bbl [41]
 Underfull \hbox (badness 2564) in paragraph at lines 92--98
 []\TU/lmr/m/n/10.95 Microsoft.  BitNet b1.58 2B4T technical report.  \TU/lmr/m/
 it/10.95 arXiv preprint
-[41]) [42] (./test_compile_anon.aux) )
+[42]) [43] (./test_compile_anon.aux) )
 (see the transcript file for additional information)
-Output written on test_compile_anon.pdf (42 pages).
+Output written on test_compile_anon.pdf (43 pages).
 Transcript written on test_compile_anon.log.
