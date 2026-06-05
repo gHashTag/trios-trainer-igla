@@ -147,7 +147,9 @@ STAGES=(
 # Loop 141 C: lightweight tier classification. Each stage maps to one
 # of:
 #   submission  — must pass for submission readiness (1-21).
-#   discipline  — drift catchers + registry binders (22-34).
+#   discipline  — drift catchers + registry binders (22-N).
+# Loop 142 — 65th-pass SEV-2 fix #3: "(22-34)" → "(22-N)" so the
+# comment doesn't drift each time discipline tier expands.
 # Parallel array indexed alongside STAGES; per-tier counters surface
 # in the summary so contributors see at-a-glance which class fired.
 STAGE_TIERS=(

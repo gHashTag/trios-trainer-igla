@@ -54,8 +54,13 @@ SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json"
 # breadcrumb labels like "Loop 140 A.iii — second F2 pass:" don't
 # silently drop from arithmetic checks. The 61st-pass probe verified
 # that the prior class blocked em-dash and the gate under-reported.
+# Loop 142 — 65th-pass SEV-3 fix #6: extended with comma so labels
+# like "Loop 142 (#1021 §1, §2.3, §3.1)" don't silently drop (Loop
+# 142 itself tripped this when an early draft included commas).
+# Discipline-by-comment in GATE_AUTHORING_GUIDE.md was fragile —
+# now enforced in the regex.
 _ENTRY_RE = re.compile(
-    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–']*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
+    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–',]*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
 )
 
 

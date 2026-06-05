@@ -546,7 +546,8 @@ Stage additions since the original 8-script catalogue:
   stage). Parses each gate's `_gate_utils.import_gate(name)`
   calls, builds a DAG, asserts (a) no cycles via DFS coloring,
   (b) STAGES execution order respects dependency direction.
-  Currently 25 gates, 5 import edges, all green.
+  At Loop 141 introduction: 25 gates, 5 import edges; subsequent
+  loops have grown the graph (Loop 142 reports 27 gates, 6 edges).
 - **Loop 141 C** — `run_all_checks.sh` STAGES annotated with
   parallel `STAGE_TIERS` array (`submission` vs `discipline`).
   Per-stage tier badge in output (e.g., `[submission]`); per-tier

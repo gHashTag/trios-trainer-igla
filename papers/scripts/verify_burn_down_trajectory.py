@@ -41,11 +41,10 @@ ANONYMIZER_GATE = (
 
 
 # Same shape as verify_burn_down_history._ENTRY_RE — keep them in
-# sync (Loop 138 + Loop 140 extended the label class with em-dash,
-# en-dash, curly apostrophe). Loop 142 B: we don't bother extending
-# again here; if the prior gate parses an entry, this one will too.
+# sync (Loop 138/140 extended class with em-dash/en-dash/curly
+# apostrophe; Loop 142 follow-up #6 added comma).
 _ENTRY_RE = re.compile(
-    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–']*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
+    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–',]*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
 )
 
 

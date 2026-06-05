@@ -67,6 +67,7 @@ UNICODE_PROSE_MAP = {
     "≤": "$\\leq$",   # U+2264
     "≈": "$\\approx$",# U+2248
     "→": "$\\to$",    # U+2192
+    "↔": "$\\leftrightarrow$",  # U+2194 (Loop 142 65th-pass #1 fix)
     "±": "$\\pm$",    # U+00B1
     "·": "$\\cdot$",  # U+00B7
     "≪": "$\\ll$",    # U+226A
