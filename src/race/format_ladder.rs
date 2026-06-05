@@ -4,7 +4,7 @@
 //! and format-zoo (INT8/FP8/bf16) paths. Metric (2) of the F2 protocol.
 
 use crate::gf16::GF16;
-use crate::phi_numbers::{GFTernary, GF32, GF8};
+use crate::phi_numbers::{GFTernary, Posit16, GF32, GF8};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum LadderKind {
@@ -27,6 +27,7 @@ pub struct ConversionCounter {
     pub f32_to_fp8_e5m2: u64,
     pub f32_to_bf16: u64,
     pub f32_to_paretoq: u64,
+    pub f32_to_posit16: u64,
     pub lossy_total: u64,
 }
 
@@ -108,6 +109,41 @@ impl ConversionCounter {
             self.lossy_total += 1;
         }
         bf16
+    }
+
+    /// Convert f32 → Posit16 (Gustafson 2017, es=1, useed=4), counting the
+    /// conversion and bumping `lossy_total` if precision was lost.
+    pub fn convert_f32_to_posit16(&mut self, val: f32) -> Posit16 {
+        let p = Posit16::from_f32(val);
+        self.f32_to_posit16 += 1;
+        let reconstructed = p.to_f32();
+        if (val - reconstructed).abs() > f32::EPSILON {
+            self.lossy_total += 1;
+        }
+        p
+    }
+}
+
+/// Apply Posit16 (es=1) round-trip quantization in place.
+///
+/// Master copy stays f32 in the caller (shadow-weight pattern). Each value
+/// is encoded to Posit16, decoded back to f32, and the result replaces the
+/// input. Used as the "Posit16 arm" in the F2 format-zoo comparison
+/// against bf16 / E4M3 / GF16 at the same nominal bit-width.
+///
+/// Underflow semantics differ from f16: Posit16 saturates to MIN_POS rather
+/// than rounding to zero, which is the load-bearing distinction for
+/// gradient-update preservation in late-training low-precision regimes.
+pub fn apply_posit16(values: &mut [f32], counter: &mut ConversionCounter) {
+    for v in values.iter_mut() {
+        let original = *v;
+        let p = Posit16::from_f32(original);
+        let dequant = p.to_f32();
+        counter.f32_to_posit16 += 1;
+        if (original - dequant).abs() > f32::EPSILON {
+            counter.lossy_total += 1;
+        }
+        *v = dequant;
     }
 }
 
@@ -646,5 +682,36 @@ mod tests {
         let gf8 = GF8::from_f32(0.0);
         let _gf16 = c.convert_gf8_to_gf16(gf8);
         assert_eq!(c.gf8_to_gf16, 1);
+    }
+
+    #[test]
+    fn posit16_round_trip_counts() {
+        let mut c = ConversionCounter::new();
+        let _ = c.convert_f32_to_posit16(std::f32::consts::PI);
+        assert_eq!(c.f32_to_posit16, 1);
+        assert!(c.lossy_total > 0, "Posit16(π) should be lossy");
+    }
+
+    #[test]
+    fn apply_posit16_round_trip_in_place() {
+        let mut c = ConversionCounter::new();
+        let mut v = vec![0.5_f32, 1.0, 2.0, std::f32::consts::PI];
+        apply_posit16(&mut v, &mut c);
+        assert_eq!(c.f32_to_posit16, 4);
+        assert_eq!(v[0], 0.5);
+        assert_eq!(v[1], 1.0);
+        assert_eq!(v[2], 2.0);
+    }
+
+    #[test]
+    fn posit16_does_not_underflow_tiny_to_zero() {
+        // Posit16's MIN_POS = 2^-28; values smaller than that saturate to MIN_POS,
+        // unlike f16 which rounds to zero. This is the F2-relevant distinction.
+        let mut c = ConversionCounter::new();
+        let mut v = vec![1e-30_f32];
+        apply_posit16(&mut v, &mut c);
+        assert!(v[0] > 0.0, "Posit16 must not underflow to zero; got {:?}", v[0]);
+        assert!(v[0] <= 2.0_f32.powi(-27),
+                "Posit16 MIN_POS expected, got {:?}", v[0]);
     }
 }
