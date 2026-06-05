@@ -49,18 +49,23 @@ SIDECAR = CRATE_ROOT / "papers" / "scripts" / "anonymizer_baseline.json"
 #   "Loop <N> [<optional label>]: <A> + <B> = <C>."
 # The label part is permissive — anything between the loop tag and the
 # colon (e.g., "A.iv (F2 §E catalogue)") is captured-but-ignored.
-# Loop 138 — 61st-pass SEV-4 fix #1: label-token class extended to
-# include em-dash (—), en-dash (–), and curly apostrophe (') so future
-# breadcrumb labels like "Loop 140 A.iii — second F2 pass:" don't
-# silently drop from arithmetic checks. The 61st-pass probe verified
-# that the prior class blocked em-dash and the gate under-reported.
-# Loop 142 — 65th-pass SEV-3 fix #6: extended with comma so labels
-# like "Loop 142 (#1021 §1, §2.3, §3.1)" don't silently drop (Loop
-# 142 itself tripped this when an early draft included commas).
-# Discipline-by-comment in GATE_AUTHORING_GUIDE.md was fragile —
-# now enforced in the regex.
+# Label-token class extended in successive loops to keep up with
+# breadcrumb label drift: Loop 138 (em-dash/en-dash/curly apostrophe),
+# Loop 142 (comma), Loop 143 follow-up to 65th-pass #6 (documented in
+# guide), Loop 144 (66th-pass #7 fix: brackets `[]`, semicolons `;`,
+# pipes `|`). The fundamental separator is the colon — never add `:`
+# to the class.
 _ENTRY_RE = re.compile(
-    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\s§#+/\-—–',]*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
+    r"Loop\s+(\d+)\s*[A-Za-z0-9.()\[\]\s§#+/\-—–',;|]*?:\s*(\d+)\s*\+\s*(\d+)\s*=\s*(\d+)\.",
+)
+
+# Loop 144 — 66th-pass SEV-3 #7 (post-extension): catch the
+# "looks-like-a-breadcrumb-but-didn't-parse" class. Any docstring
+# line beginning with `#   Loop \d+` that doesn't match `_ENTRY_RE`
+# emits a stderr WARN so a future contributor knows their intended
+# entry silently dropped.
+_BREADCRUMB_LINE_RE = re.compile(
+    r"^\s*#\s+Loop\s+(\d+)[^\n]*$", re.MULTILINE,
 )
 
 
@@ -80,6 +85,28 @@ def parse_breadcrumb() -> list[tuple[int, int, int, int, int]] | str:
         return "FALLBACK_BASELINES breadcrumb section not found"
     sec_text = sec.group(0)
     sec_offset = sec.start()
+
+    # Loop 144 fix #7: detector for breadcrumb-shaped lines that
+    # didn't parse. A line beginning with `# Loop \d+` that doesn't
+    # produce an _ENTRY_RE match likely contains a character outside
+    # the label class — silent-drop class.
+    parsed_starts = {m.start() for m in _ENTRY_RE.finditer(sec_text)}
+    for cm in _BREADCRUMB_LINE_RE.finditer(sec_text):
+        # Find the entry match (if any) within this line by checking
+        # overlap with the line span; if no overlap, the line failed
+        # to produce an entry.
+        line_start, line_end = cm.span()
+        has_entry = any(
+            line_start <= s < line_end for s in parsed_starts
+        )
+        if not has_entry:
+            file_line_no = text[:sec_offset + cm.start()].count("\n") + 1
+            print(f"# WARN  verify_burn_down_history.py:{file_line_no}: "
+                  f"Loop {cm.group(1)} line did NOT parse as a "
+                  "breadcrumb entry — character outside label class? "
+                  "Check `_ENTRY_RE` extension policy.",
+                  file=sys.stderr)
+
     out: list[tuple[int, int, int, int, int]] = []
     for m in _ENTRY_RE.finditer(sec_text):
         loop = int(m.group(1))

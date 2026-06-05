@@ -1727,10 +1727,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **37 stages**
+  cold**) — single-shot CI gate. Currently chains **38 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other thirty stages are gates
+  not a stage of itself); the **other thirty-one stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1772,12 +1772,14 @@ dependency; we do not stub any of them.
   STAGES execution order), the tier-classification verifier
   (asserts STAGES/STAGE_TIERS parity + contiguity), the
   burn-down-trajectory verifier (asserts the breadcrumb is
-  loop-monotonic + non-increasing), and the §10-authority
-  verifier (asserts every CI-gate verify_*.py stage has a
-  matching CHANGELOG §10 entry).
+  loop-monotonic + non-increasing), the §10-authority verifier
+  (asserts every CI-gate verify_*.py stage has a matching
+  CHANGELOG §10 entry), and the gate-authoring-guide-drift
+  verifier (asserts the discipline doc and live code agree on
+  the breadcrumb label-class regex).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 30 are documented in the follow-up paper's
+  the additional 31 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",

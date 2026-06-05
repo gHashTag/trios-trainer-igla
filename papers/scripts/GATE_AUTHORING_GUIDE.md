@@ -192,11 +192,14 @@ matches live sidecar; `verify_burn_down_trajectory.py` (36) gates
 that Loop numbers strictly increase and total C is monotonically
 non-increasing.
 
-The label class accepts `[A-Za-z0-9.()\s§#+/\-—–',]` (commas were
-added in Loop 143 follow-up to 65th-pass #6; Loop 142's lesson was
-that discipline-by-comment is fragile). Avoid brackets, semicolons,
-pipes, and quotation marks — they will silently drop the entry
-from the parse.
+The label class accepts `[A-Za-z0-9.()\[\]\s§#+/\-—–',;|]` (Loop
+144 follow-up to 66th-pass #7 extended with brackets, semicolons,
+and pipes; commas were added in Loop 143 follow-up to 65th-pass #6).
+Avoid quotation marks and the colon `:` (colon is the entry
+separator and will catastrophically break parsing). The
+verify_gate_authoring_guide_drift.py gate enforces this guide-vs-
+code agreement so the prior "discipline-by-comment is fragile"
+class is now hard-gated.
 
 ## Bottom-line discipline rules
 

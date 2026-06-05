@@ -360,134 +360,77 @@ def test_exact_pin_break_tmlr_page(tmp: Path) -> bool:
 
 
 def test_burn_down_arithmetic_break(tmp: Path) -> bool:
-    """Loop 140 A.iv: synthetic break-test for verify_burn_down_history.py.
+    """Loop 140 A.iv (migrated to shared helpers Loop 144 A.iii):
+    inject "Loop 99 SYNTHETIC: 5+5=11" into a tmpdir copy of
+    verify_anonymizer_completeness.py's FALLBACK_BASELINES; assert
+    verify_burn_down_history.py fires with "= 10" diagnostic.
 
-    The 61st-pass #12 flagged that 10+ newer gates ship without
-    break-tests. This is the first extension: mutate the FALLBACK_BASELINES
-    breadcrumb in a tmpdir copy of verify_anonymizer_completeness.py
-    so a historical entry's arithmetic fails (A+B≠C); assert the
-    burn-down gate exits 1 with 'A + B = actual' diagnostic."""
-    import shutil
-    src_dir = CRATE_ROOT / "papers" / "scripts"
-    dst_dir = tmp / "papers" / "scripts"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for name in [
+    Injects at a NON-most-recent position so the most-recent-binding
+    check doesn't mask the arithmetic shape-check."""
+    dst = _copy_to_tmp(tmp, scripts=[
         "verify_anonymizer_completeness.py",
         "verify_burn_down_history.py",
         "_gate_utils.py",
         "anonymizer_baseline.json",
-    ]:
-        shutil.copy2(src_dir / name, dst_dir / name)
-    anon = dst_dir / "verify_anonymizer_completeness.py"
+    ])
+    anon = dst / "verify_anonymizer_completeness.py"
     text = anon.read_text()
-    # Inject a bad-arithmetic entry inside the FALLBACK_BASELINES
-    # docstring (which the burn-down gate parses). 5+5 = 10, not 11.
-    # Loop 140 — 63rd-pass SEV-4 fix #12: inject at a NON-most-recent
-    # position so the most-recent-binding check doesn't fire (it
-    # would mask the arithmetic shape-check). Insert AFTER an early
-    # entry, so the latest live entry remains the actual most-recent.
     broken = text.replace(
         "Loop 132 C baseline: 29 + 43 = 72.",
         "Loop 132 C baseline: 29 + 43 = 72.\n"
         "#   Loop 99 SYNTHETIC: 5 + 5 = 11.",
     )
     if broken == text:
-        print("# SKIP burn_down_arithmetic: FALLBACK_BASELINES marker "
-              "not found in source — gate may have moved",
+        print("# SKIP burn_down_arithmetic: FALLBACK_BASELINES marker not found",
               file=sys.stderr)
         return True
     anon.write_text(broken)
-    result = subprocess.run(
-        [sys.executable, str(dst_dir / "verify_burn_down_history.py")],
-        capture_output=True, text=True, timeout=30,
+    result = _run_gate(dst, "verify_burn_down_history.py")
+    return _assert_fires(
+        result, "= 10",
+        "burn-down arithmetic break",
     )
-    if result.returncode == 0:
-        print("# FAIL  burn-down arithmetic break: gate exited 0 "
-              "despite synthetic 5+5=11. Arithmetic check broken.",
-              file=sys.stderr)
-        print(f"  stdout: {result.stdout[:300]}", file=sys.stderr)
-        return False
-    if "= 10" not in result.stderr and "= 10" not in result.stdout:
-        print("# FAIL  burn-down arithmetic break: gate failed but "
-              "diagnostic doesn't name the actual sum (5+5=10).",
-              file=sys.stderr)
-        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
-        return False
-    print("# OK    burn-down arithmetic break: gate fires with "
-          "expected 'A+B = actual' diagnostic")
-    return True
 
 
 def test_alias_round_trip_dangling_break(tmp: Path) -> bool:
-    """Loop 140 A.iv: synthetic break-test for verify_alias_round_trip.py.
-
-    Inject a dangling alias `BOGUS → NONEXISTENT_CLASS` into a temp
-    copy of verify_cross_paper_consistency.py and assert the gate
-    reports the dead alias."""
-    import shutil
-    src_dir = CRATE_ROOT / "papers" / "scripts"
-    dst_dir = tmp / "papers" / "scripts"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for name in [
+    """Loop 140 A.iv (migrated to shared helpers Loop 144 A.iii):
+    inject dangling alias BOGUS → NONEXISTENT_CLASS into a temp copy
+    of verify_cross_paper_consistency.py CLASS_LABEL_ALIASES and assert
+    verify_alias_round_trip.py reports the dead alias."""
+    dst = _copy_to_tmp(tmp, scripts=[
         "verify_cross_paper_consistency.py",
         "verify_alias_round_trip.py",
         "_gate_utils.py",
-    ]:
-        shutil.copy2(src_dir / name, dst_dir / name)
-    consist = dst_dir / "verify_cross_paper_consistency.py"
+    ])
+    consist = dst / "verify_cross_paper_consistency.py"
     text = consist.read_text()
-    # Inject a dangling alias in CLASS_LABEL_ALIASES.
     broken = text.replace(
         '"PIN": "EXACT_PIN",',
         '"PIN": "EXACT_PIN",\n    "BOGUS": "NONEXISTENT_CLASS",',
     )
     if broken == text:
-        print("# SKIP alias_round_trip_dangling: CLASS_LABEL_ALIASES "
-              "anchor not found", file=sys.stderr)
+        print("# SKIP alias_dangling: CLASS_LABEL_ALIASES anchor not found",
+              file=sys.stderr)
         return True
     consist.write_text(broken)
-    result = subprocess.run(
-        [sys.executable, str(dst_dir / "verify_alias_round_trip.py")],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode == 0:
-        print("# FAIL  alias dangling break: gate exited 0 despite "
-              "BOGUS → NONEXISTENT_CLASS dangling alias.",
-              file=sys.stderr)
-        return False
-    if "BOGUS" not in result.stderr and "dead alias" not in result.stderr:
-        print("# FAIL  alias dangling break: gate failed but stderr "
-              "missing 'BOGUS' or 'dead alias' marker.",
-              file=sys.stderr)
-        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
-        return False
-    print("# OK    alias dangling break: gate fires with 'dead alias' "
-          "diagnostic naming BOGUS")
-    return True
+    result = _run_gate(dst, "verify_alias_round_trip.py")
+    return _assert_fires(result, "BOGUS", "alias dangling break")
 
 
 def test_documented_vs_extracted_break(tmp: Path) -> bool:
-    """Loop 141 A.iv: synthetic break for verify_documented_vs_extracted.
-    Mutate SUBMISSION_CHECKLIST (11/N) "6 reports" → "5 reports";
-    assert the gate fires with the claimed-vs-actual mismatch."""
-    import shutil
-    src_dir = CRATE_ROOT / "papers" / "scripts"
-    dst_dir = tmp / "papers" / "scripts"
-    dst_papers = tmp / "papers"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for name in [
-        "verify_documented_vs_extracted_consistency.py",
-        "verify_report_consistency.py",
-        "_gate_utils.py",
-    ]:
-        shutil.copy2(src_dir / name, dst_dir / name)
-    # The gate also reads SUBMISSION_CHECKLIST relative to CRATE_ROOT
-    # (which it derives from __file__ → 2 parents up). Mirror it.
-    shutil.copy2(
-        CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md",
-        dst_papers / "SUBMISSION_CHECKLIST.md",
+    """Loop 141 A.iv (migrated to shared helpers Loop 144 A.iii):
+    mutate SUBMISSION_CHECKLIST (11/N) "6 reports" → "5 reports";
+    assert verify_documented_vs_extracted_consistency.py fires."""
+    dst = _copy_to_tmp(
+        tmp,
+        scripts=[
+            "verify_documented_vs_extracted_consistency.py",
+            "verify_report_consistency.py",
+            "_gate_utils.py",
+        ],
+        papers=["SUBMISSION_CHECKLIST.md"],
     )
-    chk = dst_papers / "SUBMISSION_CHECKLIST.md"
+    chk = tmp / "papers" / "SUBMISSION_CHECKLIST.md"
     text = chk.read_text()
     broken = text.replace(
         "report consistency — 6 reports (2 full + 4 stub coverage)",
@@ -498,63 +441,26 @@ def test_documented_vs_extracted_break(tmp: Path) -> bool:
               file=sys.stderr)
         return True
     chk.write_text(broken)
-    result = subprocess.run(
-        [sys.executable, str(dst_dir / "verify_documented_vs_extracted_consistency.py")],
-        capture_output=True, text=True, timeout=30,
+    result = _run_gate(dst, "verify_documented_vs_extracted_consistency.py")
+    return _assert_fires(
+        result, "5 reports",
+        "doc_vs_extracted break",
     )
-    if result.returncode == 0:
-        print("# FAIL  doc_vs_extracted break: gate exited 0 despite "
-              "5 reports != live 6.", file=sys.stderr)
-        return False
-    # Loop 141 — 64th-pass SEV-4 fix #9: pin to a unique fragment
-    # rather than bare digits "5"/"6" which appear in unrelated
-    # gate output (e.g., "(11/N)" stage labels).
-    if "claims 5 reports" not in result.stderr \
-            and "5 reports" not in result.stderr:
-        print("# FAIL  doc_vs_extracted break: stderr missing "
-              "'5 reports' fragment.",
-              file=sys.stderr)
-        print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
-        return False
-    print("# OK    doc_vs_extracted break: gate fires with "
-          "claimed-vs-actual mismatch")
-    return True
 
 
 def test_changelog_consistency_break(tmp: Path) -> bool:
-    """Loop 141 A.iv: synthetic break for verify_changelog_consistency.
-    Mutate CHANGELOG §7 lead 'Sixty-three' → 'Sixty-two' while
-    leaving the other sites at 63; assert the agreement check fires."""
-    import shutil
-    src_dir = CRATE_ROOT / "papers" / "scripts"
-    dst_dir = tmp / "papers" / "scripts"
-    dst_papers = tmp / "papers"
-    dst_docs = tmp / "docs"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    dst_docs.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(
-        src_dir / "verify_changelog_consistency.py",
-        dst_dir / "verify_changelog_consistency.py",
+    """Loop 141 A.iv (migrated to shared helpers Loop 144 A.iii):
+    mutate CHANGELOG §7 lead count to 'Sixty-two' while leaving
+    other sites at current; assert verify_changelog_consistency.py
+    agreement check fires."""
+    dst = _copy_to_tmp(
+        tmp,
+        scripts=["verify_changelog_consistency.py", "_gate_utils.py"],
+        papers=["CHANGELOG.md", "SUBMISSION_CHECKLIST.md"],
+        docs=["ADVERSARIAL_REVIEW_LOG.md"],
     )
-    shutil.copy2(src_dir / "_gate_utils.py", dst_dir / "_gate_utils.py")
-    shutil.copy2(
-        CRATE_ROOT / "papers" / "CHANGELOG.md",
-        dst_papers / "CHANGELOG.md",
-    )
-    shutil.copy2(
-        CRATE_ROOT / "papers" / "SUBMISSION_CHECKLIST.md",
-        dst_papers / "SUBMISSION_CHECKLIST.md",
-    )
-    shutil.copy2(
-        CRATE_ROOT / "docs" / "ADVERSARIAL_REVIEW_LOG.md",
-        dst_docs / "ADVERSARIAL_REVIEW_LOG.md",
-    )
-    cl = dst_papers / "CHANGELOG.md"
+    cl = tmp / "papers" / "CHANGELOG.md"
     text = cl.read_text()
-    # Mutate the §7 lead's count word. Replace whatever the current
-    # text uses ("Sixty-three", "Sixty-four", etc.) with "Sixty-two"
-    # so the agreement check fires against the other two sites.
-    import re
     broken = re.sub(
         r"\*\*[A-Za-z-]+\*\* independent\s+passes total",
         "**Sixty-two** independent passes total",
@@ -565,18 +471,15 @@ def test_changelog_consistency_break(tmp: Path) -> bool:
               file=sys.stderr)
         return True
     cl.write_text(broken)
-    result = subprocess.run(
-        [sys.executable, str(dst_dir / "verify_changelog_consistency.py")],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode == 0:
-        print("# FAIL  changelog_consistency break: gate exited 0 "
-              "despite §7 disagreement.", file=sys.stderr)
-        return False
-    if "disagreement" not in result.stderr.lower() \
-            and "drift" not in result.stderr.lower():
-        print("# FAIL  changelog_consistency break: stderr missing "
-              "disagreement marker.", file=sys.stderr)
+    result = _run_gate(dst, "verify_changelog_consistency.py")
+    # Either "disagreement" or "drift" diagnostic accepted.
+    if result.returncode == 0 or (
+            "disagreement" not in result.stderr.lower()
+            and "drift" not in result.stderr.lower()):
+        print(f"# FAIL  changelog_consistency break: "
+              f"rc={result.returncode}, "
+              "stderr lacks disagreement/drift",
+              file=sys.stderr)
         print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
         return False
     print("# OK    changelog_consistency break: gate fires with "
@@ -585,34 +488,25 @@ def test_changelog_consistency_break(tmp: Path) -> bool:
 
 
 def test_stage_count_break(tmp: Path) -> bool:
-    """Loop 141 A.iv: synthetic break for verify_stage_count_consistency.
-    Mutate F2 §E '**N stages**' to a count below actual; assert
-    the gate fires with the claimed-vs-actual mismatch."""
-    import shutil
-    src_dir = CRATE_ROOT / "papers" / "scripts"
-    dst_dir = tmp / "papers" / "scripts"
-    dst_papers = tmp / "papers"
-    dst_dir.mkdir(parents=True, exist_ok=True)
-    for name in [
-        "verify_stage_count_consistency.py",
-        "_gate_utils.py",
-        "run_all_checks.sh",
-    ]:
-        shutil.copy2(src_dir / name, dst_dir / name)
-    for fname in (
-        "f2_methodology.md",
-        "phi_ladder_paper_intro_draft.md",
-        "CHANGELOG.md",
-        "SUBMISSION_CHECKLIST.md",
-    ):
-        shutil.copy2(
-            CRATE_ROOT / "papers" / fname,
-            dst_papers / fname,
-        )
-    f2 = dst_papers / "f2_methodology.md"
+    """Loop 141 A.iv (migrated to shared helpers Loop 144 A.iii):
+    mutate F2 §E `**N stages**` to N-5; assert
+    verify_stage_count_consistency.py fires."""
+    dst = _copy_to_tmp(
+        tmp,
+        scripts=[
+            "verify_stage_count_consistency.py",
+            "_gate_utils.py",
+            "run_all_checks.sh",
+        ],
+        papers=[
+            "f2_methodology.md",
+            "phi_ladder_paper_intro_draft.md",
+            "CHANGELOG.md",
+            "SUBMISSION_CHECKLIST.md",
+        ],
+    )
+    f2 = tmp / "papers" / "f2_methodology.md"
     text = f2.read_text()
-    import re
-    # Match `Currently chains **NN stages**` and downshift by 5.
     m = re.search(r"Currently chains \*\*(\d+) stages\*\*", text)
     if not m:
         print("# SKIP stage_count: §E count anchor not found",
@@ -625,19 +519,14 @@ def test_stage_count_break(tmp: Path) -> bool:
         1,
     )
     f2.write_text(broken)
-    result = subprocess.run(
-        [sys.executable, str(dst_dir / "verify_stage_count_consistency.py")],
-        capture_output=True, text=True, timeout=30,
-    )
-    if result.returncode == 0:
-        print("# FAIL  stage_count break: gate exited 0 despite "
-              f"claim {actual - 5} != actual {actual}.",
+    result = _run_gate(dst, "verify_stage_count_consistency.py")
+    # Both the claim and the actual count should surface in stderr.
+    if result.returncode == 0 or (
+            str(actual - 5) not in result.stderr
+            or str(actual) not in result.stderr):
+        print(f"# FAIL  stage_count break: rc={result.returncode}, "
+              "stderr missing claim/actual digits",
               file=sys.stderr)
-        return False
-    if str(actual - 5) not in result.stderr \
-            or str(actual) not in result.stderr:
-        print("# FAIL  stage_count break: stderr missing claimed-vs-"
-              "actual integers.", file=sys.stderr)
         print(f"  stderr: {result.stderr[:300]}", file=sys.stderr)
         return False
     print("# OK    stage_count break: gate fires with claim-vs-actual "

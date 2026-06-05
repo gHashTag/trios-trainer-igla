@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–143)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–144)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Sixty-six** independent
-passes total across Loops 59–143 (50-pass milestone reached at
-Loop 127; passes 51–66 dispatched at Loops 128–143). The first
+caught before reviewers saw them. **Sixty-seven** independent
+passes total across Loops 59–144 (50-pass milestone reached at
+Loop 127; passes 51–67 dispatched at Loops 128–144). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–143 extended the discipline to round-N
+submission flow; Loops 86–144 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–66 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–143; per-pass detail lives in
+12–67 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–144; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–143 (49th pass flagged the un-widened grep covered only
-~35 of 66 passes; the two-pattern form widens reach).
+90–144 (49th pass flagged the un-widened grep covered only
+~35 of 67 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–143)
+### 10. CI gate evolution (Loops 87–144)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -588,7 +588,8 @@ Stage additions since the original 8-script catalogue:
   previous). Meta-test 12 → 14 break-tests. Closes 65th-pass #5
   (stages 35/36 missing break-tests).
 - **Loop 143 B** — Re-classified stages 22-24 from discipline →
-  submission. STAGE_TIERS split is now 24/12 (was 21/15). Submission
+  submission. STAGE_TIERS split is now 24/13 (was 21/15; Loop 144 added the
+  38th stage to discipline making it 24/14). Submission
   tier: anonymization-breaking drift (24), §1↔STAGES alignment (22),
   CHANGELOG/§2/log agreement (23). Extended `verify_tier_classification.py`
   with contiguity check (all submission entries must precede any
@@ -599,8 +600,27 @@ Stage additions since the original 8-script catalogue:
   LEGACY_ALLOWLIST). Closes the "is §10 actually authoritative?"
   question — every gate addition must land with a §10 entry in
   the same commit.
+- **Loop 144 A.iii** — Migrated 5 pre-Loop-143 break-tests to
+  shared helpers (`_copy_to_tmp` / `_run_gate` / `_assert_fires`).
+  ~80 LOC reduction; 14/14 break-tests still pass. Closes
+  66th-pass #10.
+- **Loop 144 A.iv** — Breadcrumb regex hardening + re-baseline
+  escape hatch: (1) label class extended with brackets/
+  semicolons/pipes (closes 66th-pass #7); (2) silent-drop
+  detector emits WARN on `# Loop N` lines that miss `_ENTRY_RE`;
+  (3) `# RE-BASELINE: Loop N <reason>` annotation skips
+  monotonicity check for legitimate up-baselines (closes 66th-
+  pass #8).
+- **Loop 144 B** — `verify_gate_authoring_guide_drift.py` added
+  (38th stage). Asserts every `verify_*.py` cited in
+  `GATE_AUTHORING_GUIDE.md` exists + breadcrumb label-class regex
+  matches live code's `_ENTRY_RE`. Caught real drift on first
+  run (guide vs code disagreement); now permanent class closure.
+- **Loop 144 C** — `gate_dashboard.sh` added as manual project-
+  health snapshot tool (NOT a CI stage). Reports stages + tier
+  split + pass count + anonymizer total + deadlines.
 
-The on-disk gate now runs **37 stages** (verified by the new
+The on-disk gate now runs **38 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

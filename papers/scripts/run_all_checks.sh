@@ -143,6 +143,7 @@ STAGES=(
     "tier classification:python3 papers/scripts/verify_tier_classification.py"
     "burn-down trajectory:python3 papers/scripts/verify_burn_down_trajectory.py"
     "§10 authority:python3 papers/scripts/verify_changelog_section10_authority.py"
+    "guide drift:python3 papers/scripts/verify_gate_authoring_guide_drift.py"
 )
 
 # Loop 141 C: lightweight tier classification. Each stage maps to one
@@ -168,7 +169,7 @@ STAGE_TIERS=(
     "submission" "submission" "submission" "submission"
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
-    "discipline" "discipline" "discipline"
+    "discipline" "discipline" "discipline" "discipline"
 )
 
 PASSED=0
