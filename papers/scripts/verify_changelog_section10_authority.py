@@ -47,6 +47,17 @@ LEGACY_ALLOWLIST = {
     "verify_provenance.sh",  # not .py but listed for symmetry
 }
 
+# Loop 143 — 66th-pass SEV-2 fix #3: manual-tool gates documented
+# in §10 but explicitly NOT wired as CI stages. Without this
+# allowlist, the symmetry check WARNs on every run forever about
+# "stale entries from removed gates" — which is wrong; these
+# entries are documenting deliberately-not-CI tools.
+MANUAL_TOOL_ALLOWLIST = {
+    "verify_committed_state_consistency.py",   # Loop 134 C
+    "verify_pre_commit_hook.py",                # Loop 138 C
+    "verify_src_unchanged_during_paper_loop.py",  # Loop 137 C
+}
+
 
 def parse_stages_gate_names() -> list[str] | str:
     """Return list of `verify_*.py` filenames from STAGES array."""
@@ -109,15 +120,18 @@ def main() -> int:
         print(f"# OK    all {len(set(stages) - LEGACY_ALLOWLIST)} "
               "non-legacy STAGES gate(s) mentioned in §10")
 
-    # (b) Every §10-mentioned gate has a STAGES entry. (A §10 mention
-    # of a removed gate would be a stale entry — typically OK during
-    # transition; we flag as WARN not FAIL.)
-    extra_in_changelog = section10 - set(stages) - LEGACY_ALLOWLIST
+    # (b) Every §10-mentioned gate has a STAGES entry. Manual tools
+    # (Loop 143 fix #3) and legacy entries are exempted; remaining
+    # extras may be stale post-removal references.
+    extra_in_changelog = (
+        section10 - set(stages) - LEGACY_ALLOWLIST - MANUAL_TOOL_ALLOWLIST
+    )
     if extra_in_changelog:
         print(f"# WARN  §10 mentions {len(extra_in_changelog)} gate(s) "
-              f"not in STAGES: {sorted(extra_in_changelog)} (likely "
-              "stale entries from removed gates; remove or move to "
-              "an explicit `(deprecated)` annotation)",
+              f"not in STAGES nor allowlisted: "
+              f"{sorted(extra_in_changelog)} (likely stale entries "
+              "from removed gates; remove or move to an explicit "
+              "`(deprecated)` annotation)",
               file=sys.stderr)
 
     if mismatches:

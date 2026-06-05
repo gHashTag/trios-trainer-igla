@@ -192,9 +192,11 @@ matches live sidecar; `verify_burn_down_trajectory.py` (36) gates
 that Loop numbers strictly increase and total C is monotonically
 non-increasing.
 
-The label class accepts `[A-Za-z0-9.()\s§#+/\-—–']`. Avoid commas
-and quotation marks in labels (Loop 142 lesson: a comma in the
-label silently dropped the entry from the parse).
+The label class accepts `[A-Za-z0-9.()\s§#+/\-—–',]` (commas were
+added in Loop 143 follow-up to 65th-pass #6; Loop 142's lesson was
+that discipline-by-comment is fragile). Avoid brackets, semicolons,
+pipes, and quotation marks — they will silently drop the entry
+from the parse.
 
 ## Bottom-line discipline rules
 

@@ -16,7 +16,8 @@ Asserts:
       "discipline" entry. The summary's per-tier count is only
       meaningful when the partition is contiguous; a reordering
       that interleaves the two would still report a numeric
-      total but obscure the actual gating boundary.
+      total but obscure the actual gating boundary. (Loop 143 B
+      addition — closes 65th-pass SEV-3 #8.)
   (d) Reports per-tier count for visibility (submission, discipline).
 
 Usage: papers/scripts/verify_tier_classification.py
