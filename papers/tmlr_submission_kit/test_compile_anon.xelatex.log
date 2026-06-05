@@ -70,7 +70,7 @@ r.sty))) (/Users/playra/Library/texmf/tex/latex/cleveref/cleveref.sty)
 (/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd)
 (./f2_methodology_anonymized_body.tex [1]
 Overfull \hbox (11.85884pt too wide) in paragraph at lines 43--47
-[]\TU/lmr/m/n/10.95 The framework is open-source in Rust with 10 binaries, 809 
+[]\TU/lmr/m/n/10.95 The framework is open-source in Rust with 10 binaries, 830 
 unit/integration
 
 Overfull \hbox (13.0086pt too wide) in paragraph at lines 68--88
@@ -342,6 +342,10 @@ Overfull \hbox (10.17569pt too wide) in paragraph at lines 1688--1689
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
+Overfull \hbox (16.22585pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/bx/n/10.95 original 8-script catalogue crystallized, during the gate-ev
+olution
+
 Overfull \hbox (80.91301pt too wide) in paragraph at lines 1689--1690
 \TU/lmr/bx/n/10.95 arc documented in CHANGELOG section [][]10[][]\TU/lmr/m/n/10
 .95 : \TU/lmtt/m/n/10.95 verify_tables_against_csv.py\TU/lmr/m/n/10.95 ,
@@ -375,9 +379,9 @@ Overfull \hbox (6.72641pt too wide) in paragraph at lines 1689--1690
 \TU/lmr/m/n/10.95 burn-down-trajectory verifier (asserts the breadcrumb is loop
 -monotonic
 
-Overfull \hbox (138.58507pt too wide) in paragraph at lines 1689--1690
-\TU/lmr/m/n/10.95 deadline-freshness verifier (asserts every dated AOE deadline
- in \TU/lmtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
+Overfull \hbox (95.38733pt too wide) in paragraph at lines 1689--1690
+\TU/lmr/m/n/10.95 freshness verifier (asserts every dated AOE deadline in \TU/l
+mtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
 [39] [40])
 Overfull \hbox (139.8292pt too wide) in paragraph at lines 1692--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m

@@ -136,7 +136,7 @@ assumption that nested-counterfactual identification requires —
 see §3.4 for the diagnostic and the total-effect reframe. The
 cross-stratum comparator (4) is applied at the (phi, zoo)
 total-effect level rather than per-PSE.
-The same 10 F2 binaries, 809 tests, and W3C-PROV preamble
+The same 10 F2 binaries, 830 tests, and W3C-PROV preamble
 discipline that back the companion paper's sandbox-scale RmsNorm
 finding are the substrate this paper runs on at champion scale.
 A reader who has not yet seen F2 should treat §3 of this paper
@@ -827,7 +827,7 @@ caught and require an explicit `--update-snapshot` to refresh.
 
 ### 5.4 CI gate
 
-The companion paper's CI gate (39 stages on disk as of Loop 145)
+The companion paper's CI gate (40 stages on disk as of Loop 147)
 includes all three pre-registered #1021 scripts now that the third
 has been committed, plus the new stage-count-consistency verifier
 (Loop 118 B) that gates this paragraph's "N stages" claim against
@@ -873,8 +873,8 @@ are produced.
 fixed in an earlier pre-registration sweep; later loops added
 the stage-count + cross-paper verifiers — full per-loop history
 in the companion paper's `papers/CHANGELOG.md` §10): the current
-**39-stage on-disk gate** breaks down as
-**33 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
+**40-stage on-disk gate** breaks down as
+**34 F2-scope stages** (cross-ref/metadata/SHAs/lint/tables/
 formulas/label/preamble/inventory/xelatex/figures/supplementary
 plus the stage-count verifier that gates this very paragraph,
 the cross-paper consistency verifier, the cross-paper-gate
@@ -888,9 +888,10 @@ the module-cache-consistency verifier, the floating-loop-
 anchor verifier, the anchor-loop-coverage verifier, the
 dependency-graph verifier, the tier-classification verifier,
 the burn-down-trajectory verifier, the §10-authority verifier,
-the gate-authoring-guide-drift verifier, and the deadline-
-freshness verifier; per-introduction history is catalogued in
-the companion paper's `papers/CHANGELOG.md` §10) **+ 6 #1021-scoped
+the gate-authoring-guide-drift verifier, the deadline-freshness
+verifier, and the tex-anonymization verifier; per-introduction
+history is catalogued in the companion paper's
+`papers/CHANGELOG.md` §10) **+ 6 #1021-scoped
 stages already wired** into F2's `run_all_checks.sh`
 (verify_provenance/verify_run_completeness/verify_report_consistency/
 smoke_f2_pairwise_perm/#1021 cross-ref/#1021 md-lint). **No

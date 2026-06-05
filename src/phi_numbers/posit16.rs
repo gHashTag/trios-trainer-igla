@@ -27,8 +27,31 @@
 use std::fmt;
 
 /// Posit16 with es=1 (per Posit Standard 2022 default for n=16).
+///
+/// Posits are **totally ordered** as 16-bit signed integers under two's-
+/// complement, with one exception: NaR (0x8000) is comparable to anything
+/// (it sorts as the most-negative integer, which is also its position when
+/// interpreted as i16). Per the Posit Standard 2022 §5.2, NaR is the
+/// *least* value in the order; this matches the natural `i16` comparison
+/// of the bit pattern. We therefore derive `Ord` / `PartialOrd` on the
+/// i16-interpretation of the raw bits.
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct Posit16(pub u16);
+
+impl PartialOrd for Posit16 {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Posit16 {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        // Posit bit patterns compare as signed two's-complement integers.
+        // This puts NaR (0x8000 = i16::MIN) as the smallest value, which
+        // is the Posit Standard 2022 §5.2 total-order convention.
+        (self.0 as i16).cmp(&(other.0 as i16))
+    }
+}
 
 impl Posit16 {
     const ES: u32 = 1;
@@ -418,6 +441,31 @@ mod tests {
             assert!(now >= prev - 1e-6,
                     "non-monotone at i={i}, x={x}: prev={prev}, now={now}");
             prev = now;
+        }
+    }
+
+    #[test]
+    fn total_order_matches_numeric_order_in_positive_range() {
+        // Posit bit-order under i16 cast should agree with numeric order
+        // for positive posits (where bits are interpreted as nonnegative
+        // i16). Loop 147 audit closure.
+        let cases = [0.25_f32, 0.5, 1.0, 1.5, 2.0, 4.0, 100.0];
+        let mut prev = Posit16::from_f32(cases[0]);
+        for &x in &cases[1..] {
+            let now = Posit16::from_f32(x);
+            assert!(prev < now, "expected {prev:?} < {now:?} at x={x}");
+            prev = now;
+        }
+    }
+
+    #[test]
+    fn nar_is_least_under_total_order() {
+        // Per Posit Standard 2022 §5.2, NaR is the least element. With
+        // i16-cast comparison: 0x8000 = i16::MIN sorts first.
+        let nar = Posit16::NAR;
+        for v in [Posit16::MIN_NEG, Posit16::MAX_NEG, Posit16::ZERO,
+                  Posit16::MIN_POS, Posit16::MAX_POS] {
+            assert!(nar < v, "NaR ({nar:?}) should be < {v:?}");
         }
     }
 

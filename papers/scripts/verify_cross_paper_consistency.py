@@ -12,9 +12,9 @@ Examples surfaced by adversarial passes 38-43:
   enforces that the cross-paper relationship is *acknowledged* in both
   papers).
 - F2 §3.5.4 says "714 passing tests" (src/lib.rs only); #1021 §1.3
-  says "809 tests" (total = lib + per-binary + integration). Different
+  says "830 tests" (total = lib + per-binary + integration). Different
   scopes — gated for self-consistency.
-- F2 §1 abstract says "809 tests"; #1021 §1.3 says "809 tests" — same
+- F2 §1 abstract says "830 tests"; #1021 §1.3 says "830 tests" — same
   scope, same number, must match exactly.
 
 Each registered claim is one of:
@@ -166,7 +166,7 @@ SCOPED_DIFF_CLAIMS: list[tuple[str, Path, str, int, int, str]] = [
         700, 800,
         "F2 §3.5.4 lib test count",
     ),
-    # F2 §8.2 "809 tests grouped by source: 714 in src/lib.rs"
+    # F2 §8.2 "830 tests grouped by source: 735 in src/lib.rs"
     (
         r"lists (\d+) tests grouped\s+by",
         F2_PAPER,
@@ -320,7 +320,7 @@ RELATIONAL_CLAIMS: list[tuple[str, Path, str, Path, str, str]] = [
     (
         r"\*\*(\d+) binaries\*\* on disk",
         ISSUE1021_PAPER,
-        r"809 tests across `src/lib\.rs`, (\d+) F2 binaries",
+        r"830 tests across `src/lib\.rs`, (\d+) F2 binaries",
         F2_PAPER,
         "ge",
         "#1021 §3.3 binary count ≥ F2 §D 10-binary inventory (superset invariant)",

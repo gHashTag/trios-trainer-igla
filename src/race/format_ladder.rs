@@ -31,6 +31,12 @@ pub struct ConversionCounter {
     pub lossy_total: u64,
 }
 
+// Loop 147 — 68th-pass audit SEV-5: the Display impl below previously omitted
+// `f32_to_posit16`, `f32_to_int4`, `f32_to_paretoq`. A counter print at the
+// end of a training run silently dropped them, hiding undercount bugs. The
+// updated impl emits every tracked field. The field-mention order is the
+// same as the struct declaration so a future reader can ctrl-F to verify.
+
 impl ConversionCounter {
     pub fn new() -> Self {
         Self::default()
@@ -452,7 +458,9 @@ impl core::fmt::Display for ConversionCounter {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         write!(
             f,
-            "lossy={} (gf32→16:{} gf16→8:{} gf8→t:{} ↑16→32:{} ↑8→16:{} ↑t→8:{} bf16:{})",
+            "lossy={} (gf32→16:{} gf16→8:{} gf8→t:{} ↑16→32:{} ↑8→16:{} \
+             ↑t→8:{} bf16:{} int8:{} int4:{} fp8:{}(e4m3:{} e5m2:{}) \
+             paretoq:{} posit16:{})",
             self.lossy_total,
             self.gf32_to_gf16,
             self.gf16_to_gf8,
@@ -461,6 +469,13 @@ impl core::fmt::Display for ConversionCounter {
             self.gf8_to_gf16,
             self.ternary_to_gf8,
             self.f32_to_bf16,
+            self.f32_to_int8,
+            self.f32_to_int4,
+            self.f32_to_fp8,
+            self.f32_to_fp8_e4m3,
+            self.f32_to_fp8_e5m2,
+            self.f32_to_paretoq,
+            self.f32_to_posit16,
         )
     }
 }

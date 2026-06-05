@@ -212,7 +212,7 @@ def test_exact_match_break_f2_total(tmp: Path) -> bool:
     f2_tmp = tmp / "f2_broken.md"
     text = F2.read_text()
     broken = text.replace(
-        "open-source in Rust with 10 binaries, 809",
+        "open-source in Rust with 10 binaries, 830",
         "open-source in Rust with 10 binaries, 999",
     )
     f2_tmp.write_text(broken)
@@ -229,7 +229,7 @@ def test_scoped_diff_break_lib_count(tmp: Path) -> bool:
     f2_tmp = tmp / "f2_lib_broken.md"
     text = F2.read_text()
     broken = text.replace(
-        "cargo test --lib` exits 0 with 714 passing tests",
+        "cargo test --lib` exits 0 with 735 passing tests",
         "cargo test --lib` exits 0 with 1234 passing tests",
     )
     f2_tmp.write_text(broken)
