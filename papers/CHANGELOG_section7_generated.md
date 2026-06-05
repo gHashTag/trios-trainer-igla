@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **46**; distinct loops referenced: **40**.
+Total commits matched: **60**; distinct loops referenced: **54**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -46,3 +46,17 @@ Total commits matched: **46**; distinct loops referenced: **40**.
 | 131 | `bc715f0` | feat(f2): 23rd CI stage + RELATIONAL growth + 54th-pass closures (Loop 131) |
 | 132 | `5b43230` | feat(f2): 24th CI stage + 55th-pass closures + ratchet anonymizer (Loop 132) |
 | 133 | `baf24c4` | feat(f2): 25/26th CI stages + EXACT_PIN class + §E burn-down (Loop 133) |
+| 134 | `02b94eb` | feat(f2): 27th CI stage + class-registry binding + §5.4 burn-down (Loop 134) |
+| 135 | `4e657c1` | feat(f2): 28th CI stage + frozen flag + §5.4 finish + 58th closures (Loop 135) |
+| 136 | `c24add6` | feat(f2): doc-vs-extracted 4 bindings + --update-baseline + 59th closures (Loop … |
+| 137 | `f2a4f6d` | feat(f2): 29th CI stage + _gate_utils helper + burn-down history (Loop 137) |
+| 138 | `61d3b42` | feat(f2): 30th CI stage + _to_int helper + alias round-trip (Loop 138) |
+| 139 | `5fca104` | feat(f2): 31/32nd CI stages + import_gate caching (Loop 139) |
+| 140 | `cb84068` | feat(f2): 33rd CI stage + meta-test extension + smoke wrapper (Loop 140) |
+| 141 | `a90b447` | feat(f2): 34th CI stage + 12 break-tests + tier classification (Loop 141) |
+| 142 | `1ffd790` | feat(f2): 35/36th CI stages + authoring guide + §1-§3 burn-down (Loop 142) |
+| 143 | `6f6e905` | feat(f2): 37th CI stage + meta-test shared helpers + 24/12 tier split (Loop 143) |
+| 144 | `55023a2` | feat(f2): 38th CI stage + migrate 5 break-tests + escape hatch (Loop 144) |
+| 145 | `711da3f` | feat(f2): 39th CI stage (deadline-freshness) + 67th-pass deferred closures + 68t… |
+| 146 | `3361701` | feat(race): wire Posit16 into format_ladder + format_microbench binary (Loop 146… |
+| 148 | `3210297` | feat(f2): weave 6 verified citations into §2.3 + §9.4 prose + 70th adversarial p… |

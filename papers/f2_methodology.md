@@ -220,10 +220,34 @@ ablation matrix is already chosen, we ask how to analyze the
 resulting per-seed BPB measurements without misattributing
 effects to mediator-confounded knobs.
 
+**Benchmarking Optimizers for LLM Pretraining** (Semenov,
+Pagliardini & Jaggi, 2025, arXiv:2509.01440) is the closest
+empirical-methodology neighbour on the optimizer side: a
+head-to-head benchmark of AdamW, Muon, D-Muon, SOAP, Sophia, Lion,
+MARS, and AdEMAMix at multiple model sizes with 5-seed standard-
+deviation reporting. F2 shares the multi-seed reporting discipline
+but addresses a different inferential layer: Semenov-Pagliardini-
+Jaggi report headline rankings under controlled budgets, while F2
+asks which interventions in a *fixed-optimizer* recipe mediate
+others' BPB effects. The two analyses compose — a paper using
+either methodology in isolation answers a strict subset of the
+questions a paper using both can answer.
+
 **ABLATOR** (Fostiropoulos & Itti, 2023) is the closest
 infrastructure work — a tool for running multi-seed ablation
 studies at scale with result aggregation — but stops at multi-seed
 ranking without mediation decomposition or stratified CDE.
+
+**A Sober Look at Progress in Language Model Reasoning**
+(Hochlehnert, Bhatnagar, Udandarao, Albanie, Prabhu & Bethge, 2025,
+arXiv:2504.07086, COLM 2025) audits the seed-, decoding-, and
+hardware-sensitivity of recent LM benchmarks and argues for
+standardized reporting protocols. F2's per-seed BPB measurements
+with explicit MC error bars (§3.5.2) and W3C-PROV-tagged CSV
+preambles (§3.5.1) directly operationalize two of the "sober look"
+recommendations: every reported delta carries its measurement
+uncertainty, and every CSV record carries enough provenance to
+re-run the same recipe to the same numbers on a different machine.
 
 A representative median-practice analysis pipeline in recent
 ablation papers combines a wide-form CSV table (one row per
@@ -1429,6 +1453,32 @@ For context on the format-zoo competitors, the key references are:
   authors on 2025-10-17 due to a data-processing pipeline bug
   invalidating the reported results; we keep the citation for
   historical context only.
+- **NVFP4** (NVIDIA et al., 2025, arXiv:2509.25149, "Pretraining
+  Large Language Models with NVFP4") is the direct successor to
+  the MXFP8 recipe above. It introduces a final-layers-in-BF16
+  hybrid. NVIDIA's paper does not claim this hybrid as a Pearl-style
+  mediator decomposition; we cite NVFP4 because the BF16/FP4 split
+  is exactly the kind of recipe-level heterogeneity that motivates
+  the §3.1 stratification mechanism for *future* (post-F2)
+  champion-scale ablations, not because NVFP4 itself validates F2.
+- **Microscaling-format instabilities** (Su, Kwun, Gil, Kakade &
+  Anand, 2025, arXiv:2506.20752, "Characterization and Mitigation
+  of Training Instabilities in Microscaling Formats") characterizes
+  format-induced instability modes under low precision. The shared
+  *premise* — that the format channel is a meaningful intervention
+  in its own right and deserves controlled ablation — is consistent
+  with F2's analytical framing. We do not claim the methodologies
+  coincide (Su et al. is not a Pearl-CDE paper); we cite it as
+  evidence that the format channel itself is an active area for
+  ablation work, which motivates the format-zoo arm in §9.4.
+- **MXFP4 on native FP4 hardware** (Cim, Palangappa, Hodak,
+  Dwivedula, Arunachalam & Kandemir, 2026, arXiv:2605.09825,
+  "Pretraining Large Language Models with MXFP4 on Native FP4
+  Hardware") is the first non-emulated MXFP4 pretraining and
+  reports convergence-token overhead on AMD MI355X silicon. We
+  cite it as the MXFP4 hardware anchor: the BPB-vs-compute frontier
+  for FP4 is now measurable on real hardware rather than only on
+  emulated grids.
 - **Fibonacci-code-word quantization** (Fiandaca & Gomony, 2025,
   arXiv:2511.01921, "Fibbinary-Based Compression and Quantization
   for Efficient Neural Radio Receivers") is the only published
@@ -1438,6 +1488,22 @@ For context on the format-zoo competitors, the key references are:
   encodings have at least one published precedent outside
   transformers — but not as evidence that phi-style training is
   established practice for language models.
+- **Posit number system** (Gustafson & Yonemoto, 2017,
+  *Supercomputing Frontiers and Innovations* 4(2):71–86,
+  "Beating Floating Point at its Own Game: Posit Arithmetic") is
+  the standards reference for the Posit16 (es=1, useed=4) arm of
+  the format-zoo benchmark. Our companion crate ships a
+  standards-compliant Posit16 codec. We report only an
+  **encode-time** reconstruction-fidelity microbenchmark as a
+  preregistration anchor: at Xavier-init magnitudes, a 5-seed
+  round-trip measures −74% relative L2 error vs GF16 with zero
+  underflow-to-zero (Posit16 saturates to MIN_POS rather than
+  rounding small magnitudes to zero). This is a property of the
+  codec, not a training-time result of F2. The pre-registered
+  champion-scale comparison in `docs/F2_PRE_REG.md` is the only
+  place where the format-zoo BPB-vs-recipe claim will be tested
+  with training; the encode-time number is reported only to fix the
+  format-zoo configuration before training data is collected.
 
 ---
 

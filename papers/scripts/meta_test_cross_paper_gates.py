@@ -353,7 +353,7 @@ def test_exact_pin_break_tmlr_page(tmp: Path) -> bool:
     chk_tmp.write_text(broken)
     rc, err = run_gate(checklist_override=chk_tmp)
     return assert_fails_with(
-        "EXACT_PIN break (TMLR page pinned 27 → 99)",
+        "EXACT_PIN break (TMLR page pinned 29 → 99)",
         "!= expected pin",
         rc, err,
     )

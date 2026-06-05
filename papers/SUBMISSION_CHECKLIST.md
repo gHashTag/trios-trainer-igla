@@ -92,19 +92,19 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
 ## 2. Paper state
 
 - [ ] Anchor commit pinned (see top of file).
-- [ ] Non-anonymized PDF: **44 pages**, ~210 KB
+- [ ] Non-anonymized PDF: **46 pages**, ~220 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
-- [ ] Anonymized PDF: **43 pages**, ~209 KB
+- [ ] Anonymized PDF: **46 pages**, ~218 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
-- [ ] Real-TMLR-class PDF: **28 pages**, ~195 KB
+- [ ] Real-TMLR-class PDF: **29 pages**, ~204 KB
       (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
 - [ ] Supplementary zip: **45 files**, ~1.25 MB
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 69 passes across Loops 59-147
+- [ ] **Adversarial review**: 70 passes across Loops 59-148
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-69 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-70 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -204,9 +204,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 147 (2026-06-06)**
+- Checklist version: **Loop 148 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 147 A/B/C commits on `f2-methodology`
+  Loop 148 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -329,7 +329,7 @@ If rejected:
   `format_ladder.rs`; microbench produces 5-seed −74% rel L2
   vs GF16 at Xavier-init magnitudes. Format-zoo §9.4 arm gains
   a real number.
-- Loop 147: this update — citation ledger 27 → 32 VERIFIED
+- Loop 147: citation ledger 27 → 32 VERIFIED
   (Semenov/Hochlehnert/NVFP4/Su/Cim/Gustafson, two attributions
   corrected from Loop 145 quick-check fabrications); stage count
   39 → 40 (`verify_tex_anonymization.py` scans anonymized .tex
@@ -337,3 +337,9 @@ If rejected:
   68th-pass audit follow-up: Posit16 gains `Ord`/`PartialOrd`,
   ConversionCounter Display now emits all 14 tracked fields
   (was silently dropping posit16/int4/paretoq/fp8/int8).
+- Loop 148: this update — 6 Loop-147 citations folded into F2
+  body prose (§2.3 Semenov + Hochlehnert; §9.4 NVFP4, Su, Cim,
+  Gustafson). PDF page counts shift 44/43/28 → 46/46/29. 70th
+  adversarial pass softened 3 overclaim risks (Posit16 framed
+  as encode-time only; Su "strongly aligned" → "shared premise";
+  NVFP4 framed as motivation not as validation of F2).

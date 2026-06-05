@@ -79,125 +79,127 @@ r.sty))) (/Users/playra/Library/texmf/tex/latex/cleveref/cleveref.sty)
 (/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsa.fd)
 (/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd) [1]
 [2] [3] [4] [5]
-Underfull \hbox (badness 10000) in paragraph at lines 438--441
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[6]
+Underfull \hbox (badness 10000) in paragraph at lines 462--465
 []\TU/lmr/bx/n/10 Implementation\TU/lmr/m/n/10 : \TU/lmtt/m/n/10 src/bin/f2_med
 iation_sensitivity.rs\TU/lmr/m/n/10 . The lock test
 
-Underfull \hbox (badness 1331) in paragraph at lines 438--441
+Underfull \hbox (badness 1331) in paragraph at lines 462--465
 \TU/lmtt/m/n/10 tipping_point_matches_closer_endpoint_over_lambda \TU/lmr/m/n/1
 0 validates the closed-form against a worked
-[6] [7]
-Underfull \hbox (badness 3884) in paragraph at lines 528--534
+[7]
+Underfull \hbox (badness 3884) in paragraph at lines 552--558
 \TU/lmtt/m/n/10 wd0\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 warmup0\TU/lmr/m/n/10 , or 
 \TU/lmtt/m/n/10 mixed\TU/lmr/m/n/10 ) and emits a single-line stratum banner be
 fore its column header.
-
-Underfull \hbox (badness 1852) in paragraph at lines 571--584
+[8]
+Underfull \hbox (badness 1852) in paragraph at lines 595--608
 []\TU/lmr/bx/n/10 Implementation\TU/lmr/m/n/10 : provenance preamble in \TU/lmt
 t/m/n/10 src/bin/f2_ablation_sweep.rs\TU/lmr/m/n/10 ; fingerprint mixin in
 
-Underfull \hbox (badness 10000) in paragraph at lines 571--584
+Underfull \hbox (badness 10000) in paragraph at lines 595--608
 \TU/lmtt/m/n/10 src/race/multi_seed.rs \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 config_f
 ingerprint\TU/lmr/m/n/10 ); checker in \TU/lmtt/m/n/10 src/bin/f2_provenance_ch
 eck.rs\TU/lmr/m/n/10 ;
 
-Underfull \hbox (badness 10000) in paragraph at lines 571--584
+Underfull \hbox (badness 10000) in paragraph at lines 595--608
 \TU/lmr/m/n/10 stratum banner in \TU/lmtt/m/n/10 src/bin/f2_dual_mediation.rs \
 TU/lmr/m/n/10 (\TU/lmtt/m/n/10 detect_input_stratum\TU/lmr/m/n/10 ) and
-[8] [9]
-Underfull \hbox (badness 1789) in paragraph at lines 674--675
+[9]
+Underfull \hbox (badness 1789) in paragraph at lines 698--699
 \TU/lmr/m/n/10 Daniel et al. identification result depends on the conditional e
 xpectations being linear
 
-Underfull \hbox (badness 1377) in paragraph at lines 674--675
+Underfull \hbox (badness 1377) in paragraph at lines 698--699
 \TU/lmr/m/n/10 in the mediator and exposure structure; if it holds at sandbox s
 cale, the same decom-
-
-LaTeX Warning: `h' float specifier changed to `ht'.
-
 [10]
-Overfull \hbox (84.09294pt too wide) in paragraph at lines 748--759
+Overfull \hbox (84.09294pt too wide) in paragraph at lines 772--783
  [][] 
-
-Underfull \vbox (badness 3291) has occurred while \output is active [11]
-Underfull \hbox (badness 7777) in paragraph at lines 815--820
+[11]
+Underfull \hbox (badness 7777) in paragraph at lines 839--844
 []\TU/lmtt/m/n/10 f2_stratum_compare \TU/lmr/m/n/10 joins per-fix PSEs across t
 he three strata and flags each row with
 [12] [13] [14] [15]
-Overfull \hbox (56.84535pt too wide) in paragraph at lines 1107--1118
+Overfull \hbox (56.84535pt too wide) in paragraph at lines 1131--1142
  [][] 
 [16] [17]
-Underfull \hbox (badness 10000) in paragraph at lines 1253--1254
+Underfull \hbox (badness 10000) in paragraph at lines 1277--1278
 []\TU/lmtt/b/n/10 f2_mediation_sensitivity \TU/lmr/m/n/10 — compute the bridge-
 score envelope (section []3.3[]) with
 [18]
-Underfull \hbox (badness 3250) in paragraph at lines 1334--1347
+Underfull \hbox (badness 3250) in paragraph at lines 1358--1371
 []\TU/lmr/bx/n/10 Applicability survey \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 papers/c
 ase_study_published_ablations.md\TU/lmr/m/n/10 ). We survey nine recent
-
-Underfull \vbox (badness 2359) has occurred while \output is active [19]
-[20] [21] [22]
-Overfull \hbox (395.82509pt too wide) in paragraph at lines 1582--1594
+[19]
+Underfull \vbox (badness 10000) has occurred while \output is active [20]
+[21] [22] [23]
+Overfull \hbox (395.82509pt too wide) in paragraph at lines 1610--1622
  [][] 
 
-Underfull \hbox (badness 3815) in paragraph at lines 1599--1602
+Underfull \hbox (badness 3815) in paragraph at lines 1627--1630
 []\TU/lmr/m/n/10 When the producing binary is stratum-aware (\TU/lmtt/m/n/10 f2
 _dual_mediation\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 f2_mediation_sensitivity\TU/lmr
 /m/n/10 ,
 
-Underfull \hbox (badness 10000) in paragraph at lines 1616--1617
+Underfull \hbox (badness 10000) in paragraph at lines 1644--1645
 []\TU/lmr/bx/n/10 Exit 0 — PASS. \TU/lmr/m/n/10 All required keys present, sche
 ma string matches current
-[23]
-Underfull \hbox (badness 10000) in paragraph at lines 1635--1636
+
+Underfull \hbox (badness 10000) in paragraph at lines 1663--1664
 []\TU/lmr/m/n/10 section []3.3[] — \TU/lmtt/m/n/10 src/bin/f2_mediation_sensiti
 vity.rs \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 envelope_expansion\TU/lmr/m/n/10 ,
-
-Underfull \hbox (badness 6526) in paragraph at lines 1643--1649
+[24]
+Underfull \hbox (badness 6526) in paragraph at lines 1671--1677
 \TU/lmr/m/n/10 The full test inventory (830 tests across \TU/lmtt/m/n/10 src/li
 b.rs\TU/lmr/m/n/10 , 10 F2 binaries, and 7 integration
 
-Underfull \hbox (badness 10000) in paragraph at lines 1643--1649
+Underfull \hbox (badness 10000) in paragraph at lines 1671--1677
 \TU/lmr/m/n/10 suites) is auto-generated by \TU/lmtt/m/n/10 papers/scripts/gene
 rate_appendix_d.sh \TU/lmr/m/n/10 and committed at
 
-Overfull \hbox (30.50005pt too wide) in paragraph at lines 1655--1661
+Overfull \hbox (30.50005pt too wide) in paragraph at lines 1683--1689
 []\TU/lmr/m/n/10 Two load-bearing regression locks are highlighted in section [
 ]8.2[]: \TU/lmtt/m/n/10 dual_mediation_no_interaction_residual_lock
-[24]
-Underfull \hbox (badness 1231) in paragraph at lines 1689--1690
+[25]
+Underfull \hbox (badness 1231) in paragraph at lines 1717--1718
 \TU/lmr/bx/n/10 other thirty-three stages are gates introduced after the origin
 al 8-script cata-
 
-Underfull \hbox (badness 1033) in paragraph at lines 1689--1690
+Underfull \hbox (badness 1033) in paragraph at lines 1717--1718
 \TU/lmr/bx/n/10 logue crystallized, during the gate-evolution arc documented in
  CHANGELOG
 
-Underfull \hbox (badness 10000) in paragraph at lines 1689--1690
+Underfull \hbox (badness 10000) in paragraph at lines 1717--1718
 \TU/lmr/bx/n/10 section []10[]\TU/lmr/m/n/10 : \TU/lmtt/m/n/10 verify_tables_ag
 ainst_csv.py\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 verify_formulas_vs_tables.py\TU/lm
 r/m/n/10 ,
 
-Underfull \hbox (badness 10000) in paragraph at lines 1689--1690
+Underfull \hbox (badness 10000) in paragraph at lines 1717--1718
 \TU/lmtt/m/n/10 verify_label_consistency.py\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 ver
 ify_preamble_per_producer.py\TU/lmr/m/n/10 , three follow-up-
 
-Underfull \hbox (badness 10000) in paragraph at lines 1689--1690
+Underfull \hbox (badness 10000) in paragraph at lines 1717--1718
 \TU/lmr/m/n/10 paper pre-registered scripts (\TU/lmtt/m/n/10 verify_provenance.
 sh\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 verify_run_completeness.py\TU/lmr/m/n/10 ,
 
-Underfull \hbox (badness 2134) in paragraph at lines 1689--1690
+Underfull \hbox (badness 2134) in paragraph at lines 1717--1718
 \TU/lmr/m/n/10 the submission-readiness verifier (gates SUBMISSION_CHECKLIST se
 ction []1[] against the
 
-Underfull \hbox (badness 1590) in paragraph at lines 1689--1690
+Underfull \hbox (badness 1590) in paragraph at lines 1717--1718
 \TU/lmtt/m/n/10 _CLAIMS \TU/lmr/m/n/10 lists), the documented-vs-extracted-cons
 istency verifier (binds section []1[] sub-bullet
-[25])
-Underfull \hbox (badness 2970) in paragraph at lines 1692--33
+)
+Underfull \hbox (badness 2970) in paragraph at lines 1720--33
 []\TU/lmtt/m/n/10 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m/n/
 10 chains \TU/lmtt/m/n/10 papers/scripts/figure_regen.sh \TU/lmr/m/n/10 +
-(./test_compile_tmlr.bbl [26] [27]) [28] (./test_compile_tmlr.aux) )
+(./test_compile_tmlr.bbl
+Underfull \vbox (badness 10000) has occurred while \output is active [26]
+[27] [28]) [29] (./test_compile_tmlr.aux) )
 (see the transcript file for additional information)
-Output written on test_compile_tmlr.pdf (28 pages).
+Output written on test_compile_tmlr.pdf (29 pages).
 Transcript written on test_compile_tmlr.log.
