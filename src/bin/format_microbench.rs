@@ -8,18 +8,23 @@
 //!   - count of values that underflowed to zero (catastrophic loss)
 //!   - count of values that saturated (overflowed)
 //!
-//! All formats are evaluated on the SAME data drawn from a deterministic seed,
-//! so deltas are apples-to-apples. The data is:
-//!   1. A Xavier-initialized "embedding matrix" of (vocab=128) × (d_model=384),
-//!      magnitudes ~1/√384 ≈ 0.05 — the regime where ternary-style formats
-//!      collapse to zero (the load-bearing F2 §9.4 catch).
-//!   2. The byte histogram of tiny_shakespeare.txt as a "real-data" proxy for
-//!      a 200-sample eval distribution.
+//! Two modes:
+//!
+//! 1. **Single-cell** (Loop 146, kept for backward compat):
+//!    - Xavier-init at d_model=384, plus tiny_shakespeare bytes.
+//!    - Output: `.trinity/results/format_microbench_seed<S>.json`.
+//!    - Invocation: `--seed=<N>` only.
+//!
+//! 2. **Grid** (Loop 149, new):
+//!    - {d_model: 128, 384, 768, 1024} × {init: xavier, he, normal_002}
+//!      = 12 cells per seed × N seeds.
+//!    - Output: `.trinity/results/format_microbench_grid/d<D>_<init>_seed<S>.json`
+//!      + a summary `format_microbench_grid_summary_seeds_<lo>-<hi>.json`.
+//!    - Invocation: `--grid --seeds=<csv>`.
 //!
 //! Usage:
 //!   cargo run --release --bin format_microbench -- [--seed=42]
-//!
-//! Output: stdout summary + .trinity/results/format_microbench_seed<S>.json
+//!   cargo run --release --bin format_microbench -- --grid --seeds=42,43,44,45,46
 
 use std::fs;
 use std::io::Write;
@@ -29,7 +34,7 @@ use trios_trainer::gf16::GF16;
 use trios_trainer::phi_numbers::Posit16;
 
 const VOCAB: usize = 128;
-const D_MODEL: usize = 384;
+const DEFAULT_D_MODEL: usize = 384;
 
 /// Linear-congruential generator — deterministic, seedable, no external dependency.
 struct Lcg {
@@ -55,13 +60,103 @@ impl Lcg {
         let u = self.next_u32() as f32 / (u32::MAX as f32 + 1.0);
         u * 2.0 - 1.0
     }
+    /// Uniform in [0, 1).
+    fn next_uniform(&mut self) -> f32 {
+        self.next_u32() as f32 / (u32::MAX as f32 + 1.0)
+    }
+    /// Standard normal via Box-Muller transform. Returns one sample per call;
+    /// the second sample is discarded (NOT buffered) to keep per-cell RNG state
+    /// deterministic across grid-cell boundaries — we don't want one cell's
+    /// residual to bleed into the next.
+    ///
+    /// u1 is clamped to [1e-30, 1) to guard the ln(u1) singularity at exactly
+    /// zero. The LCG can in principle emit u1==0 on a pathological sequence
+    /// (≈1 in 2^32 per draw); the clamp keeps `r` finite. Loop 149 71st-pass
+    /// SEV-1 catch — documentation, not algorithmic change.
+    fn next_normal(&mut self) -> f32 {
+        let u1 = self.next_uniform().max(1e-30);
+        let u2 = self.next_uniform();
+        let r = (-2.0 * u1.ln()).sqrt();
+        let theta = 2.0 * std::f32::consts::PI * u2;
+        r * theta.cos()
+    }
 }
 
-/// Xavier-init embedding matrix: U[-1, +1) × √(1 / d_model).
-fn xavier_init(seed: u64) -> Vec<f32> {
+/// Initialization scheme for the embedding matrix. Loop 149 71st-pass SEV-2
+/// disambiguation: the `He` variant uses σ = √(2/d_model), NOT the strict
+/// He-2015 σ = √(2/fan_in). For an embedding matrix, fan_in is the vocabulary
+/// dimension (here 128) and fan_out is d_model; "He-fan-in" would be
+/// regime-independent of d_model, defeating the purpose of the d_model sweep.
+/// We use the d_model-scaled form as a *regime label* for "He-style normal
+/// init scaled with output dimension", which is the form most relevant to
+/// the post-LayerNorm activations that follow an embedding lookup. The
+/// `xavier` variant uses σ = √(1/d_model) (uniform) for the same regime-
+/// labeling reason.
+#[derive(Clone, Copy, Debug)]
+enum Init {
+    Xavier,
+    He,
+    Normal002,
+}
+
+impl Init {
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "xavier" => Some(Self::Xavier),
+            "he" => Some(Self::He),
+            "normal_002" | "normal" => Some(Self::Normal002),
+            _ => None,
+        }
+    }
+    fn slug(self) -> &'static str {
+        match self {
+            Self::Xavier => "xavier",
+            Self::He => "he",
+            Self::Normal002 => "normal_002",
+        }
+    }
+    fn typical_abs_mean(self, d_model: usize) -> f32 {
+        // Documentation-only: not used for measurement, just for the report.
+        let d = d_model as f32;
+        match self {
+            // Xavier U[-a,a] with a = √(1/d) → E[|X|] = a/2
+            Self::Xavier => (1.0 / d).sqrt() / 2.0,
+            // He normal σ = √(2/d) → E[|X|] = σ·√(2/π)
+            Self::He => (2.0 / d).sqrt() * (2.0 / std::f32::consts::PI).sqrt(),
+            // GPT-style fixed σ = 0.02 → E[|X|] = 0.02·√(2/π)
+            Self::Normal002 => 0.02 * (2.0 / std::f32::consts::PI).sqrt(),
+        }
+    }
+}
+
+/// Generate the d_model-wide embedding matrix for a given (init, seed, d_model)
+/// triple. Deterministic — re-running with the same inputs reproduces bit-exact
+/// values.
+fn embed_init(init: Init, seed: u64, d_model: usize) -> Vec<f32> {
     let mut rng = Lcg::new(seed);
-    let scale = (1.0_f32 / D_MODEL as f32).sqrt();
-    (0..VOCAB * D_MODEL).map(|_| rng.next_unit() * scale).collect()
+    let n = VOCAB * d_model;
+    let mut out = Vec::with_capacity(n);
+    match init {
+        Init::Xavier => {
+            let scale = (1.0_f32 / d_model as f32).sqrt();
+            for _ in 0..n {
+                out.push(rng.next_unit() * scale);
+            }
+        }
+        Init::He => {
+            let sigma = (2.0_f32 / d_model as f32).sqrt();
+            for _ in 0..n {
+                out.push(rng.next_normal() * sigma);
+            }
+        }
+        Init::Normal002 => {
+            let sigma = 0.02_f32;
+            for _ in 0..n {
+                out.push(rng.next_normal() * sigma);
+            }
+        }
+    }
+    out
 }
 
 #[derive(Default, Debug, Clone)]
@@ -132,22 +227,7 @@ fn report(stats: &FormatStats) -> serde_json::Value {
     })
 }
 
-fn parse_seed_arg() -> u64 {
-    let args: Vec<String> = std::env::args().collect();
-    for a in args.iter().skip(1) {
-        if let Some(v) = a.strip_prefix("--seed=") {
-            if let Ok(s) = v.parse::<u64>() {
-                return s;
-            }
-        }
-    }
-    42
-}
-
 fn load_real_data_bytes() -> Vec<f32> {
-    // Map tiny_shakespeare bytes to a centered, normalized signal in [-1, +1)
-    // so the format saturation/underflow logic is exercised on real-world
-    // (non-Gaussian) value distribution rather than only on Xavier init.
     let path = Path::new("data/tiny_shakespeare.txt");
     let bytes = fs::read(path).unwrap_or_default();
     if bytes.is_empty() {
@@ -159,86 +239,130 @@ fn load_real_data_bytes() -> Vec<f32> {
         .collect()
 }
 
-fn main() {
-    let seed = parse_seed_arg();
-    println!("# format_microbench — seed = {seed}, vocab = {VOCAB}, d_model = {D_MODEL}");
+#[derive(Default)]
+struct Args {
+    grid: bool,
+    seeds: Vec<u64>,
+}
 
-    // Dataset 1: Xavier-init embedding matrix (small-magnitude regime).
-    let embed = xavier_init(seed);
-    let embed_n = embed.len();
+fn parse_args() -> Args {
+    let mut out = Args::default();
+    let argv: Vec<String> = std::env::args().collect();
+    for a in argv.iter().skip(1) {
+        if a == "--grid" {
+            out.grid = true;
+        } else if let Some(v) = a.strip_prefix("--seed=") {
+            if let Ok(s) = v.parse::<u64>() {
+                out.seeds.push(s);
+            }
+        } else if let Some(v) = a.strip_prefix("--seeds=") {
+            for tok in v.split(',') {
+                if let Ok(s) = tok.parse::<u64>() {
+                    out.seeds.push(s);
+                }
+            }
+        }
+    }
+    if out.seeds.is_empty() {
+        out.seeds.push(42);
+    }
+    out
+}
 
-    // Dataset 2: real bytes from tiny_shakespeare (full byte range).
+fn run_one(init: Init, seed: u64, d_model: usize, data: &[f32]) -> serde_json::Value {
+    let gf16 = FormatStats::measure("gf16", data, |x| GF16::from_f32(x).to_f32());
+    let posit16 = FormatStats::measure("posit16", data, |x| Posit16::from_f32(x).to_f32());
+    let bf16 = FormatStats::measure("bf16", data, bf16_round_trip);
+
+    let gf16_err = gf16.rel_l2_err;
+    let posit16_err = posit16.rel_l2_err;
+    let bf16_err = bf16.rel_l2_err;
+    let posit_vs_gf16 = if gf16_err > 0.0 { (posit16_err - gf16_err) / gf16_err } else { 0.0 };
+    let posit_vs_bf16 = if bf16_err > 0.0 { (posit16_err - bf16_err) / bf16_err } else { 0.0 };
+
+    serde_json::json!({
+        "init": init.slug(),
+        "d_model": d_model,
+        "seed": seed,
+        "vocab": VOCAB,
+        "n_values": data.len(),
+        "expected_abs_mean": init.typical_abs_mean(d_model),
+        "gf16": report(&gf16),
+        "posit16": report(&posit16),
+        "bf16": report(&bf16),
+        "headline": {
+            "rel_l2_gf16": gf16_err,
+            "rel_l2_posit16": posit16_err,
+            "rel_l2_bf16": bf16_err,
+            "delta_posit16_vs_gf16": posit_vs_gf16,
+            "delta_posit16_vs_bf16": posit_vs_bf16,
+        },
+    })
+}
+
+fn single_mode(seed: u64) {
+    println!("# format_microbench — seed = {seed}, vocab = {VOCAB}, d_model = {DEFAULT_D_MODEL}");
+    let embed = embed_init(Init::Xavier, seed, DEFAULT_D_MODEL);
     let real = load_real_data_bytes();
     let real_n = real.len();
     println!(
-        "# datasets: xavier_embed n={embed_n} (~|x|={:.4}), tiny_shakespeare_bytes n={real_n}",
-        embed.iter().map(|x| x.abs()).sum::<f32>() / embed_n as f32
+        "# datasets: xavier_embed n={} (~|x|={:.4}), tiny_shakespeare_bytes n={real_n}",
+        embed.len(),
+        embed.iter().map(|x| x.abs()).sum::<f32>() / embed.len() as f32
     );
 
-    // Stats per format, on each dataset.
-    let dsets: [(&str, &[f32]); 2] = [("xavier_embed", &embed), ("tiny_shakespeare", &real)];
-    let mut out = serde_json::Map::new();
+    let xavier_cell = run_one(Init::Xavier, seed, DEFAULT_D_MODEL, &embed);
+    let real_cell = if !real.is_empty() {
+        Some(run_one(Init::Xavier, seed, DEFAULT_D_MODEL, &real))
+    } else {
+        None
+    };
 
-    for (dset_name, data) in &dsets {
-        if data.is_empty() {
-            continue;
-        }
-        let gf16 = FormatStats::measure("gf16", data, |x| GF16::from_f32(x).to_f32());
-        let posit16 = FormatStats::measure("posit16", data, |x| Posit16::from_f32(x).to_f32());
-        let bf16 = FormatStats::measure("bf16", data, bf16_round_trip);
-
-        println!("\n## {dset_name} (n = {})", data.len());
-        for s in [&gf16, &posit16, &bf16] {
+    for (name, cell) in [("xavier_embed", &xavier_cell)]
+        .into_iter()
+        .chain(real_cell.as_ref().map(|c| ("tiny_shakespeare", c)))
+    {
+        println!("\n## {name}");
+        for fmt_key in ["gf16", "posit16", "bf16"] {
+            let s = &cell[fmt_key];
             println!(
                 "  {:8} mean_abs_err = {:.6e}  max = {:.4e}  rel_L2 = {:.4e}  uflow={}  sat={}",
-                s.name, s.mean_abs_err, s.max_abs_err, s.rel_l2_err, s.underflow_to_zero, s.saturated_high
+                fmt_key,
+                s["mean_abs_err"].as_f64().unwrap_or(0.0),
+                s["max_abs_err"].as_f64().unwrap_or(0.0),
+                s["rel_l2_err"].as_f64().unwrap_or(0.0),
+                s["underflow_to_zero"].as_i64().unwrap_or(0),
+                s["saturated_high"].as_i64().unwrap_or(0),
             );
         }
-
-        out.insert(
-            (*dset_name).to_string(),
-            serde_json::json!({
-                "gf16": report(&gf16),
-                "posit16": report(&posit16),
-                "bf16": report(&bf16),
-            }),
-        );
     }
 
-    // Headline deltas (the F2-paper-relevant numbers).
-    if let Some(xavier) = out.get("xavier_embed").cloned() {
-        let gf16_err = xavier["gf16"]["rel_l2_err"].as_f64().unwrap_or(f64::NAN);
-        let posit16_err = xavier["posit16"]["rel_l2_err"].as_f64().unwrap_or(f64::NAN);
-        let bf16_err = xavier["bf16"]["rel_l2_err"].as_f64().unwrap_or(f64::NAN);
-        let posit_vs_gf16 = (posit16_err - gf16_err) / gf16_err;
-        let posit_vs_bf16 = (posit16_err - bf16_err) / bf16_err;
-        println!("\n## Headline deltas (Xavier-init embed regime)");
-        println!("  rel_L2(gf16)    = {gf16_err:.4e}");
-        println!("  rel_L2(posit16) = {posit16_err:.4e}");
-        println!("  rel_L2(bf16)    = {bf16_err:.4e}");
-        println!("  Δ(posit16 vs gf16) = {:+.2}%", 100.0 * posit_vs_gf16);
-        println!("  Δ(posit16 vs bf16) = {:+.2}%", 100.0 * posit_vs_bf16);
-        out.insert(
-            "headline".to_string(),
-            serde_json::json!({
-                "rel_l2_gf16": gf16_err,
-                "rel_l2_posit16": posit16_err,
-                "rel_l2_bf16": bf16_err,
-                "delta_posit16_vs_gf16": posit_vs_gf16,
-                "delta_posit16_vs_bf16": posit_vs_bf16,
-            }),
-        );
-    }
+    let h = &xavier_cell["headline"];
+    println!("\n## Headline deltas (Xavier-init embed regime)");
+    println!("  rel_L2(gf16)    = {:.4e}", h["rel_l2_gf16"].as_f64().unwrap_or(0.0));
+    println!("  rel_L2(posit16) = {:.4e}", h["rel_l2_posit16"].as_f64().unwrap_or(0.0));
+    println!("  rel_L2(bf16)    = {:.4e}", h["rel_l2_bf16"].as_f64().unwrap_or(0.0));
+    println!(
+        "  Δ(posit16 vs gf16) = {:+.2}%",
+        100.0 * h["delta_posit16_vs_gf16"].as_f64().unwrap_or(0.0)
+    );
+    println!(
+        "  Δ(posit16 vs bf16) = {:+.2}%",
+        100.0 * h["delta_posit16_vs_bf16"].as_f64().unwrap_or(0.0)
+    );
 
-    // Write JSON.
     let _ = fs::create_dir_all(".trinity/results");
     let result_path = format!(".trinity/results/format_microbench_seed{seed}.json");
     let envelope = serde_json::json!({
         "tool": "format_microbench",
+        "mode": "single",
         "seed": seed,
         "vocab": VOCAB,
-        "d_model": D_MODEL,
-        "datasets": out,
+        "d_model": DEFAULT_D_MODEL,
+        "datasets": {
+            "xavier_embed": xavier_cell,
+            "tiny_shakespeare": real_cell,
+        },
         "git_anchor_hint": "f2-methodology branch HEAD at run time",
     });
     fs::File::create(&result_path)
@@ -246,4 +370,121 @@ fn main() {
         .write_all(serde_json::to_string_pretty(&envelope).unwrap().as_bytes())
         .unwrap();
     println!("\n# Written: {result_path}");
+}
+
+fn grid_mode(seeds: &[u64]) {
+    let d_models = [128_usize, 384, 768, 1024];
+    let inits = [Init::Xavier, Init::He, Init::Normal002];
+    let n_cells = d_models.len() * inits.len() * seeds.len();
+    println!(
+        "# format_microbench --grid: {} cells ({} d_model × {} init × {} seeds)",
+        n_cells,
+        d_models.len(),
+        inits.len(),
+        seeds.len(),
+    );
+    let grid_dir = Path::new(".trinity/results/format_microbench_grid");
+    let _ = fs::create_dir_all(grid_dir);
+
+    // Per-(init, d_model) aggregator: collect rel_l2 across seeds.
+    let mut agg: std::collections::BTreeMap<(String, usize), Vec<f64>> = std::collections::BTreeMap::new();
+
+    for &seed in seeds {
+        for &d in &d_models {
+            for &init in &inits {
+                let embed = embed_init(init, seed, d);
+                let cell = run_one(init, seed, d, &embed);
+                let posit_vs_gf16 = cell["headline"]["delta_posit16_vs_gf16"]
+                    .as_f64()
+                    .unwrap_or(0.0);
+                agg.entry((init.slug().to_string(), d))
+                    .or_default()
+                    .push(posit_vs_gf16);
+                let fname = format!("d{}_{}_seed{}.json", d, init.slug(), seed);
+                let path = grid_dir.join(&fname);
+                let envelope = serde_json::json!({
+                    "tool": "format_microbench",
+                    "mode": "grid_cell",
+                    "init": init.slug(),
+                    "d_model": d,
+                    "seed": seed,
+                    "vocab": VOCAB,
+                    "n_values": embed.len(),
+                    "cell": cell,
+                });
+                fs::File::create(&path)
+                    .unwrap()
+                    .write_all(serde_json::to_string_pretty(&envelope).unwrap().as_bytes())
+                    .unwrap();
+                print!(".");
+                std::io::stdout().flush().ok();
+            }
+        }
+    }
+    println!();
+
+    // Summary table.
+    println!("\n## Δ(posit16 vs gf16) by (init, d_model) — % rel L2, 5-seed mean ± std");
+    println!("              d=128       d=384       d=768       d=1024");
+    let mut summary_rows = serde_json::Map::new();
+    for init in &inits {
+        let mut row = format!("  {:10}", init.slug());
+        let mut row_obj = serde_json::Map::new();
+        for d in d_models {
+            let key = (init.slug().to_string(), d);
+            let v = agg.get(&key).cloned().unwrap_or_default();
+            let n = v.len() as f64;
+            let mean = if n > 0.0 { v.iter().sum::<f64>() / n } else { 0.0 };
+            let var = if n > 1.0 {
+                v.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / (n - 1.0)
+            } else {
+                0.0
+            };
+            let std = var.sqrt();
+            row.push_str(&format!("  {:+.1}±{:.2}%", 100.0 * mean, 100.0 * std));
+            row_obj.insert(
+                format!("d{}", d),
+                serde_json::json!({
+                    "delta_posit16_vs_gf16_mean": mean,
+                    "delta_posit16_vs_gf16_std": std,
+                    "n_seeds": v.len(),
+                }),
+            );
+        }
+        println!("{row}");
+        summary_rows.insert(init.slug().to_string(), serde_json::Value::Object(row_obj));
+    }
+
+    let sum_lo = seeds.iter().min().copied().unwrap_or(0);
+    let sum_hi = seeds.iter().max().copied().unwrap_or(0);
+    let sum_path = grid_dir.join(format!(
+        "format_microbench_grid_summary_seeds_{}-{}.json",
+        sum_lo, sum_hi
+    ));
+    let envelope = serde_json::json!({
+        "tool": "format_microbench",
+        "mode": "grid_summary",
+        "seeds": seeds,
+        "vocab": VOCAB,
+        "d_models": d_models,
+        "inits": inits.iter().map(|i| i.slug()).collect::<Vec<_>>(),
+        "n_cells": n_cells,
+        "delta_posit16_vs_gf16": summary_rows,
+        "git_anchor_hint": "f2-methodology branch HEAD at run time",
+    });
+    fs::File::create(&sum_path)
+        .unwrap()
+        .write_all(serde_json::to_string_pretty(&envelope).unwrap().as_bytes())
+        .unwrap();
+    println!("\n# Written summary: {}", sum_path.display());
+    println!("# Per-cell JSONs: {}/", grid_dir.display());
+}
+
+fn main() {
+    let args = parse_args();
+    if args.grid {
+        grid_mode(&args.seeds);
+    } else {
+        single_mode(args.seeds[0]);
+    }
 }

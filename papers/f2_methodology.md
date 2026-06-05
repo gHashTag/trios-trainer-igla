@@ -1793,10 +1793,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **40 stages**
+  cold**) — single-shot CI gate. Currently chains **41 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other thirty-three stages are gates
+  not a stage of itself); the **other thirty-four stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1845,14 +1845,19 @@ dependency; we do not stub any of them.
   the breadcrumb label-class regex), the deadline-freshness
   verifier (asserts every dated AOE deadline in
   `papers/SUBMISSION_CHECKLIST.md` §4 is today-or-future or
-  annotated as historical), and the tex-anonymization verifier
+  annotated as historical), the tex-anonymization verifier
   (scans the anonymized `.tex` build artifact for bare Loop-N,
   branch name, PII identifiers, internal email domain leaks, and
   SHA-like tokens — closes the converter-side leak class not
-  caught by the markdown-source-only anonymizer ratchet).
+  caught by the markdown-source-only anonymizer ratchet), and the
+  format-microbench-freshness verifier (asserts the format-zoo
+  grid summary JSON in `.trinity/results/format_microbench_grid/`
+  exists with the expected schema and all 60 per-cell JSONs are
+  present — gates the §9.4 format-zoo headline table against
+  silent regeneration regressions).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 33 are documented in the follow-up paper's
+  the additional 34 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",

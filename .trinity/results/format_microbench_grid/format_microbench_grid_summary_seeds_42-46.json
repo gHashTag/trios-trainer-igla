@@ -1,0 +1,93 @@
+{
+  "d_models": [
+    128,
+    384,
+    768,
+    1024
+  ],
+  "delta_posit16_vs_gf16": {
+    "he": {
+      "d1024": {
+        "delta_posit16_vs_gf16_mean": -0.8146040163658146,
+        "delta_posit16_vs_gf16_std": 0.00018220040416629785,
+        "n_seeds": 5
+      },
+      "d128": {
+        "delta_posit16_vs_gf16_mean": -0.886488008313376,
+        "delta_posit16_vs_gf16_std": 0.0006176078477765496,
+        "n_seeds": 5
+      },
+      "d384": {
+        "delta_posit16_vs_gf16_mean": -0.8538284582910572,
+        "delta_posit16_vs_gf16_std": 0.000557781031245895,
+        "n_seeds": 5
+      },
+      "d768": {
+        "delta_posit16_vs_gf16_mean": -0.8286201917166967,
+        "delta_posit16_vs_gf16_std": 0.0008736489920410475,
+        "n_seeds": 5
+      }
+    },
+    "normal_002": {
+      "d1024": {
+        "delta_posit16_vs_gf16_mean": -0.7215421639753457,
+        "delta_posit16_vs_gf16_std": 0.00014630057873965782,
+        "n_seeds": 5
+      },
+      "d128": {
+        "delta_posit16_vs_gf16_mean": -0.7215874386623569,
+        "delta_posit16_vs_gf16_std": 0.0026203805405307086,
+        "n_seeds": 5
+      },
+      "d384": {
+        "delta_posit16_vs_gf16_mean": -0.7211411060405981,
+        "delta_posit16_vs_gf16_std": 0.001728652100480719,
+        "n_seeds": 5
+      },
+      "d768": {
+        "delta_posit16_vs_gf16_mean": -0.7214908476487643,
+        "delta_posit16_vs_gf16_std": 0.0007786114118642918,
+        "n_seeds": 5
+      }
+    },
+    "xavier": {
+      "d1024": {
+        "delta_posit16_vs_gf16_mean": -0.7062551120497522,
+        "delta_posit16_vs_gf16_std": 0.0007116584019182194,
+        "n_seeds": 5
+      },
+      "d128": {
+        "delta_posit16_vs_gf16_mean": -0.8320426588662408,
+        "delta_posit16_vs_gf16_std": 0.000809930822674881,
+        "n_seeds": 5
+      },
+      "d384": {
+        "delta_posit16_vs_gf16_mean": -0.7413561049367356,
+        "delta_posit16_vs_gf16_std": 0.0014013380731468538,
+        "n_seeds": 5
+      },
+      "d768": {
+        "delta_posit16_vs_gf16_mean": -0.7282432445643756,
+        "delta_posit16_vs_gf16_std": 0.0012180149101143555,
+        "n_seeds": 5
+      }
+    }
+  },
+  "git_anchor_hint": "f2-methodology branch HEAD at run time",
+  "inits": [
+    "xavier",
+    "he",
+    "normal_002"
+  ],
+  "mode": "grid_summary",
+  "n_cells": 60,
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "tool": "format_microbench",
+  "vocab": 128
+}

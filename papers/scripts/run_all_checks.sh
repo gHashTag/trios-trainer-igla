@@ -146,6 +146,7 @@ STAGES=(
     "guide drift:python3 papers/scripts/verify_gate_authoring_guide_drift.py"
     "deadline freshness:python3 papers/scripts/verify_deadline_freshness.py"
     "tex anonymization:python3 papers/scripts/verify_tex_anonymization.py"
+    "format microbench freshness:python3 papers/scripts/verify_format_microbench_freshness.py"
 )
 
 # Loop 141 C: lightweight tier classification. Each stage maps to one
@@ -175,7 +176,7 @@ STAGE_TIERS=(
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
     "discipline" "discipline" "discipline" "discipline" "discipline"
-    "discipline"
+    "discipline" "discipline"
 )
 
 PASSED=0

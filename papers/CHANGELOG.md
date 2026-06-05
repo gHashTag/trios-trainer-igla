@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–148)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–149)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy** independent
-passes total across Loops 59–148 (50-pass milestone reached at
-Loop 127; passes 51–70 dispatched at Loops 128–148). The first
+caught before reviewers saw them. **Seventy-one** independent
+passes total across Loops 59–149 (50-pass milestone reached at
+Loop 127; passes 51–71 dispatched at Loops 128–149). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–148 extended the discipline to round-N
+submission flow; Loops 86–149 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–70 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–148; per-pass detail lives in
+12–71 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–149; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–148 (49th pass flagged the un-widened grep covered only
-~35 of 70 passes; the two-pattern form widens reach).
+90–149 (49th pass flagged the un-widened grep covered only
+~35 of 71 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–148)
+### 10. CI gate evolution (Loops 87–149)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,32 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 149** — `verify_format_microbench_freshness.py` added
+  (41st stage, discipline tier). Asserts the format-zoo grid
+  summary JSON at
+  `.trinity/results/format_microbench_grid/format_microbench_grid_summary_seeds_<lo>-<hi>.json`
+  exists with the expected schema, and 60 per-cell JSONs
+  (3 inits × 4 d_models × 5 seeds) are present. Closes 68th-pass
+  audit SEV-3 #4 (microbench result freshness was not validated
+  by CI). Format-microbench binary extended to grid mode:
+  {d_model ∈ {128, 384, 768, 1024}} × {init ∈ {xavier, he,
+  normal_002}} = 12 cells × N seeds. **Headline grid table**
+  (5 seeds, mean ± std of Δ posit16 vs gf16 % rel L2):
+  - xavier:     d128 −83.2±0.08, d384 −74.1±0.14, d768 −72.8±0.12, d1024 −70.6±0.07
+  - he:         d128 −88.6±0.06, d384 −85.4±0.06, d768 −82.9±0.09, d1024 −81.5±0.02
+  - normal_002: d128 −72.2±0.26, d384 −72.1±0.17, d768 −72.1±0.08, d1024 −72.2±0.01
+  Posit16 dominates GF16 in every cell of the 4×3 grid; He init
+  shows the largest win, normal_002 is regime-independent.
+  (± = sample-std across N=5 seeds, not SEM; MC error = std/√5
+  ≈ 0.5× the std values shown. All deltas are ≥1000× the MC
+  error so significance is not a concern; the notation is
+  flagged here for reader clarity. 71st-pass DESIGN-1 closure.)
+  Note: "he" variant uses σ = √(2/d_model), not the strict
+  He-2015 σ = √(2/fan_in) — d_model-scaled form keeps the
+  d_model sweep informative (a fan_in-scaled init would be
+  regime-independent of d_model, defeating the point of the
+  sweep). 71st-pass SEV-2 disambiguation in code docs +
+  CHANGELOG.
 - **Loop 148** — 6 verified citations from Loop 147 A folded into
   paper body (no longer orphan bib entries):
    - §2.3: Semenov-Pagliardini-Jaggi 2025 (multi-seed optimizer-
@@ -689,7 +715,7 @@ Stage additions since the original 8-script catalogue:
      al. shared-premise softened from "strongly aligned"; NVFP4
      hybrid framed as motivation, not as validation of F2.
 
-The on-disk gate now runs **40 stages** (verified by the new
+The on-disk gate now runs **41 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.
