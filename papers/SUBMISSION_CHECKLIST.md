@@ -98,7 +98,7 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
 - [ ] Anchor commit pinned (see top of file).
 - [ ] Non-anonymized PDF: **50 pages**, ~232 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
-- [ ] Anonymized PDF: **49 pages**, ~231 KB
+- [ ] Anonymized PDF: **50 pages**, ~232 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
 - [ ] Real-TMLR-class PDF: **31 pages**, ~215 KB
       (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
@@ -106,9 +106,9 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 75 passes across Loops 59-153
+- [ ] **Adversarial review**: 76 passes across Loops 59-154
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-75 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-76 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -208,9 +208,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 153 (2026-06-06)**
+- Checklist version: **Loop 154 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 153 commits on `f2-methodology`
+  Loop 154 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -374,8 +374,15 @@ If rejected:
   resolution + 71 bits integer headroom (exact for up to ~32k
   product accumulation). Total lib test count 735 → 754
   (+19); inventory 830 → 849.
-- Loop 153: this update — F2 §9.4.2 new sub-subsection with quire-
+- Loop 153: F2 §9.4.2 new sub-subsection with quire-
   microbench regime map (xavier × cancellation × {64,256,1024,4096});
   stage count 41 → 42 (`verify_quire_microbench_freshness.py`).
   Honest finding: quire ≈ f32-accum at F2's scale; both ~10× better
-  than naive Posit16 sum. PDF page counts 48/47/30 → 49/48/31.
+  than naive Posit16 sum. PDF page counts 48/47/30 → 50/49/31.
+- Loop 154: this update — 75th-pass SEV-3/4/5 deferred closures
+  (dot_naive doc comment + stage 42 tier rationale + §9.4.2 scope
+  note). 76th-pass folded inline: §9.4.2 prose reworded to match
+  the gate's drift-catcher framing (was "gated for freshness ...
+  alongside the §9.4.1 grid by a dedicated CI stage" — read as
+  load-bearing; now framed explicitly as hygiene check on
+  reproducibility provenance). PDF 50/49/31 → 50/50/31.

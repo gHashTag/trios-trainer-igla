@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–153)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–154)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-five** independent
-passes total across Loops 59–153 (50-pass milestone reached at
-Loop 127; passes 51–75 dispatched at Loops 128–153). The first
+caught before reviewers saw them. **Seventy-six** independent
+passes total across Loops 59–154 (50-pass milestone reached at
+Loop 127; passes 51–76 dispatched at Loops 128–154). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–153 extended the discipline to round-N
+submission flow; Loops 86–154 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–75 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–153; per-pass detail lives in
+12–76 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–154; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–153 (49th pass flagged the un-widened grep covered only
-~35 of 75 passes; the two-pattern form widens reach).
+90–154 (49th pass flagged the un-widened grep covered only
+~35 of 76 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–153)
+### 10. CI gate evolution (Loops 87–154)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,21 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 154** — three 75th-pass deferred closures, no new
+  stages:
+   - SEV-3: `dot_naive` in `src/bin/quire_microbench.rs` gets a
+     long doc-comment walking through the f64 round-trip step-by-
+     step + contrasting with the f32-accum and quire methods.
+     Implementation unchanged.
+   - SEV-4: rationale paragraph added to
+     `verify_quire_microbench_freshness.py` docstring documenting
+     why stage 42 stays in discipline tier per the catch-class
+     taxonomy ("drift catcher", not direct submission-blocker —
+     a missing JSON is not visible in the submission PDF).
+   - SEV-5: F2 §9.4.2 gains a "Scope note" footnote explaining
+     why d_model=384 was pinned (matches §9.4.1's xavier column;
+     §9.4.1 owns the d_model sweep; §9.4.2 isolates the
+     accumulator-vs-storage-format axis at fixed encoding).
 - **Loop 153** — `verify_quire_microbench_freshness.py` added
   (42nd stage, discipline tier). Asserts the §9.4.2 dot-product
   regime-map summary

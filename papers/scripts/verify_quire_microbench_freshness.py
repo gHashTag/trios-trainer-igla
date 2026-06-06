@@ -9,6 +9,27 @@ claim in the manuscript, so the JSON outputs of the
 schema. If a future commit silently deletes them — or the binary
 output diverges from what §9.4.2 reports — this stage fires.
 
+Loop 154 — 75th-pass SEV-4 closure (tier classification rationale):
+this gate is classified as `discipline` tier in
+`papers/scripts/run_all_checks.sh` rather than `submission` tier,
+even though missing JSON would *indirectly* invalidate the §9.4.2
+table's provenance. The catch-class taxonomy distinguishes
+**direct submission-blocking** failures (e.g., the paper says X but
+the binary produces Y; the anonymizer leaked a name; the bibliography
+is missing an entry — submission tier) from **drift-catcher**
+failures (a tracked artifact disappeared between loops — discipline
+tier). Missing freshness data is the latter: it doesn't change the
+paper's own claims, it surfaces that the data backing those claims
+has gone missing. A reviewer would not see the missing JSON; the
+submission artifact (the PDF) would still ship. The submission-tier
+gates (§1↔STAGES, page counts, bibliography completeness, …) all
+remain on the critical path; the freshness gate is a hygiene check
+that keeps the reproducibility story honest between submission and
+camera-ready. If a future loop decides that microbench data is
+itself a submission-blocking artifact, the tier label moves —
+contiguity in `STAGE_TIERS` would then require physical reordering
+of `STAGES` to keep the all-submission-before-discipline invariant.
+
 What this gate asserts:
   1. `.trinity/results/quire_microbench_summary_seeds_<lo>-<hi>.json`
      exists for at least one (lo, hi) pair.

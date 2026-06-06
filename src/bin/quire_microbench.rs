@@ -105,18 +105,37 @@ fn cancellation_pair(seed: u64, length: usize) -> (Vec<Posit16>, Vec<Posit16>) {
     (a, b)
 }
 
-/// Method 1: Naive Posit16 sum (re-quantize at every step).
+/// Method 1: Naive Posit16 sum — every partial sum is materialized as a
+/// Posit16, so every accumulation step incurs a round-back.
+///
+/// Loop 154 75th-pass SEV-3 closure: the mechanism is subtle, so making
+/// the per-step re-quantization explicit here. We multiply in f64 (exact
+/// for any pair of Posit16 values since the product mantissa fits in 26
+/// bits and f64 has 53), but then:
+///
+///   - We round the *product* back to Posit16 → the per-step storage
+///     loss for the product itself.
+///   - We add the rounded product (as f64) into a running f64 sum.
+///   - We round the *sum* back to Posit16 and read it out as f64 → the
+///     per-step storage loss for the accumulator.
+///
+/// Reading the accumulator back is what makes the next iteration see the
+/// rounded value (and thus accumulate further per-step error). A
+/// hypothetical "no-acc-readback" variant — products rounded but sum
+/// kept in f64 — would behave like the `f32 accumulator` method up to
+/// the product-rounding granularity. The current implementation models
+/// the worst-case Posit16-only storage path; the `f32 accumulator`
+/// method models the standard mixed-precision recipe; the quire models
+/// the exact-accumulation path. The three methods isolate per-step
+/// storage loss from accumulator-precision loss in a controlled way.
 fn dot_naive(a: &[Posit16], b: &[Posit16]) -> Posit16 {
     let mut acc = Posit16::ZERO;
     let mut acc_f = 0.0_f64;
     for (x, y) in a.iter().zip(b.iter()) {
-        // Multiply in f32 then immediately re-quantize to Posit16, then
-        // add to the Posit16 accumulator (also re-quantizing).
         let prod_f = (x.to_f32() as f64) * (y.to_f32() as f64);
         let prod = Posit16::from_f32(prod_f as f32);
         acc_f += prod.to_f32() as f64;
         acc = Posit16::from_f32(acc_f as f32);
-        // Read back so the next iteration sees the rounded value.
         acc_f = acc.to_f32() as f64;
     }
     acc
