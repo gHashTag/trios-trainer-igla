@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–149)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–150)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-one** independent
-passes total across Loops 59–149 (50-pass milestone reached at
-Loop 127; passes 51–71 dispatched at Loops 128–149). The first
+caught before reviewers saw them. **Seventy-two** independent
+passes total across Loops 59–150 (50-pass milestone reached at
+Loop 127; passes 51–72 dispatched at Loops 128–150). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–149 extended the discipline to round-N
+submission flow; Loops 86–150 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–71 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–149; per-pass detail lives in
+12–72 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–150; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–149 (49th pass flagged the un-widened grep covered only
-~35 of 71 passes; the two-pattern form widens reach).
+90–150 (49th pass flagged the un-widened grep covered only
+~35 of 72 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–149)
+### 10. CI gate evolution (Loops 87–150)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,22 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 150** — F2 §9.4.1 added as new sub-subsection: inline
+  4×3 grid table reporting Δ(Posit16 vs GF16) % rel L2 across
+  (d_model × init) cells with explicit encode-vs-train framing.
+  PDF page counts shift 46/46/29 → 48/47/30 (non-anon picks up
+  one extra page from the table + methodological-footnote block).
+  72nd adversarial pass — 3 catches folded:
+   - SEV-1: MC-error claim "≈ 0.5× the values shown" was ambiguous
+     between sample-std and delta; rewritten with explicit
+     500× MC-error ratio and "no significance threshold issue at
+     this N".
+   - SEV-2: 5-seed budget rationale + sample-std heterogeneity
+     explanation added as methodological footnote (i)+(ii).
+   - SEV-3: encode-vs-train distinction made explicit *inside*
+     the "what the table says" paragraph (was only outside it
+     in the closing paragraph). LCG-vs-real-RNG rationale added
+     as footnote (iii).
 - **Loop 149** — `verify_format_microbench_freshness.py` added
   (41st stage, discipline tier). Asserts the format-zoo grid
   summary JSON at

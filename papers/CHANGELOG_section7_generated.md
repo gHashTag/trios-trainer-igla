@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **60**; distinct loops referenced: **54**.
+Total commits matched: **62**; distinct loops referenced: **56**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -59,4 +59,6 @@ Total commits matched: **60**; distinct loops referenced: **54**.
 | 144 | `55023a2` | feat(f2): 38th CI stage + migrate 5 break-tests + escape hatch (Loop 144) |
 | 145 | `711da3f` | feat(f2): 39th CI stage (deadline-freshness) + 67th-pass deferred closures + 68t… |
 | 146 | `3361701` | feat(race): wire Posit16 into format_ladder + format_microbench binary (Loop 146… |
-| 148 | `3210297` | feat(f2): weave 6 verified citations into §2.3 + §9.4 prose + 70th adversarial p… |
+| 148 | `c21a610` | feat(f2): weave 6 verified citations into §2.3 + §9.4 prose + 70th adversarial p… |
+| 149 | `2c6135c` | feat(race): format_microbench grid + 41st CI stage + 71st adversarial pass (Loop… |
+| 150 | `b0d4509` | feat(f2): §9.4.1 inline grid table + 72nd adversarial pass (Loop 150, round-150) |

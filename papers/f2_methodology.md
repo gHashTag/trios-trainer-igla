@@ -1495,15 +1495,86 @@ For context on the format-zoo competitors, the key references are:
   the format-zoo benchmark. Our companion crate ships a
   standards-compliant Posit16 codec. We report only an
   **encode-time** reconstruction-fidelity microbenchmark as a
-  preregistration anchor: at Xavier-init magnitudes, a 5-seed
-  round-trip measures −74% relative L2 error vs GF16 with zero
-  underflow-to-zero (Posit16 saturates to MIN_POS rather than
-  rounding small magnitudes to zero). This is a property of the
-  codec, not a training-time result of F2. The pre-registered
-  champion-scale comparison in `docs/F2_PRE_REG.md` is the only
-  place where the format-zoo BPB-vs-recipe claim will be tested
-  with training; the encode-time number is reported only to fix the
-  format-zoo configuration before training data is collected.
+  preregistration anchor; the headline grid table appears below
+  this bullet list.
+
+#### 9.4.1 Posit16 vs GF16 encode-time grid (preregistration anchor)
+
+To fix the format-zoo configuration *before* any training data is
+collected for the champion-scale follow-up, we report an
+**encode-time only** reconstruction-fidelity microbenchmark. The
+binary `src/bin/format_microbench` round-trips a synthetic
+embedding matrix of shape `(vocab=128, d_model)` through each
+format and reports the relative L2 error
+`sqrt(sum_sq_err / sum_sq_signal)` along with the count of values
+that underflowed to zero. The grid spans
+`d_model ∈ {128, 384, 768, 1024}` × init scheme ∈ `{xavier, he,
+normal_002}` × 5 seeds = 60 cells; full per-cell JSON is in
+`.trinity/results/format_microbench_grid/`, gated for freshness
+by a dedicated CI stage (the 41st in `run_all_checks.sh`).
+
+The headline measurement is Δ relative L2 of Posit16 vs GF16,
+mean ± sample-std across the 5 seeds. The Monte Carlo standard
+error is `std/√5 ≈ 0.45 × std` (so the MC error is roughly half
+of the ± figure shown, not half of the delta itself). All deltas
+reported below sit between −70.6% and −88.6%, while the largest
+sample-std is 0.26%; the implied MC error is at most ~0.12%, so
+every delta is more than 500× its MC error and significance is
+overdetermined at this N.
+
+| init scheme  | d=128         | d=384         | d=768         | d=1024        |
+|--------------|---------------|---------------|---------------|---------------|
+| `xavier`     | −83.2 ± 0.08% | −74.1 ± 0.14% | −72.8 ± 0.12% | −70.6 ± 0.07% |
+| `he`         | −88.6 ± 0.06% | −85.4 ± 0.06% | −82.9 ± 0.09% | −81.5 ± 0.02% |
+| `normal_002` | −72.2 ± 0.26% | −72.1 ± 0.17% | −72.1 ± 0.08% | −72.2 ± 0.01% |
+
+**What the table says**: at the small-magnitude regime typical of
+embedding initialization, the **encode-time** round-trip from f32
+to Posit16 back to f32 has *lower* relative L2 error than the same
+round-trip through GF16, for every combination of d_model and init
+scheme in the grid. The reported delta is a property of the codec
+applied to the init distribution, not a training-time outcome; we
+return to the encode-vs-train distinction at the end of the
+sub-subsection. The `he` row shows the largest win
+(d_model-scaled σ = √(2/d_model) puts the average magnitude near
+the boundary of GF16's underflow region); `normal_002` is
+regime-independent of d_model (fixed σ = 0.02 doesn't scale with
+d_model, so format-quality at fixed magnitude stays put). GF16
+underflows ≈ 55–70 of 49 152 values to zero per Xavier-init seed
+at d_model = 384; Posit16 underflows zero values in any cell of
+the grid because the standards-compliant saturation rule rounds
+small magnitudes to MIN_POS = `4^-14` rather than to zero.
+
+**What the table does NOT say**: nothing here is a training-time
+result. The encode-time microbench measures the *codec*, not the
+*recipe*; whether a +74% reduction in relative L2 at the
+embedding-init regime translates into a measurable BPB delta after
+a champion-scale training run is the question the preregistered
+follow-up in `docs/F2_PRE_REG.md` is designed to test. We report
+the grid *only* to lock in the format-zoo configuration (`Posit16`
+vs `GF16` at d_model = 384, Xavier init, 5 seeds) before training
+artifacts are produced, in the same spirit as W3C-PROV preambles
+on the empirical CSVs (§3.5.1).
+
+**Methodological footnotes** for the table above:
+(i) Sample-std heterogeneity across cells (0.01–0.26%) reflects
+init-dependent magnitude spread — the `he` row at large d_model
+sits in the cleanest regime (σ scales as 1/√d_model), while
+`normal_002` at all d_model and `xavier` at d=128 sit at
+boundaries where small per-seed magnitude variations matter
+relatively more.
+(ii) The 5-seed budget was chosen to keep MC error at least 1.5
+orders of magnitude below the smallest delta; if a future
+revision requires tighter bounds (e.g., to detect a hypothetical
++1% delta), the budget must grow as the inverse square of the
+target delta.
+(iii) RNG choice — we use a deterministic LCG (Numerical Recipes
+parameters) seeded per cell. A real-RNG version would differ in
+the tail of the distribution; the distinction is immaterial here
+because format-quality at the magnitudes typical of init
+distributions depends on the bulk, not the tail. Reproducibility
+is the load-bearing property, and LCG seeding provides it
+bit-exactly across machines.
 
 ---
 

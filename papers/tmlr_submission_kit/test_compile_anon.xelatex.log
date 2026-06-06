@@ -285,149 +285,176 @@ wun, Gil, Kakade & Anand,
 Overfull \hbox (28.1767pt too wide) in paragraph at lines 1462--1463
 []\TU/lmr/bx/n/10.95 MXFP4 on native FP4 hardware \TU/lmr/m/n/10.95 (Cim, Palan
 gappa, Hodak, Dwivedula,
-[34] [35]
-Overfull \hbox (23.84128pt too wide) in paragraph at lines 1507--1508
+[34]
+Overfull \hbox (25.36917pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 for the champion-scale follow-up, we report an \TU/lmr/bx/n/1
+0.95 encode-time only \TU/lmr/m/n/10.95 reconstruction-
+
+Overfull \hbox (2.56544pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 trips a synthetic embedding matrix of shape \TU/lmtt/m/n/10.9
+5 (vocab=128, d_model) \TU/lmr/m/n/10.95 through
+
+Overfull \hbox (33.95906pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 each format and reports the relative L2 error \TU/lmtt/m/n/10
+.95 sqrt(sum_sq_err / sum_sq_signal)
+
+Overfull \hbox (124.43533pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 mal_002‘ $\OMS/cmsy/m/n/10.95 ^^B$ \TU/lmr/m/n/10.95 5 seeds 
+= 60 cells; full per-cell JSON is in \TU/lmtt/m/n/10.95 .trinity/results/format
+_microbench_grid/\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (0.57138pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 gated for freshness by a dedicated CI stage (the 41st in \TU/
+lmtt/m/n/10.95 run_all_checks.sh\TU/lmr/m/n/10.95 ). 
+
+Overfull \hbox (47.03004pt too wide) in paragraph at lines 1493--1502
+ [][] 
+[35] [36]
+Overfull \hbox (23.84128pt too wide) in paragraph at lines 1593--1594
 \TU/lmr/m/n/10.95 (section [][]3.5.4[][]). The paper’s load-bearing contributio
 n is the reproducibility-
 
-Overfull \hbox (9.5844pt too wide) in paragraph at lines 1510--1511
+Overfull \hbox (9.5844pt too wide) in paragraph at lines 1596--1597
 \TU/lmr/m/n/10.95 Requires a stat-grade simulation study or domain co-author; t
 he method-
-
-Overfull \hbox (18.28963pt too wide) in paragraph at lines 1530--1535
+[37]
+Overfull \hbox (18.28963pt too wide) in paragraph at lines 1616--1621
 \TU/lmr/m/n/10.95 to \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 and veri
 fied with MD5 checksums in \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/
 10.95 . 
-[36]
-Overfull \hbox (7.9199pt too wide) in paragraph at lines 1569--1569
+
+Overfull \hbox (7.9199pt too wide) in paragraph at lines 1655--1655
 []  \TU/lmtt/m/n/10.95 --m1 wd --m2 warmup data/loop49/loop47_warmup_stratified
 .csv \[] 
-[37]
-Overfull \hbox (82.65364pt too wide) in paragraph at lines 1586--1586
+[38]
+Overfull \hbox (82.65364pt too wide) in paragraph at lines 1672--1672
 []  \TU/lmtt/m/n/10.95 --input /tmp/3strat.jsonl --output papers/figures/fig4_r
 ms_nde_signflip.png[] 
 
-Overfull \hbox (86.22345pt too wide) in paragraph at lines 1588--1591
+Overfull \hbox (86.22345pt too wide) in paragraph at lines 1674--1677
 \TU/lmr/m/n/10.95 their command sequences are inlined as docstrings at the top 
 of each \TU/lmtt/m/n/10.95 papers/figures/fig*.py
 
-Overfull \hbox (64.84904pt too wide) in paragraph at lines 1592--1597
+Overfull \hbox (64.84904pt too wide) in paragraph at lines 1678--1683
 \TU/lmr/m/n/10.95 commit should produce CSVs byte-identical to the checksums in
  \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/10.95 .
 
-Overfull \hbox (70.73894pt too wide) in paragraph at lines 1592--1597
+Overfull \hbox (70.73894pt too wide) in paragraph at lines 1678--1683
 \TU/lmr/m/n/10.95 A mismatch indicates either an uncommitted local change or a 
 \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
 
-Overfull \hbox (50.82205pt too wide) in paragraph at lines 1592--1597
+Overfull \hbox (50.82205pt too wide) in paragraph at lines 1678--1683
 \TU/lmr/m/n/10.95 drift (section [][]3.5.2[][]). Verify with \TU/lmtt/m/n/10.95
  cargo run --release --bin f2_provenance_check
 
-Overfull \hbox (584.38988pt too wide) in paragraph at lines 1610--1622
+Overfull \hbox (584.38988pt too wide) in paragraph at lines 1696--1708
  [][] 
 
-Overfull \hbox (118.59941pt too wide) in paragraph at lines 1627--1630
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+Overfull \hbox (118.59941pt too wide) in paragraph at lines 1713--1716
 []\TU/lmr/m/n/10.95 When the producing binary is stratum-aware (\TU/lmtt/m/n/10
 .95 f2_dual_mediation\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 f2_mediation_sensit
 ivity\TU/lmr/m/n/10.95 ,
-
-Overfull \hbox (13.66866pt too wide) in paragraph at lines 1636--1636
+[39]
+Overfull \hbox (13.66866pt too wide) in paragraph at lines 1722--1722
 []\TU/lmtt/m/n/10.95 # INPUT STRATUM = warmup0 (Pearl CDE on warmup_steps_unqua
 ntized)[] 
-[38]
-Overfull \hbox (33.94806pt too wide) in paragraph at lines 1662--1663
+
+Overfull \hbox (33.94806pt too wide) in paragraph at lines 1748--1749
 []\TU/lmr/m/n/10.95 section [][]3.2[][] — \TU/lmtt/m/n/10.95 src/bin/f2_dual_me
 diation.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 compute_dual_mediation\TU/lmr/
 m/n/10.95 ). 
-
-Overfull \hbox (46.93477pt too wide) in paragraph at lines 1663--1664
+[40]
+Overfull \hbox (46.93477pt too wide) in paragraph at lines 1749--1750
 []\TU/lmr/m/n/10.95 section [][]3.3[][] — \TU/lmtt/m/n/10.95 src/bin/f2_mediati
 on_sensitivity.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 envelope_expansion\TU/l
 mr/m/n/10.95 ,
 
-Overfull \hbox (0.94478pt too wide) in paragraph at lines 1664--1665
+Overfull \hbox (0.94478pt too wide) in paragraph at lines 1750--1751
 []\TU/lmr/m/n/10.95 section [][]3.4[][] — \TU/lmtt/m/n/10.95 src/bin/f2_stratum
 _compare.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 build_comparison\TU/lmr/m/n/1
 0.95 ,
 
-Overfull \hbox (38.18573pt too wide) in paragraph at lines 1671--1677
+Overfull \hbox (38.18573pt too wide) in paragraph at lines 1757--1763
 \TU/lmr/m/n/10.95 integration suites) is auto-generated by \TU/lmtt/m/n/10.95 p
 apers/scripts/generate_appendix_d.sh
-[39]
-Overfull \hbox (204.77914pt too wide) in paragraph at lines 1683--1689
+
+Overfull \hbox (204.77914pt too wide) in paragraph at lines 1769--1775
 []\TU/lmr/m/n/10.95 Two load-bearing regression locks are highlighted in sectio
 n [][]8.2[][]: \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
-[40]
-Overfull \hbox (15.17981pt too wide) in paragraph at lines 1716--1717
+[41]
+Overfull \hbox (15.17981pt too wide) in paragraph at lines 1802--1803
 \TU/lmr/m/n/10.95 CSVs from \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 a
 nd \TU/lmtt/m/n/10.95 data/loop49_swap/ \TU/lmr/m/n/10.95 through \TU/lmtt/m/n/
 10.95 f2_to_jsonl
 
-Overfull \hbox (10.17569pt too wide) in paragraph at lines 1716--1717
+Overfull \hbox (10.17569pt too wide) in paragraph at lines 1802--1803
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-Overfull \hbox (16.22585pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (16.22585pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/bx/n/10.95 original 8-script catalogue crystallized, during the gate-ev
 olution
 
-Overfull \hbox (80.91301pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (80.91301pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/bx/n/10.95 arc documented in CHANGELOG section [][]10[][]\TU/lmr/m/n/10
 .95 : \TU/lmtt/m/n/10.95 verify_tables_against_csv.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (176.24762pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (176.24762pt too wide) in paragraph at lines 1803--1804
 \TU/lmtt/m/n/10.95 verify_formulas_vs_tables.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n
 /10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify
 _preamble_per_producer.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (8.71268pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (8.71268pt too wide) in paragraph at lines 1803--1804
 \TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
 
-Overfull \hbox (22.08272pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (22.08272pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 reference audit, its markdown lint, the smoke test for its \T
 U/lmtt/m/n/10.95 f2_pairwise_perm
 
-Overfull \hbox (2.02983pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (2.02983pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 IAL_REVIEW_LOG headline pass-count triple), and the anonymize
 r-
 
-Overfull \hbox (5.22507pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (5.22507pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 completeness verifier (ratchets bare \TU/lmtt/m/n/10.95 Loop 
 N \TU/lmr/m/n/10.95 anchor count per-file against
 
-Overfull \hbox (58.57684pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (58.57684pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 live sidecar state), the alias-round-trip verifier (asserts C
 LASS_LABEL_ALIASES
 
-Overfull \hbox (6.72641pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (6.72641pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 burn-down-trajectory verifier (asserts the breadcrumb is loop
 -monotonic
 
-Overfull \hbox (95.38733pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (95.38733pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 freshness verifier (asserts every dated AOE deadline in \TU/l
 mtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
 
-Overfull \hbox (30.87338pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (30.87338pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 section [][]4[][] is today-or-future or annotated as historic
 al), the tex-anonymization
 
-Overfull \hbox (10.05739pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (10.05739pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 markdown-source-only anonymizer ratchet), and the format-micr
 obench-
 
-Overfull \hbox (198.3173pt too wide) in paragraph at lines 1717--1718
+Overfull \hbox (198.3173pt too wide) in paragraph at lines 1803--1804
 \TU/lmr/m/n/10.95 freshness verifier (asserts the format-zoo grid summary JSON 
 in \TU/lmtt/m/n/10.95 .trinity/results/format_microbench_grid/
-[41])
-Overfull \hbox (139.8292pt too wide) in paragraph at lines 1720--31
+[42] [43])
+Overfull \hbox (139.8292pt too wide) in paragraph at lines 1806--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
 /n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
-[42] (./test_compile_anon.bbl [43]
+(./test_compile_anon.bbl [44] [45]
 Underfull \hbox (badness 2564) in paragraph at lines 119--125
 []\TU/lmr/m/n/10.95 Microsoft.  BitNet b1.58 2B4T technical report.  \TU/lmr/m/
 it/10.95 arXiv preprint
-[44] [45]) [46] (./test_compile_anon.aux) )
+[46]) [47] (./test_compile_anon.aux) )
 (see the transcript file for additional information)
-Output written on test_compile_anon.pdf (46 pages).
+Output written on test_compile_anon.pdf (47 pages).
 Transcript written on test_compile_anon.log.
