@@ -1678,6 +1678,79 @@ rel-L2 ranges 1.9e−4 to 6.6e−5, within a factor of 3 across all 8
 cells), which is consistent with — but does not strictly imply —
 f32-regime-independence at unseen input distributions.
 
+#### 9.4.3 Bridge bench: training-time val BPB at sandbox scale
+
+§9.4.1 and §9.4.2 are both encode-time measurements. To bridge from
+"the codec round-trips faithfully" to "the codec works inside an
+optimizer loop," we run a minimal training comparison: a one-layer
+bigram LM on byte-level `data/tiny_shakespeare.txt`
+(VOCAB = 128, HIDDEN = 64) trained for 50 SGD steps × batch 64 at
+LR = 0.5 over three formats — `f32` baseline, `GF16` quantization at
+the embed gate, `Posit16` quantization at the embed gate. The embed
+table is round-tripped through the chosen format after every step
+(the shadow-weight pattern used by every modern mixed-precision
+trainer including the MXFP8 and NVFP4 references in §9.4); the proj
+matrix stays in f32. Three seeds (42, 43, 44).
+
+Final held-out val BPB (mean ± sample-std across 3 seeds, on
+`data/tiny_shakespeare_val.txt`):
+
+| format    | mean val BPB | std    |
+|-----------|--------------|--------|
+| `f32`     | 6.7833       | 0.0332 |
+| `Posit16` | 6.7833       | 0.0332 |
+| `GF16`    | 6.7900       | 0.0323 |
+
+**What the table says**: at sandbox scale, Posit16 introduces no
+detectable BPB penalty vs the f32 baseline — the means agree to four
+decimal places. GF16's +0.0067 BPB penalty is **small relative to the
+seed-std** (the std is 5× the between-format gap, so the gap is not
+statistically significant at N=3), but the **rank ordering** is
+preserved seed-by-seed (GF16 ≥ f32 in all three runs). We report the
+rank-stable ordering rather than the numerical delta. The encode-time
+prediction from §9.4.1 — Posit16's tapered precision avoids
+underflow at the small-magnitude tail of the embed distribution —
+is qualitatively consistent with the rank ordering observed here.
+The §9.4.1 grid reports underflow rates at `d_model = 384`
+(`VOCAB × d_model = 49 152` entries); bridge_bench's `HIDDEN = 64`
+configuration has `VOCAB × HIDDEN = 8 192` entries, ~6× smaller. The
+*percentage* of small-magnitude entries that underflow under GF16 is
+a property of the magnitude distribution under Xavier init, which is
+qualitatively similar across HIDDEN values but quantitatively
+unverified at HIDDEN = 64 in this paper; we therefore cite §9.4.1's
+rate as motivation for the ordering, not as a quantitative
+extrapolation.
+
+**What the table does NOT say**: nothing here is a champion-scale
+claim. 50 steps is too short to drive the embedding into a regime
+where format quantization compounds; the bigram model is too shallow
+to expose attention-arithmetic or layer-norm interactions; and the
+batch/LR choice is a sandbox-tuned default. The pre-registered
+champion-scale comparison in `docs/F2_PRE_REG.md` is the only place
+where the format-zoo BPB-vs-recipe claim will be tested at
+training scale that a reviewer would defend as "real LM training."
+We report §9.4.3 as the smallest honest bridge — not as a
+champion-scale result.
+
+A 4th methodological footnote applies here in addition to §9.4.2's
+three: **(iv)** the bridge-bench eval BPB is in the byte-level
+character-LM range (≈ 6.8, vs ≈ 7.0 = log₂ 128 random-byte ceiling)
+because a bigram model at HIDDEN = 64 over 50 SGD steps gets just
+enough above the random-byte floor to expose format-induced
+differences without confounding them with attention-mechanism
+gradient pathology. A reviewer who wants to see the format gates at a
+non-bigram model size has the full pipeline `cargo run --release
+--bin bridge_bench -- --seeds=...` to extend with deeper or
+longer-context variants; the binary is < 300 LOC and edits to the
+HIDDEN / STEPS / model-shape constants are local.
+
+The benchmark binary
+(`src/bin/bridge_bench`) writes per-seed JSON and a summary to
+`.trinity/results/bridge_bench_*.json`. A dedicated CI gate watches
+those files for unexplained disappearance between loops (hygiene
+check, not submission-blocking; same discipline-tier rationale as
+the §9.4.2 freshness gate).
+
 ---
 
 ## 10. Conclusion + venue calibration
@@ -1966,10 +2039,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **42 stages**
+  cold**) — single-shot CI gate. Currently chains **43 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other thirty-five stages are gates
+  not a stage of itself); the **other thirty-six stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -2027,12 +2100,15 @@ dependency; we do not stub any of them.
   grid summary JSON in `.trinity/results/format_microbench_grid/`
   exists with the expected schema and all 60 per-cell JSONs are
   present — gates the §9.4 format-zoo headline table against
-  silent regeneration regressions), and the quire-microbench-
-  freshness verifier (asserts the §9.4.2 dot-product regime-map
-  summary and per-seed JSONs are present with the expected schema).
+  silent regeneration regressions), the quire-microbench-freshness
+  verifier (asserts the §9.4.2 dot-product regime-map summary and
+  per-seed JSONs are present with the expected schema), and the
+  bridge-bench-freshness verifier (asserts the §9.4.3 sandbox-
+  training summary and per-seed JSONs are present with the
+  expected schema).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 35 are documented in the follow-up paper's
+  the additional 36 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",

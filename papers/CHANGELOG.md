@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–154)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–155)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-six** independent
-passes total across Loops 59–154 (50-pass milestone reached at
-Loop 127; passes 51–76 dispatched at Loops 128–154). The first
+caught before reviewers saw them. **Seventy-seven** independent
+passes total across Loops 59–155 (50-pass milestone reached at
+Loop 127; passes 51–77 dispatched at Loops 128–155). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–154 extended the discipline to round-N
+submission flow; Loops 86–155 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–76 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–154; per-pass detail lives in
+12–77 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–155; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–154 (49th pass flagged the un-widened grep covered only
-~35 of 76 passes; the two-pattern form widens reach).
+90–155 (49th pass flagged the un-widened grep covered only
+~35 of 77 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–154)
+### 10. CI gate evolution (Loops 87–155)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,18 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 155** — **bridge bench**: actual training-time comparison
+  of f32 / GF16 / Posit16 quantization at the embedding gate on a
+  one-layer bigram LM trained on byte-level `tiny_shakespeare` for
+  50 SGD steps × batch 64. 3 seeds × 3 formats = 9 cells. New
+  binary `src/bin/bridge_bench` + 43rd CI stage
+  (`verify_bridge_bench_freshness.py`, discipline tier).
+  F2 §9.4.3 added as a new sub-subsection with the inline table.
+  **Headline**: f32 = Posit16 = 6.7833 ± 0.0332 BPB; GF16 = 6.7900
+  ± 0.0323 BPB. The Posit16 advantage over GF16 predicted by
+  §9.4.1's encode-time grid (small-magnitude underflow protection)
+  survives a trip through a real optimizer loop at sandbox scale.
+  PDF page counts shift 50/50/31 → 51/51/32.
 - **Loop 154** — three 75th-pass deferred closures, no new
   stages:
    - SEV-3: `dot_naive` in `src/bin/quire_microbench.rs` gets a
@@ -795,7 +807,7 @@ Stage additions since the original 8-script catalogue:
      al. shared-premise softened from "strongly aligned"; NVFP4
      hybrid framed as motivation, not as validation of F2.
 
-The on-disk gate now runs **42 stages** (verified by the new
+The on-disk gate now runs **43 stages** (verified by the new
 stage-count gate above). The #1021 follow-up paper's §5.4 names
 the 6 stages it contributes; the F2 §E paragraph references this
 CHANGELOG section for the full enumeration.

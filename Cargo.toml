@@ -151,6 +151,10 @@ name = "quire_microbench"
 path = "src/bin/quire_microbench.rs"
 
 [[bin]]
+name = "bridge_bench"
+path = "src/bin/bridge_bench.rs"
+
+[[bin]]
 name = "igla_trigram"
 path = "src/bin/igla_trigram.rs"
 
