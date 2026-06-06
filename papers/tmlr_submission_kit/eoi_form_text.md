@@ -92,7 +92,7 @@ Conference track (per MLRC 2026 dual-submission policy).
 
 > A reviewer wishing to reproduce any number in §5 should:
 > 1. `git checkout 583b417` (or any descendant on `f2-methodology`).
-> 2. `cargo test --lib` exits 0 with 735 passing tests.
+> 2. `cargo test --lib` exits 0 with 754 passing tests.
 > 3. Run any figure script in `papers/figures/`; no flags needed.
 > 4. Verify the input file's checksum against `data/loop49/README.md`.
 > 5. The generated PNG should be visually identical to the figure in

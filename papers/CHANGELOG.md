@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–151)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–152)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-three** independent
-passes total across Loops 59–151 (50-pass milestone reached at
-Loop 127; passes 51–73 dispatched at Loops 128–151). The first
+caught before reviewers saw them. **Seventy-four** independent
+passes total across Loops 59–152 (50-pass milestone reached at
+Loop 127; passes 51–74 dispatched at Loops 128–152). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–151 extended the discipline to round-N
+submission flow; Loops 86–152 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–73 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–151; per-pass detail lives in
+12–74 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–152; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–151 (49th pass flagged the un-widened grep covered only
-~35 of 73 passes; the two-pattern form widens reach).
+90–152 (49th pass flagged the un-widened grep covered only
+~35 of 74 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–151)
+### 10. CI gate evolution (Loops 87–152)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,18 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 152** — Posit16 quire-bit accumulator landed at
+  `src/phi_numbers/posit16_quire.rs` (19 unit tests, all green).
+  `PositQuire` is an i128-fixed-point accumulator with 2⁻⁵⁶
+  resolution and 71 bits of integer headroom — exact for any
+  Posit16 dot-product up to ~32 768 elements at maximal product
+  magnitude, which covers every neural-network vector dimension
+  in the F2 §9.4.1 regime. Public API: `PositQuire::new()`,
+  `add_product(a, b)`, `add(x)`, `clear()`, `to_posit16()` +
+  helper `posit16_dot(a, b) -> Posit16`. NaR is a sticky bit;
+  zero-multiplication is a no-op; saturating add on overflow.
+  `Posit16::decode_extended` extracted as a public accessor.
+  Total lib test count 735 → 754 (+19); inventory 830 → 849.
 - **Loop 151** — closes 71st-pass deferred SEV-3 + SEV-4:
    - **Shared grid config**
      (`papers/scripts/format_microbench_grid_config.json`) is

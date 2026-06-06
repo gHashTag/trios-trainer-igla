@@ -249,6 +249,50 @@ impl Posit16 {
         self.0
     }
 
+    /// Decompose into (sign, scale, mantissa_raw, mantissa_bits).
+    ///
+    /// `sign` = true iff negative; `scale` = total exponent (2*regime + es);
+    /// `mantissa_raw` is the raw mantissa fraction (0 .. 2^mantissa_bits),
+    /// representing `(1 + mantissa_raw / 2^mantissa_bits)`. For ZERO and
+    /// NaR, returns (false, 0, 0, 0) — callers must check `is_zero()` /
+    /// `is_nar()` first if the distinction matters.
+    ///
+    /// Used by `posit16_quire::PositQuire` to multiply two Posit16 values
+    /// without going through f32 (which would lose precision in the
+    /// long-vector cancellation regime). Loop 152 addition.
+    #[must_use]
+    pub fn decode_extended(self) -> (bool, i32, u32, i32) {
+        if self.is_zero() || self.is_nar() {
+            return (false, 0, 0, 0);
+        }
+        let raw = self.0;
+        let neg = (raw & 0x8000) != 0;
+        let body: u16 = if neg {
+            raw.wrapping_neg() & 0x7FFF
+        } else {
+            raw & 0x7FFF
+        };
+        let first = (body >> 14) & 1;
+        let mut pos: i32 = 14;
+        let mut count: i32 = 0;
+        while pos >= 0 && ((body >> pos) & 1) == first {
+            count += 1;
+            pos -= 1;
+        }
+        let regime_val: i32 = if first == 1 { count - 1 } else { -count };
+        pos -= 1; // skip terminator
+        let exp_bit: i32 = if pos >= 0 { ((body >> pos) & 1) as i32 } else { 0 };
+        pos -= 1;
+        let scale: i32 = 2 * regime_val + exp_bit;
+        let mant_bits: i32 = if pos >= 0 { pos + 1 } else { 0 };
+        let mant_raw: u32 = if mant_bits > 0 {
+            (body as u32) & ((1u32 << mant_bits) - 1)
+        } else {
+            0
+        };
+        (neg, scale, mant_raw, mant_bits)
+    }
+
     /// Construct from raw 16-bit pattern.
     #[must_use]
     pub fn from_bits(bits: u16) -> Self {

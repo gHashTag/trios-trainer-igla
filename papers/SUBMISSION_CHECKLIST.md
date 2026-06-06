@@ -104,9 +104,9 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 73 passes across Loops 59-151
+- [ ] **Adversarial review**: 74 passes across Loops 59-152
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-73 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-74 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -206,9 +206,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 151 (2026-06-06)**
+- Checklist version: **Loop 152 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 151 commits on `f2-methodology`
+  Loop 152 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -360,9 +360,15 @@ If rejected:
   added 5-seed budget rationale + LCG-vs-RNG footnotes, made the
   encode-vs-train distinction explicit inside the "what the table
   says" paragraph (not only outside).
-- Loop 151: this update — closes 71st-pass deferred SEV-3 + SEV-4
+- Loop 151: closes 71st-pass deferred SEV-3 + SEV-4
   via shared grid config (`papers/scripts/format_microbench_grid_config.json`)
   + per-cell JSON schema validation. 73rd-pass folded inline:
   WARN-on-unknown-init in binary, filename↔content consistency
   check in gate, empty-grid-config FAIL, --grid --seed= behavior
   documented. Stage count unchanged at 41.
+- Loop 152: this update — Posit16 quire-bit accumulator landed at
+  `src/phi_numbers/posit16_quire.rs`. PositQuire + posit16_dot
+  public API; 19 unit tests; i128 fixed-point with 2⁻⁵⁶
+  resolution + 71 bits integer headroom (exact for up to ~32k
+  product accumulation). Total lib test count 735 → 754
+  (+19); inventory 830 → 849.

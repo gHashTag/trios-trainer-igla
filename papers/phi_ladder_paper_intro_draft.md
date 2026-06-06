@@ -136,7 +136,7 @@ assumption that nested-counterfactual identification requires —
 see §3.4 for the diagnostic and the total-effect reframe. The
 cross-stratum comparator (4) is applied at the (phi, zoo)
 total-effect level rather than per-PSE.
-The same 10 F2 binaries, 830 tests, and W3C-PROV preamble
+The same 10 F2 binaries, 849 tests, and W3C-PROV preamble
 discipline that back the companion paper's sandbox-scale RmsNorm
 finding are the substrate this paper runs on at champion scale.
 A reader who has not yet seen F2 should treat §3 of this paper
