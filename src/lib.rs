@@ -32,6 +32,7 @@ pub mod pipeline;
 pub mod race;
 pub mod seed_canon;
 pub mod train_loop;
+pub mod transformer;
 
 pub use config::TrainConfig;
 pub use train_loop::{run, RunOutcome};

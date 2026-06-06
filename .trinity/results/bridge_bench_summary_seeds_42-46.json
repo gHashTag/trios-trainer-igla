@@ -1,0 +1,39 @@
+{
+  "batch": 64,
+  "formats": [
+    "f32",
+    "gf16",
+    "posit16"
+  ],
+  "git_anchor_hint": "f2-methodology branch HEAD at run time",
+  "hidden": 64,
+  "lr": 0.5,
+  "mode": "summary",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "steps": 200,
+  "tool": "bridge_bench",
+  "val_bpb_by_format": {
+    "f32": {
+      "mean": 4.554817454672082,
+      "n_seeds": 5,
+      "std": 0.0170962049670177
+    },
+    "gf16": {
+      "mean": 4.584524558577972,
+      "n_seeds": 5,
+      "std": 0.01664608383373253
+    },
+    "posit16": {
+      "mean": 4.554817201768527,
+      "n_seeds": 5,
+      "std": 0.01708063106014019
+    }
+  },
+  "vocab": 128
+}

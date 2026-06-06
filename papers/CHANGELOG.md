@@ -107,23 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–155)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–156)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-seven** independent
-passes total across Loops 59–155 (50-pass milestone reached at
-Loop 127; passes 51–77 dispatched at Loops 128–155). The first
+caught before reviewers saw them. **Seventy-eight** independent
+passes total across Loops 59–156 (50-pass milestone reached at
+Loop 127; passes 51–78 dispatched at Loops 128–156). The first
 11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–155 extended the discipline to round-N
+submission flow; Loops 86–156 extended the discipline to round-N
 audits where each substantive patch is independently re-audited
 the loop after it lands. Detail on passes 1–11 below; passes
-12–77 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–155; per-pass detail lives in
+12–78 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–156; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–155 (49th pass flagged the un-widened grep covered only
-~35 of 77 passes; the two-pattern form widens reach).
+90–156 (49th pass flagged the un-widened grep covered only
+~35 of 78 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -264,7 +264,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–155)
+### 10. CI gate evolution (Loops 87–156)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +675,19 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 156** — bridge bench v2 hardening: STEPS 50 → 200
+  (4× longer training); default seeds expanded 3 → 5. New
+  budget puts the val BPB into the converged regime (≈ 4.55
+  vs the Loop 155 random-byte plateau at ≈ 6.78). The result:
+  Posit16 = f32 still indistinguishable (means agree to 4
+  decimals, rank flips arbitrarily); GF16's penalty is now
+  **+0.0297 BPB** = **1.7× per-seed std** and **≈ 3.9× MC SE
+  at N=5** — statistically meaningful at α = 0.05. The 77th-pass
+  SEV-2 #1 concern (N=3 borderline) is closed by Loop 156's
+  hardened budget. F2 §9.4.3 table and narrative updated; PDF
+  page counts shift 52/51/32 → no change (table is the same
+  shape; only the numbers and N moved). Footnote (iv) extended
+  to document why 50 steps was a random-byte plateau.
 - **Loop 155** — **bridge bench**: actual training-time comparison
   of f32 / GF16 / Posit16 quantization at the embedding gate on a
   one-layer bigram LM trained on byte-level `tiny_shakespeare` for
