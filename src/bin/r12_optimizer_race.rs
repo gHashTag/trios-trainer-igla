@@ -1,18 +1,23 @@
-//! R12: Muon vs AdamW — optimizer comparison at lr=0.004, seed=43
+//! R12: Muon vs AdamW — optimizer comparison using real NTP BPB
 //! Epic: #110 Parameter Golf
+//! TASK-5D: replaced quadratic MSE proxy with actual cross-entropy → BPB
 
+use trios_trainer::backward::cross_entropy_loss;
 use trios_trainer::optimizer::{AdamWCpu, MuonOptimizer, OptimizerKind};
+use trios_trainer::pipeline::{bpb_from_loss, forward_f32_embeddings, backward_f32_embeddings};
 
 const SEED: u64 = 43;
 const STEPS: usize = 6000;
-const N_PARAMS: usize = 384 * 384; // d_model=384, single weight matrix
+const VOCAB_SIZE: usize = 128;
+const D_MODEL: usize = 384;
+const CONTEXT_LEN: usize = 64;
+const N_PARAMS: usize = VOCAB_SIZE * D_MODEL;
 
 struct Config {
     name: &'static str,
     optimizer: OptimizerKind,
 }
 
-/// Minimal LCG for reproducible pseudo-random init
 fn lcg(state: &mut u64) -> f32 {
     *state = state
         .wrapping_mul(6364136223846793005)
@@ -20,42 +25,44 @@ fn lcg(state: &mut u64) -> f32 {
     ((*state >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
 }
 
-/// Dummy BPB proxy: measures how well optimizer minimizes quadratic loss
-/// Real BPB from NTP pipeline would replace this in TASK-5D
 fn run_trial(cfg: &mut Config, seed: u64) -> Vec<(usize, f64)> {
     let mut rng = seed;
 
-    // Xavier-init params
     let scale = (2.0_f32 / N_PARAMS as f32).sqrt();
-    let mut params: Vec<f32> = (0..N_PARAMS).map(|_| lcg(&mut rng) * scale).collect();
-
-    // Fixed target (random but reproducible)
-    let mut rng2 = seed.wrapping_add(999);
-    let target: Vec<f32> = (0..N_PARAMS).map(|_| lcg(&mut rng2) * scale).collect();
+    let mut embeddings: Vec<f32> = (0..N_PARAMS).map(|_| lcg(&mut rng) * scale).collect();
 
     let mut checkpoints = Vec::new();
 
     for step in 1..=STEPS {
-        // Gradient: d_loss/d_params = 2*(params - target) / N (MSE)
-        let grads: Vec<f32> = params
+        let input: Vec<f32> = (0..CONTEXT_LEN)
+            .map(|i| ((i.wrapping_add(step)) % VOCAB_SIZE) as f32)
+            .collect();
+        let targets: Vec<usize> = input
             .iter()
-            .zip(target.iter())
-            .map(|(p, t)| 2.0 * (p - t) / N_PARAMS as f32)
+            .map(|&v| ((v as usize) + 1) % VOCAB_SIZE)
             .collect();
 
-        let mse: f64 = params
-            .iter()
-            .zip(target.iter())
-            .map(|(p, t)| ((p - t) * (p - t)) as f64)
-            .sum::<f64>()
-            / N_PARAMS as f64;
-        let bpb_proxy = mse / std::f64::consts::LN_2;
+        let logits = forward_f32_embeddings(&embeddings, &input, VOCAB_SIZE, D_MODEL);
+        let loss = cross_entropy_loss(&logits, &targets);
+        let bpb = bpb_from_loss(loss as f64);
 
         if [1000, 2000, 3000, 4000, 5000, 6000].contains(&step) {
-            checkpoints.push((step, bpb_proxy));
+            checkpoints.push((step, bpb));
         }
 
-        cfg.optimizer.step(&mut params, &grads);
+        let mut grads = backward_f32_embeddings(
+            &embeddings, &logits, &input, &targets, VOCAB_SIZE, D_MODEL,
+        );
+
+        let max_norm = 1.0f32;
+        let l2_sq: f32 = grads.iter().map(|g| g * g).sum();
+        let l2 = l2_sq.sqrt();
+        if l2 > max_norm {
+            let scale = max_norm / l2;
+            grads.iter_mut().for_each(|g| *g *= scale);
+        }
+
+        cfg.optimizer.step(&mut embeddings, &grads);
     }
 
     checkpoints
@@ -79,7 +86,7 @@ fn main() {
         },
     ];
 
-    println!("## R12 RESULT: Muon vs AdamW @ lr=0.004, seed={}", SEED);
+    println!("## R12 RESULT: Muon vs AdamW @ lr=0.004, seed={} (real NTP BPB)", SEED);
     println!("| Config | BPB@1k | BPB@2k | BPB@3k | BPB@4k | BPB@5k | BPB@6k |");
     println!("|--------|--------|--------|--------|--------|--------|--------|");
 
@@ -98,7 +105,6 @@ fn main() {
         results.push((cfg.name, pts, wall));
     }
 
-    // Winner = lowest BPB@6000
     let winner = results
         .iter()
         .min_by(|a, b| {

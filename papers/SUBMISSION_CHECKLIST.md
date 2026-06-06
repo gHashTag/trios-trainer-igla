@@ -87,7 +87,7 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
   - [ ] (42/43) quire microbench freshness — §9.4.2 dot-product accuracy
         summary + 5 per-seed JSONs (2 regimes × 4 lengths × 5 seeds)
   - [ ] (43/43) bridge bench freshness — §9.4.3 sandbox training summary
-        + 3 per-seed JSONs (3 formats × 3 seeds = 9 cells)
+        + 5 per-seed JSONs (3 formats × 5 seeds = 15 cells)
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -108,9 +108,9 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 77 passes across Loops 59-155
+- [ ] **Adversarial review**: 78 passes across Loops 59-156
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-77 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-78 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -210,9 +210,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 155 (2026-06-06)**
+- Checklist version: **Loop 156 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 155 commits on `f2-methodology`
+  Loop 156 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -388,8 +388,13 @@ If rejected:
   alongside the §9.4.1 grid by a dedicated CI stage" — read as
   load-bearing; now framed explicitly as hygiene check on
   reproducibility provenance). PDF 50/49/31 → 50/50/31.
-- Loop 155: this update — new bridge_bench binary + F2 §9.4.3 (the
+- Loop 155: new bridge_bench binary + F2 §9.4.3 (the
   training-time bridge from §9.4.1's encode-time grid); stage count
   42 → 43 (`verify_bridge_bench_freshness.py`). Sandbox training of
   f32 / GF16 / Posit16 at the embed gate: f32 = Posit16 to four
   decimal places; GF16 +0.0067 BPB worse. PDF 50/50/31 → 51/51/32.
+- Loop 156: this update — bridge_bench hardened to STEPS=200,
+  N_seeds=5 to push past the random-byte plateau. New §9.4.3
+  numbers: f32 = Posit16 = 4.5548 ± 0.0171 BPB; GF16 = 4.5845
+  ± 0.0166 (+0.0297, 1.7× std, 3.9× MC SE at N=5 — statistically
+  meaningful). 77th-pass SEV-2 #1 closed.

@@ -30,7 +30,14 @@ use trios_trainer::phi_numbers::Posit16;
 
 const VOCAB: usize = 128;
 const HIDDEN: usize = 64;
-const STEPS: usize = 50;
+// Loop 156 hardening: STEPS 50 → 200 (4× longer training) to push the
+// GF16-vs-f32 delta above the per-seed std band. The 77th-pass SEV-2 #1
+// flagged that the 50-step delta (+0.0067 BPB) was 5× smaller than the
+// per-seed std (0.033), so the rank ordering was preserved but the
+// numerical delta was not statistically significant at N=3. The
+// extended run (200 steps × 5 seeds = 5× more SGD updates × 1.67× more
+// seeds) is the budget we use in §9.4.3 going forward.
+const STEPS: usize = 200;
 const BATCH: usize = 64;
 const LR: f32 = 0.5;
 const LN2: f32 = std::f32::consts::LN_2;
@@ -214,7 +221,10 @@ fn parse_seeds() -> Vec<u64> {
         }
     }
     if out.is_empty() {
-        out = vec![42, 43, 44];
+        // Loop 156: default to 5 seeds (was 3 at Loop 155). The 77th-pass
+        // SEV-2 #1 flagged the N=3 sample as borderline for statistical
+        // significance; N=5 with 200 steps is the hardened budget.
+        out = vec![42, 43, 44, 45, 46];
     }
     out
 }

@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **67**; distinct loops referenced: **61**.
+Total commits matched: **68**; distinct loops referenced: **62**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -66,4 +66,5 @@ Total commits matched: **67**; distinct loops referenced: **61**.
 | 152 | `bfd96f6` | feat(phi_numbers): Posit16 quire-bit accumulator for exact dot products (Loop 15… |
 | 153 | `c265090` | feat(race): quire_microbench + F2 §9.4.2 + 42nd CI stage + 75th adversarial pass… |
 | 154 | `39cd405` | discipline(f2): close 75th + 76th adversarial-pass deferred items (Loop 154, rou… |
-| 155 | `bf8636e` | feat(race): bridge_bench training comparison + F2 §9.4.3 + 43rd CI stage + 77th … |
+| 155 | `5f56dcb` | feat(race): bridge_bench training comparison + F2 §9.4.3 + 43rd CI stage + 77th … |
+| 156 | `afc71ba` | feat(race): bridge_bench v2 — N=5 seeds × 200 steps; F2 §9.4.3 hardened to stati… |

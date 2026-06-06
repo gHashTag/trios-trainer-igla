@@ -17,7 +17,7 @@ pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
 /// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
 pub const GATE_FINAL_SEEDS: &[u64] = &[47, 89, 123];
 
-const VOCAB: usize = 128;
+const VOCAB: usize = 1024;
 const DIM: usize = 64;
 const NUM_CTX: usize = 6;
 const NGRAM: usize = NUM_CTX + 2;
@@ -88,7 +88,36 @@ pub struct RunOutcome {
     pub seed: u64,
 }
 
+fn load_fineweb_bin(path: &str) -> Vec<usize> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path).unwrap_or_else(|e| {
+        panic!("open {}: {}", path, e);
+    });
+    let mut header = [0u8; 1024];
+    file.read_exact(&mut header).expect("read header");
+    let magic = u32::from_le_bytes([header[0], header[1], header[2], header[3]]);
+    let version = u32::from_le_bytes([header[4], header[5], header[6], header[7]]);
+    let num_tokens = u64::from_le_bytes([
+        header[8], header[9], header[10], header[11],
+        header[12], header[13], header[14], header[15],
+    ]);
+    eprintln!("FineWeb bin: path={} magic={} version={} num_tokens={}", path, magic, version, num_tokens);
+    assert_eq!(magic, 20240520, "FineWeb magic mismatch");
+    assert_eq!(version, 1, "FineWeb version mismatch");
+    let mut tokens = vec![0u16; num_tokens as usize];
+    let mut buf = vec![0u8; num_tokens as usize * 2];
+    file.read_exact(&mut buf).expect("read tokens");
+    for i in 0..tokens.len() {
+        tokens[i] = u16::from_le_bytes([buf[i * 2], buf[i * 2 + 1]]);
+    }
+    tokens.into_iter().map(|t| (t as usize).min(VOCAB - 1)).collect()
+}
+
 fn load_data(path: &str) -> Vec<usize> {
+    if path.ends_with(".bin") && std::path::Path::new(path).exists() {
+        return load_fineweb_bin(path);
+    }
+
     if std::path::Path::new(path).exists() {
         let raw = std::fs::read(path).unwrap_or_else(|e| {
             panic!("Failed to read {}: {}", path, e);

@@ -1,8 +1,8 @@
 # Adversarial review log — F2 methodology paper
 
-**Update (Loop 155)**: this file documents the **first 18 passes
+**Update (Loop 156)**: this file documents the **first 18 passes
 (Loops 59-94) in detail**. The discipline continued across Loops
-95-155 to total **77 adversarial passes**; the post-94 passes
+95-156 to total **78 adversarial passes**; the post-94 passes
 are tracked in `papers/CHANGELOG.md` §7 (Reviewer-screen feedback
 loop) and §7.5 + §10 (per-loop CI gate evolution arcs). See also
 per-loop commit messages on the `f2-methodology` branch
@@ -24,7 +24,7 @@ review pattern itself was structured.
 
 ## Headline statistics
 
-- **77 adversarial passes total** (Loops 59-155); detail below for
+- **78 adversarial passes total** (Loops 59-156); detail below for
   passes 1-18 covering Loops 59-94.
 - **18 adversarial passes (Loops 59-94)** documented in this file
 - **17 caught at least one issue** (Loops 59-93)
