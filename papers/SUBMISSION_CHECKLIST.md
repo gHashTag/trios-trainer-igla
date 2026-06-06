@@ -19,71 +19,73 @@ placeholder below).
 
 Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
 
-- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **41/41 PASS**
-  - [ ] (1/41) cross-reference audit (F2/main paper) — 0 dangling refs
-  - [ ] (2/41) metadata verifier — title/tests/bib/figures parity
-  - [ ] (3/41) no fabricated SHAs — `git cat-file -e` per SHA-like token
-  - [ ] (4/41) markdown lint — 0 SEV-≥4 issues
-  - [ ] (5/41) tables vs CSVs — 6 tables × 119 numeric assertions verified
-  - [ ] (6/41) formulas vs tables — 4 algebraic identities (closure +
+- [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **42/42 PASS**
+  - [ ] (1/42) cross-reference audit (F2/main paper) — 0 dangling refs
+  - [ ] (2/42) metadata verifier — title/tests/bib/figures parity
+  - [ ] (3/42) no fabricated SHAs — `git cat-file -e` per SHA-like token
+  - [ ] (4/42) markdown lint — 0 SEV-≥4 issues
+  - [ ] (5/42) tables vs CSVs — 6 tables × 119 numeric assertions verified
+  - [ ] (6/42) formulas vs tables — 4 algebraic identities (closure +
         Γ_tip bullets + headline-table + #1021 arithmetic) — 44 assertions
-  - [ ] (7/41) label consistency — 7 deprecated-term rules, 0 leaks
-  - [ ] (8/41) preamble per producer — static + runtime W3C-PROV gate
-  - [ ] (9/41) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
-  - [ ] (10/41) run completeness — 93-CSV inventory check (vacuous pre-sweep)
-  - [ ] (11/41) report consistency — 6 reports (2 full + 4 stub coverage)
-  - [ ] (12/41) stage count consistency — 5 counts + 2 decompositions + 1 derived
-  - [ ] (13/41) cross-paper consistency — 11 claims (1 EXACT + 2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN)
-  - [ ] (14/41) cross-paper gate meta-test — 14 synthetic-break tests PASS (5 cross-paper classes + burn-down + alias + doc-vs-extracted + changelog + stage-count + tier parity + trajectory monotonicity)
-  - [ ] (15/41) f2_pairwise_perm smoke — end-to-end binary test + prov check
-  - [ ] (16/41) #1021 cross-ref audit — informational
-  - [ ] (17/41) #1021 markdown lint — 0 SEV-≥4 issues
-  - [ ] (18/41) test inventory regen — `cargo test --list` re-emits 830
-  - [ ] (19/41) xelatex 3-variant compile — non-anon, anon, real TMLR class
-  - [ ] (20/41) figure regen — all 6 figures rebuild from CSVs
-  - [ ] (21/41) supplementary pack — zip builds with 3-stage pre-flight
-  - [ ] (22/41) submission readiness — §1 ↔ STAGES alignment gate
+  - [ ] (7/42) label consistency — 7 deprecated-term rules, 0 leaks
+  - [ ] (8/42) preamble per producer — static + runtime W3C-PROV gate
+  - [ ] (9/42) provenance gate — `f2_provenance_check` on cell + pairwise CSVs
+  - [ ] (10/42) run completeness — 93-CSV inventory check (vacuous pre-sweep)
+  - [ ] (11/42) report consistency — 6 reports (2 full + 4 stub coverage)
+  - [ ] (12/42) stage count consistency — 5 counts + 2 decompositions + 1 derived
+  - [ ] (13/42) cross-paper consistency — 11 claims (1 EXACT + 2 SCOPED + 1 ACKN + 4 RELATIONAL + 3 EXACT_PIN)
+  - [ ] (14/42) cross-paper gate meta-test — 14 synthetic-break tests PASS (5 cross-paper classes + burn-down + alias + doc-vs-extracted + changelog + stage-count + tier parity + trajectory monotonicity)
+  - [ ] (15/42) f2_pairwise_perm smoke — end-to-end binary test + prov check
+  - [ ] (16/42) #1021 cross-ref audit — informational
+  - [ ] (17/42) #1021 markdown lint — 0 SEV-≥4 issues
+  - [ ] (18/42) test inventory regen — `cargo test --list` re-emits 849
+  - [ ] (19/42) xelatex 3-variant compile — non-anon, anon, real TMLR class
+  - [ ] (20/42) figure regen — all 6 figures rebuild from CSVs
+  - [ ] (21/42) supplementary pack — zip builds with 3-stage pre-flight
+  - [ ] (22/42) submission readiness — §1 ↔ STAGES alignment gate
         (count + sub-bullet renumbering + per-position nearest-neighbor)
-  - [ ] (23/41) changelog consistency — CHANGELOG §7 ↔ §2 ↔
+  - [ ] (23/42) changelog consistency — CHANGELOG §7 ↔ §2 ↔
         ADVERSARIAL_REVIEW_LOG agree on (pass_count, last_loop)
-  - [ ] (24/41) anonymizer completeness — bare `Loop N` anchor count
+  - [ ] (24/42) anonymizer completeness — bare `Loop N` anchor count
         per-file ≤ baseline (legacy debt ratchet, 24 at Loop 144)
-  - [ ] (25/41) cardinality arithmetic — N items (a+b+...) sum-equality
+  - [ ] (25/42) cardinality arithmetic — N items (a+b+...) sum-equality
         with frozen-historical-entry distinction
-  - [ ] (26/41) generator consistency — regen_changelog_section7.py
+  - [ ] (26/42) generator consistency — regen_changelog_section7.py
         output agrees with §7 lead commit floor + range terminal
-  - [ ] (27/41) class registry binding — §1 (13/M) class-class
+  - [ ] (27/42) class registry binding — §1 (13/M) class-class
         labels + counts agree with live `_CLAIMS` lists in
         verify_cross_paper_consistency.py
-  - [ ] (28/41) documented vs extracted — §1 sub-bullet description
+  - [ ] (28/42) documented vs extracted — §1 sub-bullet description
         metadata (e.g., '6 reports (2 full + 4 stub)') agrees with
         live verifier-source state
-  - [ ] (29/41) burn-down history — FALLBACK_BASELINES breadcrumb
+  - [ ] (29/42) burn-down history — FALLBACK_BASELINES breadcrumb
         most-recent (loop, A+B=C) tuple agrees with live sidecar
-  - [ ] (30/41) alias round-trip — CLASS_LABEL_ALIASES bijection
+  - [ ] (30/42) alias round-trip — CLASS_LABEL_ALIASES bijection
         (every alias → class; every class ← ≥1 alias)
-  - [ ] (31/41) module cache — import_gate cache contract (cache=True
+  - [ ] (31/42) module cache — import_gate cache contract (cache=True
         same instance; cache=False distinct; no poisoning)
-  - [ ] (32/41) floating loop anchors — "as of Loop N" anchors track
+  - [ ] (32/42) floating loop anchors — "as of Loop N" anchors track
         §7 lead within 1-loop in-flight tolerance
-  - [ ] (33/41) anchor loop coverage — every §10 Loop-N entry has
+  - [ ] (33/42) anchor loop coverage — every §10 Loop-N entry has
         ≥1 matching commit on HEAD (most-recent exempt)
-  - [ ] (34/41) dependency graph — inter-gate import topology is
+  - [ ] (34/42) dependency graph — inter-gate import topology is
         acyclic + respects STAGES execution order
-  - [ ] (35/41) tier classification — STAGES/STAGE_TIERS parity + tier
+  - [ ] (35/42) tier classification — STAGES/STAGE_TIERS parity + tier
         names ∈ {submission, discipline}
-  - [ ] (36/41) burn-down trajectory — FALLBACK_BASELINES breadcrumb
+  - [ ] (36/42) burn-down trajectory — FALLBACK_BASELINES breadcrumb
         loop-monotonic + total non-increasing
-  - [ ] (37/41) §10 authority — every `verify_*.py` STAGES gate has a
+  - [ ] (37/42) §10 authority — every `verify_*.py` STAGES gate has a
         matching CHANGELOG §10 entry (legacy gates exempted)
-  - [ ] (38/41) guide drift — GATE_AUTHORING_GUIDE.md and live code
+  - [ ] (38/42) guide drift — GATE_AUTHORING_GUIDE.md and live code
         agree on cited filenames + breadcrumb label-class regex
-  - [ ] (39/41) deadline freshness — every dated AOE deadline in §4
+  - [ ] (39/42) deadline freshness — every dated AOE deadline in §4
         is today-or-future (or annotated as historical/passed)
-  - [ ] (40/41) tex anonymization — anonymized .tex artifact clean of
+  - [ ] (40/42) tex anonymization — anonymized .tex artifact clean of
         bare Loop-N, branch, PII identifiers, internal-email leaks, SHA
-  - [ ] (41/41) format microbench freshness — grid summary JSON exists,
+  - [ ] (41/42) format microbench freshness — grid summary JSON exists,
         schema OK, 60 per-cell JSONs present (3 inits × 4 d_models × 5 seeds)
+  - [ ] (42/42) quire microbench freshness — §9.4.2 dot-product accuracy
+        summary + 5 per-seed JSONs (2 regimes × 4 lengths × 5 seeds)
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -94,19 +96,19 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
 ## 2. Paper state
 
 - [ ] Anchor commit pinned (see top of file).
-- [ ] Non-anonymized PDF: **48 pages**, ~226 KB
+- [ ] Non-anonymized PDF: **50 pages**, ~232 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
-- [ ] Anonymized PDF: **47 pages**, ~224 KB
+- [ ] Anonymized PDF: **49 pages**, ~231 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
-- [ ] Real-TMLR-class PDF: **30 pages**, ~208 KB
+- [ ] Real-TMLR-class PDF: **31 pages**, ~215 KB
       (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
 - [ ] Supplementary zip: **45 files**, ~1.25 MB
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 74 passes across Loops 59-152
+- [ ] **Adversarial review**: 75 passes across Loops 59-153
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-74 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-75 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -206,9 +208,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 152 (2026-06-06)**
+- Checklist version: **Loop 153 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 152 commits on `f2-methodology`
+  Loop 153 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -366,9 +368,14 @@ If rejected:
   WARN-on-unknown-init in binary, filename↔content consistency
   check in gate, empty-grid-config FAIL, --grid --seed= behavior
   documented. Stage count unchanged at 41.
-- Loop 152: this update — Posit16 quire-bit accumulator landed at
+- Loop 152: Posit16 quire-bit accumulator landed at
   `src/phi_numbers/posit16_quire.rs`. PositQuire + posit16_dot
   public API; 19 unit tests; i128 fixed-point with 2⁻⁵⁶
   resolution + 71 bits integer headroom (exact for up to ~32k
   product accumulation). Total lib test count 735 → 754
   (+19); inventory 830 → 849.
+- Loop 153: this update — F2 §9.4.2 new sub-subsection with quire-
+  microbench regime map (xavier × cancellation × {64,256,1024,4096});
+  stage count 41 → 42 (`verify_quire_microbench_freshness.py`).
+  Honest finding: quire ≈ f32-accum at F2's scale; both ~10× better
+  than naive Posit16 sum. PDF page counts 48/47/30 → 49/48/31.

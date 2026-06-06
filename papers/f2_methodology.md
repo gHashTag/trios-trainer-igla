@@ -1576,6 +1576,86 @@ distributions depends on the bulk, not the tail. Reproducibility
 is the load-bearing property, and LCG seeding provides it
 bit-exactly across machines.
 
+#### 9.4.2 Quire-bit accumulator: dot-product accuracy regime map
+
+§9.4.1 measured per-value encode-time error. Matmul, however, is the
+operation that dominates training-time compute, and matmul amounts to
+many small dot products summed together. The Posit standards reference
+(Gustafson & Yonemoto, 2017) defines a wide *quire-bit accumulator*
+that holds the running sum of products exactly until rounded back to
+the storage format. The F2 companion crate ships a Posit16 quire
+(`src/phi_numbers/posit16_quire.rs`) implemented as an i128 fixed-point
+register with `2^-56` resolution; it accumulates up to ≈ `2^15` Posit16
+products of maximal magnitude before any precision is lost. To
+characterize *when* the quire matters, we compare three dot-product
+strategies against an f64 ground-truth dot product on the same
+Posit16 inputs:
+
+  1. **Naive Posit16 sum**: every partial sum is re-quantized to
+     Posit16 between additions — worst-case path for any low-precision
+     format.
+  2. **f32 accumulator**: products and partial sums kept in f32; the
+     standard "compute in f32, store in low precision" pattern.
+  3. **Quire (PositQuire)**: products held exactly in the i128
+     accumulator; rounding occurs only at the final `to_posit16` call.
+
+Two regimes are sweeped at vector length L ∈ {64, 256, 1024, 4096}
+with 5 seeds:
+
+  - **xavier**: independent Posit16 values drawn from a Xavier-init
+    distribution at d_model = 384 (matches §9.4.1).
+  - **structured**: alternating-sign random `a[i]` paired with a
+    fixed-magnitude alternating-sign `b[i] = ±0.05`, a regime that
+    differs in *structure* from the i.i.d. xavier case (75th-pass
+    SEV-1 closure: the structure does NOT produce a sum-to-zero
+    cancellation; the label "cancellation" was retained internally
+    for the binary's regime tag but is not load-bearing for any
+    paper claim).
+
+Relative error vs f64 ground truth (mean ± sample-std, 5 seeds):
+
+| regime       | L     | naive Posit16 sum | f32 accumulator | PositQuire |
+|--------------|-------|-------------------|-----------------|------------|
+| `xavier`     | 64    | 6.5e−3 ± 7.1e−3   | 1.2e−3 ± 1.2e−3 | 1.2e−3 ± 1.2e−3 |
+| `xavier`     | 256   | 9.0e−3 ± 1.0e−2   | 4.2e−4 ± 2.4e−4 | 4.2e−4 ± 2.4e−4 |
+| `xavier`     | 1024  | 1.1e−2 ± 7.1e−3   | 3.2e−4 ± 3.0e−4 | 3.2e−4 ± 3.0e−4 |
+| `xavier`     | 4096  | 5.4e−3 ± 8.3e−3   | 1.9e−4 ± 4.1e−5 | 1.9e−4 ± 4.1e−5 |
+| `structured` | 64    | 1.2e−3 ± 1.1e−3   | 1.1e−4 ± 7.1e−5 | 1.1e−4 ± 7.1e−5 |
+| `structured` | 256   | 9.2e−4 ± 6.4e−4   | 6.3e−5 ± 2.5e−5 | 6.3e−5 ± 2.5e−5 |
+| `structured` | 1024  | 6.1e−4 ± 4.4e−4   | 6.2e−5 ± 3.7e−5 | 6.2e−5 ± 3.7e−5 |
+| `structured` | 4096  | 1.5e−2 ± 2.2e−3   | 6.6e−5 ± 6.2e−5 | 6.6e−5 ± 6.2e−5 |
+
+**What the regime map says**: across every cell, naive Posit16
+accumulation is between **5× and 230× worse** than either f32 or
+the quire (the ratio swings substantially across cells; the
+worst-case `structured` L=4096 cell has the largest ratio). At the
+F2 §9.4.1 scale (L ≤ 4096, Xavier-init magnitudes, no extreme
+cancellation), **the quire and the f32 accumulator are
+indistinguishable to four significant figures**. The quire's exact-
+integer-sum property is theoretically strictly better than f32, but
+at neural-network-relevant dot-product lengths the f32 mantissa
+(24 bits) has ample headroom over Posit16's storage precision
+(≈ 11 bits at unity magnitude); the round-back to Posit16 is the
+dominant error source either way. The quire therefore becomes
+*methodologically essential* (rather than merely *theoretically
+superior*) only at extreme scales (L ≫ `10^6`, where the f32 mantissa
+fills with rounding noise) or in adversarially cancellation-heavy
+workloads.
+
+**Implication for the F2 §9.4 format-zoo arm**: the f32-accumulator
+pattern (i.e., the standard "shadow-weight" recipe used in every
+modern mixed-precision trainer including the MXFP8 and NVFP4
+references cited above) is a *fair* baseline for Posit16 storage in
+the F2 regime — neither the quire nor the f32 path imposes an
+artificial precision penalty on the format-zoo comparison. The
+encode-time table in §9.4.1 therefore extrapolates honestly to the
+training-time setting.
+
+The benchmark binary
+(`src/bin/quire_microbench`) writes per-seed JSON and a regime-map
+summary to `.trinity/results/quire_microbench_*.json`, gated for
+freshness alongside the §9.4.1 grid by a dedicated CI stage.
+
 ---
 
 ## 10. Conclusion + venue calibration
@@ -1864,10 +1944,10 @@ dependency; we do not stub any of them.
   all six paper figures. **Cold: 3–8 min** (release-profile build
   of two F2 bins).
 - **`papers/scripts/run_all_checks.sh`** (~60 s warm; **15–30 min
-  cold**) — single-shot CI gate. Currently chains **41 stages**
+  cold**) — single-shot CI gate. Currently chains **42 stages**
   on disk. Of the eight scripts catalogued above, seven appear as
   individual stages (`run_all_checks.sh` itself is the orchestrator,
-  not a stage of itself); the **other thirty-four stages are gates
+  not a stage of itself); the **other thirty-five stages are gates
   introduced after the original 8-script catalogue crystallized,
   during the gate-evolution arc documented in CHANGELOG §10**:
   `verify_tables_against_csv.py`, `verify_formulas_vs_tables.py`,
@@ -1925,10 +2005,12 @@ dependency; we do not stub any of them.
   grid summary JSON in `.trinity/results/format_microbench_grid/`
   exists with the expected schema and all 60 per-cell JSONs are
   present — gates the §9.4 format-zoo headline table against
-  silent regeneration regressions).
+  silent regeneration regressions), and the quire-microbench-
+  freshness verifier (asserts the §9.4.2 dot-product regime-map
+  summary and per-seed JSONs are present with the expected schema).
   Exits 0 only if every stage passes. The catalogue above is the
   original 8 the paper relied on at draft time;
-  the additional 34 are documented in the follow-up paper's
+  the additional 35 are documented in the follow-up paper's
   §5.4. Per-introduction history (which loop added which gate)
   is enumerated in `papers/CHANGELOG.md` §10. (Earlier drafts
   wrote "seven catalogued + ten additional",
