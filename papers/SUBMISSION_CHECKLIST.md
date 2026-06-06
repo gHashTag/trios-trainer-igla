@@ -104,9 +104,9 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 72 passes across Loops 59-150
+- [ ] **Adversarial review**: 73 passes across Loops 59-151
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-72 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-73 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -206,9 +206,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 150 (2026-06-06)**
+- Checklist version: **Loop 151 (2026-06-06)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 150 commits on `f2-methodology`
+  Loop 151 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -354,9 +354,15 @@ If rejected:
   (sample std, not SEM; MC error ≈ 0.5× shown). Headline:
   Posit16 dominates GF16 in every grid cell (−70.6% to −88.6%
   rel L2, std ≤ 0.26%).
-- Loop 150: this update — F2 §9.4.1 added as new sub-subsection
+- Loop 150: F2 §9.4.1 added as new sub-subsection
   with the 4×3 grid table inline. PDF page counts shift
   46/46/29 → 48/47/30. 72nd-pass folded MC-error claim ambiguity,
   added 5-seed budget rationale + LCG-vs-RNG footnotes, made the
   encode-vs-train distinction explicit inside the "what the table
   says" paragraph (not only outside).
+- Loop 151: this update — closes 71st-pass deferred SEV-3 + SEV-4
+  via shared grid config (`papers/scripts/format_microbench_grid_config.json`)
+  + per-cell JSON schema validation. 73rd-pass folded inline:
+  WARN-on-unknown-init in binary, filename↔content consistency
+  check in gate, empty-grid-config FAIL, --grid --seed= behavior
+  documented. Stage count unchanged at 41.

@@ -24,7 +24,14 @@
 //!
 //! Usage:
 //!   cargo run --release --bin format_microbench -- [--seed=42]
-//!   cargo run --release --bin format_microbench -- --grid --seeds=42,43,44,45,46
+//!   cargo run --release --bin format_microbench -- --grid [--seeds=42,43,44,45,46]
+//!
+//! In grid mode, omitting `--seeds=` uses the seeds listed in the shared
+//! config (`papers/scripts/format_microbench_grid_config.json`). An explicit
+//! `--seed=N` or `--seeds=...` overrides for ad-hoc subset runs (e.g.,
+//! `--grid --seed=42` runs only seed 42 — useful for quick smoke-tests
+//! but does NOT regenerate the full committed grid). 73rd-pass SEV-5
+//! documentation.
 
 use std::fs;
 use std::io::Write;
@@ -243,6 +250,7 @@ fn load_real_data_bytes() -> Vec<f32> {
 struct Args {
     grid: bool,
     seeds: Vec<u64>,
+    seeds_explicit: bool,
 }
 
 fn parse_args() -> Args {
@@ -254,6 +262,7 @@ fn parse_args() -> Args {
         } else if let Some(v) = a.strip_prefix("--seed=") {
             if let Ok(s) = v.parse::<u64>() {
                 out.seeds.push(s);
+                out.seeds_explicit = true;
             }
         } else if let Some(v) = a.strip_prefix("--seeds=") {
             for tok in v.split(',') {
@@ -261,10 +270,8 @@ fn parse_args() -> Args {
                     out.seeds.push(s);
                 }
             }
+            out.seeds_explicit = true;
         }
-    }
-    if out.seeds.is_empty() {
-        out.seeds.push(42);
     }
     out
 }
@@ -372,9 +379,114 @@ fn single_mode(seed: u64) {
     println!("\n# Written: {result_path}");
 }
 
-fn grid_mode(seeds: &[u64]) {
-    let d_models = [128_usize, 384, 768, 1024];
-    let inits = [Init::Xavier, Init::He, Init::Normal002];
+/// Load the shared grid config from
+/// `papers/scripts/format_microbench_grid_config.json` and return
+/// `(d_models, inits, seeds_from_config)`. If the file is missing or
+/// malformed, fall back to the documented defaults so the binary still
+/// produces a valid grid (Loop 151 A: the config is the *contract* between
+/// the binary and the freshness gate, not a hard runtime dependency).
+fn load_grid_config(
+    seeds_override: &[u64],
+) -> (Vec<usize>, Vec<Init>, Vec<u64>) {
+    let config_path = Path::new("papers/scripts/format_microbench_grid_config.json");
+    let default_d_models: Vec<usize> = vec![128, 384, 768, 1024];
+    let default_inits: Vec<Init> = vec![Init::Xavier, Init::He, Init::Normal002];
+    let default_seeds: Vec<u64> = vec![42, 43, 44, 45, 46];
+
+    let text = match fs::read_to_string(config_path) {
+        Ok(t) => t,
+        Err(_) => {
+            eprintln!(
+                "# WARN  {} missing — using defaults",
+                config_path.display()
+            );
+            return (
+                default_d_models,
+                default_inits,
+                if seeds_override.is_empty() {
+                    default_seeds
+                } else {
+                    seeds_override.to_vec()
+                },
+            );
+        }
+    };
+
+    let val: serde_json::Value = match serde_json::from_str(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("# WARN  {} unparseable ({e}); using defaults",
+                      config_path.display());
+            return (
+                default_d_models,
+                default_inits,
+                if seeds_override.is_empty() {
+                    default_seeds
+                } else {
+                    seeds_override.to_vec()
+                },
+            );
+        }
+    };
+
+    let d_models: Vec<usize> = val["d_models"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64().map(|u| u as usize))
+                .collect()
+        })
+        .unwrap_or(default_d_models);
+    // 73rd-pass SEV-1 closure: emit a WARN for any init string in the
+    // config that doesn't map to a known Init variant, instead of silently
+    // dropping it. Silent dropout would leave the freshness gate expecting
+    // cells the binary never produced.
+    let inits: Vec<Init> = val["inits"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| {
+                    let s = v.as_str()?;
+                    let parsed = Init::from_str(s);
+                    if parsed.is_none() {
+                        eprintln!(
+                            "# WARN  grid config init `{}` not recognized; \
+                             dropping (known: xavier, he, normal_002 | \
+                             normal)", s
+                        );
+                    }
+                    parsed
+                })
+                .collect()
+        })
+        .unwrap_or(default_inits);
+    let cfg_seeds: Vec<u64> = val["seeds"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_u64())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    // CLI seeds override config seeds when provided; this lets a user run a
+    // subset for quick iteration without editing the config.
+    let seeds = if !seeds_override.is_empty() {
+        seeds_override.to_vec()
+    } else if !cfg_seeds.is_empty() {
+        cfg_seeds
+    } else {
+        default_seeds
+    };
+
+    (d_models, inits, seeds)
+}
+
+fn grid_mode(seeds_cli: &[u64]) {
+    let (d_models_vec, inits_vec, seeds_eff) = load_grid_config(seeds_cli);
+    let d_models = d_models_vec.as_slice();
+    let inits = inits_vec.as_slice();
+    let seeds = seeds_eff.as_slice();
     let n_cells = d_models.len() * inits.len() * seeds.len();
     println!(
         "# format_microbench --grid: {} cells ({} d_model × {} init × {} seeds)",
@@ -390,8 +502,8 @@ fn grid_mode(seeds: &[u64]) {
     let mut agg: std::collections::BTreeMap<(String, usize), Vec<f64>> = std::collections::BTreeMap::new();
 
     for &seed in seeds {
-        for &d in &d_models {
-            for &init in &inits {
+        for &d in d_models {
+            for &init in inits {
                 let embed = embed_init(init, seed, d);
                 let cell = run_one(init, seed, d, &embed);
                 let posit_vs_gf16 = cell["headline"]["delta_posit16_vs_gf16"]
@@ -424,13 +536,17 @@ fn grid_mode(seeds: &[u64]) {
     println!();
 
     // Summary table.
-    println!("\n## Δ(posit16 vs gf16) by (init, d_model) — % rel L2, 5-seed mean ± std");
-    println!("              d=128       d=384       d=768       d=1024");
+    println!("\n## Δ(posit16 vs gf16) by (init, d_model) — % rel L2, {}-seed mean ± std", seeds.len());
+    let mut header = String::from("              ");
+    for d in d_models {
+        header.push_str(&format!("  d={:<6}", d));
+    }
+    println!("{header}");
     let mut summary_rows = serde_json::Map::new();
-    for init in &inits {
+    for init in inits {
         let mut row = format!("  {:10}", init.slug());
         let mut row_obj = serde_json::Map::new();
-        for d in d_models {
+        for &d in d_models {
             let key = (init.slug().to_string(), d);
             let v = agg.get(&key).cloned().unwrap_or_default();
             let n = v.len() as f64;
@@ -483,8 +599,20 @@ fn grid_mode(seeds: &[u64]) {
 fn main() {
     let args = parse_args();
     if args.grid {
-        grid_mode(&args.seeds);
+        // In grid mode: explicit --seeds wins; otherwise fall back to the
+        // config's seeds (Loop 151 A — config is the single source of truth).
+        let cli_seeds = if args.seeds_explicit {
+            args.seeds.clone()
+        } else {
+            Vec::new()
+        };
+        grid_mode(&cli_seeds);
     } else {
-        single_mode(args.seeds[0]);
+        let seed = if args.seeds_explicit && !args.seeds.is_empty() {
+            args.seeds[0]
+        } else {
+            42
+        };
+        single_mode(seed);
     }
 }

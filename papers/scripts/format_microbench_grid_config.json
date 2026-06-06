@@ -1,0 +1,8 @@
+{
+  "_doc": "Single source of truth for the format-microbench grid. Read by BOTH src/bin/format_microbench.rs (when building the grid) AND papers/scripts/verify_format_microbench_freshness.py (when checking that every expected cell exists). Adding a d_model or init here will (a) make the next grid run produce new cells and (b) make the freshness gate FAIL until those cells exist on disk. Loop 151 A closure of 71st-pass SEV-3.",
+  "schema_version": 1,
+  "d_models": [128, 384, 768, 1024],
+  "inits": ["xavier", "he", "normal_002"],
+  "seeds": [42, 43, 44, 45, 46],
+  "vocab": 128
+}
