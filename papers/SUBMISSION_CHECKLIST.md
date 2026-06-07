@@ -17,7 +17,22 @@ placeholder below).
 
 ## 1. CI gates (all must PASS)
 
-Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
+Run from the crate root. Total wall: ~30–60 s warm; **~3:30 min cold**
+(measured Loop 157 rehearsal on M-series macOS — full clone + full
+pipeline including cargo build + xelatex compile + figure regen +
+supplementary pack). The earlier 15-30 min cold-clone estimate was
+based on the slower CI runner of `paper-checks.yml`; local cold runs
+are substantially faster.
+
+**Clone command** — use full clone, NOT `--depth N`:
+```bash
+git clone --branch f2-methodology git@github.com:gHashTag/trios-trainer-igla.git
+```
+Shallow clones break three gates (no-fabricated-SHAs / generator-
+consistency / anchor-loop-coverage), all of which depend on full git
+history. The orphan SHAs referenced by anonymize_paper.py /
+CHANGELOG.md / data/loop49/README.md are preserved across operations
+by lightweight `historical/<sha7>` tags (Loop 157 hardening).
 
 - [ ] `papers/scripts/run_all_checks.sh` — exits 0 with **43/43 PASS**
   - [ ] (1/43) cross-reference audit (F2/main paper) — 0 dangling refs
@@ -108,7 +123,7 @@ Run from the crate root. Total wall: ~30–60 s warm; ~15-30 min cold.
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 78 passes across Loops 59-156
+- [ ] **Adversarial review**: 78 passes across Loops 59-157
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
       passes 19-78 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
@@ -210,9 +225,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 156 (2026-06-06)**
+- Checklist version: **Loop 157 (2026-06-07)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 156 commits on `f2-methodology`
+  Loop 157 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -393,8 +408,12 @@ If rejected:
   42 → 43 (`verify_bridge_bench_freshness.py`). Sandbox training of
   f32 / GF16 / Posit16 at the embed gate: f32 = Posit16 to four
   decimal places; GF16 +0.0067 BPB worse. PDF 50/50/31 → 51/51/32.
-- Loop 156: this update — bridge_bench hardened to STEPS=200,
+- Loop 156: bridge_bench hardened to STEPS=200,
   N_seeds=5 to push past the random-byte plateau. New §9.4.3
   numbers: f32 = Posit16 = 4.5548 ± 0.0171 BPB; GF16 = 4.5845
   ± 0.0166 (+0.0297, 1.7× std, 3.9× MC SE at N=5 — statistically
   meaningful). 77th-pass SEV-2 #1 closed.
+- Loop 157: this update — cold-clone submission-day rehearsal.
+  Documented 3:30 min cold time + full-clone requirement (shallow
+  breaks 3 gates) + 10 orphan SHAs hardened via `historical/<sha7>`
+  lightweight tags pushed to remote. Stage count unchanged at 43.

@@ -107,22 +107,23 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–156)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–157)
 
 Independent adversarial reviews surfaced load-bearing issues
 caught before reviewers saw them. **Seventy-eight** independent
-passes total across Loops 59–156 (50-pass milestone reached at
-Loop 127; passes 51–78 dispatched at Loops 128–156). The first
-11 (Loops 59, 61, 75–85) targeted the original paper drafts and
-submission flow; Loops 86–156 extended the discipline to round-N
-audits where each substantive patch is independently re-audited
-the loop after it lands. Detail on passes 1–11 below; passes
-12–78 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–156; per-pass detail lives in
+passes total across Loops 59–157 (50-pass milestone reached at
+Loop 127; passes 51–78 dispatched at Loops 128–156; Loop 157 was
+a cold-clone rehearsal with no adversarial pass dispatched).
+The first 11 (Loops 59, 61, 75–85) targeted the original paper
+drafts and submission flow; Loops 86–157 extended the discipline
+to round-N audits where each substantive patch is independently
+re-audited the loop after it lands. Detail on passes 1–11 below;
+passes 12–78 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–157; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–156 (49th pass flagged the un-widened grep covered only
+90–157 (49th pass flagged the un-widened grep covered only
 ~35 of 78 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
@@ -264,7 +265,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–156)
+### 10. CI gate evolution (Loops 87–157)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -675,6 +676,25 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 157** — cold-clone submission-day rehearsal. Three
+  findings, all surfaced + closed in the same loop:
+   1. **Shallow clone breaks 3 gates** (`--depth 1` truncates
+      history; the no-fabricated-SHAs / generator-consistency /
+      anchor-loop-coverage gates all need full history). Documented
+      in SUBMISSION_CHECKLIST.md §1: use full `git clone`.
+   2. **Cold-clone wall time** measured at ~3:30 min on M-series
+      macOS (8s clone + 3:28 pipeline-with-cargo-build). The
+      earlier 15-30 min estimate was the slower CI runner.
+      Documented in SUBMISSION_CHECKLIST.md §1.
+   3. **10 orphan SHAs** referenced in CHANGELOG.md / anonymize_paper.py
+      / body.tex / data/loop49/README.md but not reachable from
+      f2-methodology branch (5367bde, 05f37cd, 19d032e, 2969bdf,
+      76048b5, a092d5e, ae48fd5, ccbf52b, 6ac812d, afc71ba). Closed
+      by adding lightweight `historical/<sha7>` tags + pushing them
+      to remote. Cold clone now sees all 87 referenced SHAs as
+      reachable (was 77 reachable + 10 orphaned).
+  Stage count unchanged at 43. No new adversarial pass — this is
+  a discipline / rehearsal loop, not a paper-claim loop.
 - **Loop 156** — bridge bench v2 hardening: STEPS 50 → 200
   (4× longer training); default seeds expanded 3 → 5. New
   budget puts the val BPB into the converged regime (≈ 4.55
