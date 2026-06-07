@@ -191,7 +191,7 @@ EXACT_PIN_CLAIMS: list[tuple[str, Path, int, str]] = [
     (
         r"Non-anonymized PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        52,
+        53,
         "SUBMISSION_CHECKLIST non-anon page exact pin",
     ),
     (

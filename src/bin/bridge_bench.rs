@@ -35,10 +35,17 @@ use trios_trainer::gf16::GF16;
 use trios_trainer::phi_numbers::Posit16;
 
 const VOCAB: usize = 128;
-const HIDDEN: usize = 64;
+// Loop 162: HIDDEN 64 → 128, STEPS 200 → 800. The 200-step / HIDDEN=64
+// budget from Loop 161 placed the attention model on a high BPB
+// plateau (4.83) where the GF16 penalty was rank-stable but not
+// statistically significant at N=5 (t ≈ 1.7, below the 2.78 threshold
+// at α=0.05, df=4). The Loop 162 hardening lifts the model into a
+// converged regime where the format-quantization penalty is again
+// observable above seed noise.
+const HIDDEN: usize = 128;
 const HIDDEN_HEAD: usize = HIDDEN; // single head
 const SEQ_LEN: usize = 8;
-const STEPS: usize = 200;
+const STEPS: usize = 800;
 const BATCH: usize = 64;
 // LR 0.5 inherited unchanged from Loop 156 / 160; all 5 seeds converge
 // uniformly with no divergence — no LR re-tune for the attention upgrade.

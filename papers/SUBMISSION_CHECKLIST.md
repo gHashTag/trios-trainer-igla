@@ -114,7 +114,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
 ## 2. Paper state
 
 - [ ] Anchor commit pinned (see top of file).
-- [ ] Non-anonymized PDF: **52 pages**, ~239 KB
+- [ ] Non-anonymized PDF: **53 pages**, ~242 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
 - [ ] Anonymized PDF: **52 pages**, ~239 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
@@ -124,9 +124,9 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 80 passes across Loops 59-161
+- [ ] **Adversarial review**: 81 passes across Loops 59-162
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-80 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-81 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -226,9 +226,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 161 (2026-06-08)**
+- Checklist version: **Loop 162 (2026-06-08)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 161 commits on `f2-methodology`
+  Loop 162 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -429,8 +429,14 @@ If rejected:
   Posit16 = 4.31 BPB (gap 1e-4); GF16 = 4.37 (+0.058 BPB, 4.2×
   std, 9.4× MC SE at N=5). 79th adversarial pass dispatched.
   Anon PDF 51 → 52 pages.
-- Loop 161: this update — bridge bench v4 = single-head attention
+- Loop 161: bridge bench v4 = single-head attention
   block (5 quantized matrices: embed + Q + K + V + O). f32 =
   Posit16 = 4.8281 BPB (gap < 1e-5); GF16 = 4.8378 BPB (+0.0097,
   0.76× std — NOT stat-sig at N=5). 80th pass folded SEV-2 gap-
   to-floor wording. TMLR PDF 32 → 33 pages.
+- Loop 162: this update — attention bench HARDER (STEPS 200→800,
+  HIDDEN 64→128). New §9.4.3 numbers: f32 = 4.454, Posit16 = 4.458
+  (+0.004, 0.5× MC SE), GF16 = 4.627 (+0.173, 11.6× MC SE —
+  decisively significant). GF16 delta exploded 17× vs Loop 161
+  attention while Posit16 stayed within MC SE noise. PDF non-anon
+  52 → 53 pages.

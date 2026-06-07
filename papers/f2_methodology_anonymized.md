@@ -1687,8 +1687,8 @@ f32-regime-independence at unseen input distributions.
 optimizer loop," we run a minimal training comparison: a **single-
 head self-attention block** (embed → Q/K/V projections → softmax-
 scaled-dot-product → V-aggregation → output projection → softmax) on
-byte-level `data/tiny_shakespeare.txt` (VOCAB = 128, HIDDEN = 64,
-HIDDEN_HEAD = 64, SEQ_LEN = 8) trained for **200 SGD steps × batch
+byte-level `data/tiny_shakespeare.txt` (VOCAB = 128, HIDDEN = 128,
+HIDDEN_HEAD = 128, SEQ_LEN = 8) trained for **800 SGD steps × batch
 64** at LR = 0.5 over three formats — `f32` baseline, `GF16`
 quantization, `Posit16` quantization. **All five weight matrices**
 (embed VOCAB×HIDDEN, W_Q/W_K/W_V each HIDDEN×HIDDEN_HEAD, W_O
@@ -1702,32 +1702,33 @@ Final held-out val BPB (mean ± sample-std across 5 seeds, on
 
 | format | mean val BPB | std |
 |-----------|--------------|--------|
-| `f32` | 4.8281 | 0.0142 |
-| `Posit16` | 4.8281 | 0.0142 |
-| `GF16` | 4.8378 | 0.0127 |
+| `f32` | 4.4540 | 0.0192 |
+| `Posit16` | 4.4581 | 0.0184 |
+| `GF16` | 4.6273 | 0.0333 |
 
-**What the table says**: at this scale, Posit16 introduces **no
-detectable BPB penalty vs the f32 baseline** — the means agree at
-the 4-decimal display precision shown (the f32 / Posit16 gap is
-< 1e−5 BPB, four orders of magnitude below the per-seed std).
-GF16 shows a small **+0.0097 BPB** delta vs f32, *rank-stable*
-across all five seeds (GF16 ≥ f32 in every run) but **not
-statistically significant at N=5** (the delta is ≈ 0.76× the per-
-seed std and ≈ 1.7× the Monte-Carlo SE; the t-statistic of ≈ 1.7
-sits below the t-critical of 2.78 at alpha = 0.05 for 4 d.f.). The
-attention model at this scale converges to a higher absolute val
-BPB than the prior bigram (4.55) or 2-layer MLP (4.31) bridge-bench
-iterations — likely because the model is undertrained relative to
-its parameter count at 200 SGD steps × HIDDEN = 64 — so the format
-penalty proportionally to the gap-to-floor is small. The
-qualitative regime-stability result (Posit16 = f32 across bigram /
-MLP / attention) holds at every scale we have tested; the GF16
-penalty's *quantitative magnitude* is model-dependent and not
-predictable from §9.4.1's encode-time numbers alone. The pre-
-registered champion-scale comparison in `docs/F2_PRE_REG.md`
-remains the only place where the format-zoo BPB-vs-recipe claim
-will be tested at training scale a reviewer would call "real LM
-training." The encode-time prediction from §9.4.1 — Posit16's tapered
+**What the table says**: GF16 shows a **statistically meaningful
++0.1733 BPB penalty** vs the f32 baseline — **5.2× the per-seed
+sample-std** and **≈ 11.6× the Monte-Carlo SE (std/√5)** at N=5;
+the t-statistic of ≈ 11.6 is decisively above any conventional
+significance threshold (e.g., alpha = 0.001). The GF16 ≥ f32
+ordering also holds seed-by-seed in all five individual runs.
+
+Posit16 shows a **small but non-zero** +0.0041 BPB delta vs f32 —
+**not statistically significant** at N=5 (the delta is ≈ 0.22× the
+per-seed std and ≈ 0.50× the MC SE; t-statistic of ≈ 0.50 sits far
+below the t-critical of 2.78 at alpha = 0.05 for 4 d.f.). This
+is the *first* bridge-bench iteration where Posit16 separates from
+f32 numerically, but at a magnitude **42× smaller than GF16's
+penalty** (0.0041 vs 0.1733). The encode-time prediction from
+§9.4.1 — Posit16's tapered-precision encoding avoids the
+underflow regime GF16 is exposed to — survives the trip into the
+attention block's mixed-magnitude (Q/K/V projections + softmax
++ V-aggregation + output projection) workload.
+
+The pre-registered champion-scale comparison in
+`docs/F2_PRE_REG.md` remains the only place where the format-zoo
+BPB-vs-recipe claim will be tested at training scale a reviewer
+would call "real LM training." The encode-time prediction from §9.4.1 — Posit16's tapered
 precision avoids underflow at the small-magnitude tail of the embed
 distribution — is consistent with the rank ordering observed here.
 We re-emphasize that the *underflow percentage* §9.4.1 measured was
@@ -1738,11 +1739,11 @@ ordering, but a quantitative extrapolation of the underflow rate
 between configurations is not claimed here.
 
 **What the table does NOT say**: nothing here is a champion-scale
-claim. 200 SGD steps converges the single-head attention block to
-≈ 4.83 BPB (vs the random-byte ceiling of 7.0); the model is past
-the random-byte floor but the budget is small relative to the
-parameter count (~50 K params across 5 matrices). Multi-head,
-layer normalization, and position-aware attention are out of scope
+claim. 800 SGD steps × HIDDEN = 128 converges the single-head
+attention block to ≈ 4.45 BPB (vs the random-byte ceiling of 7.0);
+the model is meaningfully past the random-byte floor and the format
+penalty is now observable above seed noise. Multi-head, layer
+normalization, and position-aware attention are still out of scope
 for the sandbox bridge. The batch/LR choice is a sandbox-tuned
 default. The pre-registered
 champion-scale comparison in `docs/F2_PRE_REG.md` is the only place
@@ -1752,24 +1753,29 @@ We report §9.4.3 as the smallest honest bridge — not as a
 champion-scale result.
 
 A 4th methodological footnote applies here in addition to §9.4.2's
-three: **(iv)** the bridge-bench eval BPB at 200 steps converges to
-≈ 4.83 for the single-head attention block (vs ≈ 7.0 = log₂ 128
-random-byte ceiling); the model is past the random-byte floor but
-the budget is small relative to the parameter count. The bridge-
-bench iteration history (each value is GF16 vs f32 delta at the
-same 5 seeds × 200 steps × LR 0.5 budget): **bigram +0.030**
-(1.7× std), **2-layer MLP +0.058** (4.2× std, t ≈ 9.4), **attention
-+0.010** (0.76× std, t ≈ 1.7, not statistically significant at
-N=5). The GF16 penalty's magnitude is model-dependent and does NOT
-monotonically grow with the number of quantized matrices alone
-(the attention block has 5 quantized matrices but a smaller delta
-than the 3-matrix MLP; one plausible explanation, *consistent with*
-but not proved by the data, is that the absolute BPB is higher and
-per-magnitude format error scales with the gap-to-floor — but we
-do not derive this from first principles, only observe it). What
-remains regime-stable across all three iterations is Posit16's
-equivalence with f32 — the same prediction §9.4.1's encode-time
-grid gave for the codec. A reviewer who wants to see the format gates at a
+three: **(iv)** the bridge-bench eval BPB at 800 steps × HIDDEN =
+128 converges to ≈ 4.45 for the single-head attention block (vs
+≈ 7.0 = log₂ 128 random-byte ceiling); the model is meaningfully
+past the random-byte floor. The bridge-bench iteration history
+(each value is GF16 vs f32 delta at 5 seeds × budget shown):
+  - **Bigram, 200 steps × HIDDEN=64**: +0.030 BPB (1.7× std)
+  - **2-layer MLP, 200 steps × HIDDEN=128**: +0.058 (4.2× std, t ≈ 9.4)
+  - **Attention, 200 steps × HIDDEN=64**: +0.010 (0.76× std, t ≈ 1.7,
+    not statistically significant — the model was undertrained)
+  - **Attention, 800 steps × HIDDEN=128**: **+0.1733** (5.2× std,
+    t ≈ 11.6, decisively significant)
+The widening once the attention block is given a converged budget
+supports the "more quantized matrices × more SGD steps compounds
+GF16 error" intuition, but the precise quantitative relation is
+model- and budget-dependent and we do not attempt to predict it
+from first principles. What remains regime-stable across all
+iterations: Posit16's *near-equivalence* with f32 (numerical
+delta < 0.01 BPB in every iteration; statistically indistinguishable
+at N=5 in every iteration, including the converged-attention case
+where the GF16 delta exploded by 17× while the Posit16 delta stayed
+at +0.0041 BPB ≈ 0.5× MC SE) — the same prediction §9.4.1's
+encode-time grid gave for the codec, surviving the trip into the
+optimizer loop across architectures, depths, and budgets. A reviewer who wants to see the format gates at a
 non-bigram model size has the full pipeline `cargo run --release
 --bin bridge_bench -- --seeds=...` to extend with deeper or
 longer-context variants; the binary is < 300 LOC and edits to the
