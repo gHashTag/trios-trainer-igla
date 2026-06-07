@@ -10,8 +10,9 @@ empirical CSV referenced in the paper is committed).
 (pinned to a specific SHA at submission day; pre-submission
 placeholder below).
 
-**Pre-submission anchor (FILL IN AT SUBMISSION TIME)**:
-`__________________` — branch HEAD commit on submission day.
+**Pre-submission anchor**:
+`5f2bc78` (full SHA `5f2bc782bddbcfb015b067027dab50f5d5571d70`) —
+branch HEAD commit on submission day (Loop 158, 2026-06-07).
 
 ---
 
