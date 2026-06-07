@@ -107,23 +107,24 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–157)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–159)
 
 Independent adversarial reviews surfaced load-bearing issues
 caught before reviewers saw them. **Seventy-eight** independent
-passes total across Loops 59–157 (50-pass milestone reached at
-Loop 127; passes 51–78 dispatched at Loops 128–156; Loop 157 was
-a cold-clone rehearsal with no adversarial pass dispatched).
+passes total across Loops 59–159 (50-pass milestone reached at
+Loop 127; passes 51–78 dispatched at Loops 128–156; Loops 157,
+158, 159 were rehearsal / anchor-pin / camera-ready-prep loops
+with no adversarial passes dispatched).
 The first 11 (Loops 59, 61, 75–85) targeted the original paper
-drafts and submission flow; Loops 86–157 extended the discipline
+drafts and submission flow; Loops 86–159 extended the discipline
 to round-N audits where each substantive patch is independently
 re-audited the loop after it lands. Detail on passes 1–11 below;
 passes 12–78 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–157; per-pass detail lives in
+(per-loop CI additions Loops 87–159; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–157 (49th pass flagged the un-widened grep covered only
+90–159 (49th pass flagged the un-widened grep covered only
 ~35 of 78 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
@@ -265,7 +266,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–157)
+### 10. CI gate evolution (Loops 87–159)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -676,6 +677,22 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 159** — camera-ready prep (post-submission, pre-acceptance):
+  added `papers/tmlr_submission_kit/camera_ready_checklist.md`
+  as the single-page execution checklist for converting the
+  submission to camera-ready *after* TMLR acceptance. Smoke-tested
+  the `\usepackage[accepted]{tmlr}` option locally: 30-page output
+  with "Published in Transactions on Machine Learning Research"
+  banner replacing "Under review". Documents the 8-step flow:
+  acceptance verification → §10.3 un-strip → tmlr.sty flip →
+  bibliography update → artifact rebuild → CHANGELOG + checklist
+  update → upload → tag camera-ready. No CI behavior change.
+- **Loop 158** — submission anchor pinned at SHA `5f2bc78` in
+  SUBMISSION_CHECKLIST.md §1. All 43/43 CI green; 78 adversarial
+  passes complete; 87/87 SHAs reachable; PDFs 52/51/32 pp; supp
+  zip ~1.0 MB. The submission package is ready for the user's
+  OpenReview upload + MLRC EOI form + #1021 status comment
+  actions.
 - **Loop 157** — cold-clone submission-day rehearsal. Three
   findings, all surfaced + closed in the same loop:
    1. **Shallow clone breaks 3 gates** (`--depth 1` truncates

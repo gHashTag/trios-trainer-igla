@@ -124,7 +124,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 78 passes across Loops 59-157
+- [ ] **Adversarial review**: 78 passes across Loops 59-159
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
       passes 19-78 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
@@ -226,9 +226,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 157 (2026-06-07)**
+- Checklist version: **Loop 159 (2026-06-07)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 157 commits on `f2-methodology`
+  Loop 159 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -414,7 +414,13 @@ If rejected:
   numbers: f32 = Posit16 = 4.5548 ± 0.0171 BPB; GF16 = 4.5845
   ± 0.0166 (+0.0297, 1.7× std, 3.9× MC SE at N=5 — statistically
   meaningful). 77th-pass SEV-2 #1 closed.
-- Loop 157: this update — cold-clone submission-day rehearsal.
+- Loop 157: cold-clone submission-day rehearsal.
   Documented 3:30 min cold time + full-clone requirement (shallow
   breaks 3 gates) + 10 orphan SHAs hardened via `historical/<sha7>`
   lightweight tags pushed to remote. Stage count unchanged at 43.
+- Loop 158: submission anchor pinned at SHA `5f2bc78`.
+- Loop 159: this update — camera-ready prep checklist landed at
+  `papers/tmlr_submission_kit/camera_ready_checklist.md`. Local
+  smoke-test of `[accepted]` tmlr.sty option confirmed: 30 pp PDF
+  with "Published in Transactions on Machine Learning Research"
+  banner. No CI changes; documentation-only.
