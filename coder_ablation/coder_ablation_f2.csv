@@ -1,0 +1,17 @@
+# W3C-PROV: source = trios-trainer-igla@9f8a8a1, mode = optimizer_factorial_2x2
+# INPUT STRATUM = canonical
+# CDE-framing: canonical stratum -- PSEs are marginal NDE/NIE (no nuisance pinned)
+# generator = igla_coder ablation; outcome = code_val_bpb (bits-per-byte, lower better)
+mode,arm,seed,x_phi_prior,m1_momentum,m2_decay,beta1,wd,hidden,n_steps,lr,code_val_bpb
+optimizer_factorial,standard,42,0,0,0,0.9000000000,0.0400000000,64,300,0.03,4.3111
+optimizer_factorial,standard,43,0,0,0,0.9000000000,0.0400000000,64,300,0.03,4.5282
+optimizer_factorial,standard,44,0,0,0,0.9000000000,0.0400000000,64,300,0.03,4.3456
+optimizer_factorial,phi_b1,42,1,1,0,0.6180339887,0.0400000000,64,300,0.03,5.0999
+optimizer_factorial,phi_b1,43,1,1,0,0.6180339887,0.0400000000,64,300,0.03,5.5880
+optimizer_factorial,phi_b1,44,1,1,0,0.6180339887,0.0400000000,64,300,0.03,5.1622
+optimizer_factorial,phi_wd,42,1,0,1,0.9000000000,0.2360679775,64,300,0.03,7.9469
+optimizer_factorial,phi_wd,43,1,0,1,0.9000000000,0.2360679775,64,300,0.03,7.9743
+optimizer_factorial,phi_wd,44,1,0,1,0.9000000000,0.2360679775,64,300,0.03,7.8957
+optimizer_factorial,phi,42,1,1,1,0.6180339887,0.2360679775,64,300,0.03,6.3656
+optimizer_factorial,phi,43,1,1,1,0.6180339887,0.2360679775,64,300,0.03,7.9718
+optimizer_factorial,phi,44,1,1,1,0.6180339887,0.2360679775,64,300,0.03,7.4221

@@ -169,6 +169,10 @@ path = "src/bin/tri.rs"
 name = "f2_harness"
 path = "src/bin/f2_harness.rs"
 
+[[bin]]
+name = "f2_dual_mediation"
+path = "src/bin/f2_dual_mediation.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []
@@ -293,3 +297,15 @@ path = "src/bin/matrix_runner.rs"
 name = "matrix_ledger"
 path = "src/bin/matrix_ledger.rs"
 
+
+[[bin]]
+name = "code_binarize"
+path = "src/bin/code_binarize.rs"
+
+[[bin]]
+name = "igla_coder_v1"
+path = "src/bin/igla_coder_v1.rs"
+
+[[bin]]
+name = "igla_coder"
+path = "src/bin/igla_coder.rs"

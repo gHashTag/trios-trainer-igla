@@ -117,8 +117,15 @@ impl AdamWCpu {
 
         // Update each parameter
         for i in 0..params.len() {
-            // Apply weight decay (decoupled from gradients in AdamW)
-            params[i] -= self.weight_decay as f32 * params[i];
+            // Decoupled weight decay (AdamW, Loshchilov & Hutter 2019):
+            // theta <- theta - lr * weight_decay * theta. The decay term MUST
+            // be scaled by the learning rate; without lr the per-step decay is
+            // weight_decay itself (e.g. 0.04 => params *= 0.96 every step),
+            // which collapses the weights to zero in ~100 steps and prevents
+            // the model from learning at all. Scaling by lr makes the steady-
+            // state decay magnitude ~lr*wd (e.g. 2e-3*0.04 = 8e-5), the
+            // intended decoupled-AdamW behaviour.
+            params[i] -= (self.lr * self.weight_decay) as f32 * params[i];
 
             // Update biased first moment estimate
             self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * gradients[i] as f64;
