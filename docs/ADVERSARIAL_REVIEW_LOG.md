@@ -1,8 +1,8 @@
 # Adversarial review log — F2 methodology paper
 
-**Update (Loop 159)**: this file documents the **first 18 passes
+**Update (Loop 160)**: this file documents the **first 18 passes
 (Loops 59-94) in detail**. The discipline continued across Loops
-95-159 to total **78 adversarial passes** (Loops 157-159 were
+95-160 to total **79 adversarial passes** (Loops 157-159 were
 rehearsal / anchor-pin / camera-ready-prep loops with no adversarial
 passes dispatched); the post-94 passes
 are tracked in `papers/CHANGELOG.md` §7 (Reviewer-screen feedback
@@ -26,7 +26,7 @@ review pattern itself was structured.
 
 ## Headline statistics
 
-- **78 adversarial passes total** (Loops 59-159); detail below for
+- **79 adversarial passes total** (Loops 59-160); detail below for
   passes 1-18 covering Loops 59-94.
 - **18 adversarial passes (Loops 59-94)** documented in this file
 - **17 caught at least one issue** (Loops 59-93)

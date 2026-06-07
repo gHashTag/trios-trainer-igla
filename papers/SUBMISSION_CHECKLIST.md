@@ -116,7 +116,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
 - [ ] Anchor commit pinned (see top of file).
 - [ ] Non-anonymized PDF: **52 pages**, ~239 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
-- [ ] Anonymized PDF: **51 pages**, ~237 KB
+- [ ] Anonymized PDF: **52 pages**, ~239 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
 - [ ] Real-TMLR-class PDF: **32 pages**, ~221 KB
       (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
@@ -124,9 +124,9 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 78 passes across Loops 59-159
+- [ ] **Adversarial review**: 79 passes across Loops 59-160
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-78 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-79 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -226,9 +226,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 159 (2026-06-07)**
+- Checklist version: **Loop 160 (2026-06-07)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 159 commits on `f2-methodology`
+  Loop 160 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -419,8 +419,13 @@ If rejected:
   breaks 3 gates) + 10 orphan SHAs hardened via `historical/<sha7>`
   lightweight tags pushed to remote. Stage count unchanged at 43.
 - Loop 158: submission anchor pinned at SHA `5f2bc78`.
-- Loop 159: this update — camera-ready prep checklist landed at
+- Loop 159: camera-ready prep checklist landed at
   `papers/tmlr_submission_kit/camera_ready_checklist.md`. Local
   smoke-test of `[accepted]` tmlr.sty option confirmed: 30 pp PDF
   with "Published in Transactions on Machine Learning Research"
   banner. No CI changes; documentation-only.
+- Loop 160: this update — bridge bench v3 = 2-layer MLP, HIDDEN
+  128, HIDDEN_MLP 128, all 3 weight matrices quantized. f32 =
+  Posit16 = 4.31 BPB (gap 1e-4); GF16 = 4.37 (+0.058 BPB, 4.2×
+  std, 9.4× MC SE at N=5). 79th adversarial pass dispatched.
+  Anon PDF 51 → 52 pages.

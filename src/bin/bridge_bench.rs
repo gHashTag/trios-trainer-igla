@@ -29,7 +29,16 @@ use trios_trainer::gf16::GF16;
 use trios_trainer::phi_numbers::Posit16;
 
 const VOCAB: usize = 128;
-const HIDDEN: usize = 64;
+// Loop 160: model upgraded from bigram (single linear projection)
+// to a 2-layer MLP with ReLU activation. The embed dimension HIDDEN
+// is 128 (was 64); the MLP hidden width HIDDEN_MLP is 128. All three
+// weight matrices (embed VOCAB×HIDDEN, W1 HIDDEN×HIDDEN_MLP, W2
+// HIDDEN_MLP×VOCAB) are quantized under the same format gate after
+// every SGD step (shadow-weight pattern: master in f32, all weights
+// round-tripped through chosen format). This puts the format-zoo
+// comparison one step closer to a real transformer block.
+const HIDDEN: usize = 128;
+const HIDDEN_MLP: usize = 128;
 // Loop 156 hardening: STEPS 50 → 200 (4× longer training) to push the
 // GF16-vs-f32 delta above the per-seed std band. The 77th-pass SEV-2 #1
 // flagged that the 50-step delta (+0.0067 BPB) was 5× smaller than the
@@ -39,6 +48,12 @@ const HIDDEN: usize = 64;
 // seeds) is the budget we use in §9.4.3 going forward.
 const STEPS: usize = 200;
 const BATCH: usize = 64;
+// Loop 160 79th-pass SEV-3 closure: LR=0.5 was inherited unchanged
+// from the bigram iteration. We did NOT re-tune for the MLP variant.
+// The empirical justification is that all five seeds converge
+// uniformly (val BPB 4.29-4.38, well below the random-byte ceiling of
+// 7.0) with no sign of divergence or instability; a separate LR
+// sweep is out of scope for the sandbox-scale §9.4.3 result.
 const LR: f32 = 0.5;
 const LN2: f32 = std::f32::consts::LN_2;
 
@@ -102,15 +117,37 @@ fn load_tokens(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_default()
 }
 
-/// Compute logits = embed_row @ proj^T for a single previous-token row.
-/// `embed_row` has length HIDDEN; result has length VOCAB.
-fn forward_logits(embed_row: &[f32], proj: &[f32]) -> Vec<f32> {
+/// MLP forward pass.
+/// Returns (hidden_pre_relu, hidden_post_relu, logits).
+///   embed_row : HIDDEN
+///   w1        : HIDDEN × HIDDEN_MLP
+///   w2        : HIDDEN_MLP × VOCAB
+fn forward_mlp(
+    embed_row: &[f32],
+    w1: &[f32],
+    w2: &[f32],
+) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
+    // h_pre[m] = Σ_h embed_row[h] * w1[h*HIDDEN_MLP + m]
+    let mut h_pre = vec![0.0_f32; HIDDEN_MLP];
+    for m in 0..HIDDEN_MLP {
+        let mut s = 0.0_f32;
+        for h in 0..HIDDEN {
+            s += embed_row[h] * w1[h * HIDDEN_MLP + m];
+        }
+        h_pre[m] = s;
+    }
+    // ReLU
+    let h_post: Vec<f32> = h_pre.iter().map(|x| x.max(0.0)).collect();
+    // logits[v] = Σ_m h_post[m] * w2[m*VOCAB + v]
     let mut logits = vec![0.0_f32; VOCAB];
     for v in 0..VOCAB {
-        let p_row = &proj[v * HIDDEN..(v + 1) * HIDDEN];
-        logits[v] = embed_row.iter().zip(p_row.iter()).map(|(a, b)| a * b).sum();
+        let mut s = 0.0_f32;
+        for m in 0..HIDDEN_MLP {
+            s += h_post[m] * w2[m * VOCAB + v];
+        }
+        logits[v] = s;
     }
-    logits
+    (h_pre, h_post, logits)
 }
 
 fn softmax_inplace(logits: &mut [f32]) {
@@ -127,12 +164,14 @@ fn softmax_inplace(logits: &mut [f32]) {
     }
 }
 
-/// Run one (format, seed) training cell. Returns final held-out val BPB.
+/// Run one (format, seed) training cell on the 2-layer MLP model.
+/// Returns final held-out val BPB.
 fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
     let mut embed = xavier_init(seed, VOCAB * HIDDEN, HIDDEN);
-    let mut proj = xavier_init(seed.wrapping_add(1), VOCAB * HIDDEN, HIDDEN);
+    let mut w1 = xavier_init(seed.wrapping_add(1), HIDDEN * HIDDEN_MLP, HIDDEN);
+    let mut w2 = xavier_init(seed.wrapping_add(2), HIDDEN_MLP * VOCAB, HIDDEN_MLP);
 
-    let mut step_rng = Lcg::new(seed.wrapping_add(2));
+    let mut step_rng = Lcg::new(seed.wrapping_add(3));
     let n_train_pairs = train.len().saturating_sub(1);
     if n_train_pairs == 0 {
         return f64::NAN;
@@ -140,15 +179,17 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
 
     for _step in 0..STEPS {
         let mut d_embed = vec![0.0_f32; embed.len()];
-        let mut d_proj = vec![0.0_f32; proj.len()];
+        let mut d_w1 = vec![0.0_f32; w1.len()];
+        let mut d_w2 = vec![0.0_f32; w2.len()];
 
         for _ in 0..BATCH {
             let i = step_rng.pick(n_train_pairs);
             let prev = (train[i] as usize) % VOCAB;
             let next = (train[i + 1] as usize) % VOCAB;
 
-            let embed_row = &embed[prev * HIDDEN..(prev + 1) * HIDDEN].to_vec();
-            let mut logits = forward_logits(embed_row, &proj);
+            let embed_row: Vec<f32> =
+                embed[prev * HIDDEN..(prev + 1) * HIDDEN].to_vec();
+            let (h_pre, h_post, mut logits) = forward_mlp(&embed_row, &w1, &w2);
             softmax_inplace(&mut logits);
 
             // dL/dlogits = softmax - one_hot(next)
@@ -159,44 +200,71 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
                 *v *= scale;
             }
 
-            // dL/dproj[v][h] += d_logits[v] * embed_row[h]
-            for v in 0..VOCAB {
-                let dl = d_logits[v];
-                for h in 0..HIDDEN {
-                    d_proj[v * HIDDEN + h] += dl * embed_row[h];
+            // dL/dw2[m][v] = h_post[m] * d_logits[v]
+            for m in 0..HIDDEN_MLP {
+                let hpm = h_post[m];
+                for v in 0..VOCAB {
+                    d_w2[m * VOCAB + v] += hpm * d_logits[v];
                 }
             }
-
-            // dL/dembed[prev][h] += Σ_v d_logits[v] * proj[v][h]
-            for h in 0..HIDDEN {
+            // dL/dh_post[m] = Σ_v d_logits[v] * w2[m][v]
+            let mut d_h_post = vec![0.0_f32; HIDDEN_MLP];
+            for m in 0..HIDDEN_MLP {
                 let mut s = 0.0_f32;
                 for v in 0..VOCAB {
-                    s += d_logits[v] * proj[v * HIDDEN + h];
+                    s += d_logits[v] * w2[m * VOCAB + v];
+                }
+                d_h_post[m] = s;
+            }
+            // ReLU backward: zero out where h_pre <= 0
+            let d_h_pre: Vec<f32> = (0..HIDDEN_MLP)
+                .map(|m| if h_pre[m] > 0.0 { d_h_post[m] } else { 0.0 })
+                .collect();
+            // dL/dw1[h][m] = embed_row[h] * d_h_pre[m]
+            for h in 0..HIDDEN {
+                let eh = embed_row[h];
+                for m in 0..HIDDEN_MLP {
+                    d_w1[h * HIDDEN_MLP + m] += eh * d_h_pre[m];
+                }
+            }
+            // dL/dembed_row[h] = Σ_m d_h_pre[m] * w1[h][m]
+            for h in 0..HIDDEN {
+                let mut s = 0.0_f32;
+                for m in 0..HIDDEN_MLP {
+                    s += d_h_pre[m] * w1[h * HIDDEN_MLP + m];
                 }
                 d_embed[prev * HIDDEN + h] += s;
             }
         }
 
-        // SGD update + format-gate quantization on embed (the format-zoo
-        // shadow-weight pattern: master in f32, embed quantized after step).
+        // SGD update + format-gate quantization on ALL three weight
+        // matrices (the format-zoo shadow-weight pattern: master in
+        // f32, every weight tensor round-tripped through the chosen
+        // format after every SGD step).
         for i in 0..embed.len() {
             embed[i] -= LR * d_embed[i];
             embed[i] = fmt.quantize(embed[i]);
         }
-        for i in 0..proj.len() {
-            proj[i] -= LR * d_proj[i];
+        for i in 0..w1.len() {
+            w1[i] -= LR * d_w1[i];
+            w1[i] = fmt.quantize(w1[i]);
+        }
+        for i in 0..w2.len() {
+            w2[i] -= LR * d_w2[i];
+            w2[i] = fmt.quantize(w2[i]);
         }
     }
 
-    // Held-out BPB: average -log_2 P(next | prev) over val (prev, next) pairs.
+    // Held-out BPB on val (prev, next) pairs.
     let mut total_nll = 0.0_f64;
     let mut count = 0_usize;
     let n_val_pairs = val.len().saturating_sub(1);
     for i in 0..n_val_pairs {
         let prev = (val[i] as usize) % VOCAB;
         let next = (val[i + 1] as usize) % VOCAB;
-        let embed_row = &embed[prev * HIDDEN..(prev + 1) * HIDDEN];
-        let mut logits = forward_logits(embed_row, &proj);
+        let embed_row: Vec<f32> =
+            embed[prev * HIDDEN..(prev + 1) * HIDDEN].to_vec();
+        let (_, _, mut logits) = forward_mlp(&embed_row, &w1, &w2);
         softmax_inplace(&mut logits);
         let p = logits[next].max(1e-30);
         total_nll -= (p.ln() as f64) / (LN2 as f64);
@@ -248,7 +316,8 @@ fn main() {
     let train = load_tokens("data/tiny_shakespeare.txt");
     let val = load_tokens("data/tiny_shakespeare_val.txt");
     println!(
-        "# bridge_bench — train_n={}, val_n={}, vocab={VOCAB}, hidden={HIDDEN}, \
+        "# bridge_bench (Loop 160: 2-layer MLP) — train_n={}, val_n={}, \
+         vocab={VOCAB}, hidden={HIDDEN}, hidden_mlp={HIDDEN_MLP}, \
          steps={STEPS}, batch={BATCH}, lr={LR}, seeds={seeds:?}",
         train.len(),
         val.len()

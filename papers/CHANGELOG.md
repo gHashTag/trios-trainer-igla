@@ -107,25 +107,25 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–159)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–160)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-eight** independent
-passes total across Loops 59–159 (50-pass milestone reached at
-Loop 127; passes 51–78 dispatched at Loops 128–156; Loops 157,
+caught before reviewers saw them. **Seventy-nine** independent
+passes total across Loops 59–160 (50-pass milestone reached at
+Loop 127; passes 51–79 dispatched at Loops 128–160; Loops 157,
 158, 159 were rehearsal / anchor-pin / camera-ready-prep loops
 with no adversarial passes dispatched).
 The first 11 (Loops 59, 61, 75–85) targeted the original paper
-drafts and submission flow; Loops 86–159 extended the discipline
+drafts and submission flow; Loops 86–160 extended the discipline
 to round-N audits where each substantive patch is independently
 re-audited the loop after it lands. Detail on passes 1–11 below;
-passes 12–78 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–159; per-pass detail lives in
+passes 12–79 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–160; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–159 (49th pass flagged the un-widened grep covered only
-~35 of 78 passes; the two-pattern form widens reach).
+90–160 (49th pass flagged the un-widened grep covered only
+~35 of 79 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -266,7 +266,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–159)
+### 10. CI gate evolution (Loops 87–160)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -677,6 +677,22 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 160** — bridge bench v3: bigram → **2-layer MLP**
+  (embed → linear → ReLU → linear → softmax). HIDDEN 64 → 128,
+  HIDDEN_MLP = 128. All three weight matrices (embed, W1, W2)
+  round-tripped through the chosen format after every SGD step
+  (was: embed only). Same 5 seeds × 200 SGD steps. New §9.4.3
+  numbers: f32 = 4.3086 ± 0.0109; Posit16 = 4.3087 ± 0.0109
+  (essentially identical to f32 — gap is 1e-4 BPB); GF16 = 4.3668
+  ± 0.0138 (+0.0582 BPB, **4.2× per-seed std, 9.4× MC SE at N=5**,
+  t-statistic ≈ 9.4 → decisively above α = 0.001). The GF16
+  delta widened from the bigram's +0.030 BPB as expected — three
+  format round-trips per step compound the per-step quantization
+  noise where the bigram only had one. Posit16's tapered-precision
+  encoding remains regime-stable across the two model upgrades.
+  79th adversarial pass dispatched on the model upgrade + the new
+  prose. PDF page counts: anon 51 → 52 (non-anon and TMLR-class
+  unchanged at 52 / 32).
 - **Loop 159** — camera-ready prep (post-submission, pre-acceptance):
   added `papers/tmlr_submission_kit/camera_ready_checklist.md`
   as the single-page execution checklist for converting the
