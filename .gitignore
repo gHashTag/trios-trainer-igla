@@ -17,3 +17,5 @@ Cargo.lock.bak
 # Build cache
 .cargo/
 data/*.bin
+t27_corpus/
+coder_ablation/loop9_run.log
