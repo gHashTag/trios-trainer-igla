@@ -770,15 +770,33 @@ fn arm_hparams(arm: &str, b1_ov: Option<f64>, wd_ov: Option<f64>) -> (f64, f64) 
     (b1_ov.unwrap_or(b1), wd_ov.unwrap_or(wd))
 }
 
-fn make_arm(arm: &str, n: usize, lr: f64, b1_ov: Option<f64>, wd_ov: Option<f64>) -> AdamWCpu {
+fn make_arm(
+    arm: &str,
+    n: usize,
+    lr: f64,
+    b1_ov: Option<f64>,
+    wd_ov: Option<f64>,
+    b2_ov: Option<f64>,
+) -> AdamWCpu {
     // Fair control: BOTH arms share the same learning rate (passed via --lr).
     // The only difference is the phi-anchored beta1 / weight_decay vs standard.
+    // beta2 default 0.999 (standard AdamW); Loop+10 Option C exposes --beta2 so
+    // the second-moment knob can be swept independently (phi candidate = 1/phi^2
+    // ~ 0.382 or phi^-1 ~ 0.618 -- both far from 0.999, hence a real probe).
     let (b1, wd) = arm_hparams(arm, b1_ov, wd_ov);
-    AdamWCpu::with_params(n, lr, b1, 0.999, wd)
+    let b2 = b2_ov.unwrap_or(0.999);
+    AdamWCpu::with_params(n, lr, b1, b2, wd)
 }
 
-fn make_opt(m: &Model, arm: &str, lr: f64, b1_ov: Option<f64>, wd_ov: Option<f64>) -> Opt {
-    let mk = |n: usize| make_arm(arm, n, lr, b1_ov, wd_ov);
+fn make_opt(
+    m: &Model,
+    arm: &str,
+    lr: f64,
+    b1_ov: Option<f64>,
+    wd_ov: Option<f64>,
+    b2_ov: Option<f64>,
+) -> Opt {
+    let mk = |n: usize| make_arm(arm, n, lr, b1_ov, wd_ov, b2_ov);
     Opt {
         emb: mk(m.emb.len()),
         pos: mk(m.pos.len()),
@@ -853,6 +871,10 @@ struct TrainCfg {
     verbose: bool,
     beta1_ov: Option<f64>,
     wd_ov: Option<f64>,
+    // Loop+10 Option C: optional AdamW beta2 (second-moment decay) override.
+    // None => 0.999 (standard). Lets us sweep the second-moment knob in
+    // isolation, the symmetric counterpart to the beta1 sweep.
+    beta2_ov: Option<f64>,
     // if Some(stride), print a `curve` line every `stride` steps (Loop+1 Option B)
     curve_stride: Option<usize>,
     // if Some(k), evaluate validation BPB every k steps and track the best
@@ -892,8 +914,24 @@ fn train_once(train: &[usize], val: &[usize], cfg: &TrainCfg) -> f32 {
 // subcommand can train-then-sample in one CPU process (Loop+4).
 fn train_once_model(train: &[usize], val: &[usize], cfg: &TrainCfg) -> (f32, Model) {
     let mut rng = StdRng::seed_from_u64(cfg.seed);
-    let mut model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
-    let mut opt = make_opt(&model, &cfg.arm, cfg.lr, cfg.beta1_ov, cfg.wd_ov);
+    let model = Model::new(cfg.d, cfg.heads, cfg.layers, &mut rng);
+    train_from_model(train, val, cfg, model)
+}
+
+// Loop+10 Option B: continue training from an existing (loaded) model instead
+// of a fresh random init. The checkpoint format stores WEIGHTS only, not the
+// Adam first/second-moment buffers, so the optimizer restarts cold here. This
+// is the standard "warm-start weights, fresh optimizer state" resume; it is
+// honest about what is persisted and does NOT claim bit-exact continuation of
+// the optimizer trajectory. cfg.steps is the number of ADDITIONAL steps.
+fn train_from_model(
+    train: &[usize],
+    val: &[usize],
+    cfg: &TrainCfg,
+    init_model: Model,
+) -> (f32, Model) {
+    let mut model = init_model;
+    let mut opt = make_opt(&model, &cfg.arm, cfg.lr, cfg.beta1_ov, cfg.wd_ov, cfg.beta2_ov);
     let mut drng = StdRng::seed_from_u64(cfg.seed ^ 0x9e37);
     let mut best_val = f32::INFINITY;
 
@@ -1544,6 +1582,8 @@ fn main() {
     // Optional optimizer-hparam overrides (Loop+1 Option A: independent sweeps).
     let beta1_ov: Option<f64> = arg(&args, "--beta1").and_then(|s| s.parse().ok());
     let wd_ov: Option<f64> = arg(&args, "--wd").and_then(|s| s.parse().ok());
+    // Loop+10 Option C: optional AdamW beta2 (second-moment decay) override.
+    let beta2_ov: Option<f64> = arg(&args, "--beta2").and_then(|s| s.parse().ok());
     // Optional training-curve stride (Loop+1 Option B): prints `curve` lines.
     let curve_stride: Option<usize> = arg(&args, "--curve").and_then(|s| s.parse().ok());
     // Optional periodic-validation stride (Loop+2 Option A): track best checkpoint.
@@ -1613,6 +1653,7 @@ fn main() {
                     seed: s,
                     verbose: false,
                     beta1_ov,
+                    beta2_ov,
                     wd_ov,
                     curve_stride,
                     eval_every,
@@ -1716,6 +1757,7 @@ fn main() {
             seed,
             verbose: true,
             beta1_ov,
+            beta2_ov,
             wd_ov,
             curve_stride,
             eval_every,
@@ -1726,7 +1768,34 @@ fn main() {
             "=== IGLA-Coder generate === hidden={} heads={} layers={} params={} optimizer={} seed={}",
             d, heads, layers, probe.param_count(), arm, seed
         );
-        let (bpb, model) = train_once_model(&train, &val, &cfg);
+        // Loop+10 Option B: --resume <ckpt> warm-starts WEIGHTS from a saved
+        // checkpoint (fresh optimizer state) and trains cfg.steps MORE steps.
+        // Combined with --save, this enables a long C-only curriculum to be
+        // accumulated across many short CPU sessions instead of one long run.
+        let (bpb, model) = match arg(&args, "--resume") {
+            Some(ckpt) => match Model::load(&ckpt) {
+                Ok(m) => {
+                    if m.d != d || m.heads != heads || m.layers.len() != layers {
+                        eprintln!(
+                            "resume shape mismatch: ckpt(d={} heads={} layers={}) vs args(d={} heads={} layers={})",
+                            m.d, m.heads, m.layers.len(), d, heads, layers
+                        );
+                        std::process::exit(2);
+                    }
+                    let pre = eval_val(&m, &val, seq);
+                    println!(
+                        "resumed from {} (params={}) pre_resume_val_bpb={:.4} +{} steps",
+                        ckpt, m.param_count(), pre, steps
+                    );
+                    train_from_model(&train, &val, &cfg, m)
+                }
+                Err(e) => {
+                    eprintln!("resume load failed: {}", e);
+                    std::process::exit(1);
+                }
+            },
+            None => train_once_model(&train, &val, &cfg),
+        };
         println!("trained code_val_bpb={:.4}", bpb);
         // Coder-Loop+6 wave A: optionally persist the trained checkpoint so a
         // long CPU run can be reloaded by `load-generate` without retraining.
@@ -1768,6 +1837,7 @@ fn main() {
         seed,
         verbose: true,
         beta1_ov,
+        beta2_ov,
         wd_ov,
         curve_stride,
         eval_every,
