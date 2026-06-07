@@ -185,7 +185,7 @@ EXACT_PIN_CLAIMS: list[tuple[str, Path, int, str]] = [
     (
         r"Real-TMLR-class PDF: \*\*(\d+) pages\*\*",
         SUBMISSION_CHECKLIST,
-        32,
+        33,
         "SUBMISSION_CHECKLIST TMLR page exact pin",
     ),
     (

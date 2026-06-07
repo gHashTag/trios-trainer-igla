@@ -107,25 +107,25 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–160)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–161)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Seventy-nine** independent
-passes total across Loops 59–160 (50-pass milestone reached at
-Loop 127; passes 51–79 dispatched at Loops 128–160; Loops 157,
+caught before reviewers saw them. **Eighty** independent
+passes total across Loops 59–161 (50-pass milestone reached at
+Loop 127; passes 51–80 dispatched at Loops 128–161; Loops 157,
 158, 159 were rehearsal / anchor-pin / camera-ready-prep loops
 with no adversarial passes dispatched).
 The first 11 (Loops 59, 61, 75–85) targeted the original paper
-drafts and submission flow; Loops 86–160 extended the discipline
+drafts and submission flow; Loops 86–161 extended the discipline
 to round-N audits where each substantive patch is independently
 re-audited the loop after it lands. Detail on passes 1–11 below;
-passes 12–79 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–160; per-pass detail lives in
+passes 12–80 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–161; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–160 (49th pass flagged the un-widened grep covered only
-~35 of 79 passes; the two-pattern form widens reach).
+90–161 (49th pass flagged the un-widened grep covered only
+~35 of 80 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -266,7 +266,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–160)
+### 10. CI gate evolution (Loops 87–161)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -677,6 +677,23 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 161** — bridge bench v4: MLP → **single-head self-attention
+  block** (embed → Q/K/V → softmax-scaled-dot-product → V-aggregation
+  → output projection → softmax). HIDDEN = 64, HIDDEN_HEAD = 64,
+  SEQ_LEN = 8. **Five** weight matrices (embed + W_Q + W_K + W_V +
+  W_O) round-tripped through the chosen format after every SGD step.
+  New §9.4.3 numbers (5 seeds × 200 steps): f32 = Posit16 = 4.8281
+  ± 0.0142 BPB (gap < 1e-5); GF16 = 4.8378 ± 0.0127 (+0.0097, 0.76×
+  std, t ≈ 1.7 — **NOT statistically significant** at N=5). The
+  bridge-bench iteration history: bigram +0.030, MLP +0.058,
+  attention +0.010 BPB GF16 delta; the GF16 penalty is model-
+  dependent and does not monotonically grow with the number of
+  quantized matrices alone (attention has 5 matrices but smaller
+  delta than 3-matrix MLP). What IS regime-stable across all three
+  iterations is Posit16's equivalence with f32. 80th adversarial
+  pass folded inline (SEV-2 gap-to-floor explanation reworded from
+  "because" to "consistent with"). PDF page counts: TMLR-class
+  32 → 33; non-anon and anon unchanged at 52 / 52.
 - **Loop 160** — bridge bench v3: bigram → **2-layer MLP**
   (embed → linear → ReLU → linear → softmax). HIDDEN 64 → 128,
   HIDDEN_MLP = 128. All three weight matrices (embed, W1, W2)

@@ -6,7 +6,8 @@
     "posit16"
   ],
   "git_anchor_hint": "f2-methodology branch HEAD at run time",
-  "hidden": 128,
+  "hidden": 64,
+  "hidden_head": 64,
   "lr": 0.5,
   "mode": "summary",
   "seeds": [
@@ -16,23 +17,24 @@
     45,
     46
   ],
+  "seq_len": 8,
   "steps": 200,
   "tool": "bridge_bench",
   "val_bpb_by_format": {
     "f32": {
-      "mean": 4.308608851002501,
+      "mean": 4.828084619059726,
       "n_seeds": 5,
-      "std": 0.010901716333894945
+      "std": 0.014180307358181507
     },
     "gf16": {
-      "mean": 4.366786341507518,
+      "mean": 4.8378441375173535,
       "n_seeds": 5,
-      "std": 0.01377395176129066
+      "std": 0.012721356379026445
     },
     "posit16": {
-      "mean": 4.308655224895585,
+      "mean": 4.828099294834308,
       "n_seeds": 5,
-      "std": 0.010861673255910401
+      "std": 0.014184033590309881
     }
   },
   "vocab": 128

@@ -1682,46 +1682,50 @@ f32-regime-independence at unseen input distributions.
 
 §9.4.1 and §9.4.2 are both encode-time measurements. To bridge from
 "the codec round-trips faithfully" to "the codec works inside an
-optimizer loop," we run a minimal training comparison: a **2-layer MLP**
-(embed → linear → ReLU → linear → softmax) on byte-level
-`data/tiny_shakespeare.txt` (VOCAB = 128, HIDDEN = 128, HIDDEN_MLP =
-128) trained for **200 SGD steps × batch 64** at LR = 0.5 over three
-formats — `f32` baseline, `GF16` quantization, `Posit16`
-quantization. **All three weight matrices** (embed VOCAB×HIDDEN, W1
-HIDDEN×HIDDEN_MLP, W2 HIDDEN_MLP×VOCAB) are round-tripped through
-the chosen format after every SGD step (the shadow-weight pattern
-used by every modern mixed-precision trainer including the MXFP8 and
-NVFP4 references in §9.4). **Five seeds** (42, 43, 44, 45, 46).
+optimizer loop," we run a minimal training comparison: a **single-
+head self-attention block** (embed → Q/K/V projections → softmax-
+scaled-dot-product → V-aggregation → output projection → softmax) on
+byte-level `data/tiny_shakespeare.txt` (VOCAB = 128, HIDDEN = 64,
+HIDDEN_HEAD = 64, SEQ_LEN = 8) trained for **200 SGD steps × batch
+64** at LR = 0.5 over three formats — `f32` baseline, `GF16`
+quantization, `Posit16` quantization. **All five weight matrices**
+(embed VOCAB×HIDDEN, W_Q/W_K/W_V each HIDDEN×HIDDEN_HEAD, W_O
+HIDDEN_HEAD×VOCAB) are round-tripped through the chosen format after
+every SGD step (the shadow-weight pattern used by every modern
+mixed-precision trainer including the MXFP8 and NVFP4 references in
+§9.4). **Five seeds** (42, 43, 44, 45, 46).
 
 Final held-out val BPB (mean ± sample-std across 5 seeds, on
 `data/tiny_shakespeare_val.txt`):
 
 | format    | mean val BPB | std    |
 |-----------|--------------|--------|
-| `f32`     | 4.3086       | 0.0109 |
-| `Posit16` | 4.3087       | 0.0109 |
-| `GF16`    | 4.3668       | 0.0138 |
+| `f32`     | 4.8281       | 0.0142 |
+| `Posit16` | 4.8281       | 0.0142 |
+| `GF16`    | 4.8378       | 0.0127 |
 
 **What the table says**: at this scale, Posit16 introduces **no
 detectable BPB penalty vs the f32 baseline** — the means agree at
 the 4-decimal display precision shown (the f32 / Posit16 gap is
-≈ 5e−5 BPB, two orders of magnitude below the per-seed std).
-GF16's penalty has *widened* compared to the bigram-model precedent
-(reported in an earlier iteration of §9.4.3): the new delta of
-+0.0582 BPB is **4.2× the per-seed sample-std and ≈ 9.4× the
-Monte-Carlo SE (std/√5)** at N=5; the t-statistic of ≈ 9.4 is
-decisively above any conventional significance threshold (e.g.,
-alpha = 0.001). The widening from the bigram's +0.030 to the MLP's
-+0.058 BPB (≈ 1.96×) is **consistent with — but does not predict**
-the per-matrix-noise intuition that "three quantized matrices
-accumulate roughly the noise of one." A strict linear-superposition
-model would predict 3× widening; the observed 1.96× suggests the
-per-step noise has sub-linear scaling, possibly because GF16's
-underflow rate at the post-init magnitude regime saturates rather
-than compounds linearly. Posit16's tapered-precision encoding avoids
-the underflow entirely — the f32 / Posit16 equivalence is
-regime-stable from the bigram to the 2-layer MLP, as §9.4.1's
-encode-time grid predicted. The encode-time prediction from §9.4.1 — Posit16's tapered
+< 1e−5 BPB, four orders of magnitude below the per-seed std).
+GF16 shows a small **+0.0097 BPB** delta vs f32, *rank-stable*
+across all five seeds (GF16 ≥ f32 in every run) but **not
+statistically significant at N=5** (the delta is ≈ 0.76× the per-
+seed std and ≈ 1.7× the Monte-Carlo SE; the t-statistic of ≈ 1.7
+sits below the t-critical of 2.78 at alpha = 0.05 for 4 d.f.). The
+attention model at this scale converges to a higher absolute val
+BPB than the prior bigram (4.55) or 2-layer MLP (4.31) bridge-bench
+iterations — likely because the model is undertrained relative to
+its parameter count at 200 SGD steps × HIDDEN = 64 — so the format
+penalty proportionally to the gap-to-floor is small. The
+qualitative regime-stability result (Posit16 = f32 across bigram /
+MLP / attention) holds at every scale we have tested; the GF16
+penalty's *quantitative magnitude* is model-dependent and not
+predictable from §9.4.1's encode-time numbers alone. The pre-
+registered champion-scale comparison in `docs/F2_PRE_REG.md`
+remains the only place where the format-zoo BPB-vs-recipe claim
+will be tested at training scale a reviewer would call "real LM
+training." The encode-time prediction from §9.4.1 — Posit16's tapered
 precision avoids underflow at the small-magnitude tail of the embed
 distribution — is consistent with the rank ordering observed here.
 We re-emphasize that the *underflow percentage* §9.4.1 measured was
@@ -1732,11 +1736,13 @@ ordering, but a quantitative extrapolation of the underflow rate
 between configurations is not claimed here.
 
 **What the table does NOT say**: nothing here is a champion-scale
-claim. 200 SGD steps converges the 2-layer MLP to ≈ 4.31 BPB (vs the
-random-byte ceiling of 7.0); the model is meaningfully past the
-random-byte floor but is still too shallow to expose attention-
-arithmetic or layer-norm interactions. The batch/LR choice is a
-sandbox-tuned default. The pre-registered
+claim. 200 SGD steps converges the single-head attention block to
+≈ 4.83 BPB (vs the random-byte ceiling of 7.0); the model is past
+the random-byte floor but the budget is small relative to the
+parameter count (~50 K params across 5 matrices). Multi-head,
+layer normalization, and position-aware attention are out of scope
+for the sandbox bridge. The batch/LR choice is a sandbox-tuned
+default. The pre-registered
 champion-scale comparison in `docs/F2_PRE_REG.md` is the only place
 where the format-zoo BPB-vs-recipe claim will be tested at
 training scale that a reviewer would defend as "real LM training."
@@ -1745,18 +1751,23 @@ champion-scale result.
 
 A 4th methodological footnote applies here in addition to §9.4.2's
 three: **(iv)** the bridge-bench eval BPB at 200 steps converges to
-≈ 4.31 for the 2-layer MLP (vs ≈ 7.0 = log₂ 128 random-byte
-ceiling), a regime where the model is meaningfully past the random-
-byte floor and the format-induced BPB delta is observable above the
-seed noise without confounding the result with attention-mechanism
-gradient pathology. The previous bridge-bench iteration used a single-
-layer bigram model (HIDDEN = 64) and reported a GF16 vs f32 delta of
-+0.030 BPB (≈ 1.7× per-seed std at N=5); the MLP upgrade widens the
-delta to +0.058 BPB (≈ 4.2× std). The widening was anticipated —
-applying the format gate to three weight matrices instead of one
-compounds the per-step quantization noise — and is reported here as
-methodological consistency between the bigram and MLP variants, not
-as a champion-scale claim. A reviewer who wants to see the format gates at a
+≈ 4.83 for the single-head attention block (vs ≈ 7.0 = log₂ 128
+random-byte ceiling); the model is past the random-byte floor but
+the budget is small relative to the parameter count. The bridge-
+bench iteration history (each value is GF16 vs f32 delta at the
+same 5 seeds × 200 steps × LR 0.5 budget): **bigram +0.030**
+(1.7× std), **2-layer MLP +0.058** (4.2× std, t ≈ 9.4), **attention
++0.010** (0.76× std, t ≈ 1.7, not statistically significant at
+N=5). The GF16 penalty's magnitude is model-dependent and does NOT
+monotonically grow with the number of quantized matrices alone
+(the attention block has 5 quantized matrices but a smaller delta
+than the 3-matrix MLP; one plausible explanation, *consistent with*
+but not proved by the data, is that the absolute BPB is higher and
+per-magnitude format error scales with the gap-to-floor — but we
+do not derive this from first principles, only observe it). What
+remains regime-stable across all three iterations is Posit16's
+equivalence with f32 — the same prediction §9.4.1's encode-time
+grid gave for the codec. A reviewer who wants to see the format gates at a
 non-bigram model size has the full pipeline `cargo run --release
 --bin bridge_bench -- --seeds=...` to extend with deeper or
 longer-context variants; the binary is < 300 LOC and edits to the

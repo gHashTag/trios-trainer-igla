@@ -1,25 +1,31 @@
 //! bridge_bench — actual training-time comparison of three format gates
-//! on a sandbox-scale bigram LM.
+//! on a sandbox-scale model.
 //!
-//! Loop 155 builds the bridge from §9.4.1's encode-time grid to a
-//! *training-time* number — the format-zoo arm at its smallest honest
-//! scale. The model is a one-layer bigram: `logits = embed[prev] @
-//! output_proj`. The embed table is round-tripped through the chosen
-//! format (`f32` / `GF16` / `Posit16`) after every SGD step, the
-//! shadow-weight pattern documented in F2 §9.4.
+//! Loop 161 v4 architecture: **single-head self-attention block**.
 //!
-//! Data: `data/tiny_shakespeare.txt` (1.1 M chars) for training,
-//! `data/tiny_shakespeare_val.txt` (100 K chars) for held-out
-//! evaluation. 50 SGD steps × 64 (prev, next) pairs per batch is the
-//! shortest run that produces a stable val-BPB delta — long enough that
-//! the format gate matters, short enough to run end-to-end in seconds.
+//!   input:    SEQ_LEN tokens (each 0..VOCAB) from a sliding window
+//!   embed:    VOCAB × HIDDEN
+//!   Q, K, V:  HIDDEN × HIDDEN_HEAD projections (HIDDEN_HEAD = HIDDEN
+//!             — single head)
+//!   attn:     softmax(Q @ K^T / sqrt(HIDDEN_HEAD)) → (SEQ_LEN×SEQ_LEN)
+//!   context:  attn @ V → (SEQ_LEN × HIDDEN_HEAD)
+//!   output:   context[last] @ W_O → logits (VOCAB)
 //!
-//! Output: per-seed JSON + summary at
-//! `.trinity/results/bridge_bench_*.json`. F2 §9.4.3 quotes the
-//! summary's headline `mean ± std` of (final val BPB) per format.
+//! Five weight matrices are round-tripped through the chosen format
+//! after every SGD step: embed, W_Q, W_K, W_V, W_O. This puts the
+//! format-zoo comparison one architectural step closer to a real
+//! transformer block (the next rung would be multi-head + layer
+//! normalization + position embeddings, but the §9.4.3 framing
+//! deliberately keeps the model minimal).
+//!
+//! History:
+//!   Loop 155 — initial bigram model (1 weight matrix quantized).
+//!   Loop 156 — STEPS 50 → 200, seeds 3 → 5 hardening.
+//!   Loop 160 — bigram → 2-layer MLP (3 weight matrices quantized).
+//!   Loop 161 — MLP → single-head attention (5 weight matrices).
 //!
 //! Usage:
-//!   cargo run --release --bin bridge_bench -- [--seeds=42,43,44]
+//!   cargo run --release --bin bridge_bench -- [--seeds=42,43,44,45,46]
 
 use std::fs;
 use std::io::Write;
@@ -29,31 +35,13 @@ use trios_trainer::gf16::GF16;
 use trios_trainer::phi_numbers::Posit16;
 
 const VOCAB: usize = 128;
-// Loop 160: model upgraded from bigram (single linear projection)
-// to a 2-layer MLP with ReLU activation. The embed dimension HIDDEN
-// is 128 (was 64); the MLP hidden width HIDDEN_MLP is 128. All three
-// weight matrices (embed VOCAB×HIDDEN, W1 HIDDEN×HIDDEN_MLP, W2
-// HIDDEN_MLP×VOCAB) are quantized under the same format gate after
-// every SGD step (shadow-weight pattern: master in f32, all weights
-// round-tripped through chosen format). This puts the format-zoo
-// comparison one step closer to a real transformer block.
-const HIDDEN: usize = 128;
-const HIDDEN_MLP: usize = 128;
-// Loop 156 hardening: STEPS 50 → 200 (4× longer training) to push the
-// GF16-vs-f32 delta above the per-seed std band. The 77th-pass SEV-2 #1
-// flagged that the 50-step delta (+0.0067 BPB) was 5× smaller than the
-// per-seed std (0.033), so the rank ordering was preserved but the
-// numerical delta was not statistically significant at N=3. The
-// extended run (200 steps × 5 seeds = 5× more SGD updates × 1.67× more
-// seeds) is the budget we use in §9.4.3 going forward.
+const HIDDEN: usize = 64;
+const HIDDEN_HEAD: usize = HIDDEN; // single head
+const SEQ_LEN: usize = 8;
 const STEPS: usize = 200;
 const BATCH: usize = 64;
-// Loop 160 79th-pass SEV-3 closure: LR=0.5 was inherited unchanged
-// from the bigram iteration. We did NOT re-tune for the MLP variant.
-// The empirical justification is that all five seeds converge
-// uniformly (val BPB 4.29-4.38, well below the random-byte ceiling of
-// 7.0) with no sign of divergence or instability; a separate LR
-// sweep is out of scope for the sandbox-scale §9.4.3 result.
+// LR 0.5 inherited unchanged from Loop 156 / 160; all 5 seeds converge
+// uniformly with no divergence — no LR re-tune for the attention upgrade.
 const LR: f32 = 0.5;
 const LN2: f32 = std::f32::consts::LN_2;
 
@@ -117,37 +105,222 @@ fn load_tokens(path: &str) -> Vec<u8> {
     fs::read(path).unwrap_or_default()
 }
 
-/// MLP forward pass.
-/// Returns (hidden_pre_relu, hidden_post_relu, logits).
-///   embed_row : HIDDEN
-///   w1        : HIDDEN × HIDDEN_MLP
-///   w2        : HIDDEN_MLP × VOCAB
-fn forward_mlp(
-    embed_row: &[f32],
-    w1: &[f32],
-    w2: &[f32],
-) -> (Vec<f32>, Vec<f32>, Vec<f32>) {
-    // h_pre[m] = Σ_h embed_row[h] * w1[h*HIDDEN_MLP + m]
-    let mut h_pre = vec![0.0_f32; HIDDEN_MLP];
-    for m in 0..HIDDEN_MLP {
-        let mut s = 0.0_f32;
-        for h in 0..HIDDEN {
-            s += embed_row[h] * w1[h * HIDDEN_MLP + m];
-        }
-        h_pre[m] = s;
+fn softmax_row(row: &mut [f32]) {
+    let max = row.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+    let mut sum = 0.0_f32;
+    for x in row.iter_mut() {
+        *x = (*x - max).exp();
+        sum += *x;
     }
-    // ReLU
-    let h_post: Vec<f32> = h_pre.iter().map(|x| x.max(0.0)).collect();
-    // logits[v] = Σ_m h_post[m] * w2[m*VOCAB + v]
+    if sum > 0.0 {
+        for x in row.iter_mut() {
+            *x /= sum;
+        }
+    }
+}
+
+/// Matrix multiply: out (M×N) = a (M×K) @ b (K×N), row-major flat.
+fn matmul(a: &[f32], b: &[f32], m: usize, k: usize, n: usize, out: &mut [f32]) {
+    for i in 0..m {
+        for j in 0..n {
+            let mut s = 0.0_f32;
+            for kk in 0..k {
+                s += a[i * k + kk] * b[kk * n + j];
+            }
+            out[i * n + j] = s;
+        }
+    }
+}
+
+/// Outer product accumulate: out (M×N) += a (M) outer b (N).
+fn outer_accum(a: &[f32], b: &[f32], m: usize, n: usize, out: &mut [f32]) {
+    for i in 0..m {
+        let ai = a[i];
+        for j in 0..n {
+            out[i * n + j] += ai * b[j];
+        }
+    }
+}
+
+/// Forward attention block. Returns (logits, cache for backward).
+/// Cache contains everything needed for backprop.
+struct AttnCache {
+    embed_rows: Vec<f32>,   // SEQ_LEN × HIDDEN
+    q: Vec<f32>,            // SEQ_LEN × HIDDEN_HEAD
+    k: Vec<f32>,            // SEQ_LEN × HIDDEN_HEAD
+    v: Vec<f32>,            // SEQ_LEN × HIDDEN_HEAD
+    attn_probs: Vec<f32>,   // SEQ_LEN × SEQ_LEN
+    context: Vec<f32>,      // SEQ_LEN × HIDDEN_HEAD
+}
+
+#[allow(clippy::too_many_arguments)]
+fn forward(
+    embed: &[f32],
+    w_q: &[f32],
+    w_k: &[f32],
+    w_v: &[f32],
+    w_o: &[f32],
+    tokens: &[usize],
+) -> (Vec<f32>, AttnCache) {
+    // Gather embeddings for the SEQ_LEN tokens.
+    let mut embed_rows = vec![0.0_f32; SEQ_LEN * HIDDEN];
+    for (i, &t) in tokens.iter().enumerate() {
+        embed_rows[i * HIDDEN..(i + 1) * HIDDEN]
+            .copy_from_slice(&embed[t * HIDDEN..(t + 1) * HIDDEN]);
+    }
+    // Q, K, V projections: SEQ_LEN × HIDDEN_HEAD.
+    let mut q = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    let mut k = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    let mut v = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    matmul(&embed_rows, w_q, SEQ_LEN, HIDDEN, HIDDEN_HEAD, &mut q);
+    matmul(&embed_rows, w_k, SEQ_LEN, HIDDEN, HIDDEN_HEAD, &mut k);
+    matmul(&embed_rows, w_v, SEQ_LEN, HIDDEN, HIDDEN_HEAD, &mut v);
+    // Attention scores: Q @ K^T (SEQ_LEN × SEQ_LEN), scaled by 1/sqrt(d).
+    let scale = 1.0_f32 / (HIDDEN_HEAD as f32).sqrt();
+    let mut scores = vec![0.0_f32; SEQ_LEN * SEQ_LEN];
+    for i in 0..SEQ_LEN {
+        for j in 0..SEQ_LEN {
+            let mut s = 0.0_f32;
+            for d in 0..HIDDEN_HEAD {
+                s += q[i * HIDDEN_HEAD + d] * k[j * HIDDEN_HEAD + d];
+            }
+            scores[i * SEQ_LEN + j] = s * scale;
+        }
+    }
+    // Softmax per row → attn_probs.
+    let mut attn_probs = scores.clone();
+    for i in 0..SEQ_LEN {
+        let row = &mut attn_probs[i * SEQ_LEN..(i + 1) * SEQ_LEN];
+        softmax_row(row);
+    }
+    // Context = attn_probs @ V (SEQ_LEN × HIDDEN_HEAD).
+    let mut context = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    matmul(&attn_probs, &v, SEQ_LEN, SEQ_LEN, HIDDEN_HEAD, &mut context);
+    // Logits = context[last] @ W_O (HIDDEN_HEAD × VOCAB) → VOCAB.
+    let last_ctx = &context[(SEQ_LEN - 1) * HIDDEN_HEAD..SEQ_LEN * HIDDEN_HEAD];
     let mut logits = vec![0.0_f32; VOCAB];
-    for v in 0..VOCAB {
+    for vi in 0..VOCAB {
         let mut s = 0.0_f32;
-        for m in 0..HIDDEN_MLP {
-            s += h_post[m] * w2[m * VOCAB + v];
+        for d in 0..HIDDEN_HEAD {
+            s += last_ctx[d] * w_o[d * VOCAB + vi];
         }
-        logits[v] = s;
+        logits[vi] = s;
     }
-    (h_pre, h_post, logits)
+    let cache = AttnCache { embed_rows, q, k, v, attn_probs, context };
+    (logits, cache)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn backward(
+    cache: &AttnCache,
+    tokens: &[usize],
+    d_logits: &[f32],
+    w_q: &[f32],
+    w_k: &[f32],
+    w_v: &[f32],
+    w_o: &[f32],
+    d_embed: &mut [f32],
+    d_w_q: &mut [f32],
+    d_w_k: &mut [f32],
+    d_w_v: &mut [f32],
+    d_w_o: &mut [f32],
+) {
+    // d_W_O[d, v] += last_ctx[d] * d_logits[v]
+    let last_ctx = &cache.context[(SEQ_LEN - 1) * HIDDEN_HEAD..SEQ_LEN * HIDDEN_HEAD];
+    for d in 0..HIDDEN_HEAD {
+        let ld = last_ctx[d];
+        for vi in 0..VOCAB {
+            d_w_o[d * VOCAB + vi] += ld * d_logits[vi];
+        }
+    }
+    // d_last_ctx[d] = Σ_v d_logits[v] * W_O[d, v]
+    let mut d_context = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    for d in 0..HIDDEN_HEAD {
+        let mut s = 0.0_f32;
+        for vi in 0..VOCAB {
+            s += d_logits[vi] * w_o[d * VOCAB + vi];
+        }
+        d_context[(SEQ_LEN - 1) * HIDDEN_HEAD + d] = s;
+    }
+    // d_attn_probs = d_context @ V^T  (SEQ_LEN × SEQ_LEN)
+    // d_V = attn_probs^T @ d_context  (SEQ_LEN × HIDDEN_HEAD)
+    let mut d_attn_probs = vec![0.0_f32; SEQ_LEN * SEQ_LEN];
+    for i in 0..SEQ_LEN {
+        for j in 0..SEQ_LEN {
+            let mut s = 0.0_f32;
+            for d in 0..HIDDEN_HEAD {
+                s += d_context[i * HIDDEN_HEAD + d] * cache.v[j * HIDDEN_HEAD + d];
+            }
+            d_attn_probs[i * SEQ_LEN + j] = s;
+        }
+    }
+    let mut d_v = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    for j in 0..SEQ_LEN {
+        for d in 0..HIDDEN_HEAD {
+            let mut s = 0.0_f32;
+            for i in 0..SEQ_LEN {
+                s += cache.attn_probs[i * SEQ_LEN + j] * d_context[i * HIDDEN_HEAD + d];
+            }
+            d_v[j * HIDDEN_HEAD + d] = s;
+        }
+    }
+    // Softmax backward (per row): d_scores = p * (d_p - Σ_k p_k * d_p_k)
+    let mut d_scores = vec![0.0_f32; SEQ_LEN * SEQ_LEN];
+    for i in 0..SEQ_LEN {
+        let p = &cache.attn_probs[i * SEQ_LEN..(i + 1) * SEQ_LEN];
+        let dp = &d_attn_probs[i * SEQ_LEN..(i + 1) * SEQ_LEN];
+        let mut dot = 0.0_f32;
+        for jj in 0..SEQ_LEN {
+            dot += p[jj] * dp[jj];
+        }
+        for jj in 0..SEQ_LEN {
+            d_scores[i * SEQ_LEN + jj] = p[jj] * (dp[jj] - dot);
+        }
+    }
+    // scores = Q @ K^T * scale → d_Q = d_scores @ K * scale,
+    //                            d_K = d_scores^T @ Q * scale
+    let scale = 1.0_f32 / (HIDDEN_HEAD as f32).sqrt();
+    let mut d_q = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    let mut d_k = vec![0.0_f32; SEQ_LEN * HIDDEN_HEAD];
+    for i in 0..SEQ_LEN {
+        for d in 0..HIDDEN_HEAD {
+            let mut s = 0.0_f32;
+            for j in 0..SEQ_LEN {
+                s += d_scores[i * SEQ_LEN + j] * cache.k[j * HIDDEN_HEAD + d];
+            }
+            d_q[i * HIDDEN_HEAD + d] = s * scale;
+        }
+    }
+    for j in 0..SEQ_LEN {
+        for d in 0..HIDDEN_HEAD {
+            let mut s = 0.0_f32;
+            for i in 0..SEQ_LEN {
+                s += d_scores[i * SEQ_LEN + j] * cache.q[i * HIDDEN_HEAD + d];
+            }
+            d_k[j * HIDDEN_HEAD + d] = s * scale;
+        }
+    }
+    // d_W_Q[h, d] += Σ_i embed_rows[i, h] * d_q[i, d]
+    // d_W_K, d_W_V analogous.
+    for i in 0..SEQ_LEN {
+        let er = &cache.embed_rows[i * HIDDEN..(i + 1) * HIDDEN];
+        outer_accum(er, &d_q[i * HIDDEN_HEAD..(i + 1) * HIDDEN_HEAD], HIDDEN, HIDDEN_HEAD, d_w_q);
+        outer_accum(er, &d_k[i * HIDDEN_HEAD..(i + 1) * HIDDEN_HEAD], HIDDEN, HIDDEN_HEAD, d_w_k);
+        outer_accum(er, &d_v[i * HIDDEN_HEAD..(i + 1) * HIDDEN_HEAD], HIDDEN, HIDDEN_HEAD, d_w_v);
+    }
+    // d_embed_rows[i, h] = Σ_d (d_q[i,d]*W_Q[h,d] + d_k[i,d]*W_K[h,d] + d_v[i,d]*W_V[h,d])
+    for i in 0..SEQ_LEN {
+        let token = tokens[i];
+        for h in 0..HIDDEN {
+            let mut s = 0.0_f32;
+            for d in 0..HIDDEN_HEAD {
+                s += d_q[i * HIDDEN_HEAD + d] * w_q[h * HIDDEN_HEAD + d];
+                s += d_k[i * HIDDEN_HEAD + d] * w_k[h * HIDDEN_HEAD + d];
+                s += d_v[i * HIDDEN_HEAD + d] * w_v[h * HIDDEN_HEAD + d];
+            }
+            d_embed[token * HIDDEN + h] += s;
+        }
+    }
 }
 
 fn softmax_inplace(logits: &mut [f32]) {
@@ -164,107 +337,83 @@ fn softmax_inplace(logits: &mut [f32]) {
     }
 }
 
-/// Run one (format, seed) training cell on the 2-layer MLP model.
-/// Returns final held-out val BPB.
 fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
     let mut embed = xavier_init(seed, VOCAB * HIDDEN, HIDDEN);
-    let mut w1 = xavier_init(seed.wrapping_add(1), HIDDEN * HIDDEN_MLP, HIDDEN);
-    let mut w2 = xavier_init(seed.wrapping_add(2), HIDDEN_MLP * VOCAB, HIDDEN_MLP);
+    let mut w_q = xavier_init(seed.wrapping_add(1), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_k = xavier_init(seed.wrapping_add(2), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_v = xavier_init(seed.wrapping_add(3), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_o = xavier_init(seed.wrapping_add(4), HIDDEN_HEAD * VOCAB, HIDDEN_HEAD);
 
-    let mut step_rng = Lcg::new(seed.wrapping_add(3));
-    let n_train_pairs = train.len().saturating_sub(1);
-    if n_train_pairs == 0 {
+    let mut step_rng = Lcg::new(seed.wrapping_add(5));
+    let n_train_windows = train.len().saturating_sub(SEQ_LEN);
+    if n_train_windows == 0 {
         return f64::NAN;
     }
 
     for _step in 0..STEPS {
         let mut d_embed = vec![0.0_f32; embed.len()];
-        let mut d_w1 = vec![0.0_f32; w1.len()];
-        let mut d_w2 = vec![0.0_f32; w2.len()];
+        let mut d_w_q = vec![0.0_f32; w_q.len()];
+        let mut d_w_k = vec![0.0_f32; w_k.len()];
+        let mut d_w_v = vec![0.0_f32; w_v.len()];
+        let mut d_w_o = vec![0.0_f32; w_o.len()];
 
         for _ in 0..BATCH {
-            let i = step_rng.pick(n_train_pairs);
-            let prev = (train[i] as usize) % VOCAB;
-            let next = (train[i + 1] as usize) % VOCAB;
+            let start = step_rng.pick(n_train_windows);
+            let tokens: Vec<usize> = (0..SEQ_LEN)
+                .map(|i| (train[start + i] as usize) % VOCAB)
+                .collect();
+            let next = (train[start + SEQ_LEN - 1] as usize) % VOCAB;
+            // Predict the byte right AFTER the window's last position.
+            // (Use start + SEQ_LEN if available; else wrap to next.)
+            let next = if start + SEQ_LEN < train.len() {
+                (train[start + SEQ_LEN] as usize) % VOCAB
+            } else {
+                next
+            };
 
-            let embed_row: Vec<f32> =
-                embed[prev * HIDDEN..(prev + 1) * HIDDEN].to_vec();
-            let (h_pre, h_post, mut logits) = forward_mlp(&embed_row, &w1, &w2);
+            let (mut logits, cache) = forward(&embed, &w_q, &w_k, &w_v, &w_o, &tokens);
             softmax_inplace(&mut logits);
-
-            // dL/dlogits = softmax - one_hot(next)
             let mut d_logits = logits.clone();
             d_logits[next] -= 1.0;
             let scale = 1.0_f32 / BATCH as f32;
-            for v in d_logits.iter_mut() {
-                *v *= scale;
+            for x in d_logits.iter_mut() {
+                *x *= scale;
             }
-
-            // dL/dw2[m][v] = h_post[m] * d_logits[v]
-            for m in 0..HIDDEN_MLP {
-                let hpm = h_post[m];
-                for v in 0..VOCAB {
-                    d_w2[m * VOCAB + v] += hpm * d_logits[v];
-                }
-            }
-            // dL/dh_post[m] = Σ_v d_logits[v] * w2[m][v]
-            let mut d_h_post = vec![0.0_f32; HIDDEN_MLP];
-            for m in 0..HIDDEN_MLP {
-                let mut s = 0.0_f32;
-                for v in 0..VOCAB {
-                    s += d_logits[v] * w2[m * VOCAB + v];
-                }
-                d_h_post[m] = s;
-            }
-            // ReLU backward: zero out where h_pre <= 0
-            let d_h_pre: Vec<f32> = (0..HIDDEN_MLP)
-                .map(|m| if h_pre[m] > 0.0 { d_h_post[m] } else { 0.0 })
-                .collect();
-            // dL/dw1[h][m] = embed_row[h] * d_h_pre[m]
-            for h in 0..HIDDEN {
-                let eh = embed_row[h];
-                for m in 0..HIDDEN_MLP {
-                    d_w1[h * HIDDEN_MLP + m] += eh * d_h_pre[m];
-                }
-            }
-            // dL/dembed_row[h] = Σ_m d_h_pre[m] * w1[h][m]
-            for h in 0..HIDDEN {
-                let mut s = 0.0_f32;
-                for m in 0..HIDDEN_MLP {
-                    s += d_h_pre[m] * w1[h * HIDDEN_MLP + m];
-                }
-                d_embed[prev * HIDDEN + h] += s;
-            }
+            backward(
+                &cache,
+                &tokens,
+                &d_logits,
+                &w_q, &w_k, &w_v, &w_o,
+                &mut d_embed,
+                &mut d_w_q, &mut d_w_k, &mut d_w_v, &mut d_w_o,
+            );
         }
 
-        // SGD update + format-gate quantization on ALL three weight
-        // matrices (the format-zoo shadow-weight pattern: master in
-        // f32, every weight tensor round-tripped through the chosen
-        // format after every SGD step).
-        for i in 0..embed.len() {
-            embed[i] -= LR * d_embed[i];
-            embed[i] = fmt.quantize(embed[i]);
-        }
-        for i in 0..w1.len() {
-            w1[i] -= LR * d_w1[i];
-            w1[i] = fmt.quantize(w1[i]);
-        }
-        for i in 0..w2.len() {
-            w2[i] -= LR * d_w2[i];
-            w2[i] = fmt.quantize(w2[i]);
+        // SGD + format-gate quantization on all 5 weight matrices.
+        for (w, dw) in [
+            (&mut embed, &d_embed),
+            (&mut w_q, &d_w_q),
+            (&mut w_k, &d_w_k),
+            (&mut w_v, &d_w_v),
+            (&mut w_o, &d_w_o),
+        ] {
+            for i in 0..w.len() {
+                w[i] -= LR * dw[i];
+                w[i] = fmt.quantize(w[i]);
+            }
         }
     }
 
-    // Held-out BPB on val (prev, next) pairs.
+    // Held-out BPB: average -log_2 P(next | last SEQ_LEN tokens) over val.
     let mut total_nll = 0.0_f64;
     let mut count = 0_usize;
-    let n_val_pairs = val.len().saturating_sub(1);
-    for i in 0..n_val_pairs {
-        let prev = (val[i] as usize) % VOCAB;
-        let next = (val[i + 1] as usize) % VOCAB;
-        let embed_row: Vec<f32> =
-            embed[prev * HIDDEN..(prev + 1) * HIDDEN].to_vec();
-        let (_, _, mut logits) = forward_mlp(&embed_row, &w1, &w2);
+    let n_val_windows = val.len().saturating_sub(SEQ_LEN);
+    for start in 0..n_val_windows {
+        let tokens: Vec<usize> = (0..SEQ_LEN)
+            .map(|i| (val[start + i] as usize) % VOCAB)
+            .collect();
+        let next = (val[start + SEQ_LEN] as usize) % VOCAB;
+        let (mut logits, _) = forward(&embed, &w_q, &w_k, &w_v, &w_o, &tokens);
         softmax_inplace(&mut logits);
         let p = logits[next].max(1e-30);
         total_nll -= (p.ln() as f64) / (LN2 as f64);
@@ -289,9 +438,6 @@ fn parse_seeds() -> Vec<u64> {
         }
     }
     if out.is_empty() {
-        // Loop 156: default to 5 seeds (was 3 at Loop 155). The 77th-pass
-        // SEV-2 #1 flagged the N=3 sample as borderline for statistical
-        // significance; N=5 with 200 steps is the hardened budget.
         out = vec![42, 43, 44, 45, 46];
     }
     out
@@ -316,9 +462,9 @@ fn main() {
     let train = load_tokens("data/tiny_shakespeare.txt");
     let val = load_tokens("data/tiny_shakespeare_val.txt");
     println!(
-        "# bridge_bench (Loop 160: 2-layer MLP) — train_n={}, val_n={}, \
-         vocab={VOCAB}, hidden={HIDDEN}, hidden_mlp={HIDDEN_MLP}, \
-         steps={STEPS}, batch={BATCH}, lr={LR}, seeds={seeds:?}",
+        "# bridge_bench (Loop 161: single-head attention) — train_n={}, \
+         val_n={}, vocab={VOCAB}, hidden={HIDDEN}, hidden_head={HIDDEN_HEAD}, \
+         seq_len={SEQ_LEN}, steps={STEPS}, batch={BATCH}, lr={LR}, seeds={seeds:?}",
         train.len(),
         val.len()
     );
@@ -396,6 +542,8 @@ fn main() {
         "seeds": seeds,
         "vocab": VOCAB,
         "hidden": HIDDEN,
+        "hidden_head": HIDDEN_HEAD,
+        "seq_len": SEQ_LEN,
         "steps": STEPS,
         "batch": BATCH,
         "lr": LR,
