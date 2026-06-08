@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **73**; distinct loops referenced: **67**.
+Total commits matched: **74**; distinct loops referenced: **68**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -72,4 +72,5 @@ Total commits matched: **73**; distinct loops referenced: **67**.
 | 159 | `f3d99ba` | discipline(f2): camera-ready prep checklist + smoke test (Loop 159, round-159) |
 | 160 | `31ce620` | feat(race): bridge_bench v3 — 2-layer MLP, HIDDEN=128, all weights quantized; 79… |
 | 161 | `1016efb` | feat(race): bridge_bench v4 — single-head attention block; 80th adversarial pass… |
-| 162 | `ae55e87` | feat(race): attention bench harder — STEPS 800, HIDDEN 128, 81st pass (Loop 162,… |
+| 162 | `70eb5b8` | feat(race): attention bench harder — STEPS 800, HIDDEN 128, 81st pass (Loop 162,… |
+| 163 | `872caa9` | feat(race): full 6-format zoo bridge_bench — BitNet/INT4 catastrophic failure va… |

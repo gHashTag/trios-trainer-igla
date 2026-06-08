@@ -103,7 +103,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
   - [ ] (42/43) quire microbench freshness — §9.4.2 dot-product accuracy
         summary + 5 per-seed JSONs (2 regimes × 4 lengths × 5 seeds)
   - [ ] (43/43) bridge bench freshness — §9.4.3 sandbox training summary
-        + 5 per-seed JSONs (3 formats × 5 seeds = 15 cells)
+        + 5 per-seed JSONs (6 formats × 5 seeds = 30 cells)
 - [ ] (recommended) `papers/scripts/run_all_checks.sh --check-prereqs` —
       9/9 OK on submission machine (xelatex, bibtex, pdftotext,
       python3 + matplotlib + numpy, zip, cargo, git)
@@ -116,7 +116,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
 - [ ] Anchor commit pinned (see top of file).
 - [ ] Non-anonymized PDF: **53 pages**, ~242 KB
       (`papers/tmlr_submission_kit/test_compile.pdf`)
-- [ ] Anonymized PDF: **52 pages**, ~239 KB
+- [ ] Anonymized PDF: **53 pages**, ~243 KB
       (`papers/tmlr_submission_kit/test_compile_anon.pdf`)
 - [ ] Real-TMLR-class PDF: **33 pages**, ~229 KB
       (`papers/tmlr_submission_kit/test_compile_tmlr.pdf`)
@@ -124,7 +124,7 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 81 passes across Loops 59-162
+- [ ] **Adversarial review**: 81 passes across Loops 59-163
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
       passes 19-81 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
@@ -226,9 +226,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 162 (2026-06-08)**
+- Checklist version: **Loop 163 (2026-06-08)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 162 commits on `f2-methodology`
+  Loop 163 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -434,9 +434,19 @@ If rejected:
   Posit16 = 4.8281 BPB (gap < 1e-5); GF16 = 4.8378 BPB (+0.0097,
   0.76× std — NOT stat-sig at N=5). 80th pass folded SEV-2 gap-
   to-floor wording. TMLR PDF 32 → 33 pages.
-- Loop 162: this update — attention bench HARDER (STEPS 200→800,
+- Loop 162: attention bench HARDER (STEPS 200→800,
   HIDDEN 64→128). New §9.4.3 numbers: f32 = 4.454, Posit16 = 4.458
   (+0.004, 0.5× MC SE), GF16 = 4.627 (+0.173, 11.6× MC SE —
   decisively significant). GF16 delta exploded 17× vs Loop 161
   attention while Posit16 stayed within MC SE noise. PDF non-anon
   52 → 53 pages.
+- Loop 163: this update — full **6-format zoo** at converged
+  attention budget. Posit16 still indistinguishable from f32;
+  GF16 +0.173 sig; bf16 +0.348 sig; BitNet b1.58 and INT4
+  **CATASTROPHICALLY FAILED** (BitNet → uniform predictor at
+  7.0000 BPB, INT4 → divergent 99.66 BPB) because the naive
+  shadow-weight pattern doesn't transfer to 1.58/4-bit formats
+  (BitNet needs STE backward + learned scales; INT4 needs GPTQ
+  or per-group scale). §9.4.3 rewritten to report failures
+  honestly as methodological finding. Anon PDF 52 → 53 pages.
+  82nd adversarial pass deferred to Loop 164.

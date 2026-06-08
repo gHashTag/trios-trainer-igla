@@ -14,6 +14,21 @@
       "format": "posit16",
       "seed": 43,
       "val_bpb": 4.454584805539668
+    },
+    {
+      "format": "bitnet158",
+      "seed": 43,
+      "val_bpb": 7.0
+    },
+    {
+      "format": "int4",
+      "seed": 43,
+      "val_bpb": 99.6578425808561
+    },
+    {
+      "format": "bf16",
+      "seed": 43,
+      "val_bpb": 4.799114348517266
     }
   ],
   "seed": 43

@@ -36,7 +36,7 @@ RESULTS_DIR = CRATE_ROOT / ".trinity" / "results"
 SUMMARY_PATTERN = re.compile(
     r"bridge_bench_summary_seeds_(\d+)-(\d+)\.json$"
 )
-EXPECTED_FORMATS = {"f32", "gf16", "posit16"}
+EXPECTED_FORMATS = {"f32", "gf16", "posit16", "bitnet158", "int4", "bf16"}
 
 
 def _rel(p: Path) -> str:

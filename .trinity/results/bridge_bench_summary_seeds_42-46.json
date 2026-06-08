@@ -3,7 +3,10 @@
   "formats": [
     "f32",
     "gf16",
-    "posit16"
+    "posit16",
+    "bitnet158",
+    "int4",
+    "bf16"
   ],
   "git_anchor_hint": "f2-methodology branch HEAD at run time",
   "hidden": 128,
@@ -21,6 +24,16 @@
   "steps": 800,
   "tool": "bridge_bench",
   "val_bpb_by_format": {
+    "bf16": {
+      "mean": 4.801918861340369,
+      "n_seeds": 5,
+      "std": 0.006758597010515525
+    },
+    "bitnet158": {
+      "mean": 7.0,
+      "n_seeds": 5,
+      "std": 0.0
+    },
     "f32": {
       "mean": 4.454034267033458,
       "n_seeds": 5,
@@ -30,6 +43,11 @@
       "mean": 4.627283290999115,
       "n_seeds": 5,
       "std": 0.03326548682244681
+    },
+    "int4": {
+      "mean": 99.6578425808561,
+      "n_seeds": 5,
+      "std": 0.0
     },
     "posit16": {
       "mean": 4.458060355466541,

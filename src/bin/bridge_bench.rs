@@ -57,6 +57,19 @@ enum Format {
     F32,
     Gf16,
     Posit16,
+    /// BitNet b1.58 ternary {-1, 0, +1} with per-tensor abs-mean scale α.
+    /// q = clip(round(w/α), -1, +1) * α, where α = mean(|w|). Per Ma et al.
+    /// 2024 (arXiv:2402.17764) §2.1 — the "quantization function" used by
+    /// the BitNet b1.58 paper as the reference 1.58-bit scheme.
+    Bitnet158,
+    /// INT4 round-to-nearest with per-tensor symmetric scale s = max(|w|)/7.
+    /// q = clip(round(w/s), -8, +7) * s. The canonical RTN-INT4 baseline
+    /// referenced by GPTQ (Frantar et al. 2210.17323 §3.1) before any
+    /// Hessian-based error correction.
+    Int4,
+    /// bf16 = top 16 bits of f32 (sign + 8 exp + 7 mantissa). Per-element
+    /// truncation, same as `convert_f32_to_bf16` in `format_ladder.rs`.
+    Bf16,
 }
 
 impl Format {
@@ -65,13 +78,65 @@ impl Format {
             Self::F32 => "f32",
             Self::Gf16 => "gf16",
             Self::Posit16 => "posit16",
+            Self::Bitnet158 => "bitnet158",
+            Self::Int4 => "int4",
+            Self::Bf16 => "bf16",
         }
     }
-    fn quantize(self, x: f32) -> f32 {
+
+    /// In-place per-tensor quantization (the format gate as applied after
+    /// each SGD step to every weight matrix in the shadow-weight pattern).
+    /// Per-element formats (F32 / Gf16 / Posit16 / Bf16) ignore the tensor
+    /// scope; per-tensor formats (Bitnet158 / Int4) compute their scale
+    /// across the whole tensor before quantizing each element.
+    fn quantize_tensor(self, w: &mut [f32]) {
         match self {
-            Self::F32 => x,
-            Self::Gf16 => GF16::from_f32(x).to_f32(),
-            Self::Posit16 => Posit16::from_f32(x).to_f32(),
+            Self::F32 => {}
+            Self::Gf16 => {
+                for x in w.iter_mut() {
+                    *x = GF16::from_f32(*x).to_f32();
+                }
+            }
+            Self::Posit16 => {
+                for x in w.iter_mut() {
+                    *x = Posit16::from_f32(*x).to_f32();
+                }
+            }
+            Self::Bitnet158 => {
+                // α = mean(|w|); if zero, leave the tensor untouched
+                // (a fresh-init layer with no SGD update would otherwise
+                // collapse to all-zeros).
+                let mean_abs: f32 = w.iter().map(|x| x.abs()).sum::<f32>()
+                    / (w.len().max(1) as f32);
+                if mean_abs < 1e-30 {
+                    return;
+                }
+                for x in w.iter_mut() {
+                    let scaled = *x / mean_abs;
+                    let q = scaled.round().clamp(-1.0, 1.0);
+                    *x = q * mean_abs;
+                }
+            }
+            Self::Int4 => {
+                let max_abs: f32 = w
+                    .iter()
+                    .map(|x| x.abs())
+                    .fold(0.0_f32, f32::max);
+                let s = max_abs / 7.0;
+                if s < 1e-30 {
+                    return;
+                }
+                for x in w.iter_mut() {
+                    let q = (*x / s).round().clamp(-8.0, 7.0);
+                    *x = q * s;
+                }
+            }
+            Self::Bf16 => {
+                for x in w.iter_mut() {
+                    let bits = x.to_bits() & 0xFFFF_0000;
+                    *x = f32::from_bits(bits);
+                }
+            }
         }
     }
 }
@@ -396,7 +461,10 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
             );
         }
 
-        // SGD + format-gate quantization on all 5 weight matrices.
+        // SGD update on all 5 weight matrices, followed by per-tensor
+        // format-gate quantization (the shadow-weight pattern: master
+        // stays in f32 between forward passes; each tensor is round-
+        // tripped through the chosen format after every step).
         for (w, dw) in [
             (&mut embed, &d_embed),
             (&mut w_q, &d_w_q),
@@ -406,8 +474,8 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
         ] {
             for i in 0..w.len() {
                 w[i] -= LR * dw[i];
-                w[i] = fmt.quantize(w[i]);
             }
+            fmt.quantize_tensor(w);
         }
     }
 
@@ -480,7 +548,14 @@ fn main() {
         std::process::exit(1);
     }
 
-    let formats = [Format::F32, Format::Gf16, Format::Posit16];
+    let formats = [
+        Format::F32,
+        Format::Gf16,
+        Format::Posit16,
+        Format::Bitnet158,
+        Format::Int4,
+        Format::Bf16,
+    ];
     let result_dir = Path::new(".trinity/results");
     let _ = fs::create_dir_all(result_dir);
 

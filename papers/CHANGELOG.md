@@ -107,24 +107,25 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–162)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–163)
 
 Independent adversarial reviews surfaced load-bearing issues
 caught before reviewers saw them. **Eighty-one** independent
-passes total across Loops 59–162 (50-pass milestone reached at
+passes total across Loops 59–163 (50-pass milestone reached at
 Loop 127; passes 51–81 dispatched at Loops 128–162; Loops 157,
-158, 159 were rehearsal / anchor-pin / camera-ready-prep loops
-with no adversarial passes dispatched).
+158, 159, 163 were rehearsal / camera-ready-prep / compute-bound
+loops with no adversarial pass dispatched in-loop — Loop 163's
+82nd pass is deferred to Loop 164).
 The first 11 (Loops 59, 61, 75–85) targeted the original paper
-drafts and submission flow; Loops 86–162 extended the discipline
+drafts and submission flow; Loops 86–163 extended the discipline
 to round-N audits where each substantive patch is independently
 re-audited the loop after it lands. Detail on passes 1–11 below;
 passes 12–81 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–162; per-pass detail lives in
+(per-loop CI additions Loops 87–163; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–162 (49th pass flagged the un-widened grep covered only
+90–163 (49th pass flagged the un-widened grep covered only
 ~35 of 81 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
@@ -266,7 +267,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–162)
+### 10. CI gate evolution (Loops 87–163)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -677,6 +678,28 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 163** — full 6-format zoo (`f32`, `Posit16`, `GF16`,
+  `bf16`, `BitNet b1.58`, `INT4`) at the converged 800-step ×
+  HIDDEN=128 attention budget. 5 seeds × 6 formats = 30 cells,
+  ~50 min run on M-series macOS. **The narrow formats fuzzed the
+  recipe hardest** (per the user's "tiny formats are best fuzzer"
+  insight): BitNet collapsed to a uniform-byte predictor (7.0000
+  BPB = log_2 128); INT4 destabilized to a wrong-predictor regime
+  (99.66 BPB). Both failures are **recipe-level, not format-
+  level** — the naive shadow-weight pattern (master in f32,
+  quantize every step) does NOT transfer to 1.58-bit / 4-bit
+  representations; BitNet b1.58 requires straight-through-
+  estimator backward + learned scales, INT4 in practice needs
+  Hessian-aware quantizer (GPTQ) or per-group dynamic scale.
+  The §9.4.3 prose was rewritten to report the failures
+  HONESTLY as a methodological finding rather than dropping the
+  failed cells; the F2 §9.4 framing "every format gets the same
+  recipe" is now **empirically refuted at narrow bit-widths**,
+  and the §9.4.3 conclusion strengthens §3.1's stratification
+  mechanism (quantization recipe IS a stratum-level variable).
+  Three formats trained: Posit16 (+0.004, not sig), GF16 (+0.173,
+  t=11.6), bf16 (+0.348, t=81.4). Stage count unchanged at 43.
+  Pass count stays at 81 (82nd pass deferred to Loop 164).
 - **Loop 162** — attention bench hardened: STEPS 200 → 800, HIDDEN
   64 → 128 (HIDDEN_HEAD also 128). Same 5 seeds × 3 formats.
   Run took ~17 min on M-series macOS. New §9.4.3 numbers at the

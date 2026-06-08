@@ -184,15 +184,15 @@ LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1657.
 LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1657.
 
 
-LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1698.
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1695.
 
+[24]
 
 LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1706.
 
 
 LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1709.
 
-[24]
 
 LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1727.
 
@@ -202,6 +202,7 @@ LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1730.
 
 LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1751.
 
+[25]
 
 LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1764.
 
@@ -209,10 +210,10 @@ LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1764.
 Underfull \hbox (badness 8019) in paragraph at lines 1759--1765
 []\TU/lmr/m/n/10 The benchmark binary (\TU/lmtt/m/n/10 src/bin/bridge_bench\TU/
 lmr/m/n/10 ) writes per-seed JSON and a summary to
-[25] [26]
+[26] [27]
 Overfull \hbox (395.82509pt too wide) in paragraph at lines 1909--1921
  [][] 
-[27]
+
 Underfull \hbox (badness 3815) in paragraph at lines 1926--1929
 []\TU/lmr/m/n/10 When the producing binary is stratum-aware (\TU/lmtt/m/n/10 f2
 _dual_mediation\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 f2_mediation_sensitivity\TU/lmr
@@ -221,7 +222,7 @@ _dual_mediation\TU/lmr/m/n/10 , \TU/lmtt/m/n/10 f2_mediation_sensitivity\TU/lmr
 Underfull \hbox (badness 10000) in paragraph at lines 1943--1944
 []\TU/lmr/bx/n/10 Exit 0 — PASS. \TU/lmr/m/n/10 All required keys present, sche
 ma string matches current
-
+[28]
 Underfull \hbox (badness 10000) in paragraph at lines 1962--1963
 []\TU/lmr/m/n/10 section []3.3[] — \TU/lmtt/m/n/10 src/bin/f2_mediation_sensiti
 vity.rs \TU/lmr/m/n/10 (\TU/lmtt/m/n/10 envelope_expansion\TU/lmr/m/n/10 ,
@@ -237,7 +238,7 @@ rate_appendix_d.sh \TU/lmr/m/n/10 and committed at
 Overfull \hbox (30.50005pt too wide) in paragraph at lines 1982--1988
 []\TU/lmr/m/n/10 Two load-bearing regression locks are highlighted in section [
 ]8.2[]: \TU/lmtt/m/n/10 dual_mediation_no_interaction_residual_lock
-[28]
+[29]
 
 LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 2016.
 
@@ -273,11 +274,11 @@ ction []1[] against the
 Underfull \hbox (badness 1590) in paragraph at lines 2016--2017
 \TU/lmtt/m/n/10 _CLAIMS \TU/lmr/m/n/10 lists), the documented-vs-extracted-cons
 istency verifier (binds section []1[] sub-bullet
-[29])
+[30])
 Underfull \hbox (badness 2970) in paragraph at lines 2019--33
 []\TU/lmtt/m/n/10 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m/n/
 10 chains \TU/lmtt/m/n/10 papers/scripts/figure_regen.sh \TU/lmr/m/n/10 +
-(./test_compile_tmlr.bbl [30] [31] [32]) [33] (./test_compile_tmlr.aux)
+(./test_compile_tmlr.bbl [31] [32]) [33] (./test_compile_tmlr.aux)
 
 LaTeX Warning: There were undefined references.
 

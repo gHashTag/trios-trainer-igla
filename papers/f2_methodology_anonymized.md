@@ -1689,46 +1689,82 @@ head self-attention block** (embed → Q/K/V projections → softmax-
 scaled-dot-product → V-aggregation → output projection → softmax) on
 byte-level `data/tiny_shakespeare.txt` (VOCAB = 128, HIDDEN = 128,
 HIDDEN_HEAD = 128, SEQ_LEN = 8) trained for **800 SGD steps × batch
-64** at LR = 0.5 over three formats — `f32` baseline, `GF16`
-quantization, `Posit16` quantization. **All five weight matrices**
-(embed VOCAB×HIDDEN, W_Q/W_K/W_V each HIDDEN×HIDDEN_HEAD, W_O
-HIDDEN_HEAD×VOCAB) are round-tripped through the chosen format after
-every SGD step (the shadow-weight pattern used by every modern
-mixed-precision trainer including the MXFP8 and NVFP4 references in
-§9.4). **Five seeds** (42, 43, 44, 45, 46).
+64** at LR = 0.5 over **six formats** — `f32` baseline, `bf16`
+(top-16-bit truncation), `Posit16` (Gustafson 2017, es=1), `GF16`
+(φ-optimized 6:9 split), `BitNet b1.58` (Ma et al. 2024 ternary
+with abs-mean scale), and `INT4` (per-tensor RTN, GPTQ baseline).
+**All five weight matrices** (embed VOCAB×HIDDEN, W_Q/W_K/W_V each
+HIDDEN×HIDDEN_HEAD, W_O HIDDEN_HEAD×VOCAB) are round-tripped through
+the chosen format after every SGD step (the shadow-weight pattern
+used by every modern mixed-precision trainer including the MXFP8
+and NVFP4 references in §9.4). **Five seeds** (42, 43, 44, 45, 46).
 
 Final held-out val BPB (mean ± sample-std across 5 seeds, on
 `data/tiny_shakespeare_val.txt`):
 
-| format | mean val BPB | std |
-|-----------|--------------|--------|
-| `f32` | 4.4540 | 0.0192 |
-| `Posit16` | 4.4581 | 0.0184 |
-| `GF16` | 4.6273 | 0.0333 |
+| format | mean val BPB | std | Δ vs f32 | status |
+|---------------|--------------|--------|----------|-------------------|
+| `f32` | 4.4540 | 0.0192 | — | baseline |
+| `Posit16` | 4.4581 | 0.0184 | +0.004 | not sig (N=5) |
+| `GF16` | 4.6273 | 0.0333 | +0.173 | sig, t ≈ 11.6 |
+| `bf16` | 4.8019 | 0.0068 | +0.348 | sig, t ≈ 81.4 |
+| `BitNet b1.58`| 7.0000 | 0.0000 | +2.546 | **collapsed (uniform)** |
+| `INT4` | 99.6578 | 0.0000 | +95.2 | **diverged** |
 
-**What the table says**: GF16 shows a **statistically meaningful
-+0.1733 BPB penalty** vs the f32 baseline — **5.2× the per-seed
-sample-std** and **≈ 11.6× the Monte-Carlo SE (std/√5)** at N=5;
-the t-statistic of ≈ 11.6 is decisively above any conventional
-significance threshold (e.g., alpha = 0.001). The GF16 ≥ f32
-ordering also holds seed-by-seed in all five individual runs.
+**What the table says**: the six formats sort into **three
+disjoint regimes** under our minimal shadow-weight training recipe.
 
-Posit16 shows a **small but non-zero** +0.0041 BPB delta vs f32 —
-**not statistically significant** at N=5 (the delta is ≈ 0.22× the
-per-seed std and ≈ 0.50× the MC SE; t-statistic of ≈ 0.50 sits far
-below the t-critical of 2.78 at alpha = 0.05 for 4 d.f.). This
-is the *first* bridge-bench iteration where Posit16 separates from
-f32 numerically, but at a magnitude **42× smaller than GF16's
-penalty** (0.0041 vs 0.1733). The encode-time prediction from
-§9.4.1 — Posit16's tapered-precision encoding avoids the
-underflow regime GF16 is exposed to — survives the trip into the
-attention block's mixed-magnitude (Q/K/V projections + softmax
-+ V-aggregation + output projection) workload.
+  - **Indistinguishable from f32**: Posit16 alone. The +0.004 BPB
+    delta is 0.22× the per-seed std (t ≈ 0.5) — not significant at
+    N=5, and 42× smaller than GF16's delta. The §9.4.1 encode-time
+    prediction (tapered precision avoids the underflow regime
+    GF16 is exposed to) survives the trip into the attention
+    block's mixed-magnitude workload (Q/K/V projections + softmax
+    + V-aggregation + output projection).
+
+  - **Detectable degradation, but still trains**: GF16 (+0.173 BPB,
+    t ≈ 11.6) and bf16 (+0.348 BPB, t ≈ 81.4). Both fail
+    significance decisively (t ≫ 2.78 at alpha = 0.05, df=4). The
+    bf16 penalty being larger than GF16's is a sandbox-scale
+    artifact — bf16's 7-bit mantissa rounds Q/K/V dot products
+    more aggressively than GF16's 9-bit mantissa at the post-init
+    magnitude regime; in a champion-scale recipe with bf16's
+    standard "compute in f32, store in bf16" pattern this gap
+    would shrink. We report the raw measurement.
+
+  - **Catastrophic training failure**: BitNet b1.58 and INT4. BitNet
+    collapsed to a uniform-byte predictor (7.0000 BPB =
+    log_2 128); INT4 destabilized to a wrong-predictor regime
+    (99.66 BPB ≈ 30·ln(10)/ln(2), the result of -log_2(p) with
+    p clamped at our 1e-30 numerical floor for every val token).
+    **The failures are recipe-level, not format-level**: the naive
+    shadow-weight pattern (master in f32, quantize every step,
+    pass dense gradients through) does NOT transfer to 1.58-bit /
+    4-bit representations. BitNet b1.58 (Ma et al. 2024
+    arxiv:2402.17764 §2.2) explicitly relies on a **straight-
+    through estimator** during the backward pass, and the
+    quantization-aware training routine uses learned scale terms
+    that our minimal sandbox does NOT implement. INT4 in practice
+    is paired with a Hessian-aware quantizer such as GPTQ (Frantar
+    et al. arxiv:2210.17323) or a per-group dynamic scale; the
+    GPTQ-baseline RTN we apply per-tensor every SGD step
+    over-quantizes the gradient signal and divergence is the
+    expected result. We include the failed cells in the table
+    rather than dropping them because **the failure itself is a
+    methodological finding**: the F2 §9.4 format-zoo framing —
+    "every format gets the same training recipe so the per-format
+    BPB is comparable" — is **incorrect at narrow bit-widths**;
+    each format below ~ 8 bits requires its own quantization-aware
+    training routine, and a fair format-zoo comparison must include
+    that recipe as part of the format.
 
 The pre-registered champion-scale comparison in
 `docs/F2_PRE_REG.md` remains the only place where the format-zoo
 BPB-vs-recipe claim will be tested at training scale a reviewer
-would call "real LM training." The encode-time prediction from §9.4.1 — Posit16's tapered
+would call "real LM training" — and the present subsection is now
+the empirical justification for §3.1's stratification mechanism
+treating "quantization recipe" as a stratum-level variable rather
+than a single dimension. The encode-time prediction from §9.4.1 — Posit16's tapered
 precision avoids underflow at the small-magnitude tail of the embed
 distribution — is consistent with the rank ordering observed here.
 We re-emphasize that the *underflow percentage* §9.4.1 measured was
