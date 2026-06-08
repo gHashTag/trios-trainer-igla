@@ -7,6 +7,7 @@
 //! technical-debt PR after merge. R5-honest: NOT introduced by PR #32.
 
 pub mod arch_config;
+pub mod backward;
 pub mod checkpoint;
 pub mod config;
 pub mod data;
@@ -27,9 +28,11 @@ pub mod neon_writer;
 pub mod objective;
 pub mod optimizer;
 pub mod phi_numbers;
+pub mod pipeline;
 pub mod race;
 pub mod seed_canon;
 pub mod train_loop;
+pub mod transformer;
 
 pub use config::TrainConfig;
 pub use train_loop::{run, RunOutcome};

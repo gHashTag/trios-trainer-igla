@@ -1,0 +1,44 @@
+% test_compile_tmlr.tex — compile against the real TMLR class.
+%
+% Uses tmlr.sty + tmlr.bst from JmlrOrg/tmlr-style-file (committed
+% under papers/tmlr_submission_kit/). Required: xelatex.
+%
+% This wraps the anonymized variant (for double-blind submission). For
+% an author-name variant, drop \usepackage{tmlr} and use
+% \usepackage[accepted]{tmlr} after acceptance.
+
+\documentclass[10pt]{article}
+
+\usepackage{tmlr}        % Under-review (anonymous) mode.
+% \usepackage[accepted]{tmlr}  % Camera-ready mode.
+
+\usepackage{fontspec}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\title{F2: A Stratified Pearl-CDE Framework for Transformer
+Training-Recipe Ablations, with a Sandbox Demonstration of
+Suppression Mediation}
+
+\author{Anonymous Authors\\
+\texttt{anonymous@openreview.net}}
+
+\begin{document}
+\maketitle
+
+\input{f2_methodology_anonymized_body.tex}
+
+% Loop 90 — force-include bib entries that the body cites as inline
+% text (not via \cite{}). Without these, the rendered references list
+% drops ~7 load-bearing citations that the converter doesn't translate.
+\nocite{vanderweele2017evalue, vaswani2017attention, loshchilov2019adamw,
+  daniel2015biom, guo2026sim, haneuse2019jama, fostiropoulos2023ablator,
+  meng2022rome, wang2023activation}
+
+\bibliographystyle{tmlr}
+\bibliography{f2_methodology}
+
+\end{document}

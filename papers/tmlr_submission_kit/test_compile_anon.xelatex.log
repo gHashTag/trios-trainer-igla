@@ -1,0 +1,542 @@
+This is XeTeX, Version 3.141592653-2.6-0.999998 (TeX Live 2026) (preloaded format=xelatex)
+ restricted \write18 enabled.
+entering extended mode
+(./test_compile_anon.tex
+LaTeX2e <2025-11-01>
+L3 programming layer <2026-01-19>
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/article.cls
+Document Class: article 2025/01/22 v1.4n Standard LaTeX document class
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/size11.clo))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3packages/xparse/xparse.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3kernel/expl3.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/l3backend/l3backend-xetex.de
+f)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec-xetex.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/base/fontenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/fontspec/fontspec.cfg)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsmath.sty
+For additional information on amsmath, use the `?' option.
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amstext.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsgen.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsbsy.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsmath/amsopn.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amssymb.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/amsfonts.sty))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amscls/amsthm.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/booktabs/booktabs.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphicx.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/keyval.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/graphics.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/trig.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/graphics.cfg)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-def/xetex.def)))
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hyperref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/iftex/iftex.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvsetkeys/kvsetkeys.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/kvdefinekeys/kvdefinekeys.
+sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdfescape/pdfescape.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/ltxcmds/ltxcmds.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/pdftexcmds/pdftexcmds.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/infwarerr/infwarerr.sty)))
+ (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hycolor/hycolor.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/nameref.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/refcount/refcount.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/gettitlestring/gettitlestr
+ing.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/kvoptions/kvoptions.sty)))
+(/Users/playra/Library/texmf/tex/latex/etoolbox/etoolbox.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/stringenc/stringenc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/pd1enc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/intcalc/intcalc.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/puenc.def)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/url/url.sty)
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bitset/bitset.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/bigintcalc/bigintcalc.sty)
+)) (/usr/local/texlive/2026basic/texmf-dist/tex/latex/hyperref/hxetex.def
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/rerunfilecheck/rerunfilechec
+k.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/generic/uniquecounter/uniquecounte
+r.sty))) (/Users/playra/Library/texmf/tex/latex/cleveref/cleveref.sty)
+==> First Aid for cleveref.sty applied!
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/natbib/natbib.sty)
+(./test_compile_anon.aux)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/color.sty
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics-cfg/color.cfg)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/graphics/mathcolor.ltx))
+(./test_compile_anon.out) (./test_compile_anon.out)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsa.fd)
+(/usr/local/texlive/2026basic/texmf-dist/tex/latex/amsfonts/umsb.fd)
+(./f2_methodology_anonymized_body.tex [1]
+Overfull \hbox (11.85884pt too wide) in paragraph at lines 43--47
+[]\TU/lmr/m/n/10.95 The framework is open-source in Rust with 10 binaries, 849 
+unit/integration
+
+Overfull \hbox (13.0086pt too wide) in paragraph at lines 68--88
+[]\TU/lmr/m/n/10.95 When such a dependency exists, a seed-mean ablation reports
+ the \TU/lmr/bx/n/10.95 marginal
+[2]
+Overfull \hbox (8.38786pt too wide) in paragraph at lines 102--103
+[]\TU/lmr/bx/n/10.95 Stratification framework\TU/lmr/m/n/10.95 . The ‘Stratum::
+Canonical, Wd0, Warmup0‘
+
+Overfull \hbox (1.17108pt too wide) in paragraph at lines 104--105
+[]\TU/lmr/bx/n/10.95 Bridge-score sensitivity envelope\TU/lmr/m/n/10.95 . We ad
+opt the Ohnishi-Li (2026)
+
+Overfull \hbox (50.3622pt too wide) in paragraph at lines 105--106
+\TU/lmr/m/n/10.95 tion [][]3.4[][]) takes the three single-stratum CSVs and emi
+ts a \TU/lmtt/m/n/10.95 stable_across_strata
+[3]
+Overfull \hbox (1.111pt too wide) in paragraph at lines 128--134
+[]\TU/lmr/bx/n/10.95 Note on figures. \TU/lmr/m/n/10.95 Figures 1–6 are committ
+ed at \TU/lmtt/m/n/10.95 papers/figures/*.png
+
+Overfull \hbox (2.91583pt too wide) in paragraph at lines 128--134
+\TU/lmr/m/n/10.95 and bundled in the supplementary zip; we reference them by nu
+mber through-
+[4] [5]
+Overfull \hbox (5.21439pt too wide) in paragraph at lines 208--220
+[]\TU/lmr/bx/n/10.95 Benchmarking Optimizers for LLM Pretraining \TU/lmr/m/n/10
+.95 (Semenov, Pagliar-
+
+Overfull \hbox (10.10347pt too wide) in paragraph at lines 208--220
+\TU/lmr/m/n/10.95 dini & Jaggi, 2025, ([][]Semenov et al.[][], [][]2025[][])) i
+s the closest empirical-methodology
+
+Overfull \hbox (14.93944pt too wide) in paragraph at lines 226--236
+[]\TU/lmr/bx/n/10.95 A Sober Look at Progress in Language Model Reasoning \TU/l
+mr/m/n/10.95 (Hochlehn-
+[6]
+Overfull \hbox (46.92952pt too wide) in paragraph at lines 289--295
+[]\TU/lmr/m/n/10.95 Adding a fourth stratum is a single-variant code change in 
+\TU/lmtt/m/n/10.95 src/race/ablation.rs\TU/lmr/m/n/10.95 ;
+[7] [8]
+Overfull \hbox (7.83244pt too wide) in paragraph at lines 391--394
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 src/b
+in/f2_dual_mediation.rs\TU/lmr/m/n/10.95 . The no-interaction
+[9]
+Overfull \hbox (22.86427pt too wide) in paragraph at lines 446--455
+ [][] 
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+Overfull \hbox (0.58354pt too wide) in paragraph at lines 462--465
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : \TU/lmtt/m/n/10.95 src/b
+in/f2_mediation_sensitivity.rs\TU/lmr/m/n/10.95 . The lock
+
+Overfull \hbox (3.61656pt too wide) in paragraph at lines 462--465
+\TU/lmr/m/n/10.95 test \TU/lmtt/m/n/10.95 tipping_point_matches_closer_endpoint
+_over_lambda \TU/lmr/m/n/10.95 validates the
+[10]
+Overfull \hbox (40.74442pt too wide) in paragraph at lines 500--501
+[]\TU/lmr/bx/n/10.95 Silent provenance loss\TU/lmr/m/n/10.95 . CSVs produced by
+ older runs of \TU/lmtt/m/n/10.95 f2_ablation_sweep
+[11]
+Overfull \hbox (65.40741pt too wide) in paragraph at lines 520--520
+[]\TU/lmtt/m/n/10.95 # prov:wasGeneratedBy = f2_ablation_sweep --mode wd_strati
+fied --steps 200[] 
+
+Overfull \hbox (13.66864pt too wide) in paragraph at lines 520--520
+[]\TU/lmtt/m/n/10.95 # prov:trainer_internals_schema = trainer_internals_v1_202
+6_06_01[] 
+
+Overfull \hbox (44.4601pt too wide) in paragraph at lines 531--535
+\TU/lmr/m/n/10.95 string constant in \TU/lmtt/m/n/10.95 src/race/multi_seed.rs 
+\TU/lmr/m/n/10.95 that is mixed into \TU/lmtt/m/n/10.95 config_fingerprint\TU/l
+mr/m/n/10.95 .
+
+Overfull \hbox (41.69414pt too wide) in paragraph at lines 536--541
+[]\TU/lmr/m/n/10.95 > Bump \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA \TU/lmr/
+m/n/10.95 (e.g. \TU/lmtt/m/n/10.95 v1_2026_06_01 -> v2_2026_06_15\TU/lmr/m/n/10
+.95 )
+[12]
+Overfull \hbox (134.3924pt too wide) in paragraph at lines 562--562
+[]\TU/lmtt/m/n/10.95 sweep CSV --> f2_dual_mediation --> dual CSV --> f2_mediat
+ion_sensitivity --> sens CSV[] 
+
+Overfull \hbox (46.93484pt too wide) in paragraph at lines 585--586
+\TU/lmr/m/n/10.95 of that input file against the value in the paper’s appendix 
+(\TU/lmtt/m/n/10.95 docs/F2_RMS_CDE.md
+[13]
+Overfull \hbox (28.6484pt too wide) in paragraph at lines 595--608
+[]\TU/lmr/bx/n/10.95 Implementation\TU/lmr/m/n/10.95 : provenance preamble in \
+TU/lmtt/m/n/10.95 src/bin/f2_ablation_sweep.rs\TU/lmr/m/n/10.95 ;
+
+Overfull \hbox (15.2455pt too wide) in paragraph at lines 595--608
+\TU/lmr/m/n/10.95 fingerprint mixin in \TU/lmtt/m/n/10.95 src/race/multi_seed.r
+s \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 config_fingerprint\TU/lmr/m/n/10.95 ); 
+checker
+
+Overfull \hbox (77.99991pt too wide) in paragraph at lines 595--608
+\TU/lmr/m/n/10.95 in \TU/lmtt/m/n/10.95 src/bin/f2_provenance_check.rs\TU/lmr/m
+/n/10.95 ; stratum banner in \TU/lmtt/m/n/10.95 src/bin/f2_dual_mediation.rs
+
+Overfull \hbox (116.18257pt too wide) in paragraph at lines 595--608
+\TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 detect_input_stratum\TU/lmr/m/n/10.95 ) a
+nd \TU/lmtt/m/n/10.95 src/bin/f2_mediation_sensitivity.rs \TU/lmr/m/n/10.95 (\T
+U/lmtt/m/n/10.95 write_stratum_banner\TU/lmr/m/n/10.95 ).
+
+Overfull \hbox (44.37009pt too wide) in paragraph at lines 627--650
+ [][] 
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+
+Overfull \hbox (27.90927pt too wide) in paragraph at lines 653--654
+[]\TU/lmr/bx/n/10.95 Seven canonical fixes ablated \TU/lmr/m/n/10.95 (\TU/lmtt/
+m/n/10.95 race::ablation::CANONICAL_FIX_NAMES\TU/lmr/m/n/10.95 ): 
+[14] [15]
+Overfull \hbox (10.7669pt too wide) in paragraph at lines 698--699
+[]\TU/lmr/bx/n/10.95 Mediation arithmetic is scale-invariant under the no-inter
+action
+[16]
+Overfull \hbox (240.76328pt too wide) in paragraph at lines 772--783
+ [][] 
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[17] [18]
+Overfull \hbox (53.24422pt too wide) in paragraph at lines 830--838
+\TU/lmr/m/n/10.95 output for the M_1=wd, M_2=warmup parameterization fires \TU/
+lmtt/m/n/10.95 stable_across_strata
+
+Overfull \hbox (92.9686pt too wide) in paragraph at lines 839--844
+\TU/lmr/m/n/10.95 CIs has non-empty intersection. The committed output at \TU/l
+mtt/m/n/10.95 data/loop49/loop49_3stratum.csv
+[19]
+Overfull \hbox (6.71545pt too wide) in paragraph at lines 847--848
+[]\TU/lmr/bx/n/10.95 4 PSEs flagged \TU/lmtt/b/n/10.95 true \TU/lmr/m/n/10.95 (
+gradclip and dropout NIE_M2 and NIE_chain).
+
+Overfull \hbox (26.39476pt too wide) in paragraph at lines 858--868
+\TU/lmtt/m/n/10.95 data/loop49_swap/3stratum_swap.csv\TU/lmr/m/n/10.95 , \TU/lm
+r/bx/n/10.95 5 are flagged \TU/lmtt/b/n/10.95 stable_across_strata
+
+Overfull \hbox (14.03003pt too wide) in paragraph at lines 883--895
+\TU/lmr/m/n/10.95 way. The \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_res
+idual_lock \TU/lmr/m/n/10.95 test (section [][]8.2[][])
+[20]
+Overfull \hbox (17.67328pt too wide) in paragraph at lines 932--934
+[]\TU/lmr/m/n/10.95 Per section [][]3.3[][], we report tipping-point \TU/lmtt/m
+/n/10.95 Γ_tip(Λ=1.0) \TU/lmr/m/n/10.95 and the VanderWeele-
+
+LaTeX Warning: `h' float specifier changed to `ht'.
+
+[21] [22]
+Overfull \hbox (1.89743pt too wide) in paragraph at lines 1019--1030
+\TU/lmr/m/n/10.95 loop. The implementation in \TU/lmtt/m/n/10.95 src/bin/f2_med
+iation_sensitivity.rs:236
+[23] [24]
+Overfull \hbox (40.34297pt too wide) in paragraph at lines 1089--1094
+\TU/lmr/m/n/10.95 We chose \TU/lmtt/m/n/10.95 Wd0 \TU/lmr/m/n/10.95 and \TU/lmt
+t/m/n/10.95 Warmup0 \TU/lmr/m/n/10.95 based on prior mediation analyses (\TU/lm
+tt/m/n/10.95 docs/F2_RMS_CDE.md\TU/lmr/m/n/10.95 )
+[25]
+Overfull \hbox (215.20338pt too wide) in paragraph at lines 1119--1128
+\TU/lmtt/m/n/10.95 dropout} \TU/lmr/m/n/10.95 across all three strata; outputs 
+committed at \TU/lmtt/m/n/10.95 data/loop49_swap/{canonical,wd0,warmup0}_swap_m
+2{m}.csv
+
+Overfull \hbox (210.92719pt too wide) in paragraph at lines 1131--1142
+ [][] 
+
+Overfull \hbox (5.88686pt too wide) in paragraph at lines 1150--1151
+[]\TU/lmr/bx/n/10.95 warmup0 diverges from canonical/wd0 unless M_2 = warmup.
+[26] [27] [28]
+Overfull \hbox (136.48267pt too wide) in paragraph at lines 1292--1298
+\TU/lmr/m/n/10.95 The auto-generated Appendix D inventory (regenerable via \TU/
+lmtt/m/n/10.95 papers/scripts/generate_appendix_d.sh\TU/lmr/m/n/10.95 )
+[29]
+Overfull \hbox (4.81013pt too wide) in paragraph at lines 1300--1301
+[]\TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock \TU/lmr/m/n/10
+.95 — locks the Daniel
+
+Overfull \hbox (94.65486pt too wide) in paragraph at lines 1301--1302
+[]\TU/lmtt/m/n/10.95 trainer_internals_schema_is_load_bearing \TU/lmr/m/n/10.95
+ — locks the \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
+[30]
+Overfull \hbox (14.30287pt too wide) in paragraph at lines 1342--1350
+[]\TU/lmr/bx/n/10.95 AblationBench \TU/lmr/m/n/10.95 (Abramovich & Chechik, 202
+5, ([][]Abramovich and Chechik[][],
+
+Overfull \hbox (10.49147pt too wide) in paragraph at lines 1358--1371
+[]\TU/lmr/bx/n/10.95 Applicability survey \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95
+ papers/case_study_published_ablations.md\TU/lmr/m/n/10.95 ).
+[31]
+Overfull \hbox (175.36615pt too wide) in paragraph at lines 1387--1396
+\TU/lmr/m/n/10.95 do not claim algebraic equality with their EIF — the lock tes
+t \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
+
+Overfull \hbox (28.15558pt too wide) in paragraph at lines 1409--1417
+\TU/lmr/m/n/10.95 Value”) motivates the \TU/lmtt/m/n/10.95 Γ_tip \TU/lmr/m/n/10
+.95 classification scheme we adopt for fragility/robustness
+[32]
+Overfull \hbox (0.44115pt too wide) in paragraph at lines 1447--1454
+\TU/lmr/m/n/10.95 The original research question that motivated this framework 
+(\TU/lmtt/m/n/10.95 Issue #1021\TU/lmr/m/n/10.95 )
+[33]
+Overfull \hbox (7.36078pt too wide) in paragraph at lines 1461--1462
+[]\TU/lmr/bx/n/10.95 Microscaling-format instabilities \TU/lmr/m/n/10.95 (Su, K
+wun, Gil, Kakade & Anand,
+
+Overfull \hbox (28.1767pt too wide) in paragraph at lines 1462--1463
+[]\TU/lmr/bx/n/10.95 MXFP4 on native FP4 hardware \TU/lmr/m/n/10.95 (Cim, Palan
+gappa, Hodak, Dwivedula,
+[34]
+Overfull \hbox (25.36917pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 for the champion-scale follow-up, we report an \TU/lmr/bx/n/1
+0.95 encode-time only \TU/lmr/m/n/10.95 reconstruction-
+
+Overfull \hbox (2.56544pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 trips a synthetic embedding matrix of shape \TU/lmtt/m/n/10.9
+5 (vocab=128, d_model) \TU/lmr/m/n/10.95 through
+
+Overfull \hbox (33.95906pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 each format and reports the relative L2 error \TU/lmtt/m/n/10
+.95 sqrt(sum_sq_err / sum_sq_signal)
+
+Overfull \hbox (124.43533pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 mal_002‘ $\OMS/cmsy/m/n/10.95 ^^B$ \TU/lmr/m/n/10.95 5 seeds 
+= 60 cells; full per-cell JSON is in \TU/lmtt/m/n/10.95 .trinity/results/format
+_microbench_grid/\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (0.57138pt too wide) in paragraph at lines 1469--1481
+\TU/lmr/m/n/10.95 gated for freshness by a dedicated CI stage (the 41st in \TU/
+lmtt/m/n/10.95 run_all_checks.sh\TU/lmr/m/n/10.95 ). 
+
+Overfull \hbox (47.03004pt too wide) in paragraph at lines 1493--1502
+ [][] 
+[35]
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1555.
+
+[36]
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1578.
+
+
+Overfull \hbox (14.81297pt too wide) in paragraph at lines 1579--1580
+[]\TU/lmr/bx/n/10.95 structured\TU/lmr/m/n/10.95 : alternating-sign random \TU/
+lmtt/m/n/10.95 a[i] \TU/lmr/m/n/10.95 paired with a fixed-magnitude
+
+Overfull \hbox (29.35065pt too wide) in paragraph at lines 1586--1600
+ [][] 
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1607.
+
+[37]
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1625.
+
+
+Overfull \hbox (49.06883pt too wide) in paragraph at lines 1628--1636
+\TU/lmr/m/n/10.95 JSON and a regime-map summary to \TU/lmtt/m/n/10.95 .trinity/
+results/quire_microbench_*.json\TU/lmr/m/n/10.95 .
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1638.
+
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1639.
+
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1640.
+
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1641.
+
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1646.
+
+[38]
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1657.
+
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1657.
+
+
+Overfull \hbox (60.04204pt too wide) in paragraph at lines 1657--1677
+\TU/lmr/m/n/10.95 aggregation $\OMS/cmsy/m/n/10.95 !$ \TU/lmr/m/n/10.95 output 
+projection $\OMS/cmsy/m/n/10.95 !$ \TU/lmr/m/n/10.95 softmax) on byte-level \TU
+/lmtt/m/n/10.95 data/tiny_shakespeare.txt
+
+Overfull \hbox (121.79321pt too wide) in paragraph at lines 1678--1680
+[]\TU/lmr/m/n/10.95 Final held-out val BPB (mean $\OMS/cmsy/m/n/10.95 ^^F$ \TU/
+lmr/m/n/10.95 sample-std across 5 seeds, on \TU/lmtt/m/n/10.95 data/tiny_shakes
+peare_val.txt\TU/lmr/m/n/10.95 ): 
+[39]
+
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1730.
+
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1732.
+
+[40]
+
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1752.
+
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1755.
+
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1775.
+
+[41]
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1788.
+
+[42]
+Overfull \hbox (23.84128pt too wide) in paragraph at lines 1830--1831
+\TU/lmr/m/n/10.95 (section [][]3.5.4[][]). The paper’s load-bearing contributio
+n is the reproducibility-
+
+Overfull \hbox (9.5844pt too wide) in paragraph at lines 1833--1834
+\TU/lmr/m/n/10.95 Requires a stat-grade simulation study or domain co-author; t
+he method-
+
+Overfull \hbox (18.28963pt too wide) in paragraph at lines 1853--1858
+\TU/lmr/m/n/10.95 to \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 and veri
+fied with MD5 checksums in \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/
+10.95 . 
+[43]
+Overfull \hbox (7.9199pt too wide) in paragraph at lines 1892--1892
+[]  \TU/lmtt/m/n/10.95 --m1 wd --m2 warmup data/loop49/loop47_warmup_stratified
+.csv \[] 
+
+Overfull \hbox (82.65364pt too wide) in paragraph at lines 1909--1909
+[]  \TU/lmtt/m/n/10.95 --input /tmp/3strat.jsonl --output papers/figures/fig4_r
+ms_nde_signflip.png[] 
+
+Overfull \hbox (86.22345pt too wide) in paragraph at lines 1911--1914
+\TU/lmr/m/n/10.95 their command sequences are inlined as docstrings at the top 
+of each \TU/lmtt/m/n/10.95 papers/figures/fig*.py
+[44]
+Overfull \hbox (64.84904pt too wide) in paragraph at lines 1915--1920
+\TU/lmr/m/n/10.95 commit should produce CSVs byte-identical to the checksums in
+ \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/10.95 .
+
+Overfull \hbox (70.73894pt too wide) in paragraph at lines 1915--1920
+\TU/lmr/m/n/10.95 A mismatch indicates either an uncommitted local change or a 
+\TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
+
+Overfull \hbox (50.82205pt too wide) in paragraph at lines 1915--1920
+\TU/lmr/m/n/10.95 drift (section [][]3.5.2[][]). Verify with \TU/lmtt/m/n/10.95
+ cargo run --release --bin f2_provenance_check
+
+Overfull \hbox (584.38988pt too wide) in paragraph at lines 1933--1945
+ [][] 
+
+Overfull \hbox (118.59941pt too wide) in paragraph at lines 1950--1953
+[]\TU/lmr/m/n/10.95 When the producing binary is stratum-aware (\TU/lmtt/m/n/10
+.95 f2_dual_mediation\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 f2_mediation_sensit
+ivity\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (13.66866pt too wide) in paragraph at lines 1959--1959
+[]\TU/lmtt/m/n/10.95 # INPUT STRATUM = warmup0 (Pearl CDE on warmup_steps_unqua
+ntized)[] 
+[45]
+Overfull \hbox (33.94806pt too wide) in paragraph at lines 1985--1986
+[]\TU/lmr/m/n/10.95 section [][]3.2[][] — \TU/lmtt/m/n/10.95 src/bin/f2_dual_me
+diation.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 compute_dual_mediation\TU/lmr/
+m/n/10.95 ). 
+
+Overfull \hbox (46.93477pt too wide) in paragraph at lines 1986--1987
+[]\TU/lmr/m/n/10.95 section [][]3.3[][] — \TU/lmtt/m/n/10.95 src/bin/f2_mediati
+on_sensitivity.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 envelope_expansion\TU/l
+mr/m/n/10.95 ,
+
+Overfull \hbox (0.94478pt too wide) in paragraph at lines 1987--1988
+[]\TU/lmr/m/n/10.95 section [][]3.4[][] — \TU/lmtt/m/n/10.95 src/bin/f2_stratum
+_compare.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 build_comparison\TU/lmr/m/n/1
+0.95 ,
+
+Overfull \hbox (38.18573pt too wide) in paragraph at lines 1994--2000
+\TU/lmr/m/n/10.95 integration suites) is auto-generated by \TU/lmtt/m/n/10.95 p
+apers/scripts/generate_appendix_d.sh
+[46]
+Overfull \hbox (204.77914pt too wide) in paragraph at lines 2006--2012
+[]\TU/lmr/m/n/10.95 Two load-bearing regression locks are highlighted in sectio
+n [][]8.2[][]: \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
+[47]
+Overfull \hbox (15.17981pt too wide) in paragraph at lines 2039--2040
+\TU/lmr/m/n/10.95 CSVs from \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 a
+nd \TU/lmtt/m/n/10.95 data/loop49_swap/ \TU/lmr/m/n/10.95 through \TU/lmtt/m/n/
+10.95 f2_to_jsonl
+
+Overfull \hbox (10.17569pt too wide) in paragraph at lines 2039--2040
+\TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
+.95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
+
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 2040.
+
+
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 2040.
+
+
+Overfull \hbox (80.91301pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/bx/n/10.95 arc documented in CHANGELOG section [][]10[][]\TU/lmr/m/n/10
+.95 : \TU/lmtt/m/n/10.95 verify_tables_against_csv.py\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (176.24762pt too wide) in paragraph at lines 2040--2041
+\TU/lmtt/m/n/10.95 verify_formulas_vs_tables.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n
+/10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify
+_preamble_per_producer.py\TU/lmr/m/n/10.95 ,
+
+Overfull \hbox (8.71268pt too wide) in paragraph at lines 2040--2041
+\TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
+0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
+
+Overfull \hbox (22.08272pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 reference audit, its markdown lint, the smoke test for its \T
+U/lmtt/m/n/10.95 f2_pairwise_perm
+
+Overfull \hbox (2.02983pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 IAL_REVIEW_LOG headline pass-count triple), and the anonymize
+r-
+
+Overfull \hbox (5.22507pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 completeness verifier (ratchets bare \TU/lmtt/m/n/10.95 Loop 
+N \TU/lmr/m/n/10.95 anchor count per-file against
+
+Overfull \hbox (58.57684pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 live sidecar state), the alias-round-trip verifier (asserts C
+LASS_LABEL_ALIASES
+
+Overfull \hbox (6.72641pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 burn-down-trajectory verifier (asserts the breadcrumb is loop
+-monotonic
+
+Overfull \hbox (95.38733pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 freshness verifier (asserts every dated AOE deadline in \TU/l
+mtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
+
+Overfull \hbox (30.87338pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 section [][]4[][] is today-or-future or annotated as historic
+al), the tex-anonymization
+
+Overfull \hbox (10.05739pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 markdown-source-only anonymizer ratchet), and the format-micr
+obench-
+
+Overfull \hbox (198.3173pt too wide) in paragraph at lines 2040--2041
+\TU/lmr/m/n/10.95 freshness verifier (asserts the format-zoo grid summary JSON 
+in \TU/lmtt/m/n/10.95 .trinity/results/format_microbench_grid/
+[48])
+Overfull \hbox (139.8292pt too wide) in paragraph at lines 2043--31
+[]\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
+/n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
+[49] (./test_compile_anon.bbl [50]
+Underfull \hbox (badness 2564) in paragraph at lines 119--125
+[]\TU/lmr/m/n/10.95 Microsoft.  BitNet b1.58 2B4T technical report.  \TU/lmr/m/
+it/10.95 arXiv preprint
+[51] [52]) [53] (./test_compile_anon.aux)
+
+LaTeX Warning: There were undefined references.
+
+ )
+(see the transcript file for additional information)
+Output written on test_compile_anon.pdf (53 pages).
+Transcript written on test_compile_anon.log.

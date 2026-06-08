@@ -10,6 +10,18 @@ Anchor: `phi^2 + phi^-2 = 3`.
 
 **Champion: BPB=2.2111** (seed=43, 81K steps, AdamW, hidden=384, Railway).
 
+## Paper — F2 methodology (MLRC 2026)
+
+The `papers/` directory holds a workshop-grade paper on stratified
+Pearl-CDE mediation analysis for transformer training-recipe
+ablations, targeting NeurIPS 2026 MLRC official track via TMLR.
+PR #185 is the open Draft.
+
+- **Start here**: [`papers/README.md`](papers/README.md) — navigation hub
+- **Submission go/no-go**: [`papers/SUBMISSION_CHECKLIST.md`](papers/SUBMISSION_CHECKLIST.md)
+- **Loops 28-81 history by theme**: [`papers/CHANGELOG.md`](papers/CHANGELOG.md)
+- **CI gate** (~46 s, 7 stages): `papers/scripts/run_all_checks.sh`
+
 ## Quick start
 
 ```bash

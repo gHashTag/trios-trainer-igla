@@ -1,0 +1,35 @@
+{
+  "cells": [
+    {
+      "format": "f32",
+      "seed": 43,
+      "val_bpb": 4.451158223947782
+    },
+    {
+      "format": "gf16",
+      "seed": 43,
+      "val_bpb": 4.452063187225186
+    },
+    {
+      "format": "posit16",
+      "seed": 43,
+      "val_bpb": 4.451156758089373
+    },
+    {
+      "format": "bitnet158",
+      "seed": 43,
+      "val_bpb": 4.72923306756809
+    },
+    {
+      "format": "int4",
+      "seed": 43,
+      "val_bpb": 4.439725168723024
+    },
+    {
+      "format": "bf16",
+      "seed": 43,
+      "val_bpb": 4.454816876928972
+    }
+  ],
+  "seed": 43
+}

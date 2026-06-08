@@ -1,0 +1,96 @@
+name: paper-checks
+
+# Run the paper-side verification CI gate on every push or PR that
+# touches paper assets. Loops 71-73 introduced 5 verifier scripts +
+# a single-shot run_all_checks.sh that chains them all; this workflow
+# wires that gate into GitHub so PR #185 ships as CI-verified, not
+# just locally-verified.
+
+on:
+  push:
+    branches:
+      - f2-methodology
+      - main
+    paths:
+      - 'papers/**'
+      - 'data/loop49/**'
+      - 'data/loop49_swap/**'
+      - 'docs/F2_PRE_REG.md'
+      - 'docs/F2_BINARIES.md'
+      - 'docs/F2_RMS_CDE.md'
+      - '.github/workflows/paper-checks.yml'
+  pull_request:
+    paths:
+      - 'papers/**'
+      - 'data/loop49/**'
+      - 'data/loop49_swap/**'
+      - 'docs/F2_PRE_REG.md'
+      - '.github/workflows/paper-checks.yml'
+  workflow_dispatch: {}
+
+jobs:
+  paper-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (release builds for F2 binaries)
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: paper-checks
+
+      - name: Install system packages (xelatex + bibtex + matplotlib deps)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends \
+              texlive-xetex \
+              texlive-fonts-recommended \
+              texlive-latex-extra \
+              texlive-publishers \
+              texlive-bibtex-extra \
+              biber \
+              fonts-lmodern \
+              python3-pip
+          python3 -m pip install --quiet --user matplotlib numpy
+
+      - name: Build release F2 binaries used by figure_regen.sh and pack
+        run: |
+          cargo build --release \
+              --bin f2_to_jsonl \
+              --bin f2_mediation_sensitivity \
+              --bin f2_provenance_check
+
+      # Loop 88: surface markdown lint failures separately from the
+      # full CI gate. lint_paper_md.py is also stage 4 of
+      # run_all_checks.sh; this step front-loads it so PRs see the
+      # lint result in the GitHub Checks UI without scrolling.
+      - name: Markdown lint (papers/scripts/lint_paper_md.py)
+        run: python3 papers/scripts/lint_paper_md.py
+
+      - name: Run papers/scripts/run_all_checks.sh
+        run: bash papers/scripts/run_all_checks.sh
+
+      - name: Upload supplementary zip artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: f2_methodology_supp
+          path: papers/tmlr_submission_kit/f2_methodology_supp.zip
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload compiled PDFs as artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper-pdfs
+          path: |
+            papers/tmlr_submission_kit/test_compile.pdf
+            papers/tmlr_submission_kit/test_compile_anon.pdf
+            papers/tmlr_submission_kit/test_compile_tmlr.pdf
+          if-no-files-found: warn
+          retention-days: 14

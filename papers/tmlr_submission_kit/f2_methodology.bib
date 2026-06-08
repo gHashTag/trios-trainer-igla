@@ -1,0 +1,416 @@
+% f2_methodology.bib — bibliography for F2 methodology paper.
+%
+% All 16 arXiv citations + 7 verified-publication entries cited in
+% papers/f2_methodology.md. Entries cross-checked via WebFetch/WebSearch
+% in Loops 55, 58, 59, 60, 61. Where the paper has a journal version
+% later than the arXiv preprint, both fields are preserved so reviewers
+% can verify either.
+%
+% Entry keys use the form `arxiv:NNNN.NNNNN` for arXiv entries (matches
+% the auto-converter's `\citep{arxiv:NNNN.NNNNN}` output). Journal/PMC-
+% only entries use first-author-year keys.
+
+% ── Causal mediation in ML interpretability (§2.3) ───────────────
+@article{meng2022rome,
+  author    = {Meng, Kevin and Bau, David and Andonian, Alex and
+               Belinkov, Yonatan},
+  title     = {Locating and Editing Factual Associations in {GPT}},
+  journal   = {Advances in Neural Information Processing Systems 35 (NeurIPS 2022)},
+  year      = {2022},
+  note      = {ROME — causal mediation applied to single-forward-pass
+               attention patching for locating factual knowledge.
+               Cited in §2.3 as an interpretability counter-example to
+               F2's training-recipe focus.},
+}
+
+@article{wang2023activation,
+  author    = {Wang, Kevin and Variengien, Alexandre and
+               Conmy, Arthur and Shlegeris, Buck and Steinhardt, Jacob},
+  title     = {Interpretability in the Wild: a Circuit for Indirect
+               Object Identification in {GPT-2} Small},
+  journal   = {International Conference on Learning Representations (ICLR 2023)},
+  year      = {2023},
+  note      = {Activation patching — same forward-pass causal-mediation
+               vocabulary as ROME. Cited in §2.3 alongside ROME.
+               Loop 93 verified author list (corrected "Kevin Ro
+               Wang" → "Kevin Wang"). arXiv:2211.00593 preprint.},
+}
+
+% ── Pre-AdamW weight-decay history (§5.2 wd=0 defense) ────────────
+@inproceedings{vaswani2017attention,
+  author    = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki
+               and Uszkoreit, Jakob and Jones, Llion and
+               Gomez, Aidan N. and Kaiser, {\L}ukasz and
+               Polosukhin, Illia},
+  title     = {Attention is All You Need},
+  booktitle = {Advances in Neural Information Processing Systems 30 (NIPS 2017)},
+  year      = {2017},
+  note      = {Pre-AdamW transformer recipe; ships with WD = 0 in
+               many fairseq-derived configurations.},
+}
+
+@inproceedings{loshchilov2019adamw,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  booktitle = {International Conference on Learning Representations (ICLR 2019)},
+  year      = {2019},
+  note      = {AdamW; diagnoses prior under-use of WD as a coupling-
+               with-Adam pitfall. Conference version of arxiv:1711.05101.},
+}
+
+@article{arxiv:1711.05101,
+  author    = {Loshchilov, Ilya and Hutter, Frank},
+  title     = {Decoupled Weight Decay Regularization},
+  journal   = {arXiv preprint arXiv:1711.05101},
+  year      = {2017},
+  note      = {Pre-ICLR preprint of loshchilov2019adamw.},
+}
+
+% ── Two-mediator causal mediation (foundational) ─────────────────────
+@article{daniel2015biom,
+  author    = {Daniel, R. M. and De Stavola, B. L. and Cousens, S. N. and Vansteelandt, S.},
+  title     = {Causal mediation analysis with multiple mediators},
+  journal   = {Biometrics},
+  year      = {2015},
+  volume    = {71},
+  number    = {1},
+  pages     = {1--14},
+  doi       = {10.1111/biom.12248},
+  pmid      = {25351114},
+}
+
+@article{arxiv:2007.16031,
+  author    = {Gao, Yi and Li, Fang and Luo, Sheng},
+  title     = {Decomposition of the Total Effect for Two Mediators:
+               {A} Natural Counterfactual Interaction Effect Framework},
+  journal   = {arXiv preprint arXiv:2007.16031},
+  year      = {2020},
+  note      = {Published as PMC9139468; no-interaction reduction supplies
+               the four-PSE collapse used in F2 §3.2.},
+}
+
+@article{arxiv:1710.02011,
+  author    = {Miles, Caleb H. and Shpitser, Ilya and Kanki, Phyllis and
+               Meloni, Seema and Tchetgen Tchetgen, Eric J.},
+  title     = {On semiparametric estimation of a path-specific effect in
+               the presence of mediator-outcome confounding},
+  journal   = {arXiv preprint arXiv:1710.02011},
+  year      = {2017},
+  note      = {Efficient influence function basis for the delta-method
+               reduction used in §3.2 (no-interaction regime).},
+}
+
+@article{arxiv:1912.09936,
+  author    = {D{\'i}az, Iv{\'a}n and Hejazi, Nima S. and Rudolph,
+               Kara E. and van der Laan, Mark J.},
+  title     = {Non-parametric efficient causal mediation with
+               intermediate confounders},
+  journal   = {Biometrika},
+  year      = {2021},
+  volume    = {108},
+  number    = {3},
+  pages     = {627--641},
+  note      = {arXiv:1912.09936 preprint.},
+}
+
+@article{arxiv:2205.04408,
+  author    = {Rudolph, Kara E. and D{\'i}az, Iv{\'a}n},
+  title     = {Efficient and flexible estimation of natural mediation
+               effects under intermediate confounding and monotonicity
+               constraints},
+  journal   = {Biometrics},
+  year      = {2023},
+  doi       = {10.1111/biom.13850},
+  note      = {arXiv:2205.04408 preprint.},
+}
+
+@article{arxiv:2107.11014,
+  author    = {Hong, Guanglei and Yang, Fan and Qin, Xu},
+  title     = {Posttreatment confounding in causal mediation studies:
+               {A} cutting-edge problem and a novel solution via
+               sensitivity analysis},
+  journal   = {Biometrics},
+  year      = {2023},
+  doi       = {10.1111/biom.13705},
+  note      = {arXiv:2107.11014 preprint.},
+}
+
+% ── Sensitivity analysis ─────────────────────────────────────────────
+@article{vanderweele2017evalue,
+  author    = {VanderWeele, Tyler J. and Ding, Peng},
+  title     = {Sensitivity Analysis in Observational Research:
+               Introducing the E-Value},
+  journal   = {Annals of Internal Medicine},
+  year      = {2017},
+  volume    = {167},
+  number    = {4},
+  pages     = {268--274},
+  doi       = {10.7326/M16-2607},
+}
+
+@article{haneuse2019jama,
+  author    = {Haneuse, Sebastien and VanderWeele, Tyler J. and Arterburn, David},
+  title     = {Using the {E-Value} to Assess the Potential Effect of
+               Unmeasured Confounding in Observational Studies},
+  journal   = {JAMA},
+  year      = {2019},
+  volume    = {321},
+  number    = {6},
+  pages     = {602--603},
+  doi       = {10.1001/jama.2018.21554},
+  pmid      = {30676631},
+}
+
+@article{guo2026sim,
+  author    = {Guo, Hao and Liu, Wei and others},
+  title     = {Sensitivity Analysis for Unmeasured Confounding in
+               Causal Mediation Analysis With Survival Outcome},
+  journal   = {Statistics in Medicine},
+  year      = {2026},
+  volume    = {45},
+  number    = {8-9},
+  pages     = {e70548},
+  doi       = {10.1002/sim.70548},
+  note      = {Author order verified; check final journal record at
+               proof time for the full author list.},
+}
+
+@article{arxiv:2605.18724,
+  author    = {Ohnishi, Yuki and Li, Fan},
+  title     = {Sensitivity analysis for causal mediation: bridge score,
+               sharp sensitivity bounds, and calibration},
+  journal   = {arXiv preprint arXiv:2605.18724},
+  year      = {2026},
+  note      = {arXiv title corrected against the live arXiv record at
+               Loop 97 (was previously paraphrased as "Additive bridge-
+               score sensitivity envelopes for path-specific effects",
+               which conflated the framing in our §3.3 with the source
+               title). Theorem 2 / Eq.\ (5) supplies the additive bound
+               we use in F2 §3.3; uniform-scalar reduction $\Gamma :=
+               \sup \gamma_a$, $\Lambda := \sup \eta_a$ described in
+               §3.3.},
+}
+
+@article{arxiv:2508.10083,
+  author    = {Owen, Art B.},
+  title     = {Better bootstrap-{t} confidence intervals for the mean},
+  journal   = {arXiv preprint arXiv:2508.10083},
+  year      = {2025},
+  note      = {Motivates Student-{t} default over BCa at N=5 by
+               documenting BCa undercoverage.},
+}
+
+% ── ML ablation methodology ──────────────────────────────────────────
+@article{arxiv:2507.08038,
+  author    = {Abramovich, Talor and Chechik, Gal},
+  title     = {{AblationBench}: Evaluating Automated Planning of
+               Ablations in Empirical {AI} Research},
+  journal   = {arXiv preprint arXiv:2507.08038},
+  year      = {2025},
+  note      = {LM-agent benchmark for ablation planning (best system
+               identifies 38\% of original ablations). Orthogonal to
+               F2's analysis-of-given-ablations question. Loop 79
+               corrected the earlier mis-description.},
+}
+
+@inproceedings{fostiropoulos2023ablator,
+  author    = {Fostiropoulos, Iordanis and Itti, Laurent},
+  title     = {{ABLATOR}: Robust Horizontal-Scaling of Machine Learning
+               Ablation Experiments},
+  booktitle = {Proceedings of the 2nd International Conference on
+               Automated Machine Learning (AutoML)},
+  year      = {2023},
+  note      = {Closest infrastructure work to F2; stops at multi-seed
+               ranking without mediation decomposition.},
+}
+
+@article{arxiv:2302.04054,
+  author    = {Hagmann, Michael and Meier, Stefan and Riezler, Stefan},
+  title     = {Towards Inferential Reproducibility of Machine Learning
+               Research},
+  journal   = {arXiv preprint arXiv:2302.04054},
+  year      = {2023},
+  note      = {Seed-stability motivation for F2 provenance discipline.},
+}
+
+% ── Provenance / reproducibility ─────────────────────────────────────
+@article{arxiv:2312.07852,
+  author    = {Leo, Simone and Soiland-Reyes, Stian and others},
+  title     = {{Workflow Run RO-Crate}: an extension of {RO-Crate} and
+               {Schema.org} to capture the provenance of the execution
+               of computational workflows},
+  journal   = {arXiv preprint arXiv:2312.07852;
+               published in PLoS ONE 19(9), 2024},
+  year      = {2024},
+  note      = {W3C-PROV / RO-Crate preamble convention adopted in F2
+               §3.5.1. Loop 80 corrected the first-author attribution
+               from "Sefton" (wrong) to Leo + Soiland-Reyes lead of an
+               18-author group.},
+}
+
+@article{arxiv:2011.04216,
+  author    = {Sharma, Amit and K{\i}c{\i}man, Emre},
+  title     = {{DoWhy}: An End-to-End Library for Causal Inference},
+  journal   = {arXiv preprint arXiv:2011.04216},
+  year      = {2020},
+  note      = {Flat-record-per-estimate JSONL convention adopted by
+               f2\_to\_jsonl.},
+}
+
+% ── Quantization / motivation for champion-scale follow-up ──────────
+@article{arxiv:2402.17764,
+  author    = {Ma, Shuming and others},
+  title     = {The Era of {1-bit} {LLMs}: All Large Language Models are
+               in 1.58 Bits},
+  journal   = {arXiv preprint arXiv:2402.17764},
+  year      = {2024},
+  note      = {Original BitNet b1.58 paper.},
+}
+
+@article{arxiv:2504.12285,
+  author    = {Microsoft},
+  title     = {{BitNet b1.58 2B4T} Technical Report},
+  journal   = {arXiv preprint arXiv:2504.12285},
+  year      = {2025},
+  note      = {2B parameter, 4T token instantiation of the b1.58 recipe.
+               NOT to be confused with arXiv:2402.17764 (the original
+               paper) — Loop 55 caught this conflation in F2 §9.},
+}
+
+@article{arxiv:2502.05003,
+  author    = {Panferov, Andrei and Chen, Jiale and Tabesh, Soroush
+               and Castro, Roberto L. and Nikdan, Mahdi and
+               Alistarh, Dan},
+  title     = {{QuEST}: Stable Training of {LLMs} with 1-Bit Weights
+               and Activations},
+  journal   = {arXiv preprint arXiv:2502.05003},
+  year      = {2025},
+  note      = {Loop 80 corrected: 6-author list verified; title is
+               about stable 1-bit training (not "scaling laws"). F2
+               cites loosely as closest QAT precision-vs-stability
+               reference.},
+}
+
+@article{arxiv:2509.22536,
+  author    = {{InfiR2 Authors}},
+  title     = {{InfiR2}: A Comprehensive {FP8} Training Recipe for
+               Reasoning-Enhanced Language Models},
+  journal   = {arXiv preprint arXiv:2509.22536},
+  year      = {2025},
+  note      = {WITHDRAWN by authors 2025-10-17 due to a data
+               processing pipeline bug invalidating reported
+               results. Retained here only as historical context
+               for FP8 training-recipe attempts; F2 §9.4 cites with
+               an explicit withdrawal note. Loop 80 verified.},
+}
+
+@article{arxiv:2511.01921,
+  author    = {Fiandaca, Roberta and Gomony, Manil Dev},
+  title     = {Fibbinary-Based Compression and Quantization for
+               Efficient Neural Radio Receivers},
+  journal   = {arXiv preprint arXiv:2511.01921},
+  year      = {2025},
+  note      = {Loop 80 corrected attribution from "Schmidt-Mengin et
+               al." (fabricated). Paper applies Fibonacci-code-word
+               quantization to NEURAL RADIO RECEIVERS, not
+               transformer LLMs. F2 §9.4 cites with the correct
+               narrow scope — the only published Fibonacci-binary
+               quantization work we know of, in any domain.},
+}
+
+% ── Loop 147 A additions (verified via independent WebFetch) ────────
+@article{arxiv:2509.01440,
+  author    = {Semenov, Andrei and Pagliardini, Matteo and Jaggi, Martin},
+  title     = {Benchmarking Optimizers for Large Language Model
+               Pretraining},
+  journal   = {arXiv preprint arXiv:2509.01440},
+  year      = {2025},
+  note      = {Closest methodological neighbour to F2's optimizer race
+               (Adam/Muon/SOAP/Sophia/Lion/AdEMAMix head-to-head with
+               multi-seed std reporting). Loop 145 quick-check said
+               "et al."; Loop 147 verification confirmed only 3 authors.
+               F2 §2.3 cites as the prior-art anchor for multi-seed
+               optimizer benchmarking.},
+}
+
+@article{arxiv:2504.07086,
+  author    = {Hochlehnert, Andreas and Bhatnagar, Hardik and
+               Udandarao, Vishaal and Albanie, Samuel and
+               Prabhu, Ameya and Bethge, Matthias},
+  title     = {A Sober Look at Progress in Language Model Reasoning:
+               Pitfalls and Paths to Reproducibility},
+  journal   = {arXiv preprint arXiv:2504.07086; COLM 2025},
+  year      = {2025},
+  note      = {Methodology critique of current LM benchmarks
+               (seed / decoding / hardware sensitivity). F2 §2.3 cites
+               as the primary methodology-critique companion: the
+               "sober" framing that F2's multi-seed + MC-error-bar
+               protocol directly addresses. COLM 2025 venue confirmed
+               by Loop 147 verification (was just arXiv in Loop 145
+               quick-check).},
+}
+
+@article{arxiv:2509.25149,
+  author    = {{NVIDIA} and Abecassis, Felix and Agrusa, Anjulie and
+               Ahn, Dong and Alben, Jonah and Alborghetti, Stefania
+               and Andersch, Michael and others},
+  title     = {Pretraining Large Language Models with {NVFP4}},
+  journal   = {arXiv preprint arXiv:2509.25149},
+  year      = {2025},
+  note      = {NVIDIA's successor to the MXFP8 recipe F2 already
+               cites. ~90 authors; abbreviated here with corporate
+               first-author per arXiv listing. F2 §9.4 cites for the
+               final-layers-in-BF16 + NVFP4-vs-MXFP4 stability
+               framing. Loop 147 verified.},
+}
+
+@article{arxiv:2506.20752,
+  author    = {Su, Huangyuan and Kwun, Mujin and Gil, Stephanie and
+               Kakade, Sham and Anand, Nikhil},
+  title     = {Characterization and Mitigation of Training Instabilities
+               in Microscaling Formats},
+  journal   = {arXiv preprint arXiv:2506.20752},
+  year      = {2025},
+  note      = {Loop 147 caught fabricated attribution: Loop 145 research
+               agent reported "Mishra et al." but actual first author is
+               Huangyuan Su — Mishra is not in the author list at all.
+               F2 §9.4 cites for synthetic-proxy ablation methodology
+               for isolating low-precision instability modes — strongly
+               aligned with F2's analytical framing.},
+}
+
+@article{arxiv:2605.09825,
+  author    = {Cim, Musa and Palangappa, Poovaiah and Hodak, Miro
+               and Dwivedula, Ravi and Arunachalam, Meena and
+               Kandemir, Mahmut Taylan},
+  title     = {Pretraining Large Language Models with {MXFP4} on
+               Native {FP4} Hardware},
+  journal   = {arXiv preprint arXiv:2605.09825},
+  year      = {2026},
+  note      = {First non-emulated MXFP4 pretraining on AMD MI355X
+               native FP4 hardware. Loop 147 caught two fabrications
+               in Loop 145 quick-check: (i) attribution "AMD/MI355X
+               group" — actual first author is Musa Cim; (ii) arXiv ID
+               2605.09825 looked implausible but arXiv has progressed
+               to 26YY numbering by 2026-05 per the May 11 submission.
+               F2 §9.4 cites as the MXFP4 hardware anchor
+               (convergence-token overhead on native FP4 silicon).},
+}
+
+@inproceedings{gustafson2017posit,
+  author    = {Gustafson, John L. and Yonemoto, Isaac T.},
+  title     = {Beating Floating Point at its Own Game: Posit Arithmetic},
+  booktitle = {Supercomputing Frontiers and Innovations},
+  volume    = {4},
+  number    = {2},
+  pages     = {71--86},
+  year      = {2017},
+  doi       = {10.14529/jsfi170206},
+  note      = {Foundational posit number system paper. F2 §9.4 cites
+               as the standards reference for the Posit16 (es=1) arm
+               of the format-zoo benchmark — Loop 146 implemented the
+               codec at `src/phi_numbers/posit16.rs` and Loop 146 A
+               wired it into the F2 ConversionCounter with a 5-seed
+               microbenchmark showing -74\% rel L2 vs GF16 at
+               Xavier-init magnitudes.},
+}

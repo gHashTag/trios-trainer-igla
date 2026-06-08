@@ -1,0 +1,29 @@
+# Re-generable artifacts
+f2_methodology_supp.zip
+
+# xelatex build artifacts
+test_compile.pdf
+test_compile.aux
+test_compile.log
+test_compile.bbl
+test_compile.blg
+test_compile.out
+test_compile.toc
+test_compile.xelatex.log
+test_compile_anon.pdf
+test_compile_anon.aux
+test_compile_anon.log
+test_compile_anon.bbl
+test_compile_anon.blg
+test_compile_anon.out
+test_compile_anon.toc
+f2_methodology_anonymized_body.tex
+
+# Real-TMLR-class build artifacts
+test_compile_tmlr.pdf
+test_compile_tmlr.aux
+test_compile_tmlr.log
+test_compile_tmlr.bbl
+test_compile_tmlr.blg
+test_compile_tmlr.out
+test_compile_tmlr.toc

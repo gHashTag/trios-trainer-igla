@@ -1,0 +1,59 @@
+{
+  "batch": 64,
+  "formats": [
+    "f32",
+    "gf16",
+    "posit16",
+    "bitnet158",
+    "int4",
+    "bf16"
+  ],
+  "git_anchor_hint": "f2-methodology branch HEAD at run time",
+  "hidden": 128,
+  "hidden_head": 128,
+  "lr": 0.5,
+  "mode": "summary",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
+  "seq_len": 8,
+  "steps": 800,
+  "tool": "bridge_bench",
+  "val_bpb_by_format": {
+    "bf16": {
+      "mean": 4.457627236668911,
+      "n_seeds": 5,
+      "std": 0.018268544926668996
+    },
+    "bitnet158": {
+      "mean": 4.7307497078541605,
+      "n_seeds": 5,
+      "std": 0.004880384133786264
+    },
+    "f32": {
+      "mean": 4.454034267033458,
+      "n_seeds": 5,
+      "std": 0.019161282921469538
+    },
+    "gf16": {
+      "mean": 4.454915181713785,
+      "n_seeds": 5,
+      "std": 0.018955234899898882
+    },
+    "int4": {
+      "mean": 4.45189800397902,
+      "n_seeds": 5,
+      "std": 0.022137634707058488
+    },
+    "posit16": {
+      "mean": 4.454035440793328,
+      "n_seeds": 5,
+      "std": 0.019156008747694665
+    }
+  },
+  "vocab": 128
+}

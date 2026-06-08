@@ -7,9 +7,9 @@
 //!
 //! Migrated from trios-train-cpu/src/pipeline.rs with standalone imports.
 
-use crate::backward::{cross_entropy_loss, clip_gradients};
-use crate::optimizer::AdamWCpu;
+use crate::backward::{clip_gradients, cross_entropy_loss};
 use crate::gf16;
+use crate::optimizer::AdamWCpu;
 
 mod trinity {
     pub const VOCAB_SIZE: usize = 128;
@@ -105,7 +105,13 @@ pub struct PipelineResult {
     pub ntp_final_loss: f64,
 }
 
-pub fn cosine_lr_with_warmup(step: usize, max_steps: usize, lr_base: f64, lr_min: f64, warmup: usize) -> f64 {
+pub fn cosine_lr_with_warmup(
+    step: usize,
+    max_steps: usize,
+    lr_base: f64,
+    lr_min: f64,
+    warmup: usize,
+) -> f64 {
     if step < warmup {
         lr_base * step as f64 / warmup as f64
     } else {
@@ -125,14 +131,18 @@ pub fn run_pipeline(config: &PipelineConfig) -> PipelineResult {
 
     println!("=== nca_jepa_ntp_v2 Pipeline seed={} ===", config.seed);
 
-    println!("[Phase 1] Loading NCA checkpoint: {}", config.nca_checkpoint);
+    println!(
+        "[Phase 1] Loading NCA checkpoint: {}",
+        config.nca_checkpoint
+    );
     let nca_loaded = false;
 
     let vocab_size = trinity::VOCAB_SIZE;
     let d_model = trinity::HIDDEN_DIM;
     let embeddings: Vec<f32> = (0..vocab_size * d_model)
         .map(|i| {
-            let pseudo_rand = ((i as u64).wrapping_mul(6364136223846793005)
+            let pseudo_rand = ((i as u64)
+                .wrapping_mul(6364136223846793005)
                 .wrapping_add(config.seed)) as f32;
             (pseudo_rand / 2_147_483_648.0_f32 - 1.0) * 0.02
         })
@@ -144,7 +154,10 @@ pub fn run_pipeline(config: &PipelineConfig) -> PipelineResult {
 
     println!("[Phase 3] Starting NTP fine-tuning (25K steps)");
     let ntp_result = run_ntp_phase(&embeddings, config);
-    println!("[Phase 3] NTP complete: final_bpb={:.4}", ntp_result.final_bpb);
+    println!(
+        "[Phase 3] NTP complete: final_bpb={:.4}",
+        ntp_result.final_bpb
+    );
 
     let total_time = start.elapsed().as_secs_f64();
 
@@ -200,16 +213,24 @@ fn run_ntp_phase(embeddings: &[f32], config: &PipelineConfig) -> NtpPhaseResult 
         let step_start = Instant::now();
 
         let lr = cosine_lr_with_warmup(
-            step, ntp_steps, trinity::LR, trinity::LR_MIN, trinity::WARMUP_STEPS
+            step,
+            ntp_steps,
+            trinity::LR,
+            trinity::LR_MIN,
+            trinity::WARMUP_STEPS,
         );
         optimizer.lr = lr;
 
         let input: Vec<f32> = (0..trinity::BATCH_SIZE * trinity::CONTEXT_LEN)
             .map(|i| ((i.wrapping_add(step)) % trinity::VOCAB_SIZE) as f32)
             .collect();
-        let targets: Vec<usize> = input.iter().map(|&v| ((v as usize) + 1) % trinity::VOCAB_SIZE).collect();
+        let targets: Vec<usize> = input
+            .iter()
+            .map(|&v| ((v as usize) + 1) % trinity::VOCAB_SIZE)
+            .collect();
 
-        let logits = forward_f32_embeddings(&model_embeddings, &input, trinity::VOCAB_SIZE, d_model);
+        let logits =
+            forward_f32_embeddings(&model_embeddings, &input, trinity::VOCAB_SIZE, d_model);
         let loss = cross_entropy_loss(&logits, &targets);
         let bpb = bpb_from_loss(loss as f64);
         let ppl = (loss as f64).exp();
@@ -223,15 +244,22 @@ fn run_ntp_phase(embeddings: &[f32], config: &PipelineConfig) -> NtpPhaseResult 
 
         let global_step = trinity::NCA_STEPS + trinity::JEPA_STEPS + step;
         if check_kill_threshold(global_step, ppl) {
-            println!("[Phase 3] KILL at step {} (global {}): PPL={:.1} exceeds threshold",
-                step, global_step, ppl);
+            println!(
+                "[Phase 3] KILL at step {} (global {}): PPL={:.1} exceeds threshold",
+                step, global_step, ppl
+            );
             killed = true;
             kill_step = Some(global_step);
             break;
         }
 
         let mut gradients = backward_f32_embeddings(
-            &model_embeddings, &logits, &input, &targets, trinity::VOCAB_SIZE, d_model
+            &model_embeddings,
+            &logits,
+            &input,
+            &targets,
+            trinity::VOCAB_SIZE,
+            d_model,
         );
         clip_gradients(&mut gradients, trinity::GRAD_CLIP);
         optimizer.step(&mut model_embeddings, &gradients);
@@ -268,7 +296,11 @@ pub fn training_step_gf16(
     vocab_size: usize,
     d_model: usize,
 ) -> f32 {
-    assert!(d_model >= 256, "GF16 requires d_model >= 256 (Law L-R9), got {}", d_model);
+    assert!(
+        d_model >= 256,
+        "GF16 requires d_model >= 256 (Law L-R9), got {}",
+        d_model
+    );
 
     let w_f32: Vec<f32> = gf16_weights.iter().map(|g| g.to_f32()).collect();
 
@@ -276,7 +308,8 @@ pub fn training_step_gf16(
 
     let loss = cross_entropy_loss_f32(&logits, target, vocab_size);
 
-    let mut grads = backward_f32_embeddings_gf16(&w_f32, &logits, input, target, vocab_size, d_model);
+    let mut grads =
+        backward_f32_embeddings_gf16(&w_f32, &logits, input, target, vocab_size, d_model);
 
     let mut w_f32_mut = w_f32;
     clip_gradients(&mut grads, 1.0);
@@ -289,7 +322,12 @@ pub fn training_step_gf16(
     loss
 }
 
-fn forward_f32_embeddings(embeddings: &[f32], input: &[f32], vocab_size: usize, d_model: usize) -> Vec<f32> {
+pub fn forward_f32_embeddings(
+    embeddings: &[f32],
+    input: &[f32],
+    vocab_size: usize,
+    d_model: usize,
+) -> Vec<f32> {
     let seq_len = input.len();
     let mut logits = vec![0.0f32; seq_len * vocab_size];
     for (i, &token) in input.iter().enumerate() {
@@ -326,15 +364,23 @@ fn cross_entropy_loss_f32(logits: &[f32], target: &[u8], vocab_size: usize) -> f
                 sum_exp += (logits[offset + v] - max_logit).exp();
             }
         }
-        let log_sum_exp = if sum_exp > 0.0 { max_logit + sum_exp.ln() } else { 0.0 };
+        let log_sum_exp = if sum_exp > 0.0 {
+            max_logit + sum_exp.ln()
+        } else {
+            0.0
+        };
         let tgt = target[i] as usize;
-        let tgt_logit = if offset + tgt < logits.len() { logits[offset + tgt] } else { 0.0 };
+        let tgt_logit = if offset + tgt < logits.len() {
+            logits[offset + tgt]
+        } else {
+            0.0
+        };
         total_loss += log_sum_exp - tgt_logit;
     }
     total_loss / seq_len.max(1) as f32
 }
 
-fn backward_f32_embeddings(
+pub fn backward_f32_embeddings(
     embeddings: &[f32],
     logits: &[f32],
     input: &[f32],
@@ -362,7 +408,9 @@ fn backward_f32_embeddings(
             }
         }
         if sum_exp > 0.0 {
-            for p in probs.iter_mut() { *p /= sum_exp; }
+            for p in probs.iter_mut() {
+                *p /= sum_exp;
+            }
         }
         probs[targets[i]] -= 1.0;
         let tok_idx = (input[i].abs() as usize) % (n_emb / d_model.max(1));
@@ -377,7 +425,9 @@ fn backward_f32_embeddings(
         }
     }
     let scale = seq_len.max(1) as f32;
-    for g in grads.iter_mut() { *g /= scale; }
+    for g in grads.iter_mut() {
+        *g /= scale;
+    }
     grads
 }
 
@@ -409,7 +459,9 @@ fn backward_f32_embeddings_gf16(
             }
         }
         if sum_exp > 0.0 {
-            for p in probs.iter_mut() { *p /= sum_exp; }
+            for p in probs.iter_mut() {
+                *p /= sum_exp;
+            }
         }
         let tgt = target[i] as usize;
         probs[tgt] -= 1.0;
@@ -425,7 +477,9 @@ fn backward_f32_embeddings_gf16(
         }
     }
     let scale = seq_len.max(1) as f32;
-    for g in grads.iter_mut() { *g /= scale; }
+    for g in grads.iter_mut() {
+        *g /= scale;
+    }
     grads
 }
 
@@ -453,8 +507,10 @@ pub fn run_multi_seed(seeds: &[u64]) -> Vec<PipelineResult> {
     println!("Median BPB: {:.4}", median_bpb);
 
     for r in &results {
-        println!("  seed={}: bpb={:.4} best={:.4} @ step={} killed={} time={:.1}s",
-            r.seed, r.final_bpb, r.best_bpb, r.best_bpb_step, r.killed, r.total_time_seconds);
+        println!(
+            "  seed={}: bpb={:.4} best={:.4} @ step={} killed={} time={:.1}s",
+            r.seed, r.final_bpb, r.best_bpb, r.best_bpb_step, r.killed, r.total_time_seconds
+        );
     }
 
     results
@@ -470,7 +526,10 @@ mod tests {
         assert!(lr0 < 1e-6, "Step 0 should have ~0 lr");
 
         let lr50 = cosine_lr_with_warmup(50, 1000, 3e-4, 1e-5, 100);
-        assert!((lr50 - 1.5e-4).abs() < 1e-6, "Step 50 should be ~half lr_base");
+        assert!(
+            (lr50 - 1.5e-4).abs() < 1e-6,
+            "Step 50 should be ~half lr_base"
+        );
 
         let lr100 = cosine_lr_with_warmup(100, 1000, 3e-4, 1e-5, 100);
         assert!((lr100 - 3e-4).abs() < 1e-5, "Step 100 should be ~lr_base");
@@ -516,12 +575,38 @@ mod tests {
         let input: Vec<f32> = vec![0.0, 1.0, 2.0, 3.0];
         let target: Vec<u8> = vec![1, 2, 3, 0];
         let mut optimizer = crate::optimizer::AdamWCpu::new(n_params, 0.01);
-        let loss1 = training_step_gf16(&mut gf16_weights, &input, &target, &mut optimizer, vocab_size, d_model);
+        let loss1 = training_step_gf16(
+            &mut gf16_weights,
+            &input,
+            &target,
+            &mut optimizer,
+            vocab_size,
+            d_model,
+        );
         for _ in 0..3 {
-            training_step_gf16(&mut gf16_weights, &input, &target, &mut optimizer, vocab_size, d_model);
+            training_step_gf16(
+                &mut gf16_weights,
+                &input,
+                &target,
+                &mut optimizer,
+                vocab_size,
+                d_model,
+            );
         }
-        let loss2 = training_step_gf16(&mut gf16_weights, &input, &target, &mut optimizer, vocab_size, d_model);
-        assert!(loss2 < loss1, "GF16 training should reduce loss: before={} after={}", loss1, loss2);
+        let loss2 = training_step_gf16(
+            &mut gf16_weights,
+            &input,
+            &target,
+            &mut optimizer,
+            vocab_size,
+            d_model,
+        );
+        assert!(
+            loss2 < loss1,
+            "GF16 training should reduce loss: before={} after={}",
+            loss1,
+            loss2
+        );
     }
 
     #[test]
@@ -536,7 +621,9 @@ mod tests {
     fn test_forward_f32_embeddings() {
         let d_model = 256usize;
         let vocab_size = 4usize;
-        let embeddings: Vec<f32> = (0..vocab_size * d_model).map(|i| i as f32 * 0.001).collect();
+        let embeddings: Vec<f32> = (0..vocab_size * d_model)
+            .map(|i| i as f32 * 0.001)
+            .collect();
         let input = vec![0.0f32, 1.0];
         let logits = forward_f32_embeddings(&embeddings, &input, vocab_size, d_model);
         assert_eq!(logits.len(), 2 * vocab_size);
@@ -547,6 +634,10 @@ mod tests {
         let logits = vec![10.0f32, 0.0, 0.0, 0.0];
         let target = vec![0u8];
         let loss = cross_entropy_loss_f32(&logits, &target, 4);
-        assert!(loss >= 0.0 && loss < 1.0, "loss for correct prediction should be small: {}", loss);
+        assert!(
+            loss >= 0.0 && loss < 1.0,
+            "loss for correct prediction should be small: {}",
+            loss
+        );
     }
 }

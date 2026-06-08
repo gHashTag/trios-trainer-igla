@@ -1,0 +1,18 @@
+# Dual-mediator decomposition (Zhao-Luo 2020 arXiv:2007.16031)
+# INPUT STRATUM = warmup0 (Loop 47 audit fix 2)
+# NOTE: rows came from a stratified sweep. NDE/NIE_* below are Pearl
+# CONTROLLED DIRECT/INDIRECT EFFECTS at the disabled-value of the stratum
+# variable (e.g. warmup0 = warmup_steps held at 0); NOT marginal effects.
+# M1 = wd, M2 = warmup
+# NDE = Δ_{X,M1,M2};  NIE_M1 = (Δ_X − Δ_{X,M1}) − NIE_chain;
+# NIE_M2 = (Δ_X − Δ_{X,M2}) − NIE_chain;
+# NIE_chain = (Δ_X − Δ_{X,M1}) − (Δ_{X,M2} − Δ_{X,M1,M2})
+# Loop 35: SEs from per-seed PSE variance (multivariate delta-method,
+# Miles & Shpitser 2017 arXiv:1710.02011 §3)
+# Loop 36: 95% CIs use t_{0.975, df=N-1} (arXiv:2508.10083 — BCa undercovers at N=5)
+rank,fix_x,n,delta_x,nde,se_nde,ci95_nde_lo,ci95_nde_hi,nie_m1,se_nie_m1,ci95_nie_m1_lo,ci95_nie_m1_hi,nie_m2,se_nie_m2,ci95_nie_m2_lo,ci95_nie_m2_hi,nie_chain,se_nie_chain,ci95_nie_chain_lo,ci95_nie_chain_hi,sum,residual,pct_nde,pct_m1,pct_m2,pct_chain
+1,rms,5,0.868023,-4.123705,0.205855,-4.695250,-3.552160,4.991728,0.204923,4.422770,5.560686,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,-0.000000,0.000000,0.868023,0.000000,-475.07,575.07,0.00,0.00
+2,dropout,5,-0.094482,-4.556286,0.123187,-4.898308,-4.214263,4.461804,0.128803,4.104189,4.819418,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,-0.094482,-0.000000,4822.37,-4722.37,-0.00,-0.00
+3,gradclip,5,-0.017908,-4.749448,0.082760,-4.979226,-4.519671,4.731540,0.091498,4.477503,4.985578,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,-0.017908,0.000000,26521.38,-26421.38,-0.00,-0.00
+4,clamp,5,0.000000,-4.874798,0.013459,-4.912165,-4.837431,4.874798,0.013459,4.837431,4.912165,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,NaN,NaN,NaN,NaN
+5,smooth,5,0.000000,-4.874798,0.013459,-4.912165,-4.837431,4.874798,0.013459,4.837431,4.912165,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,0.000000,NaN,NaN,NaN,NaN

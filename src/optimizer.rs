@@ -117,8 +117,17 @@ impl AdamWCpu {
 
         // Update each parameter
         for i in 0..params.len() {
-            // Apply weight decay (decoupled from gradients in AdamW)
-            params[i] -= self.weight_decay as f32 * params[i];
+            // Apply weight decay (decoupled from gradients in AdamW).
+            // Coder-Loop+8 fix: the decoupled decay MUST be scaled by the
+            // learning rate (Loshchilov & Hutter 2019, "Decoupled Weight Decay
+            // Regularization", ICLR). Without the lr factor, wd=0.3 multiplied
+            // params by ~0.7 EVERY step -> weights collapsed to ~0 in tens of
+            // steps, so the BPB gradient measured across the WD sweep was a
+            // weight-collapse artifact, not real regularization. The same bug
+            // was first found and fixed on the coder track (feat/igla-coder-v1);
+            // this is the matching fix on the f2-methodology optimizer that
+            // run_wd_sweep trains with.
+            params[i] -= (self.lr * self.weight_decay) as f32 * params[i];
 
             // Update biased first moment estimate
             self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * gradients[i] as f64;
