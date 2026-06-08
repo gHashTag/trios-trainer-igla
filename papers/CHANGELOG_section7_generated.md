@@ -2,7 +2,7 @@
 
 Auto-generated from `git log --grep='adversarial pass' --grep='round-'` on branch `f2-methodology`.
 
-Total commits matched: **74**; distinct loops referenced: **68**.
+Total commits matched: **75**; distinct loops referenced: **69**.
 
 | Loop | Commits | First-line subjects |
 |------|---------|----------------------|
@@ -73,4 +73,5 @@ Total commits matched: **74**; distinct loops referenced: **68**.
 | 160 | `31ce620` | feat(race): bridge_bench v3 — 2-layer MLP, HIDDEN=128, all weights quantized; 79… |
 | 161 | `1016efb` | feat(race): bridge_bench v4 — single-head attention block; 80th adversarial pass… |
 | 162 | `70eb5b8` | feat(race): attention bench harder — STEPS 800, HIDDEN 128, 81st pass (Loop 162,… |
-| 163 | `872caa9` | feat(race): full 6-format zoo bridge_bench — BitNet/INT4 catastrophic failure va… |
+| 163 | `39d3396` | feat(race): full 6-format zoo bridge_bench — BitNet/INT4 catastrophic failure va… |
+| 164 | `564770d` | feat(race): STE shadow-weight refactor + 82nd adversarial pass (Loop 164, round-… |

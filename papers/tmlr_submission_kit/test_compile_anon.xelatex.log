@@ -358,192 +358,174 @@ LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1657.
 LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1657.
 
 
-Overfull \hbox (60.04204pt too wide) in paragraph at lines 1657--1671
+Overfull \hbox (60.04204pt too wide) in paragraph at lines 1657--1677
 \TU/lmr/m/n/10.95 aggregation $\OMS/cmsy/m/n/10.95 !$ \TU/lmr/m/n/10.95 output 
 projection $\OMS/cmsy/m/n/10.95 !$ \TU/lmr/m/n/10.95 softmax) on byte-level \TU
 /lmtt/m/n/10.95 data/tiny_shakespeare.txt
 
-Overfull \hbox (3.26994pt too wide) in paragraph at lines 1657--1671
-\TU/lmr/m/n/10.95 HIDDEN$\OMS/cmsy/m/n/10.95 ^^B$\TU/lmr/m/n/10.95 HIDDEN_HEAD,
- W_O HIDDEN_HEAD$\OMS/cmsy/m/n/10.95 ^^B$\TU/lmr/m/n/10.95 VOCAB) are round-
-
-Overfull \hbox (121.79321pt too wide) in paragraph at lines 1672--1674
+Overfull \hbox (121.79321pt too wide) in paragraph at lines 1678--1680
 []\TU/lmr/m/n/10.95 Final held-out val BPB (mean $\OMS/cmsy/m/n/10.95 ^^F$ \TU/
 lmr/m/n/10.95 sample-std across 5 seeds, on \TU/lmtt/m/n/10.95 data/tiny_shakes
 peare_val.txt\TU/lmr/m/n/10.95 ): 
-
-Overfull \hbox (16.73242pt too wide) in paragraph at lines 1677--1689
- [][] 
-
-Overfull \hbox (1.54352pt too wide) in paragraph at lines 1692--1693
-[]\TU/lmr/bx/n/10.95 What the table says\TU/lmr/m/n/10.95 : the six formats sor
-t into \TU/lmr/bx/n/10.95 three disjoint regimes
-
-LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1695.
-
 [39]
-Overfull \hbox (0.78549pt too wide) in paragraph at lines 1697--1698
-\TU/lmr/m/n/10.95 destabilized to a wrong-predictor regime (99.66 BPB $\OMS/cms
-y/m/n/10.95 ^^Y$ \TU/lmr/m/n/10.95 30$\OMS/cmsy/m/n/10.95 ^^A$\TU/lmr/m/n/10.95
- ln(10)/ln(2),
 
-LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1706.
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1730.
 
 
-LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1709.
-
-
-LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1727.
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1732.
 
 [40]
 
-LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1730.
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 1752.
 
 
-LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1751.
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1755.
+
+
+LaTeX Warning: Reference `sec:9.4.1' on page 1 undefined on input line 1775.
 
 [41]
 
-LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1764.
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 1788.
 
-
-Overfull \hbox (23.84128pt too wide) in paragraph at lines 1806--1807
+[42]
+Overfull \hbox (23.84128pt too wide) in paragraph at lines 1830--1831
 \TU/lmr/m/n/10.95 (section [][]3.5.4[][]). The paper’s load-bearing contributio
 n is the reproducibility-
-[42]
-Overfull \hbox (9.5844pt too wide) in paragraph at lines 1809--1810
+
+Overfull \hbox (9.5844pt too wide) in paragraph at lines 1833--1834
 \TU/lmr/m/n/10.95 Requires a stat-grade simulation study or domain co-author; t
 he method-
 
-Overfull \hbox (18.28963pt too wide) in paragraph at lines 1829--1834
+Overfull \hbox (18.28963pt too wide) in paragraph at lines 1853--1858
 \TU/lmr/m/n/10.95 to \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 and veri
 fied with MD5 checksums in \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/
 10.95 . 
 [43]
-Overfull \hbox (7.9199pt too wide) in paragraph at lines 1868--1868
+Overfull \hbox (7.9199pt too wide) in paragraph at lines 1892--1892
 []  \TU/lmtt/m/n/10.95 --m1 wd --m2 warmup data/loop49/loop47_warmup_stratified
 .csv \[] 
 
-Overfull \hbox (82.65364pt too wide) in paragraph at lines 1885--1885
+Overfull \hbox (82.65364pt too wide) in paragraph at lines 1909--1909
 []  \TU/lmtt/m/n/10.95 --input /tmp/3strat.jsonl --output papers/figures/fig4_r
 ms_nde_signflip.png[] 
 
-Overfull \hbox (86.22345pt too wide) in paragraph at lines 1887--1890
+Overfull \hbox (86.22345pt too wide) in paragraph at lines 1911--1914
 \TU/lmr/m/n/10.95 their command sequences are inlined as docstrings at the top 
 of each \TU/lmtt/m/n/10.95 papers/figures/fig*.py
-
-Overfull \hbox (64.84904pt too wide) in paragraph at lines 1891--1896
+[44]
+Overfull \hbox (64.84904pt too wide) in paragraph at lines 1915--1920
 \TU/lmr/m/n/10.95 commit should produce CSVs byte-identical to the checksums in
  \TU/lmtt/m/n/10.95 data/loop49/README.md\TU/lmr/m/n/10.95 .
 
-Overfull \hbox (70.73894pt too wide) in paragraph at lines 1891--1896
+Overfull \hbox (70.73894pt too wide) in paragraph at lines 1915--1920
 \TU/lmr/m/n/10.95 A mismatch indicates either an uncommitted local change or a 
 \TU/lmtt/m/n/10.95 TRAINER_INTERNALS_SCHEMA
 
-Overfull \hbox (50.82205pt too wide) in paragraph at lines 1891--1896
+Overfull \hbox (50.82205pt too wide) in paragraph at lines 1915--1920
 \TU/lmr/m/n/10.95 drift (section [][]3.5.2[][]). Verify with \TU/lmtt/m/n/10.95
  cargo run --release --bin f2_provenance_check
-[44]
-Overfull \hbox (584.38988pt too wide) in paragraph at lines 1909--1921
+
+Overfull \hbox (584.38988pt too wide) in paragraph at lines 1933--1945
  [][] 
 
-Overfull \hbox (118.59941pt too wide) in paragraph at lines 1926--1929
+Overfull \hbox (118.59941pt too wide) in paragraph at lines 1950--1953
 []\TU/lmr/m/n/10.95 When the producing binary is stratum-aware (\TU/lmtt/m/n/10
 .95 f2_dual_mediation\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 f2_mediation_sensit
 ivity\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (13.66866pt too wide) in paragraph at lines 1935--1935
+Overfull \hbox (13.66866pt too wide) in paragraph at lines 1959--1959
 []\TU/lmtt/m/n/10.95 # INPUT STRATUM = warmup0 (Pearl CDE on warmup_steps_unqua
 ntized)[] 
 [45]
-Overfull \hbox (33.94806pt too wide) in paragraph at lines 1961--1962
+Overfull \hbox (33.94806pt too wide) in paragraph at lines 1985--1986
 []\TU/lmr/m/n/10.95 section [][]3.2[][] — \TU/lmtt/m/n/10.95 src/bin/f2_dual_me
 diation.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 compute_dual_mediation\TU/lmr/
 m/n/10.95 ). 
 
-Overfull \hbox (46.93477pt too wide) in paragraph at lines 1962--1963
+Overfull \hbox (46.93477pt too wide) in paragraph at lines 1986--1987
 []\TU/lmr/m/n/10.95 section [][]3.3[][] — \TU/lmtt/m/n/10.95 src/bin/f2_mediati
 on_sensitivity.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 envelope_expansion\TU/l
 mr/m/n/10.95 ,
 
-Overfull \hbox (0.94478pt too wide) in paragraph at lines 1963--1964
+Overfull \hbox (0.94478pt too wide) in paragraph at lines 1987--1988
 []\TU/lmr/m/n/10.95 section [][]3.4[][] — \TU/lmtt/m/n/10.95 src/bin/f2_stratum
 _compare.rs \TU/lmr/m/n/10.95 (\TU/lmtt/m/n/10.95 build_comparison\TU/lmr/m/n/1
 0.95 ,
 
-Overfull \hbox (38.18573pt too wide) in paragraph at lines 1970--1976
+Overfull \hbox (38.18573pt too wide) in paragraph at lines 1994--2000
 \TU/lmr/m/n/10.95 integration suites) is auto-generated by \TU/lmtt/m/n/10.95 p
 apers/scripts/generate_appendix_d.sh
-
-Overfull \hbox (204.77914pt too wide) in paragraph at lines 1982--1988
+[46]
+Overfull \hbox (204.77914pt too wide) in paragraph at lines 2006--2012
 []\TU/lmr/m/n/10.95 Two load-bearing regression locks are highlighted in sectio
 n [][]8.2[][]: \TU/lmtt/m/n/10.95 dual_mediation_no_interaction_residual_lock
-[46] [47]
-Overfull \hbox (15.17981pt too wide) in paragraph at lines 2015--2016
+[47]
+Overfull \hbox (15.17981pt too wide) in paragraph at lines 2039--2040
 \TU/lmr/m/n/10.95 CSVs from \TU/lmtt/m/n/10.95 data/loop49/ \TU/lmr/m/n/10.95 a
 nd \TU/lmtt/m/n/10.95 data/loop49_swap/ \TU/lmr/m/n/10.95 through \TU/lmtt/m/n/
 10.95 f2_to_jsonl
 
-Overfull \hbox (10.17569pt too wide) in paragraph at lines 2015--2016
+Overfull \hbox (10.17569pt too wide) in paragraph at lines 2039--2040
 \TU/lmr/m/n/10.95 and \TU/lmtt/m/n/10.95 f2_mediation_sensitivity\TU/lmr/m/n/10
 .95 ; regenerate all six paper figures. \TU/lmr/bx/n/10.95 Cold:
 
-LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 2016.
+LaTeX Warning: Reference `sec:9.4.2' on page 1 undefined on input line 2040.
 
 
-LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 2016.
+LaTeX Warning: Reference `sec:9.4.3' on page 1 undefined on input line 2040.
 
 
-Overfull \hbox (80.91301pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (80.91301pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/bx/n/10.95 arc documented in CHANGELOG section [][]10[][]\TU/lmr/m/n/10
 .95 : \TU/lmtt/m/n/10.95 verify_tables_against_csv.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (176.24762pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (176.24762pt too wide) in paragraph at lines 2040--2041
 \TU/lmtt/m/n/10.95 verify_formulas_vs_tables.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n
 /10.95 verify_label_consistency.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/10.95 verify
 _preamble_per_producer.py\TU/lmr/m/n/10.95 ,
 
-Overfull \hbox (8.71268pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (8.71268pt too wide) in paragraph at lines 2040--2041
 \TU/lmtt/m/n/10.95 verify_run_completeness.py\TU/lmr/m/n/10.95 , \TU/lmtt/m/n/1
 0.95 verify_report_consistency.py\TU/lmr/m/n/10.95 ), the
 
-Overfull \hbox (22.08272pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (22.08272pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 reference audit, its markdown lint, the smoke test for its \T
 U/lmtt/m/n/10.95 f2_pairwise_perm
 
-Overfull \hbox (2.02983pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (2.02983pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 IAL_REVIEW_LOG headline pass-count triple), and the anonymize
 r-
 
-Overfull \hbox (5.22507pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (5.22507pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 completeness verifier (ratchets bare \TU/lmtt/m/n/10.95 Loop 
 N \TU/lmr/m/n/10.95 anchor count per-file against
 
-Overfull \hbox (58.57684pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (58.57684pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 live sidecar state), the alias-round-trip verifier (asserts C
 LASS_LABEL_ALIASES
 
-Overfull \hbox (6.72641pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (6.72641pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 burn-down-trajectory verifier (asserts the breadcrumb is loop
 -monotonic
 
-Overfull \hbox (95.38733pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (95.38733pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 freshness verifier (asserts every dated AOE deadline in \TU/l
 mtt/m/n/10.95 papers/SUBMISSION_CHECKLIST.md
 
-Overfull \hbox (30.87338pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (30.87338pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 section [][]4[][] is today-or-future or annotated as historic
 al), the tex-anonymization
 
-Overfull \hbox (10.05739pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (10.05739pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 markdown-source-only anonymizer ratchet), and the format-micr
 obench-
 
-Overfull \hbox (198.3173pt too wide) in paragraph at lines 2016--2017
+Overfull \hbox (198.3173pt too wide) in paragraph at lines 2040--2041
 \TU/lmr/m/n/10.95 freshness verifier (asserts the format-zoo grid summary JSON 
 in \TU/lmtt/m/n/10.95 .trinity/results/format_microbench_grid/
 [48])
-Overfull \hbox (139.8292pt too wide) in paragraph at lines 2019--31
+Overfull \hbox (139.8292pt too wide) in paragraph at lines 2043--31
 []\TU/lmtt/m/n/10.95 papers/tmlr_submission_kit/pack_supplementary.sh \TU/lmr/m
 /n/10.95 chains \TU/lmtt/m/n/10.95 papers/scripts/figure_regen.sh
 [49] (./test_compile_anon.bbl [50]

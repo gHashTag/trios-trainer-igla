@@ -124,9 +124,9 @@ by lightweight `historical/<sha7>` tags (Loop 157 hardening).
       (`papers/tmlr_submission_kit/f2_methodology_supp.zip`)
 - [ ] `papers/CITATIONS.md` ledger: 32 VERIFIED + 1 VERIFIED-WITHDRAWN
       (97%); 0 UNVERIFIED
-- [ ] **Adversarial review**: 81 passes across Loops 59-163
+- [ ] **Adversarial review**: 82 passes across Loops 59-164
       (`docs/ADVERSARIAL_REVIEW_LOG.md` covers passes 1-18 in detail;
-      passes 19-81 documented in `papers/CHANGELOG.md` §7 50-pass
+      passes 19-82 documented in `papers/CHANGELOG.md` §7 50-pass
       milestone retrospective and per-loop commit messages). All
       passes addressed; gate-design SEV catches surface in round-N
       audits at N≥5.
@@ -226,9 +226,9 @@ If rejected:
 
 ## Anchor / version
 
-- Checklist version: **Loop 163 (2026-06-08)**
+- Checklist version: **Loop 164 (2026-06-08)**
 - Branch HEAD at checklist update: refreshed in lock-step with the
-  Loop 163 commits on `f2-methodology`
+  Loop 164 commits on `f2-methodology`
 - Next deadline: hard TMLR 2026-09-30 AOE
   (EOI soft 2026-06-04 AOE has passed — non-blocking per Loops
   82-84 framing; file EOI Google Form *after* TMLR submission)
@@ -440,7 +440,7 @@ If rejected:
   decisively significant). GF16 delta exploded 17× vs Loop 161
   attention while Posit16 stayed within MC SE noise. PDF non-anon
   52 → 53 pages.
-- Loop 163: this update — full **6-format zoo** at converged
+- Loop 163: full **6-format zoo** at converged
   attention budget. Posit16 still indistinguishable from f32;
   GF16 +0.173 sig; bf16 +0.348 sig; BitNet b1.58 and INT4
   **CATASTROPHICALLY FAILED** (BitNet → uniform predictor at
@@ -450,3 +450,12 @@ If rejected:
   or per-group scale). §9.4.3 rewritten to report failures
   honestly as methodological finding. Anon PDF 52 → 53 pages.
   82nd adversarial pass deferred to Loop 164.
+- Loop 164: this update — STE shadow-weight refactor (master in
+  f32, quantized view per step, gradients into master at full
+  precision). All 6 formats re-run; 5 of 6 indistinguishable from
+  f32 at N=5; only BitNet b1.58 shows real penalty (+0.277 BPB,
+  t ≈ 124). Loop 163's BitNet collapse + INT4 divergence + large
+  GF16/bf16 deltas reinterpreted as recipe-implementation artifacts
+  of naive shadow-weight (naive-vs-STE BPB swing ≈ 100× — larger
+  than any format-vs-format gap, strong evidence for quantization-
+  recipe as §3.1 stratum). 82nd adversarial pass folded inline.

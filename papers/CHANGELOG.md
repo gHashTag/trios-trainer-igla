@@ -107,26 +107,26 @@ Five auxiliary scripts under `papers/scripts/`:
   provenance → metadata).
 - Loop 73: 3-variant compile + 6-stage CI gate.
 
-### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–163)
+### 7. Reviewer-screen feedback loop (Loops 59, 61, 75–164)
 
 Independent adversarial reviews surfaced load-bearing issues
-caught before reviewers saw them. **Eighty-one** independent
-passes total across Loops 59–163 (50-pass milestone reached at
-Loop 127; passes 51–81 dispatched at Loops 128–162; Loops 157,
+caught before reviewers saw them. **Eighty-two** independent
+passes total across Loops 59–164 (50-pass milestone reached at
+Loop 127; passes 51–82 dispatched at Loops 128–164; Loops 157,
 158, 159, 163 were rehearsal / camera-ready-prep / compute-bound
 loops with no adversarial pass dispatched in-loop — Loop 163's
-82nd pass is deferred to Loop 164).
+82nd pass was dispatched in Loop 164).
 The first 11 (Loops 59, 61, 75–85) targeted the original paper
-drafts and submission flow; Loops 86–163 extended the discipline
+drafts and submission flow; Loops 86–164 extended the discipline
 to round-N audits where each substantive patch is independently
 re-audited the loop after it lands. Detail on passes 1–11 below;
-passes 12–81 drove the gate-evolution loops summarized in §10
-(per-loop CI additions Loops 87–163; per-pass detail lives in
+passes 12–82 drove the gate-evolution loops summarized in §10
+(per-loop CI additions Loops 87–164; per-pass detail lives in
 the per-loop commit messages, not §10). The
 combined breadcrumb is `git log --oneline --grep="adversarial
 pass" --grep="round-"` which surfaces ≥35 commits across Loops
-90–163 (49th pass flagged the un-widened grep covered only
-~35 of 81 passes; the two-pattern form widens reach).
+90–164 (49th pass flagged the un-widened grep covered only
+~35 of 82 passes; the two-pattern form widens reach).
 
 #### Adversarial review retrospective (frozen at 50-pass milestone, Loop 127)
 
@@ -267,7 +267,7 @@ bibliography. **From 16 adversarial reviews.**
 into CI on every push touching `papers/`. PR #185 turns from
 "Draft, locally-verified" → "Draft, CI-verified".
 
-### 10. CI gate evolution (Loops 87–163)
+### 10. CI gate evolution (Loops 87–164)
 
 The 39th and 40th adversarial passes both surfaced that the
 F2 paper's §E catalogue, whose 8-script composition crystallized
@@ -678,6 +678,37 @@ Stage additions since the original 8-script catalogue:
   Two new posit16 unit tests verify total-order claims (NaR < all,
   positive monotone). All 42 phi_numbers + format_ladder tests
   green.
+- **Loop 164** — STE shadow-weight + 82nd adversarial pass.
+  `bridge_bench` refactored to the canonical straight-through-
+  estimator pattern: master weights stay in f32 across all SGD
+  steps, a quantized view is derived per step via the format gate,
+  the forward pass uses the quantized view, and gradients flow
+  back into the f32 master at full precision. This is the recipe
+  every modern mixed-precision trainer uses (and that BitNet b1.58
+  Ma et al. arxiv:2402.17764 §2.2 explicitly requires); the Loop
+  163 implementation was a *naive* shadow-weight (quantize master
+  in-place every step) that destabilized at narrow bit-widths.
+  Re-running 5 seeds × 800 steps × HIDDEN=128 × 6 formats with STE
+  produces dramatically different numbers:
+   - f32:     4.4540 ± 0.0192  (baseline, unchanged)
+   - Posit16: 4.4540 ± 0.0192  (Δ 0.000, identical to f32)
+   - INT4:    4.4519 ± 0.0221  (Δ -0.002, not sig)
+   - GF16:    4.4549 ± 0.0190  (Δ +0.001, not sig)
+   - bf16:    4.4576 ± 0.0183  (Δ +0.004, not sig)
+   - BitNet:  4.7307 ± 0.0049  (Δ +0.277, sig t ≈ 124 — REAL penalty)
+  Loop 163's "BitNet collapsed to uniform" and "INT4 diverged"
+  outcomes are now **understood as recipe-implementation artifacts**,
+  not format-level failures. The Loop 163 GF16 +0.173 BPB delta
+  shrank ~150× to +0.001 under STE; bf16 +0.348 shrank ~85× to
+  +0.004. The naive-vs-STE BPB swing (~100×) is *larger than any
+  format-vs-format gap* observed under either recipe — strong
+  empirical evidence for adding quantization-recipe as a stratum
+  variable to §3.1. The §9.4.3 narrative rewritten end-to-end to
+  reflect the corrected results + the load-bearing recipe-vs-
+  format-as-confounder framing. 82nd adversarial pass folded
+  inline (3 of 5 catches addressed: bf16 truncation-vs-rounding
+  precision, INT4 "every val token" softened to "substantial
+  majority", §3.1 stratification claim hedged as "extending").
 - **Loop 163** — full 6-format zoo (`f32`, `Posit16`, `GF16`,
   `bf16`, `BitNet b1.58`, `INT4`) at the converged 800-step ×
   HIDDEN=128 attention budget. 5 seeds × 6 formats = 30 cells,

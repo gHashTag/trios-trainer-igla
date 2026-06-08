@@ -410,11 +410,36 @@ fn softmax_inplace(logits: &mut [f32]) {
 }
 
 fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
-    let mut embed = xavier_init(seed, VOCAB * HIDDEN, HIDDEN);
-    let mut w_q = xavier_init(seed.wrapping_add(1), HIDDEN * HIDDEN_HEAD, HIDDEN);
-    let mut w_k = xavier_init(seed.wrapping_add(2), HIDDEN * HIDDEN_HEAD, HIDDEN);
-    let mut w_v = xavier_init(seed.wrapping_add(3), HIDDEN * HIDDEN_HEAD, HIDDEN);
-    let mut w_o = xavier_init(seed.wrapping_add(4), HIDDEN_HEAD * VOCAB, HIDDEN_HEAD);
+    // Loop 164 STE refactor: master copies stay in f32 across all SGD
+    // steps; the "quantized view" used for the forward pass is derived
+    // from the master after every update (clone → quantize_tensor).
+    // This is the canonical straight-through estimator (Bengio et al.
+    // 2013) pattern used by every modern mixed-precision trainer
+    // including MXFP8 / NVFP4 / BitNet b1.58: gradients flow into the
+    // f32 master at full precision; the format gate is applied only
+    // at the forward boundary, not into the gradient path. The
+    // Loop 163 implementation quantized the master in-place, which is
+    // a NAIVE shadow-weight pattern that destabilizes 1.58-bit and
+    // 4-bit formats (BitNet collapsed to uniform; INT4 diverged).
+    let mut embed_master = xavier_init(seed, VOCAB * HIDDEN, HIDDEN);
+    let mut w_q_master = xavier_init(seed.wrapping_add(1), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_k_master = xavier_init(seed.wrapping_add(2), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_v_master = xavier_init(seed.wrapping_add(3), HIDDEN * HIDDEN_HEAD, HIDDEN);
+    let mut w_o_master = xavier_init(seed.wrapping_add(4), HIDDEN_HEAD * VOCAB, HIDDEN_HEAD);
+
+    // Derive the initial quantized views. For F32 these are identical
+    // to the masters; for the other formats they are the masters with
+    // the format gate applied per tensor.
+    let mut embed = embed_master.clone();
+    let mut w_q = w_q_master.clone();
+    let mut w_k = w_k_master.clone();
+    let mut w_v = w_v_master.clone();
+    let mut w_o = w_o_master.clone();
+    fmt.quantize_tensor(&mut embed);
+    fmt.quantize_tensor(&mut w_q);
+    fmt.quantize_tensor(&mut w_k);
+    fmt.quantize_tensor(&mut w_v);
+    fmt.quantize_tensor(&mut w_o);
 
     let mut step_rng = Lcg::new(seed.wrapping_add(5));
     let n_train_windows = train.len().saturating_sub(SEQ_LEN);
@@ -434,15 +459,13 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
             let tokens: Vec<usize> = (0..SEQ_LEN)
                 .map(|i| (train[start + i] as usize) % VOCAB)
                 .collect();
-            let next = (train[start + SEQ_LEN - 1] as usize) % VOCAB;
-            // Predict the byte right AFTER the window's last position.
-            // (Use start + SEQ_LEN if available; else wrap to next.)
             let next = if start + SEQ_LEN < train.len() {
                 (train[start + SEQ_LEN] as usize) % VOCAB
             } else {
-                next
+                (train[start + SEQ_LEN - 1] as usize) % VOCAB
             };
 
+            // Forward pass uses the *quantized* views.
             let (mut logits, cache) = forward(&embed, &w_q, &w_k, &w_v, &w_o, &tokens);
             softmax_inplace(&mut logits);
             let mut d_logits = logits.clone();
@@ -451,6 +474,8 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
             for x in d_logits.iter_mut() {
                 *x *= scale;
             }
+            // Backward computes gradients vs the quantized weights; STE
+            // treats those gradients as gradients vs the master weights.
             backward(
                 &cache,
                 &tokens,
@@ -461,25 +486,26 @@ fn run_one(fmt: Format, seed: u64, train: &[u8], val: &[u8]) -> f64 {
             );
         }
 
-        // SGD update on all 5 weight matrices, followed by per-tensor
-        // format-gate quantization (the shadow-weight pattern: master
-        // stays in f32 between forward passes; each tensor is round-
-        // tripped through the chosen format after every step).
-        for (w, dw) in [
-            (&mut embed, &d_embed),
-            (&mut w_q, &d_w_q),
-            (&mut w_k, &d_w_k),
-            (&mut w_v, &d_w_v),
-            (&mut w_o, &d_w_o),
+        // SGD updates the MASTER weights at full f32 precision; then we
+        // re-derive the quantized views by copying and applying the
+        // format gate per tensor.
+        for (master, q, dw) in [
+            (&mut embed_master, &mut embed, &d_embed),
+            (&mut w_q_master, &mut w_q, &d_w_q),
+            (&mut w_k_master, &mut w_k, &d_w_k),
+            (&mut w_v_master, &mut w_v, &d_w_v),
+            (&mut w_o_master, &mut w_o, &d_w_o),
         ] {
-            for i in 0..w.len() {
-                w[i] -= LR * dw[i];
+            for i in 0..master.len() {
+                master[i] -= LR * dw[i];
             }
-            fmt.quantize_tensor(w);
+            q.copy_from_slice(master);
+            fmt.quantize_tensor(q);
         }
     }
 
-    // Held-out BPB: average -log_2 P(next | last SEQ_LEN tokens) over val.
+    // Held-out BPB: forward uses the quantized weights (same as
+    // training-time forward).
     let mut total_nll = 0.0_f64;
     let mut count = 0_usize;
     let n_val_windows = val.len().saturating_sub(SEQ_LEN);
