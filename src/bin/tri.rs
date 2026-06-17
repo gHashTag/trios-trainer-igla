@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::io::Write;
 use std::process::Command as StdCommand;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -48,6 +49,10 @@ enum Commands {
         #[command(subcommand)]
         deploy_cmd: DeployCommands,
     },
+    Gardener {
+        #[command(subcommand)]
+        gardener_cmd: GardenerCommands,
+    },
 }
 
 #[derive(Subcommand)]
@@ -55,6 +60,32 @@ enum RaceCommands {
     Start,
     Status,
     Best,
+}
+
+#[derive(Subcommand)]
+enum GardenerCommands {
+    #[command(about = "Garden status: processes, logs, disk, best BPB")]
+    Status,
+    #[command(about = "Harvest BPB from a Railway service")]
+    Harvest {
+        #[arg(help = "Railway service name")]
+        service: String,
+    },
+    #[command(about = "Harvest all known Railway services")]
+    HarvestAll,
+    #[command(about = "Prune dead/stalled trios-train processes")]
+    Prune,
+    #[command(about = "Water (restart) crashed runs from log signatures")]
+    Water,
+    #[command(about = "Stream logs for a Railway service")]
+    Logs {
+        #[arg(help = "Railway service name")]
+        service: String,
+        #[arg(long, default_value_t = 50)]
+        lines: usize,
+    },
+    #[command(about = "Generate HTML harvest report with charts")]
+    Report,
 }
 
 #[derive(Subcommand)]
@@ -296,6 +327,15 @@ async fn main() -> anyhow::Result<()> {
                 trios_trainer::race::status::show_best(&db).await?;
             }
         },
+        Commands::Gardener { gardener_cmd } => match gardener_cmd {
+            GardenerCommands::Status => gardener_status()?,
+            GardenerCommands::Harvest { service } => gardener_harvest(&service)?,
+            GardenerCommands::HarvestAll => gardener_harvest_all()?,
+            GardenerCommands::Prune => gardener_prune()?,
+            GardenerCommands::Water => gardener_water()?,
+            GardenerCommands::Logs { service, lines } => gardener_logs(&service, lines)?,
+            GardenerCommands::Report => gardener_report()?,
+        },
         Commands::Train {
             seed,
             steps,
@@ -327,6 +367,204 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
+    Ok(())
+}
+
+fn gardener_status() -> anyhow::Result<()> {
+    let log_dir = ".trinity/results";
+    let harvest_log = ".trinity/gardener_harvest.log";
+
+    println!("=== САД IGLA RACE ===");
+    println!("Время: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+
+    let proc_out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("ps aux | grep trios-train | grep -v grep | wc -l")
+        .output()?;
+    let procs = String::from_utf8_lossy(&proc_out.stdout).trim().to_string();
+    println!("Процессы trios-train (local): {}", procs);
+
+    let disk_out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(&format!("du -sh {} 2>/dev/null || echo 'N/A'", log_dir))
+        .output()?;
+    println!("Логи: {}", String::from_utf8_lossy(&disk_out.stdout).trim());
+
+    if std::path::Path::new(harvest_log).exists() {
+        let best_out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&format!(
+                "grep -E 'best=([0-9.]+)' {} | sed 's/.*best=//' | sort -n | head -1",
+                harvest_log
+            ))
+            .output()?;
+        let best = String::from_utf8_lossy(&best_out.stdout).trim().to_string();
+        println!("Лучший BPB (fleet): {}", if best.is_empty() { "N/A" } else { &best });
+
+        let cnt_out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&format!("wc -l < {}", harvest_log))
+            .output()?;
+        println!("Harvest entries: {}", String::from_utf8_lossy(&cnt_out.stdout).trim());
+    }
+
+    Ok(())
+}
+
+fn gardener_harvest(service: &str) -> anyhow::Result<()> {
+    let logfile = ".trinity/gardener_harvest.log";
+    let tag = format!("[{}]", service);
+    let output = std::process::Command::new("railway")
+        .args(["logs", "--service", service, "--lines", "50"])
+        .env("RAILWAY_NON_INTERACTIVE", "1")
+        .output()?;
+    if !output.status.success() {
+        anyhow::bail!("railway logs failed: {}", String::from_utf8_lossy(&output.stderr));
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let latest = stdout
+        .lines()
+        .filter(|l| l.contains("step=") && l.contains("val_bpb="))
+        .last();
+    let line = match latest {
+        Some(l) => format!("{} {}", tag, l),
+        None => format!("{} NO_DATA {}", tag, chrono::Local::now().format("%Y-%m-%dT%H:%M:%S")),
+    };
+    println!("{}", line);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(logfile)?
+        .write_all(format!("{}\n", line).as_bytes())?;
+    Ok(())
+}
+
+fn gardener_harvest_all() -> anyhow::Result<()> {
+    // Known fleet services from the IGLA RACE project
+    let services = vec![
+        "scarab-fp16-seed77",
+        "phi-ablation-control",
+        "phi-ablation-treat",
+        "phase1-gf16-h512-seed82",
+        "phase1-bf16-seed76",
+        "scarab-mxfp8-seed79",
+        "scarab-gf16-seed75",
+        "phase1-gf16-seed74",
+        "short-wave-bf16-sgdm",
+        "phase1-f32-seed76",
+        "scarab-fp8-seed86",
+        "scarab-bfloat16-seed87",
+        "scarab-gf20-seed75",
+        "scarab-gf20-seed78",
+        "scarab-gf12-seed78",
+        "scarab-lion-m1-rng144",
+        "scarab-muon-rng144",
+        "scarab-soap",
+        "scarab-gf16-lion-seed81",
+        "scarab-gf16-soap-seed81",
+        "scarab-gf16-muon-seed80",
+        "scarab-shampoo-rng89",
+        "scarab-lamb",
+        "scarab-signum",
+        "scarab-signum-rng144",
+        "scarab-prodigy-rng144",
+        "scarab-int8-seed80",
+        "scarab-posit8-seed79",
+        "phase1-gf16-seed77",
+        "phase1-gf16-seed76",
+        "phase1-bf16-seed74",
+        "phase1-f32-seed74",
+        "phase1-rng123",
+        "phase1-rng144",
+        "phase1-rng89",
+        "phase1-rng47",
+    ];
+    let mut ok = 0;
+    let mut fail = 0;
+    for svc in &services {
+        match gardener_harvest(svc) {
+            Ok(_) => ok += 1,
+            Err(e) => {
+                eprintln!("[harvest-all] {} FAILED: {}", svc, e);
+                fail += 1;
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(300));
+    }
+    println!("\n=== harvest-all complete: {} OK, {} FAILED ===", ok, fail);
+    Ok(())
+}
+
+fn gardener_prune() -> anyhow::Result<()> {
+    println!("=== PRUNE ===");
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("ps aux | grep trios-train | grep -v grep | grep 'defunct' | awk '{print $2}'")
+        .output()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let pids: Vec<&str> = stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    if pids.is_empty() {
+        println!("No zombie/defunct processes found.");
+    } else {
+        println!("Zombie PIDs: {}", pids.join(", "));
+        for pid in &pids {
+            println!("Killing zombie PID {} ...", pid);
+            let _ = std::process::Command::new("kill").arg("-9").arg(pid).status();
+        }
+    }
+    Ok(())
+}
+
+fn gardener_water() -> anyhow::Result<()> {
+    println!("=== WATER (restart crashed) ===");
+    let out = std::process::Command::new("sh")
+        .arg("-c")
+        .arg("grep -l 'CUDA out of memory\\|Killed\\|Segmentation fault' .trinity/results/*.log 2>/dev/null")
+        .output()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let logs: Vec<&str> = stdout
+        .lines()
+        .filter(|l| !l.is_empty())
+        .collect();
+    if logs.is_empty() {
+        println!("No crashed logs found.");
+    } else {
+        for log in &logs {
+            println!("Crashed: {}", log);
+        }
+        println!("Tip: re-run with `tri train` or redeploy with `tri deploy`.");
+    }
+    Ok(())
+}
+
+fn gardener_logs(service: &str, lines: usize) -> anyhow::Result<()> {
+    let status = std::process::Command::new("railway")
+        .args(["logs", "--service", service, "--lines", &lines.to_string()])
+        .env("RAILWAY_NON_INTERACTIVE", "1")
+        .status()?;
+    if !status.success() {
+        anyhow::bail!("railway logs failed");
+    }
+    Ok(())
+}
+
+fn gardener_report() -> anyhow::Result<()> {
+    let report = ".trinity/gardener_report.html";
+    if !std::path::Path::new(report).exists() {
+        anyhow::bail!("Report not found: {}. Run Python builder first.", report);
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(report).status()?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open").arg(report).status()?;
+    }
+    println!("Opened {}", report);
     Ok(())
 }
 

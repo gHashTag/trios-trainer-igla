@@ -41,3 +41,6 @@ trinity-brochure.pdf
 
 # Constitution (generated)
 trinity_constitution/
+
+.env*
+!.env.example
