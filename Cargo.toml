@@ -293,3 +293,7 @@ path = "src/bin/matrix_runner.rs"
 name = "matrix_ledger"
 path = "src/bin/matrix_ledger.rs"
 
+
+[[bin]]
+name = "format_champion_sweep"
+path = "src/bin/format_champion_sweep.rs"
