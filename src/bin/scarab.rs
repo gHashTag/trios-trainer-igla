@@ -17,6 +17,7 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use migration::MigratorTrait;
 use tokio::process::Command;
 use tokio::time::sleep;
 use tokio_postgres_rustls::MakeRustlsConnect;
@@ -191,6 +192,11 @@ async fn run_strategy(
     ])
     .env("TRIOS_EXPERIMENT_ID", strat.id.to_string())
     .env("TRIOS_CANON_NAME", &strat.canon_name)
+    // R5/L8 fix (trios#509 follow-up): defence-in-depth — set
+    // `TRIOS_FORMAT_TYPE` directly via env so `resolve_fake_quant_format()`
+    // sees it even if the trainer ever drops the `--format` CLI flag again.
+    // Both pathways (env + flag) now carry the same value.
+    .env("TRIOS_FORMAT_TYPE", &format)
     // Bug A fix: Explicitly forward Neon DSN to trainer subprocess.
     .env("NEON_DATABASE_URL", &neon)
     .stdout(Stdio::inherit())
@@ -418,7 +424,16 @@ fn strip_channel_binding(dsn: &str) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let raw_db_url = env::var("NEON_DATABASE_URL").expect("NEON_DATABASE_URL not set");
+    // Resolve Postgres DSN with neutral name first, then fall back to legacy aliases.
+    // Trinity moved off Neon onto Railway Postgres (2026-05). DATABASE_URL is the
+    // canonical neutral name; NEON_DATABASE_URL / TRIOS_DATABASE_URL kept as aliases
+    // for backward compatibility with operator-side scripts that still set them.
+    let raw_db_url = env::var("DATABASE_URL")
+        .or_else(|_| env::var("NEON_DATABASE_URL"))
+        .or_else(|_| env::var("TRIOS_DATABASE_URL"))
+        .map_err(|_| anyhow::anyhow!(
+            "no Postgres DSN found: set DATABASE_URL (preferred) or NEON_DATABASE_URL / TRIOS_DATABASE_URL"
+        ))?;
     let db_url = strip_channel_binding(&raw_db_url);
     if db_url != raw_db_url {
         eprintln!("[scarab] stripped channel_binding from DSN (rustls limitation)");
@@ -429,6 +444,23 @@ async fn main() -> anyhow::Result<()> {
     let svc_id = env::var("RAILWAY_SERVICE_ID").unwrap_or_else(|_| "unknown".into());
     let svc_name = env::var("RAILWAY_SERVICE_NAME").unwrap_or_else(|_| "scarab".into());
     let host = env::var("HOSTNAME").unwrap_or_else(|_| "unknown".into());
+
+    // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
+    let automigrate = env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
+    if automigrate != "0" {
+        match sea_orm::Database::connect(&db_url).await {
+            Ok(sea_db) => {
+                match migration::Migrator::up(&sea_db, None).await {
+                    Ok(()) => eprintln!("[migrator] schema up-to-date"),
+                    Err(e) => eprintln!("[migrator] migration failed (non-fatal): {e}"),
+                }
+                let _ = sea_db.close().await;
+            }
+            Err(e) => eprintln!("[migrator] connect failed (non-fatal): {e}"),
+        }
+    } else {
+        eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
+    }
 
     let client = connect_with_retry(&db_url).await?;
 

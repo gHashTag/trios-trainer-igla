@@ -183,7 +183,7 @@ fn main() {
     println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
 
     // Write step=0 ping so queue knows trainer started
-    nw::bpb_sample(&canon_name, seed as i32, 0, init_bpb);
+    nw::bpb_sample(&canon_name, seed as i32, 0, init_bpb, None);
     eprintln!("[neon] wrote step=0 bpb={:.4}", init_bpb);
 
     println!();
@@ -217,7 +217,7 @@ fn main() {
 
             // P0 fix: wire bpb_sample to Neon every checkpoint_interval steps
             if eval_bpb.is_finite() {
-                nw::bpb_sample(&canon_name, seed as i32, step as i32, eval_bpb);
+                nw::bpb_sample(&canon_name, seed as i32, step as i32, eval_bpb, None);
                 eprintln!("[neon] wrote step={} bpb={:.4}", step, eval_bpb);
             }
         }

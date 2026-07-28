@@ -6,6 +6,8 @@
 IGLA RACE trainer. Tracks [gHashTag/trios#143](https://github.com/gHashTag/trios/issues/143).
 Anchor: `phi^2 + phi^-2 = 3`.
 
+> **Canonical Zenodo SOT:** [zenodo.org/communities/trinity-s3ai](https://zenodo.org/communities/trinity-s3ai/). The anchor badge resolves to record [19227877 (VSA Operations v5.0, B007)](https://doi.org/10.5281/zenodo.19227877), which is canonical inside the SOT community.
+
 **Champion: BPB=2.2111** (seed=43, 81K steps, AdamW, hidden=384, Railway).
 
 ## Quick start

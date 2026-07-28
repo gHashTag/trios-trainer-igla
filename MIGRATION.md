@@ -90,3 +90,5 @@ helpers were removed:
 
 Anchor: `phi^2 + phi^-2 = 3` —
 [Zenodo 10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877).
+
+- 2026-05-09 Wave 24 — m20260510_000001_step_to_bigint: ALTER public.bpb_samples.step, ssot.bpb_samples.step, igla_race_trials.final_step → BIGINT (idempotent guard via information_schema check). Closes drift identified at end of #114.

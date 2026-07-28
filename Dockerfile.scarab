@@ -1,7 +1,10 @@
 # Scarab Worker — one image, N replicas, zero account binding
 #
-# Required Railway variable:
+# Required Railway variable (preferred neutral name):
+#   DATABASE_URL=postgres://...
+# Legacy aliases (still honored, will be removed in a future release):
 #   NEON_DATABASE_URL=postgres://...
+#   TRIOS_DATABASE_URL=postgres://...
 #
 # Optional (cosmetic log label, does NOT affect scheduling):
 #   SCARAB_ACCOUNT=acc0  (or RAILWAY_ACC)

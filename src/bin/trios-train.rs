@@ -2,7 +2,7 @@
 //!
 //! ```bash
 //! # Standalone mode (no config file needed)
-//! trios-train --seed 43 --steps 54000
+//! trios-train --seed 47 --steps 54000   # Canon #93 allowed seed
 //!
 //! # Config mode
 //! trios-train --config configs/champion.toml
@@ -13,6 +13,9 @@
 
 use anyhow::Result;
 use clap::Parser;
+use migration::MigratorTrait;
+use trios_trainer::neon_writer::strip_channel_binding;
+use trios_trainer::seed_canon::parse_seed;
 use trios_trainer::train_loop::{self, TrainArgs, GATE_FINAL_SEEDS};
 
 #[derive(Parser, Debug)]
@@ -25,8 +28,11 @@ struct Cli {
     #[arg(long, env = "TRIOS_CONFIG")]
     config: Option<std::path::PathBuf>,
 
-    /// Override seed. Use 0 to run 3-seed sweep {43,44,45}.
-    #[arg(long, env = "TRIOS_SEED", default_value_t = 43)]
+    /// Override seed. Use 0 to run 3-seed sweep.
+    /// If the `SEED` env var is set, Canon #93 enforcement applies:
+    /// seeds {42, 43, 44, 45} are forbidden; use {47, 89, 123, 144}.
+    /// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    #[arg(long, env = "TRIOS_SEED", default_value_t = 47)]
     seed: u64,
 
     /// Number of training steps.
@@ -65,7 +71,7 @@ struct Cli {
     )]
     val_data: String,
 
-    /// Run 3-seed sweep {43, 44, 45} instead of single seed.
+    /// Run 3-seed sweep {47, 89, 123} (Canon #93) instead of single seed.
     #[arg(long)]
     sweep: bool,
 
@@ -82,8 +88,21 @@ struct Cli {
     #[allow(dead_code)]
     ctx: Option<usize>,
 
+<<<<<<< HEAD
     /// Format type pass-through (honoured via FakeQuant + STE in train_loop).
     /// gf16 is the default in production. See fake_quant.rs for supported kinds.
+=======
+    /// Format type pass-through.
+    ///
+    /// Honoured by `train_loop::resolve_fake_quant_format()` via the
+    /// `TRIOS_FORMAT_TYPE` env var. Historically this flag was accepted but
+    /// silently dropped because clap stored it in `cli.format` and `main()`
+    /// never re-exported it; the result was a production-wide fp32-fallback
+    /// (trios#509: 52 ≡ 2.942101 / 49 ≡ 2.998885 collapse, scarab triplets
+    /// adamw-binary32 / adamw-GF16 / muon-GF16 producing identical BPB on the
+    /// same seed). The fix below re-exports `cli.format` into the env so the
+    /// `--format=gf16` CLI form behaves identically to `TRIOS_FORMAT_TYPE=gf16`.
+>>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
     #[arg(long, env = "TRIOS_FORMAT_TYPE")]
     format: Option<String>,
 
@@ -117,6 +136,49 @@ fn install_panic_hook() {
     }));
 }
 
+/// Run SeaORM schema migrations at startup if TRINITY_AUTOMIGRATE != "0".
+///
+/// Gating: TRINITY_AUTOMIGRATE=0 disables for local CI; default is ON.
+/// Logs: "[migrator] schema up-to-date (N migrations applied)"
+fn run_automigrate() {
+    let automigrate = std::env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
+    if automigrate == "0" {
+        eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
+        return;
+    }
+
+    let raw_dsn = std::env::var("DATABASE_URL")
+        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
+        .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
+        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"));
+
+    let dsn = match raw_dsn {
+        Ok(d) => strip_channel_binding(&d),
+        Err(_) => {
+            eprintln!("[migrator] DATABASE_URL unset — skipping automigrate");
+            return;
+        }
+    };
+
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("migrator runtime");
+
+    rt.block_on(async {
+        match sea_orm::Database::connect(&dsn).await {
+            Ok(db) => {
+                match migration::Migrator::up(&db, None).await {
+                    Ok(()) => eprintln!("[migrator] schema up-to-date"),
+                    Err(e) => eprintln!("[migrator] migration failed (non-fatal): {e}"),
+                }
+                let _ = db.close().await;
+            }
+            Err(e) => eprintln!("[migrator] connect failed (non-fatal): {e}"),
+        }
+    });
+}
+
 fn main() -> Result<()> {
     install_panic_hook();
 
@@ -132,7 +194,87 @@ fn main() -> Result<()> {
     use std::io::Write as _;
     let _ = std::io::stderr().flush();
 
-    let cli = Cli::parse();
+    // trios#777 fix: promote un-prefixed env aliases set by wave-a-dispatch.yml
+    // (`OPTIMIZER`, `FORMAT`, `HIDDEN`) into the canonical `TRIOS_*` names BEFORE
+    // clap parses, so the CLI struct picks them up via #[arg(env = "TRIOS_*")].
+    //
+    // Without this promotion, 47 distinct canon_name configs (ranger/adafactor/
+    // adamw/adopt/demo on binary16) all collapsed to bit-identical bpb=2.9504
+    // because every trainer silently fell back to the clap defaults
+    // (adamw / None→f32 / hidden=828). R5-evidence: ssot.bpb_samples shows 94
+    // rows across 47 canons with bpb=2.9504425525665283 at step 80000.
+    //
+    // Resolution: TRIOS_* (canonical) > alias (un-prefixed) > clap default.
+    // The alias only fires when the canonical env is unset, so existing
+    // TRIOS_OPTIMIZER/TRIOS_FORMAT_TYPE/TRIOS_HIDDEN users are unaffected.
+    //
+    // Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877.
+    for (canonical, alias) in [
+        ("TRIOS_OPTIMIZER", "OPTIMIZER"),
+        ("TRIOS_FORMAT_TYPE", "FORMAT"),
+        ("TRIOS_HIDDEN", "HIDDEN"),
+    ] {
+        if std::env::var(canonical).is_err() {
+            if let Ok(v) = std::env::var(alias) {
+                if !v.is_empty() {
+                    eprintln!("[trios-train][trios#777] promoting {alias}={v} -> {canonical}");
+                    std::env::set_var(canonical, v);
+                }
+            }
+        }
+    }
+
+    let mut cli = Cli::parse();
+
+    // Canon #93 enforcement.
+    //   * If `SEED` env var is set → validate via `parse_seed()` AND assign
+    //     the validated value to `cli.seed`. SEED env therefore overrides
+    //     `--seed` flag and `TRIOS_SEED`/clap default.
+    //   * Else → directly validate `cli.seed` against the forbidden set
+    //     (which is what `parse_seed()` does internally on its raw input).
+    //     This catches the case where TRIOS_SEED or `--seed=43` slipped
+    //     past clap.
+    // Forbidden canon: {42, 43, 44, 45}; allowed canon: {47, 89, 123, 144}.
+    // Wave-29 PR-A.1: previously `parse_seed()`'s return value was logged
+    // and dropped — `cli.seed` could still be 43 if `--seed=43` was passed
+    // alongside an unrelated `SEED` env. This patch eliminates the
+    // validate-then-discard anti-pattern.
+    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    if std::env::var("SEED").is_ok() {
+        let canon_seed =
+            parse_seed().map_err(|e| anyhow::anyhow!("Canon #93 violation (SEED env): {}", e))?;
+        eprintln!(
+            "[trios-train] Canon #93 OK: SEED={canon_seed} (overrides cli.seed={})",
+            cli.seed
+        );
+        cli.seed = canon_seed;
+    } else {
+        const FORBIDDEN: &[u64] = &[42, 43, 44, 45];
+        if FORBIDDEN.contains(&cli.seed) {
+            return Err(anyhow::anyhow!(
+                "Canon #93 violation: cli.seed={} is forbidden (allowed: 47, 89, 123, 144). \
+                 Set SEED or TRIOS_SEED env var to an allowed value, or pass `--seed=<allowed>`.",
+                cli.seed
+            ));
+        }
+        eprintln!(
+            "[trios-train] Canon #93 OK: seed={} (no SEED env, validated cli.seed)",
+            cli.seed
+        );
+    }
+
+    // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
+    run_automigrate();
+
+    // R5/L8 fix (trios#509 follow-up): re-export `--format` into the env so
+    // `train_loop::resolve_fake_quant_format()` can see it. Without this line
+    // the CLI flag was a no-op and every scarab-spawned trainer silently fell
+    // back to F32 regardless of the strategy_queue config.
+    if let Some(fmt) = &cli.format {
+        if !fmt.is_empty() {
+            std::env::set_var("TRIOS_FORMAT_TYPE", fmt);
+        }
+    }
 
     // Set NEON_DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
     // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first
@@ -189,10 +331,21 @@ fn main() -> Result<()> {
             val_path: cli.val_data.clone(),
             format: cli.format.clone(),
         };
+        // R5-honest dispatch: every supported optimizer is named explicitly.
+        // Any unsupported name is a hard error, NOT a silent AdamW fallback.
+        // Pre-Wave-35 bug: 12 optimizer-named canons (lion/soap/tiger/...)
+        // silently ran AdamW, producing byte-identical BPB across the fleet.
         let outcome = match cli.optimizer.as_str() {
+            "adamw" => train_loop::run_single(&args)?,
             "muon" => train_loop::run_single_muon(&args, false)?,
             "muon-cwd" => train_loop::run_single_muon(&args, true)?,
-            _ => train_loop::run_single(&args)?,
+            other => {
+                return Err(anyhow::anyhow!(
+                    "[R5-honesty] unsupported optimizer={:?}: only {{adamw, muon, muon-cwd}} are implemented. \
+                     Refusing silent AdamW fallback. Fix env, redeploy, or implement the optimizer first.",
+                    other
+                ));
+            }
         };
         println!(
             "DONE: seed={} bpb={:.4} steps={} opt={}",

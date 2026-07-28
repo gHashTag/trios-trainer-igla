@@ -2,12 +2,21 @@ use anyhow::Result;
 use std::io::Read;
 use std::time::Instant;
 
+use crate::arch_config::{parse_gf16_enabled, parse_hidden_dim, parse_num_attn_layers};
+use crate::fake_quant::{self, FormatKind};
 use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
 use crate::objective::{nca_entropy_loss, NcaObjective};
 use crate::fake_quant::{self, FormatKind};
 
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
-pub const GATE_FINAL_SEEDS: &[u64] = &[43, 44, 45];
+/// Canon #93 sweep seeds — Lucas/Fibonacci aligned.
+/// Forbidden under Canon #93: `{42, 43, 44, 45}`.
+/// Allowed canon (Wave-29):  `{47, 89, 123, 144}`.
+/// Sweep uses the first three; `144` is reserved for the bridge canon.
+/// Wave-29 PR-A.1 replaces the legacy `{43, 44, 45}` (entirely
+/// forbidden) with the Canon #93 triple.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+pub const GATE_FINAL_SEEDS: &[u64] = &[47, 89, 123];
 
 const VOCAB: usize = 128;
 const DIM: usize = 64;
@@ -30,6 +39,28 @@ fn gf16_enabled() -> bool {
     std::env::var("TRIOS_GF16_DISABLE")
         .map(|v| v != "1")
         .unwrap_or(true)
+}
+
+/// Wave 31 PR-B: resolve GF16 from `GF16_ENABLED` env knob (default false).
+/// If `GF16_ENABLED=true` but feature `gf16` is not compiled in, returns Err.
+/// Falls back to `gf16_enabled()` for legacy `TRIOS_GF16_DISABLE` path.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+fn resolve_gf16_knob() -> Result<bool> {
+    let knob = parse_gf16_enabled().map_err(|e| anyhow::anyhow!("GF16_ENABLED: {e}"))?;
+    if knob {
+        #[cfg(not(feature = "gf16"))]
+        {
+            return Err(anyhow::anyhow!(
+                "GF16_ENABLED=true but feature 'gf16' not compiled in; \
+                 rebuild with: cargo build --features gf16"
+            ));
+        }
+        #[cfg(feature = "gf16")]
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn attn_seq_override() -> usize {
@@ -183,6 +214,7 @@ fn gf16_floor(weights: &mut [f32]) {
     }
 }
 
+<<<<<<< HEAD
 /// Apply FakeQuant + STE to all learnable weights in the model.
 /// Called after each optimizer step when --format is set (trios#509).
 fn apply_fake_quant(model: &mut HybridModel, format: &Option<String>) {
@@ -207,6 +239,46 @@ fn apply_fake_quant(model: &mut HybridModel, format: &Option<String>) {
     fake_quant::fake_quantize_weights(&mut model.attn.wk2, kind);
     fake_quant::fake_quantize_weights(&mut model.attn.wv2, kind);
     fake_quant::fake_quantize_weights(&mut model.attn.wo2, kind);
+=======
+/// Resolve the QAT format from `TRIOS_FORMAT_TYPE` (or alias `TRIOS_FAKE_QUANT_FORMAT`).
+/// Returns `None` if the env var is unset or maps to F32 (no quantization).
+/// Closes scarab→trios-train gap from #509: previously only `cpu_train` honoured the
+/// env var, so `TRIOS_FORMAT_TYPE=fp16` produced identical BPB to F32 in production.
+fn resolve_fake_quant_format() -> Option<FormatKind> {
+    let raw = std::env::var("TRIOS_FORMAT_TYPE")
+        .ok()
+        .or_else(|| std::env::var("TRIOS_FAKE_QUANT_FORMAT").ok())?;
+    let fmt = FormatKind::from_env(&raw)?;
+    if fmt == FormatKind::F32 {
+        return None;
+    }
+    Some(fmt)
+}
+
+/// Apply Phase-1 fake-quantization to every weight tensor in the hybrid model.
+/// Skips identity formats (F32 / `is_unsupported_in_f32()`) so the call is a no-op
+/// when QAT is disabled.
+fn fake_quantize_model(model: &mut HybridModel, fmt: FormatKind) {
+    if fmt == FormatKind::F32 || fmt.is_unsupported_in_f32() {
+        return;
+    }
+    fake_quant::fake_quantize_weights(&mut model.embed, fmt);
+    fake_quant::fake_quantize_weights(&mut model.proj, fmt);
+    fake_quant::fake_quantize_weights(&mut model.lm_head, fmt);
+    fake_quant::fake_quantize_weights(&mut model.attn_down, fmt);
+    fake_quant::fake_quantize_weights(&mut model.attn_up, fmt);
+    for c in model.ctx.iter_mut() {
+        fake_quant::fake_quantize_weights(c, fmt);
+    }
+    fake_quant::fake_quantize_weights(model.attn.wq_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wk_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wv_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wo_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wq2_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wk2_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wv2_mut(), fmt);
+    fake_quant::fake_quantize_weights(model.attn.wo2_mut(), fmt);
+>>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
 }
 
 struct HybridModel {
@@ -586,26 +658,59 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
 }
 
 pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
+    // Wave 31 PR-B: apply env-gated arch knobs (HIDDEN_DIM, NUM_ATTN_LAYERS).
+    // Defaults preserve Wave-30 baseline (h=384, 1L).
+    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+    let eff_hidden = if std::env::var("HIDDEN_DIM").is_ok() {
+        let h = parse_hidden_dim().map_err(|e| anyhow::anyhow!("HIDDEN_DIM: {e}"))?;
+        eprintln!("[arch-knob] HIDDEN_DIM={h} (override, Wave-31 PR-B)");
+        h
+    } else {
+        args.hidden
+    };
+    let eff_attn_layers: u8 = if std::env::var("NUM_ATTN_LAYERS").is_ok() {
+        let n = parse_num_attn_layers().map_err(|e| anyhow::anyhow!("NUM_ATTN_LAYERS: {e}"))?;
+        eprintln!("[arch-knob] NUM_ATTN_LAYERS={n} (override, Wave-31 PR-B)");
+        n as u8
+    } else {
+        args.attn_layers
+    };
+    // Wave 31 PR-B: validate GF16_ENABLED knob (default false, feature-gated).
+    let _gf16_knob = resolve_gf16_knob()?;
+    if _gf16_knob {
+        eprintln!("[arch-knob] GF16_ENABLED=true (Wave-31 PR-B, feature=gf16)");
+    }
     eprintln!(
         "=== trios-train seed={} steps={} hidden={} lr={:.4} attn_layers={} ===",
-        args.seed, args.steps, args.hidden, args.lr, args.attn_layers
+        args.seed, args.steps, eff_hidden, args.lr, eff_attn_layers
     );
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
     eprintln!("train={} val={}", train.len(), val.len());
     assert_train_val_disjoint(&train, &val);
 
-    let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
+    // #509 Phase-1b: wire QAT into the production `trios-train` path.
+    // `scarab` spawns this binary and sets `TRIOS_FORMAT_TYPE`; previously
+    // only `cpu_train` honoured it, so production traffic was F32 regardless.
+    let fq_fmt = resolve_fake_quant_format();
+    if let Some(fmt) = fq_fmt {
+        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
+    }
+
+    let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
+    if let Some(fmt) = fq_fmt {
+        fake_quantize_model(&mut model, fmt);
+    }
     let d = model.attn.config().d_model;
     let dd = d * d;
     let attn_total = 8 * dd;
     let wd = 0.04f32;
     let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
     let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
-    let mut opt_proj = AdamW::new(args.hidden * DIM, wd);
-    let mut opt_attn_down = AdamW::new(d * args.hidden, wd);
-    let mut opt_attn_up = AdamW::new(args.hidden * d, wd);
-    let mut opt_head = AdamW::new(VOCAB * args.hidden, wd);
+    let mut opt_proj = AdamW::new(eff_hidden * DIM, wd);
+    let mut opt_attn_down = AdamW::new(d * eff_hidden, wd);
+    let mut opt_attn_up = AdamW::new(eff_hidden * d, wd);
+    let mut opt_head = AdamW::new(VOCAB * eff_hidden, wd);
     let mut opt_attn_w = AdamW::new(attn_total, wd);
 
     let init_bpb = evaluate(&model, &val);
@@ -624,10 +729,10 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
         let mut ge = vec![0.0f32; VOCAB * DIM];
         let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
-        let mut gp = vec![0.0f32; args.hidden * DIM];
-        let mut gh = vec![0.0f32; VOCAB * args.hidden];
-        let mut g_ad = vec![0.0f32; d * args.hidden];
-        let mut g_au = vec![0.0f32; args.hidden * d];
+        let mut gp = vec![0.0f32; eff_hidden * DIM];
+        let mut gh = vec![0.0f32; VOCAB * eff_hidden];
+        let mut g_ad = vec![0.0f32; d * eff_hidden];
+        let mut g_au = vec![0.0f32; eff_hidden * d];
         let mut g_aw = vec![0.0f32; 8 * dd];
 
         for _ in 0..accum {
@@ -752,7 +857,14 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
         }
 
+<<<<<<< HEAD
         apply_fake_quant(&mut model, &args.format);
+=======
+        // #509 Phase-1b: STE fake-quantize after each optimizer step.
+        if let Some(fmt) = fq_fmt {
+            fake_quantize_model(&mut model, fmt);
+        }
+>>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
 
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
@@ -794,7 +906,13 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 .ok()
                 .or_else(|| std::env::var("CANON_NAME").ok())
                 .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
-            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
+            crate::neon_writer::bpb_sample(
+                &canon,
+                args.seed as i32,
+                step as i32,
+                vbpb,
+                Some(ema_bpb as f32),
+            );
         }
     }
 
@@ -806,16 +924,41 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 }
 
 pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
+    // Wave 31 PR-B: apply env-gated arch knobs.
+    let eff_hidden = if std::env::var("HIDDEN_DIM").is_ok() {
+        let h = parse_hidden_dim().map_err(|e| anyhow::anyhow!("HIDDEN_DIM: {e}"))?;
+        eprintln!("[arch-knob] HIDDEN_DIM={h} (override, Wave-31 PR-B)");
+        h
+    } else {
+        args.hidden
+    };
+    let eff_attn_layers: u8 = if std::env::var("NUM_ATTN_LAYERS").is_ok() {
+        let n = parse_num_attn_layers().map_err(|e| anyhow::anyhow!("NUM_ATTN_LAYERS: {e}"))?;
+        eprintln!("[arch-knob] NUM_ATTN_LAYERS={n} (override, Wave-31 PR-B)");
+        n as u8
+    } else {
+        args.attn_layers
+    };
+    let _gf16_knob = resolve_gf16_knob()?;
     let label = if use_cwd { "MuonCwd" } else { "Muon" };
     eprintln!(
         "=== P1 {} seed={} steps={} hidden={} ===",
-        label, args.seed, args.steps, args.hidden
+        label, args.seed, args.steps, eff_hidden
     );
     let train = load_data(&args.train_path);
     let val = load_data(&args.val_path);
     assert_train_val_disjoint(&train, &val);
 
-    let mut model = HybridModel::new(args.hidden, args.seed, args.attn_layers);
+    // #509 Phase-1b: same QAT wiring for the Muon path.
+    let fq_fmt = resolve_fake_quant_format();
+    if let Some(fmt) = fq_fmt {
+        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
+    }
+
+    let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
+    if let Some(fmt) = fq_fmt {
+        fake_quantize_model(&mut model, fmt);
+    }
     let d = model.attn.config().d_model;
     let dd = d * d;
     let muon_lr = 0.0235f64;
@@ -829,17 +972,17 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         .map(|_| AdamW::new(VOCAB * DIM, adamw_wd))
         .collect();
     let mut opt_proj_muon = crate::optimizer::MuonOptimizer::with_matrix_shape(
-        args.hidden * DIM,
-        args.hidden,
+        eff_hidden * DIM,
+        eff_hidden,
         DIM,
         muon_lr,
         muon_mom,
         muon_wd,
     );
     opt_proj_muon.ns_steps = if use_cwd { 3 } else { 1 };
-    let mut opt_attn_down = AdamW::new(d * args.hidden, adamw_wd);
-    let mut opt_attn_up = AdamW::new(args.hidden * d, adamw_wd);
-    let mut opt_head = AdamW::new(VOCAB * args.hidden, adamw_wd);
+    let mut opt_attn_down = AdamW::new(d * eff_hidden, adamw_wd);
+    let mut opt_attn_up = AdamW::new(eff_hidden * d, adamw_wd);
+    let mut opt_head = AdamW::new(VOCAB * eff_hidden, adamw_wd);
     let mut opt_attn_w_muon = AdamW::new(8 * dd, adamw_wd);
     let _cwd_lambda = cwd_lambda;
 
@@ -859,10 +1002,10 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
         let mut ge = vec![0.0f32; VOCAB * DIM];
         let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
-        let mut gp = vec![0.0f32; args.hidden * DIM];
-        let mut gh = vec![0.0f32; VOCAB * args.hidden];
-        let mut g_ad = vec![0.0f32; d * args.hidden];
-        let mut g_au = vec![0.0f32; args.hidden * d];
+        let mut gp = vec![0.0f32; eff_hidden * DIM];
+        let mut gh = vec![0.0f32; VOCAB * eff_hidden];
+        let mut g_ad = vec![0.0f32; d * eff_hidden];
+        let mut g_au = vec![0.0f32; eff_hidden * d];
         let mut g_aw = vec![0.0f32; 8 * dd];
 
         for _ in 0..accum {
@@ -987,7 +1130,14 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             model.attn.wo2.copy_from_slice(&attn_flat[7 * dd..8 * dd]);
         }
 
+<<<<<<< HEAD
         apply_fake_quant(&mut model, &args.format);
+=======
+        // #509 Phase-1b: STE fake-quantize after each optimizer step (Muon path).
+        if let Some(fmt) = fq_fmt {
+            fake_quantize_model(&mut model, fmt);
+        }
+>>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
 
         if gf16_enabled() && step >= gf16_floor_step && step % args.eval_every == 0 {
             gf16_floor(&mut model.embed);
@@ -1030,7 +1180,13 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 .ok()
                 .or_else(|| std::env::var("CANON_NAME").ok())
                 .unwrap_or_else(|| format!("trios-train-rng{}", args.seed));
-            crate::neon_writer::bpb_sample(&canon, args.seed as i32, step as i32, vbpb);
+            crate::neon_writer::bpb_sample(
+                &canon,
+                args.seed as i32,
+                step as i32,
+                vbpb,
+                Some(ema_bpb as f32),
+            );
         }
     }
 
@@ -1085,4 +1241,96 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
         let _ = crate::ledger::emit_row(cfg, outcome.final_bpb, outcome.steps_done);
     }
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod fake_quant_wiring_tests {
+    //! Phase-1b regression tests for trios#509 — verify that the
+    //! `trios-train` path now honours `TRIOS_FORMAT_TYPE` end-to-end.
+    use super::*;
+    use std::sync::Mutex;
+
+    // Env-var tests must be serialised — `std::env` is process-global.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn resolves_fp16_from_trios_format_type() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        std::env::set_var("TRIOS_FORMAT_TYPE", "fp16");
+        let fmt = resolve_fake_quant_format();
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        assert_eq!(fmt, Some(FormatKind::Fp16));
+    }
+
+    #[test]
+    fn resolves_gf16_alias() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        std::env::set_var("TRIOS_FAKE_QUANT_FORMAT", "gf16");
+        let fmt = resolve_fake_quant_format();
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        assert_eq!(fmt, Some(FormatKind::Gf16));
+    }
+
+    #[test]
+    fn f32_resolves_to_none() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        std::env::set_var("TRIOS_FORMAT_TYPE", "f32");
+        let fmt = resolve_fake_quant_format();
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        assert_eq!(fmt, None);
+    }
+
+    #[test]
+    fn unset_resolves_to_none() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        assert_eq!(resolve_fake_quant_format(), None);
+    }
+
+    #[test]
+    fn unknown_format_resolves_to_none() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        std::env::set_var("TRIOS_FORMAT_TYPE", "imaginary_float");
+        let fmt = resolve_fake_quant_format();
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        assert_eq!(fmt, None);
+    }
+
+    #[test]
+    fn fake_quantize_model_actually_changes_weights() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let mut model = HybridModel::new(64, 1597, 2);
+        let embed_before = model.embed.clone();
+        let lm_head_before = model.lm_head.clone();
+        fake_quantize_model(&mut model, FormatKind::Fp16);
+        // At least one weight must change after fp16 round-trip.
+        let embed_changed = model
+            .embed
+            .iter()
+            .zip(embed_before.iter())
+            .any(|(a, b)| a != b);
+        let head_changed = model
+            .lm_head
+            .iter()
+            .zip(lm_head_before.iter())
+            .any(|(a, b)| a != b);
+        assert!(
+            embed_changed || head_changed,
+            "fake_quantize_model(Fp16) must change at least one weight"
+        );
+    }
+
+    #[test]
+    fn fake_quantize_model_f32_is_noop() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let mut model = HybridModel::new(64, 1597, 2);
+        let embed_before = model.embed.clone();
+        fake_quantize_model(&mut model, FormatKind::F32);
+        assert_eq!(model.embed, embed_before);
+    }
 }

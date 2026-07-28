@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use the IGLA trainer pipeline in research, please cite it as below."
+title: "trios-trainer-igla · IGLA Training Pipeline (Trinity S³AI)"
+abstract: "trios-trainer-igla is the ONE-SOURCE-OF-TRUTH training pipeline for the IGLA architecture-search race of the Trinity S³AI / GOLDEN SUNFLOWERS research programme. Owns the 5-lane migration L-T1..L-T5, the embargo ledger, the triplet format, and the pre-registered Gate G1/G2/G3 acceptance gates (Gate-2 BPB<1.85, Gate-3 BPB<1.5). Anchor: phi^2 + phi^-2 = 3. Canonical Zenodo source of truth: https://zenodo.org/communities/trinity-s3ai/."
+authors:
+  - family-names: "Vasilev"
+    given-names: "Dmitrii"
+    orcid: "https://orcid.org/0009-0008-4294-6159"
+    affiliation: "Trinity Research Collective"
+version: 1.0.0
+doi: 10.5281/zenodo.19227877
+date-released: 2026-05-14
+url: "https://github.com/gHashTag/trios-trainer-igla"
+repository-code: "https://github.com/gHashTag/trios-trainer-igla"
+license: MIT
+license-url: "https://opensource.org/licenses/MIT"
+keywords:
+  - "ternary neural networks"
+  - "IGLA training"
+  - "Trinity S3AI"
+  - "GF16 matmul"
+  - "Gate-2 BPB"
+  - "phi^2 + phi^-2 = 3"

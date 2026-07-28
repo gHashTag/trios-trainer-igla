@@ -1,0 +1,15 @@
+{
+  "algo": "adafactor",
+  "delta_bpb": 0.0,
+  "dim": 96,
+  "duration_seconds": 0.348061763,
+  "experiment": "cpu-backprop-scalable",
+  "final_bpb": 7.000393390655518,
+  "initial_bpb": 7.000393390655518,
+  "lr": 0.003000000026077032,
+  "model": "embed+bigram+smear+lm_head",
+  "seed": 42,
+  "seq_len": 32,
+  "steps": 50,
+  "vocab_size": 128
+}

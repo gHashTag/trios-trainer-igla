@@ -537,6 +537,45 @@
       "lane": "L13"
     }
   ],
+  "matrix_ledger": {
+    "_doc": "R4 trace for L-MATRIX-LEDGER (queen order trios#380, P0 cascade-blocker). Every numeric column in assertions/matrix_samples.jsonl traces back to a Coq theorem or runtime invariant cited below. Anchor: phi^2 + phi^-2 = 3.",
+    "jsonl_path": "assertions/matrix_samples.jsonl",
+    "writer_binary": "src/bin/matrix_ledger.rs",
+    "ci_workflow": ".github/workflows/format-algo-matrix.yml::collect-ledger",
+    "writer_subcommand": "cargo run --release --bin matrix_ledger -- collect",
+    "gate2_target_bpb": 1.85,
+    "forbidden_seeds_painted": {
+      "42": 47,
+      "43": 89,
+      "44": 144,
+      "45": 123,
+      "_proof": "t27/proofs/forbidden_seeds.v::forbidden_seed_repaint"
+    },
+    "column_trace": {
+      "cell_id":          "derived(format, algo, seed_phi); reproducible identifier — no theorem needed",
+      "format":           "crates/trios-trainer/src/fake_quant.rs::FormatKind::from_env (R5 honest, kernel-tested)",
+      "algo":             "crates/trios-trainer/src/optimizer.rs::OptimizerKind (PR #101, 8 algos)",
+      "seed_phi":         "t27/proofs/forbidden_seeds.v + matrix_ledger.rs::paint_seed (R4)",
+      "hidden":            "crates/trios-trainer/src/bin/cpu_train.rs::dim arg (lr/h scale invariants)",
+      "step":              "crates/trios-trainer/src/bin/cpu_train.rs::steps arg",
+      "bpb":              "crates/trios-trainer/src/bin/cpu_train.rs::final_bpb (real BPB after PR trios#519+#532)",
+      "initial_bpb":      "crates/trios-trainer/src/bin/cpu_train.rs::initial_bpb (warmup baseline)",
+      "delta_bpb":        "derived(initial_bpb − bpb)",
+      "loss_final":       "derived(bpb · ln 2); convention bpb = loss / ln 2 — matches t27/proofs/bpb_loss_isomorphism.v",
+      "wallclock_ms":     "upcoming — currently set to 0; will be wired in L-MATRIX-LEDGER follow-up",
+      "commit_sha":       "GITHUB_SHA at the matrix run — points cell to a reproducible source state",
+      "workflow_run_id":  "GITHUB_RUN_ID — joins to GHA logs at /actions/runs/<id>",
+      "falsifier_2_hit":  "R7 witness for AP.B Falsifier-2 (IGLA-track); flips when bpb > 1.85 OR loss diverged",
+      "ts_utc":           "chrono::DateTime<Utc> RFC3339 of artifact creation"
+    },
+    "falsifier_2": {
+      "name":             "AP.B-F2 IGLA-track Gate-2",
+      "clause":            "Refuted iff some cell has bpb > 1.85 OR loss_final NaN/Inf/>=1e6",
+      "witness_path":     "assertions/matrix_samples.jsonl::falsifier_2_hit (boolean per row)",
+      "appendix_block":   "docs/phd/appendix/L-pollen-channel.tex §matrix-ledger (gHashTag/trios)",
+      "unblocks":         ["L-C6 matrix-bot rendering", "L-C7 closure-gate", "AP.B Falsifier-2 witness on disk"]
+    }
+  },
   "enforcement": {
     "l_r14": "coqc trinity-clara/proofs/igla/*.v → exit 0 before race starts",
     "ci_gate": ".github/workflows/coq-check.yml",

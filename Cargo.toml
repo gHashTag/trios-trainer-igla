@@ -1,5 +1,7 @@
 [workspace]
-# Empty workspace to isolate from parent trios workspace
+# Workspace includes the migration subcrate (sea-orm-migration)
+members = [".", "migration"]
+# Empty resolver comment preserved for compatibility
 
 [package]
 name        = "trios-trainer"
@@ -166,6 +168,13 @@ path = "src/bin/tjepa_train.rs"
 name = "tri"
 path = "src/bin/tri.rs"
 
+# F2 breadth-as-moat harness (CPU proxy). phi-ladder vs heterogeneous zoo over
+# multiple seeds with a Welch two-sample read + lossy-conversion accounting.
+# Refs: gHashTag/t27#1021 (real BPB head-to-head, BLOCKED on compute); FL-002.
+[[bin]]
+name = "f2_harness"
+path = "src/bin/f2_harness.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []
@@ -182,6 +191,10 @@ ci-strict = []
 smoke = []
 # GPU acceleration using Candle with CUDA support
 gpu = ["candle-core", "candle-nn"]
+# GF16 ternary matmul kernel — compile-time gate for Wave 32.
+# Build with: cargo build --features gf16
+# Without this flag, GF16_ENABLED=true at runtime returns an error.
+gf16 = []
 
 
 [dependencies]
@@ -216,6 +229,16 @@ tokio-postgres-rustls = "0.12"
 rustls               = "0.23"
 webpki-roots         = "0.26"
 ureq                  = "2.12"
+sea-orm = { version = "1.1", features = [
+    "sqlx-postgres",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-uuid",
+    "with-chrono",
+    "with-json",
+] }
+sea-orm-migration = "1.1"
+migration = { path = "migration" }
 
 [dev-dependencies]
 tempfile = "3.10"
@@ -267,3 +290,16 @@ useless_vec = "allow"
 [[bin]]
 name = "bpb_smoke"
 path = "src/bin/bpb_smoke.rs"
+
+[[bin]]
+name = "matrix_runner"
+path = "src/bin/matrix_runner.rs"
+
+[[bin]]
+name = "matrix_ledger"
+path = "src/bin/matrix_ledger.rs"
+
+
+[[bin]]
+name = "format_champion_sweep"
+path = "src/bin/format_champion_sweep.rs"

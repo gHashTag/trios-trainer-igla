@@ -1,0 +1,24 @@
+# IGLA RACE — rainfrog config example
+# Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877
+#
+# Install:
+#   cp etc/rainfrog.config.toml.example ~/.config/rainfrog/rainfrog_config.toml
+# Then either run `rainfrog` (picker) or `make dash` / `scripts/dash` (defaults
+# to igla-sqlite).
+#
+# Connection priority (rainfrog docs): CLI --url > $DATABASE_URL > config file.
+
+[db]
+
+# ----- Leg 1: SQLite race telemetry (default) -----------------------------
+# Local file written by `npm run db:push && npm run db:seed`.  When run on
+# Railway, the volume-mounted path is at /data/igla.db (set DB_PATH).
+igla-sqlite = { connection_string = "sqlite://./data.db", driver = "sqlite", default = true }
+
+# ----- Leg 2: Postgres SSOT (phd-postgres-ssot, Railway) ------------------
+# BLOCKED on L-RF4 — fill <railway-tcp-host>:<port> after the operator enables
+# TCP Proxy + volume mount in the Railway service settings (Service ID
+# c5f37b42-832a-4acd-9749-381761c94957, project IGLA
+# e4fe33bb-3b09-4842-9782-7d2dea1abc9b).  Until then this entry is a stub and
+# `rainfrog` will surface a connection error if selected.
+phd-ssot = { connection_string = "postgres://phd:Bfi23U4Z98q85BTNgVyuMMvVj8RbSzl7@<railway-tcp-host>:<port>/ssot", driver = "postgres" }

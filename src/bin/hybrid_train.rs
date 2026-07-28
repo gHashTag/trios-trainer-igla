@@ -17,6 +17,7 @@ use std::fs;
 use std::time::Instant;
 
 use trios_trainer::model_hybrid_attn::HybridAttn;
+use trios_trainer::neon_writer;
 use trios_trainer::optimizer::MuonOptimizer;
 
 const VOCAB: usize = 128;
@@ -622,6 +623,19 @@ fn main() {
                     "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} t={:.1}s",
                     seed, step, val_bpb, ema_bpb, best_ema_bpb, t
                 );
+                // R5-honest ledger write to ssot.bpb_samples (ARCH writer hook).
+                // No-op if TRIOS_CANON_NAME unset; safe to call every eval.
+                if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
+                    if !canon.is_empty() {
+                        neon_writer::bpb_sample(
+                            &canon,
+                            seed as i32,
+                            step as i32,
+                            val_bpb,
+                            Some(ema_bpb),
+                        );
+                    }
+                }
             }
         }
 

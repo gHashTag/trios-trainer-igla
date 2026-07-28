@@ -6,6 +6,7 @@
 //! Gate-2 (deadline 2026-04-30 23:59 UTC). Each lint pays down in a dedicated
 //! technical-debt PR after merge. R5-honest: NOT introduced by PR #32.
 
+<<<<<<< HEAD
 pub mod backward;
 pub mod bench;
 pub mod checkpoint;
@@ -13,6 +14,16 @@ pub mod config;
 pub mod data;
 pub mod fake_quant;
 pub mod forward;
+=======
+pub mod arch_config;
+pub mod checkpoint;
+pub mod config;
+pub mod data;
+pub mod entities;
+pub mod entrypoint_env;
+pub mod fake_quant;
+pub mod format_ladder;
+>>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
 pub mod gf16;
 pub mod igla;
 pub mod invariants;
@@ -20,12 +31,14 @@ pub mod jepa;
 pub mod ledger;
 pub mod model;
 pub mod model_hybrid_attn;
+pub mod multi_seed;
 pub mod mup;
 pub mod neon_writer;
 pub mod objective;
 pub mod optimizer;
 pub mod phi_numbers;
 pub mod race;
+pub mod seed_canon;
 pub mod train_loop;
 
 pub use config::TrainConfig;

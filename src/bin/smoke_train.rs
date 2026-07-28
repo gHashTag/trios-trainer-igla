@@ -73,7 +73,7 @@ fn main() {
         || std::env::var("DATABASE_URL").is_ok()
     {
         trios_trainer::neon_writer::ensure_schema();
-        trios_trainer::neon_writer::bpb_sample(&canon, seed, step, bpb as f32);
+        trios_trainer::neon_writer::bpb_sample(&canon, seed, step, bpb as f32, None);
         eprintln!("[smoke_train] wrote 1 row to bpb_samples");
     } else {
         eprintln!("[smoke_train] no Neon DSN — skipping DB write");
