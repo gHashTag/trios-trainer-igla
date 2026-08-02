@@ -16,14 +16,6 @@ fn env_or(key: &str, default: &str) -> String {
 }
 
 fn main() {
-<<<<<<< HEAD
-    let seed = env_or("TRIOS_SEED", "43");
-    let steps = env_or("TRIOS_STEPS", "81000");
-    let lr = env_or("TRIOS_LR", "0.003");
-    let hidden = env_or("TRIOS_HIDDEN", "384");
-    let optimizer = env_or("TRIOS_OPTIMIZER", "adamw");
-    let format = env_or("TRIOS_FORMAT", "");
-=======
     // Wave 33 hotfix: accept both `TRIOS_<KEY>` and the un-prefixed alias.
     // See `trios_trainer::entrypoint_env` for the resolution order and the
     // root-cause analysis (Wave-29 STEPS=200000 silently dropped).
@@ -53,10 +45,15 @@ fn main() {
     if let Ok(v) = env::var("GF16_ENABLED") {
         println!("[entrypoint-trace] GF16_ENABLED={v} (consumed inside train_loop::run_single)");
     }
->>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
 
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");
+
+    // Pass-through for the QAT format knob. `TRIOS_FORMAT` is the legacy
+    // shim name; `TRIOS_FORMAT_TYPE` is what `train_loop` actually reads.
+    let format_type = env::var("TRIOS_FORMAT_TYPE")
+        .or_else(|_| env::var("TRIOS_FORMAT"))
+        .unwrap_or_default();
 
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
     // Arch breakthrough (2026-05-15): tjepa_train + hybrid_train added so the
@@ -64,13 +61,6 @@ fn main() {
     // and break the 2.5719 NTP-only plateau. See PR `feat/unlock-jepa-nca-trainers`.
     if !matches!(
         trainer.as_str(),
-<<<<<<< HEAD
-        "trios-train" | "scarab" | "gf16_test" | "ngram_train_gf16" | "railway-sweep"
-    ) {
-        eprintln!(
-            "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, scarab, gf16_test, ngram_train_gf16, railway-sweep}}"
-=======
         "trios-train"
             | "scarab"
             | "gf16_test"
@@ -81,7 +71,6 @@ fn main() {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
              {{trios-train, scarab, gf16_test, ngram_train_gf16, tjepa_train, hybrid_train}}"
->>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
         );
         std::process::exit(2);
     }
@@ -100,8 +89,8 @@ fn main() {
         .arg(format!("--optimizer={optimizer}"))
         .arg(format!("--train-data={train_data}"))
         .arg(format!("--val-data={val_data}"));
-    if !format.is_empty() {
-        cmd.arg(format!("--format={format}"));
+    if !format_type.is_empty() {
+        cmd.arg(format!("--format={format_type}"));
     }
 
     #[cfg(unix)]

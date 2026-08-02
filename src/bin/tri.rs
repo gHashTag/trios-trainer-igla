@@ -356,7 +356,6 @@ async fn main() -> anyhow::Result<()> {
                 eval_every,
                 train_path: train_data,
                 val_path: val_data,
-                format: None,
             };
             let outcome = match optimizer.as_str() {
                 "muon" => trios_trainer::train_loop::run_single_muon(&args, false)?,

@@ -1,3 +1,36 @@
+> # [RETRACTED 2026-08-02] -- READ BEFORE THE TABLE BELOW
+>
+> **Every number in this file is withdrawn. Do not cite it, quote it, or use it to
+> order numeric formats.** The tables are retained in place, unedited: a silently
+> deleted number is indistinguishable from a number that was never wrong.
+>
+> **1. No model artifact stands behind any row.** Until 2026-08-02, `checkpoint::save`
+> in this repository was a stub that returned `Ok(())` and was called by nothing. The
+> sweep summarized here wrote zero checkpoints. Nothing exists on disk to re-evaluate,
+> so no row can be reproduced even in principle. (Fixed 2026-08-02: atomic save with a
+> SHA-256 taken over bytes re-read from disk. **No re-measurement has been run under the
+> fixed code.**)
+>
+> **2. The evaluator could not distinguish a measurement from a failure.**
+> `loss_on_seq` / `evaluate` returned `0.0` and `f32::MAX` sentinels through the same
+> channel as real readings, and a `.max(1e-10)` clamp laundered NaN into a finite value
+> (`f32::max` ignores NaN), turning a poisoned forward pass into a plausible-looking
+> number. A logged BPB does not establish that a forward pass succeeded.
+>
+> **3. Our own artifacts disagree on the DIRECTION of the headline claim.** This file
+> ranks fp16 (2.5348) second and gf16 (2.5267) third while printing gf16 with the LOWER
+> (better) BPB -- internally inconsistent -- and its gf16-below-fp16 ordering reverses the
+> skill-library snapshot frozen 2026-05-25, which reported gf16 2.5725 / fp16 2.5501 /
+> bf16 2.6135 / gf8 2.9322 (all four now retracted; none of them match this file).
+> `IGLA_V6_FINAL_RESULTS.md`, dated the same day, reverses the other half: it places
+> gf16 (2.8859) BEHIND bf16 (2.8419), and ranks gf12 -- a format neither of the other two
+> sources discusses -- first.
+>
+> Three artifacts of the same programme disagree about whether GoldenFloat beats bf16 and
+> whether it beats fp16. That disagreement, not any individual value, is the reportable
+> result. It is also the point: mandatory reproducibility of a development cycle is
+> supposed to surface exactly this, and here it did.
+
 # IGLA RACE v2 Format Sweep — Final Results
 
 **Date:** 2026-05-26

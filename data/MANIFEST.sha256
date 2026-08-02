@@ -1,0 +1,32 @@
+# trios-trainer-igla corpus manifest
+#
+# The corpora themselves are NOT in git (see .gitignore: /data/*). This file is
+# how a third party confirms they are holding the same bytes this repository's
+# checkpoints were measured against. Every line below was produced by running
+# `shasum -a 256` on this machine on 2026-08-03; nothing here is copied from a
+# log or from another document.
+#
+# Verify (from the repository root):
+#
+#   shasum -a 256 -c data/MANIFEST.sha256
+#
+# Byte counts, for the same files, in the same order:
+#
+#   data/tiny_shakespeare.txt      1015394 bytes
+#   data/tiny_shakespeare_val.txt   100000 bytes
+#
+# The two streams are byte-DISJOINT. Concatenated in the order train then val
+# they reconstruct the canonical 1 115 394-byte tinyshakespeare corpus:
+#
+#   cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | shasum -a 256
+#   sha256 = 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+#   bytes  = 1115394
+#
+# That concatenation hash is the evidence that the split is a partition and not
+# a copy. An earlier README documented the split as `head -c 100000 train > val`,
+# which is a LEAKING split; the Dockerfile had already been fixed, the prose had
+# not. A hash of the union is checkable, a sentence about a shell command is not.
+#
+1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d  data/tiny_shakespeare.txt
+2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502  data/tiny_shakespeare_val.txt
+#

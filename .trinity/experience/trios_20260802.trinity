@@ -1,0 +1,6 @@
+[2026-08-02T17:20:04Z] TASK: IGLA training | seed=47 | steps=200 | bpb=6.9998->2.5648 | delta=-4.4350 | 0.2s
+[2026-08-02T18:05:13Z] TASK: GF16 4-Gram training | seed=47 | steps=200 | val_bpb=7.0123->3.8971 | 12.2s | q_err=0.00%
+[2026-08-02T18:06:03Z] TASK: GF16 4-Gram training | seed=47 | steps=200 | val_bpb=7.0123->3.8971 | 12.8s | q_err=0.00%
+[2026-08-02T20:08:58Z] TASK: IGLA trigram training | seed=42 | steps=8000 | bpb=7.0300->0.2876 | delta=-6.7423 | 3.2s
+[2026-08-02T20:40:26Z] TASK: IGLA trigram training | seed=47 | steps=8000 | bpb=7.0047->3.2780 | delta=-3.7267 | 55.9s
+[2026-08-02T20:42:09Z] TASK: IGLA trigram training | seed=47 | steps=8000 | bpb=7.0047->3.2780 | delta=-3.7267 | 57.3s

@@ -25,12 +25,86 @@ fn gelu(x: f32) -> f32 {
     0.5 * x * (1.0 + tanh_val)
 }
 
-fn load_data(path: &str) -> Vec<usize> {
-    let raw = fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"Hello world this is a tiny training dataset for IGLA".to_vec()
-    });
-    raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
+/// Load a byte corpus as VOCAB-folded tokens, or fail.
+///
+/// This function used to substitute a 52-byte string for any corpus it could
+/// not read, behind an `eprintln!`. The hardcoded path it was called with
+/// misspelled the corpus in `data/` (it dropped an underscore), so the file has
+/// never existed in this repo, EVERY run took the fallback, and every BPB it
+/// published measured how well the model had memorised 52 bytes. Measured:
+/// BPB=2.5648, within 0.05 of the crate's own BPB_CHAMPION=2.5193.
+///
+/// There is no fallback now, opt-in or otherwise: unlike `train_loop::load_data`
+/// this binary has no way to stamp a `data_synthetic` bit into an artifact, so a
+/// synthetic run here would be indistinguishable after the fact.
+fn load_data(path: &str) -> Result<Vec<usize>, String> {
+    let raw = fs::read(path).map_err(|e| {
+        format!(
+            "corpus '{path}' could not be read: {e}. Refusing the synthetic fallback: \
+             substituting a placeholder string for a missing corpus is the documented \
+             cause of the leak-tainted BPB rows (trios-trainer-igla#60)."
+        )
+    })?;
+    if raw.is_empty() {
+        return Err(format!("corpus '{path}' is empty"));
+    }
+    Ok(raw.into_iter().map(|b| (b as usize) % VOCAB).collect())
+}
+
+/// Refuse to measure against a val stream that is not held out.
+///
+/// Returns the reason the eval would be meaningless, or `None` when the split
+/// can carry a measurement. Mirrors `train_loop::assert_train_val_disjoint`,
+/// which is `pub(crate)` and so not reachable from a binary target.
+fn val_not_held_out(train: &[usize], val: &[usize]) -> Option<String> {
+    if val.is_empty() {
+        return Some("val corpus is empty".to_string());
+    }
+    if train.is_empty() {
+        return Some("train corpus is empty".to_string());
+    }
+    if train.as_ptr() == val.as_ptr() {
+        return Some("train and val are the same allocation".to_string());
+    }
+    if train == val {
+        return Some("train and val are byte-identical".to_string());
+    }
+
+    use std::collections::HashSet;
+
+    // Full-coverage overlap probe. Every train window of the probe length is
+    // hashed once and the val probe is looked up in that set; a `step_by`
+    // sampled scan detects a uniformly placed overlap with probability
+    // 1/step, and a guard that is blind most of the time is worse than none
+    // because it gets cited as evidence.
+    let probe_len = 1024.min(val.len()).min(train.len());
+    let val_probe = &val[..probe_len];
+    let train_windows: HashSet<&[usize]> = train.windows(probe_len).collect();
+    if train_windows.contains(val_probe) {
+        return Some(format!(
+            "TRAIN/VAL OVERLAP: first {probe_len} val tokens occur in train \
+             (trios-trainer-igla#60)"
+        ));
+    }
+
+    // A disjoint corpus is not yet an informative one. A periodic or heavily
+    // duplicated eval stream drives BPB toward zero honestly, which is exactly
+    // the signature that got ledger rows misfiled as leaks.
+    if val.len() >= 8 {
+        let distinct: HashSet<&[usize]> = val.windows(8).collect();
+        let total = val.len() - 7;
+        let ratio = distinct.len() as f64 / total as f64;
+        if ratio < 0.05 {
+            return Some(format!(
+                "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
+                 ({} of {})",
+                ratio * 100.0,
+                distinct.len(),
+                total
+            ));
+        }
+    }
+    None
 }
 
 fn softmax(v: &mut [f32]) {
@@ -603,25 +677,53 @@ impl NgramModelGF16 {
     }
 }
 
-fn evaluate(model: &NgramModelGF16, tokens: &[usize], seq_len: usize) -> (f32, f32) {
+/// Mean bits-per-byte over evenly spaced chunks of `tokens`.
+///
+/// `None` means the evaluation could not be performed. It used to return
+/// `(f32::MAX, f32::MAX)` for that case, and every downstream guard tested
+/// `is_finite()` — which `f32::MAX` passes. The observed consequence was a
+/// published `bpb=340282346638528859811704183484516925440.0000` followed by a
+/// divide-by-zero panic. A sentinel that is indistinguishable from a
+/// measurement is not a sentinel.
+fn evaluate(model: &NgramModelGF16, tokens: &[usize], seq_len: usize) -> Option<f32> {
     let mut total = 0.0f32;
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
-        if end - c < 5 {
+        // `loss_on_seq` returns the 0.0 sentinel when the chunk is shorter
+        // than `start + 2`, and `start` is 5 under `use_ctx5`. Chunks of
+        // length 5 and 6 therefore passed the old `< 5` guard and averaged a
+        // fake perfect score into the result (#62). Require the longest
+        // context this model can be configured with, plus the target token.
+        if end - c < 7 {
             continue;
         }
         let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() {
+        if loss.is_finite() && loss > 0.0 {
             total += loss / LN_2;
             n += 1;
         }
     }
     if n == 0 {
-        return (f32::MAX, f32::MAX);
+        return None;
     }
     let bpb = total / n as f32;
-    (bpb * LN_2, bpb)
+    if bpb.is_finite() {
+        Some(bpb)
+    } else {
+        None
+    }
+}
+
+/// Publish one BPB reading, or say plainly that it was not published.
+///
+/// Every ledger write in this binary goes through here. The value guard lives
+/// in `neon_writer::bpb_sample_with_algo` so no caller can bypass it; this
+/// wrapper exists so the printed line is the writer's own verdict rather than
+/// an unconditional success announcement on the line after `- skipping`.
+fn publish_bpb(canon_name: &str, seed: u64, step: usize, bpb: f32, algo: &str) {
+    let outcome = nw::bpb_sample_with_algo(canon_name, seed as i32, step as i32, bpb, None, algo);
+    eprintln!("[neon] step={step} ledger={}", outcome.as_str());
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
@@ -632,7 +734,35 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
 }
 
+/// Value of `--name=VALUE`, or of the first of `env_keys` that is set.
+fn arg_or_env(flags: &[&str], env_keys: &[&str]) -> Option<String> {
+    for flag in flags {
+        let prefix = format!("{flag}=");
+        if let Some(v) = std::env::args().find_map(|a| {
+            a.strip_prefix(prefix.as_str())
+                .map(std::string::ToString::to_string)
+        }) {
+            return Some(v);
+        }
+    }
+    env_keys.iter().find_map(|k| std::env::var(k).ok())
+}
+
 fn main() {
+    let code = match run() {
+        Ok(()) => nw::ledger_exit_code(),
+        Err(e) => {
+            eprintln!("[gf16] FATAL: {e}");
+            1
+        }
+    };
+    // `process::exit` skips the runtime's stdout flush.
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    std::process::exit(code);
+}
+
+fn run() -> Result<(), String> {
     let seed = std::env::args()
         .find(|a| a.starts_with("--seed="))
         .map(|a| a[7..].parse::<u64>().unwrap_or(42))
@@ -708,19 +838,67 @@ fn main() {
     let canon_name =
         std::env::var("CANON_NAME").unwrap_or_else(|_| format!("IGLA-GF16-{}-rng{}", ngram, seed));
 
+    // S10: the whitelist must gate the optimizer that EXECUTES, not a string
+    // parsed out of the canon name. This binary runs AdamW and nothing else, so
+    // it declares that up front; a canon whose suffix disagrees is a hard error
+    // here, at process start, rather than a silent `return` inside the first
+    // ledger write two hours into a run.
+    const EXECUTED_OPTIMIZER: &str = "adamw";
+    if let Some(requested) = arg_or_env(&["--optimizer", "--opt"], &["TRIOS_OPTIMIZER"]) {
+        if requested != EXECUTED_OPTIMIZER {
+            return Err(format!(
+                "--optimizer={requested} requested, but this binary only implements \
+                 {EXECUTED_OPTIMIZER}. Refusing to run and label the result {requested}."
+            ));
+        }
+    }
+    nw::bind_executed_optimizer(&canon_name, EXECUTED_OPTIMIZER)?;
+
     println!("=== GF16 {} Context Model + {} ===", ngram, activation_name);
     println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} activation={} wd={} warmup={} dropout={} checkpoint_interval={}",
         VOCAB, dim, hidden, SEQ, steps, seed, base_lr, activation, wd, warmup, dropout, checkpoint_interval);
     println!("GF16 φ-distance: {:.6}", GF16::phi_distance());
-    println!("canon_name={}", canon_name);
+    println!("canon_name={} optimizer={}", canon_name, EXECUTED_OPTIMIZER);
 
-    let tokens = load_data("data/tinyshakespeare.txt");
-    println!("Dataset: {} tokens", tokens.len());
+    // S1: explicit corpus paths, no default and no fallback. The old code
+    // derived val by slicing the last 10% off the SAME buffer it trained on,
+    // after loading that buffer from a path that did not exist.
+    // `--train-data` / `--val-data` are the spellings `entrypoint.rs` already
+    // passes; `--train` / `--val` are accepted as aliases.
+    let train_path = arg_or_env(&["--train-data", "--train"], &["TRIOS_TRAIN_PATH"]).ok_or_else(
+        || {
+            "no training corpus given. Pass --train-data=PATH (or --train=PATH, or set \
+             TRIOS_TRAIN_PATH). There is no default: the previous hardcoded default \
+             misspelled the corpus in data/, so it never existed and every run silently \
+             trained on a 52-byte placeholder."
+                .to_string()
+        },
+    )?;
+    let val_path = arg_or_env(&["--val-data", "--val"], &["TRIOS_VAL_PATH"]).ok_or_else(|| {
+        "no validation corpus given. Pass --val-data=PATH (or --val=PATH, or set \
+         TRIOS_VAL_PATH). There is no default: a val stream sliced out of the train \
+         buffer measures memorisation, not generalisation."
+            .to_string()
+    })?;
 
-    let train_end = (tokens.len() as f64 * 0.9) as usize;
-    let train = &tokens[..train_end];
-    let val = &tokens[train_end..];
-    println!("Split: {} train / {} val", train.len(), val.len());
+    let train = load_data(&train_path)?;
+    let val = load_data(&val_path)?;
+    println!(
+        "Corpus: train={} ({} tokens) val={} ({} tokens)",
+        train_path,
+        train.len(),
+        val_path,
+        val.len()
+    );
+
+    if let Some(reason) = val_not_held_out(&train, &val) {
+        return Err(format!(
+            "{reason}. Refusing to train: no BPB measured against this split is a \
+             model result."
+        ));
+    }
+    let train: &[usize] = &train;
+    let val: &[usize] = &val;
 
     let mut model = NgramModelGF16::new(
         VOCAB,
@@ -746,12 +924,18 @@ fn main() {
         h: AdamW::new(VOCAB * hidden, wd),
     };
 
-    let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
-    println!("Initial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
+    let init_bpb = evaluate(&model, val, SEQ)
+        .ok_or_else(|| format!("initial evaluation over '{val_path}' produced no measurable chunk"))?;
+    println!(
+        "Initial val: loss={:.4} bpb={:.4}",
+        init_bpb * LN_2,
+        init_bpb
+    );
 
-    // Write step=0 ping so queue knows trainer started
-    nw::bpb_sample(&canon_name, seed as i32, 0, init_bpb, None);
-    eprintln!("[neon] wrote step=0 bpb={:.4}", init_bpb);
+    // Step=0 ping so the queue knows the trainer started. Guarded like every
+    // other write: the old unconditional call published whatever `evaluate`
+    // had returned, sentinel included.
+    publish_bpb(&canon_name, seed, 0, init_bpb, EXECUTED_OPTIMIZER);
 
     println!();
     println!(
@@ -774,9 +958,14 @@ fn main() {
         model.train_step(&train[off..off + SEQ + 1], lr, &mut opts);
 
         if step % checkpoint_interval == 0 || step == steps {
-            let ms = t0.elapsed().as_millis();
-            let (vl, vb) = evaluate(&model, val, SEQ);
-            let improved = vb < best_bpb && vb.is_finite();
+            let _ms = t0.elapsed().as_millis();
+            // An unmeasurable eval invalidates the run; it is not a step to
+            // skip past while the loop keeps reporting the previous best.
+            let vb = evaluate(&model, val, SEQ).ok_or_else(|| {
+                format!("evaluation over '{val_path}' produced no measurable chunk at step {step}")
+            })?;
+            let vl = vb * LN_2;
+            let improved = vb < best_bpb;
             if improved {
                 best_bpb = vb;
                 best_step = step;
@@ -791,10 +980,7 @@ fn main() {
                     "\n>>> Early stopping at step {} (patience={} exceeded)",
                     step, patience
                 );
-                // Write final sample before exit
-                if vb.is_finite() {
-                    nw::bpb_sample(&canon_name, seed as i32, step as i32, vb, None);
-                }
+                publish_bpb(&canon_name, seed, step, vb, EXECUTED_OPTIMIZER);
                 break;
             }
 
@@ -808,11 +994,7 @@ fn main() {
             );
             results.push((step, vl, vb));
 
-            // P0 fix: wire bpb_sample to Neon every checkpoint_interval steps
-            if vb.is_finite() {
-                nw::bpb_sample(&canon_name, seed as i32, step as i32, vb, None);
-                eprintln!("[neon] wrote step={} bpb={:.4}", step, vb);
-            }
+            publish_bpb(&canon_name, seed, step, vb, EXECUTED_OPTIMIZER);
         }
     }
 
@@ -839,6 +1021,9 @@ fn main() {
     let exp_name = format!("gf16-{}gram-{}", ngram.to_lowercase(), activation);
     let rj = serde_json::json!({
         "experiment": exp_name,
+        "train_corpus": train_path,
+        "val_corpus": val_path,
+        "optimizer": EXECUTED_OPTIMIZER,
         "model": format!("GF16 {} + {}", ngram, activation_name),
         "seed": seed,
         "steps": steps,
@@ -866,10 +1051,10 @@ fn main() {
         activation,
         seed
     );
+    let rj_text = serde_json::to_string_pretty(&rj).map_err(|e| e.to_string())?;
     fs::File::create(&rp)
-        .unwrap()
-        .write_all(serde_json::to_string_pretty(&rj).unwrap().as_bytes())
-        .unwrap();
+        .and_then(|mut f| f.write_all(rj_text.as_bytes()))
+        .map_err(|e| format!("failed to write results '{rp}': {e}"))?;
     println!("\nResults: {}", rp);
 
     // Experience log
@@ -883,16 +1068,18 @@ fn main() {
         .create(true)
         .append(true)
         .open(&ep)
-        .unwrap()
-        .write_all(
-            format!(
-                "[{}] TASK: GF16 {} training | seed={} | steps={} | val_bpb={:.4}->{:.4} | {:.1}s | q_err={:.2}%\n",
-                ts, ngram, seed, steps, init_bpb, best_bpb, total.as_secs_f64(), max_q_error
+        .and_then(|mut f| {
+            f.write_all(
+                format!(
+                    "[{}] TASK: GF16 {} training | seed={} | steps={} | val_bpb={:.4}->{:.4} | {:.1}s | q_err={:.2}%\n",
+                    ts, ngram, seed, steps, init_bpb, best_bpb, total.as_secs_f64(), max_q_error
+                )
+                .as_bytes(),
             )
-            .as_bytes(),
-        );
+        });
     println!("Experience: {}", ep);
 
     // L-R8: stdout must end with BPB=X.XXXX for ASHA worker parsing
     println!("BPB={:.4}", best_bpb);
+    Ok(())
 }

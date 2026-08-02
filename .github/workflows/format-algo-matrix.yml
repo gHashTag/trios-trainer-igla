@@ -1,18 +1,21 @@
-name: Format-Algo Matrix (312 cells · trios#446)
-# Phase C lane L-C4 + L-C5: fan-out (Format × Algorithm) cells over GitHub
+name: Format-Algo Matrix (312 cells - trios#446)
+# Phase C lane L-C4 + L-C5: fan-out (Format x Algorithm) cells over GitHub
 # Actions matrix runners and stream bpb_samples rows into ssot.bpb_samples.
 # This is the workaround for trios-railway#61 (6-account Railway auth stalled):
 # GHA matrix runners replace the blocked Railway fan-out until multi-account
 # auth is unblocked.
 #
-# Anti-fake-pass guard (L-C4): for every *new* non-baseline cell, the final
-# bpb must differ from the f32+adamw baseline at the same hidden_size by at
-# least 1e-6. This catches "silent f32 fallback" bugs where a FakeQuant
-# kernel no-ops.
+# Anti-fake-pass guard (L-C4): for EVERY eligible non-baseline cell, the final
+# bpb must differ from the f32+adamw baseline at the same (hidden, seed) by at
+# least 1e-6. This catches "silent f32 fallback" bugs where a FakeQuant kernel
+# no-ops. Between 2026-05 and 2026-08-03 the guard passed if any ONE cell
+# diverged, which certified nothing; it was restored to per-cell on 2026-08-03
+# together with the checksum-pinned corpus step that makes the numbers it
+# reads actual measurements.
 #
 # Triggers:
-#   * workflow_dispatch — manual sweep with custom formats/algos inputs.
-#   * schedule (nightly 03:17 UTC) — incremental autonomous fill of the matrix.
+#   * workflow_dispatch - manual sweep with custom formats/algos inputs.
+#   * schedule (nightly 03:17 UTC) - incremental autonomous fill of the matrix.
 #   * push on paths that touch the runner binary or kernel implementations,
 #     restricted to a 4-cell smoke sample so PRs stay fast (<15 min).
 #
@@ -26,15 +29,15 @@ on:
         required: false
         default: "fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
       algos:
-        description: "Comma-separated TRIOS_ALGO_TYPE values (whitelist: adamw, muon) — R5: trios-trainer-igla#140 ALGO_WHITELIST. NOTE: muon-cwd removed 2026-05-14 until cpu_train.rs implements it (#146)."
+        description: "Comma-separated TRIOS_ALGO_TYPE values (whitelist: adamw, muon) - R5: trios-trainer-igla#140 ALGO_WHITELIST. NOTE: muon-cwd removed 2026-05-14 until cpu_train.rs implements it (#146)."
         required: false
         default: "adamw,muon"
       seeds:
-        description: "Comma-separated seeds (Fibonacci/Lucas canon — FORBIDDEN: 42 43 44 45)"
+        description: "Comma-separated seeds (Fibonacci/Lucas canon - FORBIDDEN: 42 43 44 45)"
         required: false
         default: "47,89,144,1597,2584"
       hidden:
-        description: "Comma-separated hidden sizes (3D matrix sweep: Format × Algo × Hidden)"
+        description: "Comma-separated hidden sizes (3D matrix sweep: Format x Algo x Hidden)"
         required: false
         default: "64,128,256"
       lr:
@@ -50,7 +53,7 @@ on:
         required: false
         default: "MATRIX"
   schedule:
-    # Daily nightly sweep, 03:17 UTC — off-peak for GHA quota.
+    # Daily nightly sweep, 03:17 UTC - off-peak for GHA quota.
     - cron: "17 3 * * *"
   pull_request:
     branches: [main]
@@ -90,10 +93,10 @@ jobs:
               LANE="${{ github.event.inputs.lane }}"
               ;;
             schedule)
-              # Nightly 3D sweep: 11 formats × 2 algos × 2 seeds × 2 hidden × 1 lr = 88 cells.
+              # Nightly 3D sweep: 11 formats x 2 algos x 2 seeds x 2 hidden x 1 lr = 88 cells.
               # R5 canonical: real kernels only (matches FormatKind::from_str + ALGO_WHITELIST).
-              # Fibonacci/Lucas seeds only (forbidden: 42-45). 3D Format×Algo×Hidden coverage.
-              # muon-cwd dropped 2026-05-14 (cpu_train.rs lacks impl) — see #146.
+              # Fibonacci/Lucas seeds only (forbidden: 42-45). 3D FormatxAlgoxHidden coverage.
+              # muon-cwd dropped 2026-05-14 (cpu_train.rs lacks impl) - see #146.
               FORMATS="fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
               ALGOS="adamw,muon"
               SEEDS="1597,2584"
@@ -103,7 +106,7 @@ jobs:
               LANE="SHORT-WAVE-MATRIX"
               ;;
             *)
-              # PR smoke: 3 formats × 2 algos × 1 seed × 1 hidden = 6 cells, short steps.
+              # PR smoke: 3 formats x 2 algos x 1 seed x 1 hidden = 6 cells, short steps.
               # Use canonical real kernels + ALGO_WHITELIST so smoke tests are R5-clean.
               FORMATS="fp32,gf16,fp16"
               ALGOS="adamw,muon"
@@ -127,10 +130,10 @@ jobs:
           lrs     = [float(x) for x in "$LR".split(",") if x]
           steps   = int("$STEPS")
           lane    = "$LANE".strip() or "MATRIX"
-          # Forbidden seeds guard — matches matrix_runner SEED_CANON.
+          # Forbidden seeds guard - matches matrix_runner SEED_CANON.
           FORBIDDEN = {42, 43, 44, 45}
           seeds = [s for s in seeds if s not in FORBIDDEN]
-          # Algo whitelist guard — matches matrix_runner ALGO_WHITELIST.
+          # Algo whitelist guard - matches matrix_runner ALGO_WHITELIST.
           # muon-cwd intentionally absent (2026-05-14 hotfix, follow-up #146).
           ALGO_WHITELIST = {"adamw", "muon"}
           algos = [a for a in algos if a in ALGO_WHITELIST]
@@ -155,7 +158,7 @@ jobs:
           PY
 
   cell:
-    name: ${{ matrix.cell.format }}×${{ matrix.cell.algo }} seed=${{ matrix.cell.seed }}
+    name: ${{ matrix.cell.format }}x${{ matrix.cell.algo }} seed=${{ matrix.cell.seed }}
     needs: plan
     runs-on: ubuntu-latest
     strategy:
@@ -175,6 +178,39 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: Swatinem/rust-cache@v2
+
+      - name: Materialize pinned corpus (fail loudly if absent)
+        shell: bash
+        run: |
+          set -euo pipefail
+          # data/tiny_shakespeare.txt and data/tiny_shakespeare_val.txt are NOT
+          # committed (`git ls-files data/` ships only the two .bin fixtures),
+          # so on a fresh checkout the trainer has no corpus. Until 2026-08-03
+          # cpu_train answered that by substituting a 52-byte string and
+          # continuing, which is why the committed nightly evidence is a bpb
+          # set clustered on log2(128) = 7.0 exactly.
+          #
+          # The corpus is provisioned HERE, by checksum, and its absence fails
+          # the job. The trainer no longer gets a vote.
+          mkdir -p data
+          if [ ! -s data/tiny_shakespeare.txt ] || [ ! -s data/tiny_shakespeare_val.txt ]; then
+            curl -sSL --retry 3 --fail \
+              https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+              -o data/full.txt
+            echo "86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed  data/full.txt" \
+              | sha256sum -c -
+            SIZE=$(wc -c < data/full.txt)
+            head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+            tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+            rm -f data/full.txt
+          fi
+          # Verify unconditionally: a cached or pre-existing file must be the
+          # same bytes every reported BPB in this repo was measured against.
+          sha256sum -c - <<'EOF'
+          1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d  data/tiny_shakespeare.txt
+          2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502  data/tiny_shakespeare_val.txt
+          EOF
+          echo "[corpus] train=$(wc -c < data/tiny_shakespeare.txt) bytes  val=$(wc -c < data/tiny_shakespeare_val.txt) bytes"
 
       - name: Build matrix_runner
         run: cargo build --release --bin matrix_runner --bin cpu_train
@@ -209,17 +245,17 @@ jobs:
             .trinity/results/*.json
 
   anti-fake-pass:
-    name: Anti-fake-pass guard (|Δbpb| ≥ 1e-6)
+    name: Anti-fake-pass guard (|dbpb| >= 1e-6)
     needs: cell
     if: ${{ always() && needs.cell.result != 'failure' }}
     runs-on: ubuntu-latest
     env:
       # PR smoke runs at steps=500 which is BELOW the honest FakeQuant
-      # divergence window (see gHashTag/trios#446 §Anti-fake-pass rationale):
-      # at ≤500 steps many quantizers are still in their linear regime and
+      # divergence window (see gHashTag/trios#446 Sec.Anti-fake-pass rationale):
+      # at <=500 steps many quantizers are still in their linear regime and
       # legitimately produce bitwise-identical bpb to f32. The guard is
       # advisory on pull_request; mandatory on schedule / workflow_dispatch
-      # where cells run at steps≥3000.
+      # where cells run at steps>=3000.
       ADVISORY: ${{ github.event_name == 'pull_request' }}
       MIN_STEPS_FOR_GUARD: "1000"
     steps:
@@ -233,94 +269,125 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, os, pathlib, sys
+          # ------------------------------------------------------------------
+          # PER-CELL GUARD RESTORED (2026-08-03).
+          #
+          # The previous version passed if AT LEAST ONE non-baseline cell
+          # diverged by >= 1e-6. That is a guard over the whole matrix, not
+          # over any cell in it: 87 of 88 cells could be a silent F32 fallback
+          # and the job would still report OK. Worse, it was evaluated over
+          # numbers that were measured on a 52-byte substitute corpus, because
+          # cpu_train pointed at data/tinyshakespeare.txt (no underscore) and
+          # invented a fallback when it was missing - the committed evidence is
+          # a bpb set clustered on log2(128) = 7.0 exactly.
+          #
+          # The corpus is now provisioned by checksum in the `cell` job and the
+          # trainer refuses to fabricate one, so these numbers are measurements
+          # again and the strict guard is meaningful again. Every eligible
+          # non-baseline cell must diverge from its own (hidden, seed)
+          # baseline. A cell that legitimately ties is a finding to be recorded
+          # in the ledger, not a condition for the guard to relax itself.
+          #
+          # The "empirical 20-cell sweep evidence" cited by the downgrade is
+          # not reproducible from this repository: it was collected against the
+          # substitute corpus. It is therefore not treated as evidence here.
+          # ------------------------------------------------------------------
           artefacts = pathlib.Path("artefacts")
           rows = []
+          unparseable = []
           for p in artefacts.rglob("cell.json"):
               try:
                   rows.append(json.loads(p.read_text()))
               except Exception as e:
-                  print(f"WARN: cannot parse {p}: {e}", file=sys.stderr)
-          if not rows:
-              print("NO CELLS COLLECTED — guard skipped (not a failure)")
-              sys.exit(0)
+                  unparseable.append((p, e))
+                  print(f"ERROR: cannot parse {p}: {e}", file=sys.stderr)
           advisory  = os.environ.get("ADVISORY", "false") == "true"
           min_steps = int(os.environ.get("MIN_STEPS_FOR_GUARD", "1000"))
-          # Build baseline index: (hidden -> bpb) at f32+adamw for each seed.
+          failures = []
+          if unparseable:
+              failures.append(f"{len(unparseable)} cell.json artefact(s) unparseable")
+          if not rows:
+              # An empty artefact set used to exit 0 with "guard skipped (not a
+              # failure)". The cell job ran; producing no parseable row IS the
+              # failure.
+              failures.append("NO CELLS COLLECTED: zero parseable cell.json artefacts")
+          # A row whose executed format is not the format it is filed under is
+          # a mislabelled measurement regardless of any bpb comparison.
+          for r in rows:
+              fx = r.get("format_executed", "")
+              if not fx:
+                  failures.append(
+                      f"cell {r.get('canon_name','?')} carries no format_executed "
+                      "(trainer too old to declare what it ran)")
+          # Build baseline index: (hidden, seed) -> bpb at f32+adamw.
           baseline = {}
           for r in rows:
               if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
                   baseline[(r["hidden"], r["seed"])] = r["bpb"]
-          if not baseline:
-              print("WARN: no fp32+adamw baseline in matrix; guard is advisory.")
+          eligible = [r for r in rows
+                      if r["step"] >= min_steps
+                      and not (r["format"] in ("fp32", "f32") and r["algo"] == "adamw")]
+          if rows and not baseline:
+              failures.append(
+                  "no fp32+adamw baseline cell in the matrix: nothing to compare "
+                  "against, so no cell can be certified")
           offenders = []
+          unpaired = []
           EPS = 1e-6
-          for r in rows:
-              if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
-                  continue
+          for r in eligible:
               ref = baseline.get((r["hidden"], r["seed"]))
               if ref is None:
+                  unpaired.append(r)
                   continue
               delta = abs(r["bpb"] - ref)
-              print(f"cell {r['format']:>10} × {r['algo']:>12} "
+              print(f"cell {r['format']:>10} x {r['algo']:>12} "
                     f"seed={r['seed']} h={r['hidden']} step={r['step']} "
-                    f"bpb={r['bpb']:.6f} |Δbpb|={delta:.6e}")
-              if delta < EPS and r['step'] >= min_steps:
+                    f"bpb={r['bpb']:.6f} |dbpb|={delta:.6e}")
+              if delta < EPS:
                   offenders.append((r, ref, delta))
-          # Honest kernel-liveness semantics (downgraded from the original
-          # strict per-cell guard based on empirical 20-cell sweep evidence):
-          # at the PR/smoke + small-model scale (h=96, tinyshakespeare,
-          # vocab=128, steps=3000), many (format, algo) combinations
-          # legitimately converge to the same plateau bpb as f32+adamw.
-          # This is a scientific observation, not a fake-pass
-          # — it matches the gHashTag/trios#446 published pattern where
-          # AdamW/SGDM/Lion all tie at 2.5655 on gf16/bf16/fp16.
-          #
-          # What IS a genuine regression: *no* non-baseline cell diverges
-          # at all, because that means FakeQuant / optimizer dispatch is a
-          # complete no-op. So the guard now asserts:
-          #   at least one non-baseline cell has |Δbpb| >= EPS at
-          #   step >= min_steps.
-          any_diverged = False
-          for r in rows:
-              ref = baseline.get((r["hidden"], r["seed"]))
-              if ref is None:
-                  continue
-              if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
-                  continue
-              if r["step"] < min_steps:
-                  continue
-              if abs(r["bpb"] - ref) >= EPS:
-                  any_diverged = True
-                  break
           if offenders:
-              print("\nFake-pass advisory (|Δbpb| < 1e-6 vs f32+adamw, step>=%d):"
-                    % min_steps)
+              print(f"\nFAKE-PASS: {len(offenders)} of {len(eligible)} eligible cell(s) "
+                    f"are bit-identical to fp32+adamw (|dbpb| < {EPS}, step >= {min_steps}). "
+                    "The kernel under test did not change the computation:",
+                    file=sys.stderr)
               for r, ref, delta in offenders:
-                  print(f"  {r['format']}×{r['algo']} seed={r['seed']} "
+                  print(f"  {r['format']}x{r['algo']} seed={r['seed']} "
                         f"h={r['hidden']} step={r['step']} "
-                        f"bpb={r['bpb']} ref={ref} |Δ|={delta}")
-          if not any_diverged and not advisory:
-              eligible = [r for r in rows if r["step"] >= min_steps
-                          and not (r["format"] in ("fp32", "f32") and r["algo"] == "adamw")]
-              if eligible:
-                  print("\nFAIL: NO non-baseline cell diverges from fp32+adamw. "
-                        "FakeQuant / optimizer dispatch likely a no-op.",
-                        file=sys.stderr)
-                  sys.exit(1)
-              else:
-                  print("\nSkipping guard: no eligible cells "
-                        f"(step >= {min_steps}).")
-          print(f"\nAnti-fake-pass OK: at least one cell diverges from baseline "
-                f"(min_steps={min_steps}, advisory={advisory}, "
-                f"any_diverged={any_diverged}).")
+                        f"bpb={r['bpb']} ref={ref} |d|={delta}", file=sys.stderr)
+              failures.append(f"{len(offenders)} cell(s) failed the per-cell divergence guard")
+          if unpaired:
+              print(f"\nWARN: {len(unpaired)} eligible cell(s) have no "
+                    "(hidden, seed) baseline and were not checked:")
+              for r in unpaired:
+                  print(f"  {r['format']}x{r['algo']} seed={r['seed']} h={r['hidden']}")
+              failures.append(f"{len(unpaired)} eligible cell(s) had no baseline to compare against")
+          if not eligible and rows:
+              print(f"\nNo eligible cells (step >= {min_steps}); nothing was certified.")
+          if failures:
+              print("\nANTI-FAKE-PASS FAILED:", file=sys.stderr)
+              for f in failures:
+                  print(f"  - {f}", file=sys.stderr)
+              if advisory:
+                  print("\nADVISORY mode (pull_request): reported, not enforced. "
+                        "PR smoke runs at steps=500, below MIN_STEPS_FOR_GUARD, so "
+                        "most cells are not eligible in the first place.")
+                  sys.exit(0)
+              sys.exit(1)
+          print(f"\nAnti-fake-pass OK: all {len(eligible)} eligible cell(s) diverge "
+                f"from their fp32+adamw baseline by >= {EPS} "
+                f"(min_steps={min_steps}, advisory={advisory}).")
           PY
 
   collect-ledger:
-    name: Collect ledger (L-MATRIX-LEDGER · trios#380)
+    name: Collect ledger (L-MATRIX-LEDGER - trios#380)
     needs: [cell, anti-fake-pass]
-    # Run on schedule + manual dispatch only — PR smoke matrix has too few
+    # Run on schedule + manual dispatch only - the PR smoke matrix has too few
     # cells to be worth a ledger refresh PR (and would spam main).
-    if: ${{ always() && needs.cell.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
+    #
+    # The anti-fake-pass result is now part of the gate. It was previously
+    # ignored (`always() && needs.cell.result == 'success'`), so a matrix that
+    # failed the divergence guard still refreshed the live ledger.
+    if: ${{ needs.cell.result == 'success' && needs.anti-fake-pass.result == 'success' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -341,7 +408,7 @@ jobs:
         shell: bash
         run: cargo build --release --bin matrix_ledger
 
-      - name: Collect per-cell artefacts → assertions/matrix_samples.jsonl
+      - name: Collect per-cell artefacts -> assertions/matrix_samples.jsonl
         shell: bash
         env:
           GITHUB_RUN_ID: ${{ github.run_id }}
@@ -375,13 +442,13 @@ jobs:
           # and comparing against the blob hash on HEAD. Empty file or
           # unchanged content -> skip; everything else -> open PR.
           if [[ ! -s assertions/matrix_samples.jsonl ]]; then
-            echo "[matrix_ledger] empty ledger file — skipping PR"
+            echo "[matrix_ledger] empty ledger file - skipping PR"
             exit 0
           fi
           NEW_HASH=$(git hash-object assertions/matrix_samples.jsonl)
           OLD_HASH=$(git rev-parse "HEAD:assertions/matrix_samples.jsonl" 2>/dev/null || echo "")
           if [[ -n "$OLD_HASH" && "$NEW_HASH" == "$OLD_HASH" ]]; then
-            echo "[matrix_ledger] content identical to main — skipping PR"
+            echo "[matrix_ledger] content identical to main - skipping PR"
             exit 0
           fi
           BRANCH="auto/matrix-ledger-${GITHUB_RUN_ID}"
@@ -398,7 +465,7 @@ jobs:
           rows=${ROWS} falsifier_2_hits=${HITS} commit_sha=${GITHUB_SHA}
 
           R4 trace block: assertions/igla_assertions.json::matrix_ledger
-          R7 witness   : appendix/L-pollen-channel.tex §matrix-ledger
+          R7 witness   : appendix/L-pollen-channel.tex Sec.matrix-ledger
           refs trios#380 trios#446 trios#536
 
           [skip ci]"

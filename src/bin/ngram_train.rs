@@ -46,12 +46,133 @@ fn activate_grad(x: f32, name: &str) -> f32 {
     }
 }
 
-fn load_data(path: &str) -> Vec<usize> {
-    let raw = fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"Hello world this is a tiny training dataset for IGLA".to_vec()
-    });
-    raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
+/// Exit code for a corpus that could not be honestly loaded. Same value
+/// `cpu_train` uses, so a sweep can tell a refused corpus from a crash.
+const EXIT_BAD_CORPUS: i32 = 6;
+
+/// Default corpus. The shipped file is `data/tiny_shakespeare.txt`; the old
+/// default here spelled it without the underscore, and that file has never
+/// existed in this repo, so every argument-free run took the fallback path and
+/// reported a BPB measured on 52 bytes.
+const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
+
+/// Opt-in placeholder, kept only so `TRIOS_ALLOW_SYNTHETIC_DATA=1` behaves as
+/// documented. Nothing measured against it is a model result.
+const SYNTHETIC_CORPUS: &[u8] = b"Hello world this is a tiny training dataset for IGLA";
+
+/// Corpus identity, carried beside the tokens.
+///
+/// A results row that cannot name the bytes it measured is indistinguishable
+/// from a fabricated one, so path, size, digest and the synthetic flag travel
+/// with every number this binary reports.
+#[derive(Debug)]
+struct CorpusInfo {
+    path: String,
+    bytes: usize,
+    sha256: String,
+    synthetic: bool,
+}
+
+impl CorpusInfo {
+    fn describe(&self) -> String {
+        format!(
+            "path={} bytes={} sha256={} data_synthetic={}",
+            self.path, self.bytes, self.sha256, self.synthetic
+        )
+    }
+}
+
+/// Lowercase hex SHA-256. Same digest as `shasum -a 256`.
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .fold(String::with_capacity(64), |mut acc, b| {
+            use std::fmt::Write as _;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
+}
+
+/// Value of `--flag=VALUE` or `--flag VALUE`, else `default`.
+fn arg_path(flag: &str, default: &str) -> String {
+    let args: Vec<String> = std::env::args().collect();
+    let prefix = format!("{flag}=");
+    for (i, a) in args.iter().enumerate() {
+        if let Some(v) = a.strip_prefix(prefix.as_str()) {
+            return v.to_string();
+        }
+        if a == flag {
+            // A flag given without a value must NOT fall back to the default:
+            // that is how a typo turns into a silent run on other bytes.
+            return args.get(i + 1).cloned().unwrap_or_default();
+        }
+    }
+    default.to_string()
+}
+
+/// Read `path`, or refuse. Ported from `trios_trainer::train_loop::load_data`.
+///
+/// The old body substituted a 52-byte pangram whenever the read failed, so a
+/// clean checkout trained on it and wrote a results JSON for it. A missing
+/// corpus is now a hard, named refusal. `TRIOS_ALLOW_SYNTHETIC_DATA=1` opts
+/// back in, says so on stderr on every run, and stamps `data_synthetic=true`
+/// into everything the run writes.
+fn load_data(path: &str) -> Result<(Vec<usize>, CorpusInfo), String> {
+    match fs::read(path) {
+        Ok(raw) if raw.is_empty() => Err(format!("corpus '{path}' is empty (0 bytes)")),
+        Ok(raw) => {
+            let info = CorpusInfo {
+                path: path.to_string(),
+                bytes: raw.len(),
+                sha256: sha256_hex(&raw),
+                synthetic: false,
+            };
+            Ok((
+                raw.into_iter().map(|b| (b as usize) % VOCAB).collect(),
+                info,
+            ))
+        }
+        Err(e) => {
+            if std::env::var("TRIOS_ALLOW_SYNTHETIC_DATA").as_deref() != Ok("1") {
+                return Err(format!(
+                    "cannot read corpus '{path}': {e}. Refusing the synthetic fallback: \
+                     it is the documented cause of the leak-tainted BPB rows \
+                     (trios-trainer-igla#60). Provide the corpus, or set \
+                     TRIOS_ALLOW_SYNTHETIC_DATA=1 to opt in - runs that do are stamped \
+                     data_synthetic=true and their BPB is meaningless."
+                ));
+            }
+            eprintln!(
+                "[data] WARNING: TRIOS_ALLOW_SYNTHETIC_DATA=1 and '{path}' is unreadable \
+                 ({e}). Using the synthetic corpus. Any BPB from this run is meaningless \
+                 and every artifact it produces is stamped data_synthetic=true."
+            );
+            let raw = SYNTHETIC_CORPUS.to_vec();
+            let info = CorpusInfo {
+                path: path.to_string(),
+                bytes: raw.len(),
+                sha256: sha256_hex(&raw),
+                synthetic: true,
+            };
+            Ok((
+                raw.into_iter().map(|b| (b as usize) % VOCAB).collect(),
+                info,
+            ))
+        }
+    }
+}
+
+/// Load or stop. The refusal is printed and the process exits BEFORE any
+/// result file is created, so a refused run leaves no artifact behind.
+fn load_or_refuse(path: &str) -> (Vec<usize>, CorpusInfo) {
+    match load_data(path) {
+        Ok(loaded) => loaded,
+        Err(e) => {
+            eprintln!("CORPUS REFUSED: {e}");
+            std::process::exit(EXIT_BAD_CORPUS);
+        }
+    }
 }
 
 fn softmax(v: &mut [f32]) {
@@ -670,11 +791,13 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    // Canon #93 forbids seeds {42, 43, 44, 45} (see src/seed_canon.rs); the
+    // default is a permitted one so an argument-free run is not born invalid.
     let seed: u64 = args
         .iter()
         .find(|a| a.starts_with("--seed="))
-        .map(|a| a[7..].parse::<u64>().unwrap_or(42))
-        .unwrap_or(42);
+        .map(|a| a[7..].parse::<u64>().unwrap_or(47))
+        .unwrap_or(47);
     let steps: usize = args
         .iter()
         .find(|a| a.starts_with("--steps="))
@@ -733,7 +856,8 @@ fn main() {
     println!("vocab={} dim={} hidden={} seq={} steps={} seed={} lr={} wd={} ctx={} activation={} attention={}",
         VOCAB, DIM, hidden, SEQ, steps, seed, base_lr, wd, num_ctx, activation, use_attention);
 
-    let tokens = load_data("data/tinyshakespeare.txt");
+    let (tokens, corpus) = load_or_refuse(&arg_path("--train-data", DEFAULT_TRAIN_PATH));
+    println!("Corpus: {}", corpus.describe());
     println!("Dataset: {} tokens", tokens.len());
 
     let train_end = (tokens.len() as f64 * 0.9) as usize;
@@ -843,6 +967,10 @@ fn main() {
         "hidden_size": hidden, "activation": activation,
         "num_ctx": num_ctx, "ngram_order": ngram_order,
         "use_attention": use_attention,
+        "corpus_path": corpus.path,
+        "corpus_bytes": corpus.bytes,
+        "corpus_sha256": corpus.sha256,
+        "data_synthetic": corpus.synthetic,
         "train_tokens": train.len(), "val_tokens": val.len(),
         "initial_val_bpb": init_bpb, "final_val_bpb": best_bpb,
         "delta_bpb": best_bpb - init_bpb,
@@ -869,4 +997,29 @@ fn main() {
         .write_all(format!("[{}] TASK: {}-gram{} training | seed={} | steps={} | val_bpb={:.4}->{:.4} | {:.1}s\n",
             ts, ngram_order, attn_str, seed, steps, init_bpb, best_bpb, total.as_secs_f64()).as_bytes());
     println!("Experience: {}", ep);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The refusal is the point: a missing corpus must stop the run, not
+    /// silently become 52 bytes of placeholder with a BPB printed beside it.
+    #[test]
+    fn missing_corpus_is_refused_and_a_real_one_names_itself() {
+        std::env::remove_var("TRIOS_ALLOW_SYNTHETIC_DATA");
+        let err = load_data("data/does_not_exist_r4_probe.txt")
+            .expect_err("a missing corpus must refuse, not substitute a placeholder");
+        assert!(
+            err.contains("does_not_exist_r4_probe.txt"),
+            "refusal must name the path it could not read: {err}"
+        );
+
+        let (tokens, corpus) =
+            load_data("data/pangram_fixture_160b.bin").expect("shipped fixture must load");
+        assert_eq!(tokens.len(), 160);
+        assert_eq!(corpus.bytes, 160);
+        assert_eq!(corpus.sha256.len(), 64, "sha256 must be 64 hex chars");
+        assert!(!corpus.synthetic);
+    }
 }

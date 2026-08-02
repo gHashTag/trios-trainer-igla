@@ -11,7 +11,18 @@ Cargo.lock.bak
 # Local ledger artifacts
 /assertions/
 /checkpoints/
-/data/
+# Corpora are large and are distributed by hash, not by git. The provenance
+# ABOUT them is the opposite: `/data/` used to hide data/README.md and the
+# corpus manifest from `git add`, so the one file that lets a third party
+# confirm they hold the same bytes could not be committed. Re-included by name;
+# the .txt/.bin corpora stay ignored.
+#
+# `/data/*` and not `/data/`: git never descends into an EXCLUDED DIRECTORY, so
+# a negation under `/data/` can never fire. Excluding the contents instead is
+# what makes `!` work.
+/data/*
+!/data/README.md
+!/data/MANIFEST.sha256
 *.jsonl.tmp
 
 # Training logs (thousands of files choke git)

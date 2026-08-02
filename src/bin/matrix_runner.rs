@@ -1,38 +1,43 @@
-// matrix_runner — Phase C orchestrator for the 312-cell Format×Algorithm matrix
+// matrix_runner -- Phase C orchestrator for the 312-cell FormatxAlgorithm matrix
 // (gHashTag/trios#446, kernel stubs from PR #101 + #102).
 //
 // Purpose: run ONE (format, algo, seed, hidden) cell end-to-end by invoking the
 // already-instrumented `cpu_train` binary with the right env vars, parse the
 // resulting `.trinity/results/cpu_train_<format>_<algo>_seed<seed>.json`, and
 // write a row into `ssot.bpb_samples` (Railway phd-postgres-ssot SSOT) using
-// the `MATRIX_DATABASE_URL` env var. When the DSN is unset the row is only
-// echoed on stdout (R5: never panic, never block CI).
+// the `MATRIX_DATABASE_URL` env var. When NO DSN is configured the row is only
+// echoed on stdout and that is a legitimate exit 0. When a DSN IS configured
+// and no row lands, the process exits non-zero (see R5 GUARD 6).
 //
 // Constitutional notes:
-//   * R1 Rust-only — pipeline is pure Rust, no .py or .sh shims.
-//   * R5 honest   — on any DB or training error: log and continue.
-//   * R7 witness  — emits run_id, sha, step, seed, bpb verbatim so the
+//   * R1 Rust-only -- pipeline is pure Rust, no .py or .sh shims.
+//   * R5 honest   -- REVISED 2026-08-03. "log and continue" was read as
+//                   "print the failure, then report success", and the
+//                   workflow's collect-ledger job gates on that success. An
+//                   error is still logged rather than panicked, but the exit
+//                   code now tells the truth about whether a row landed.
+//   * R7 witness  -- emits run_id, sha, step, seed, bpb verbatim so the
 //                   matrix-bot (L-C6) can reconstruct #446 body.
 //
 // HARDENING (PASS-21, 2026-05-14): three R5 guards close the leaderboard
 // pollution bug-class documented in:
-//   * trios#777 (silent format collapse — 704 bit-identical clusters)
-//   * trios#779 (sidecar metadata poisoning — 15 fake algo suffixes)
+//   * trios#777 (silent format collapse -- 704 bit-identical clusters)
+//   * trios#779 (sidecar metadata poisoning -- 15 fake algo suffixes)
 //   * leaderboard-snapshot skill Q7 (algo whitelist) + Q3 (format drift)
 //
-//   1. ALGO_WHITELIST — `--algo` must be one of {adamw, muon, muon-cwd}. Any
+//   1. ALGO_WHITELIST -- `--algo` must be one of {adamw, muon, muon-cwd}. Any
 //      other value is rejected with ExitCode(3) and a clear error message. No
 //      silent fallback. Matches the same whitelist enforced in trios-train.rs:298.
 //
-//   2. FORMAT_ALIAS_MAP — `binary16 -> fp16`, `binary32 -> fp32`, `fp8e4m3 ->
+//   2. FORMAT_ALIAS_MAP -- `binary16 -> fp16`, `binary32 -> fp32`, `fp8e4m3 ->
 //      fp8_e4m3`, `fp8e5m2 -> fp8_e5m2`. Normalisation happens BEFORE canon_name
 //      assembly so the leaderboard never sees both spellings.
 //
-//   3. SEED_CANON — `--seed` must be one of Fibonacci/Lucas {47, 89, 123, 144,
+//   3. SEED_CANON -- `--seed` must be one of Fibonacci/Lucas {47, 89, 123, 144,
 //      1597, 2584, 4181, 6765, 10946}. The legacy default `42` is FORBIDDEN
 //      (see leaderboard-snapshot skill `SEED_FORBIDDEN` constant).
 //
-//   4. CANON_NAME — assembled as `IGLA-MATRIX-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}`
+//   4. CANON_NAME -- assembled as `IGLA-MATRIX-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}`
 //      conforming to the IGLA canonical regex
 //      `^IGLA-[A-Z][A-Z0-9-]*-[a-z0-9_]+-h\d+-LR[0-9.]+-rng\d+-[a-z0-9-]+$`.
 //      Old format `cpu_train_{format}_{algo}` is dead.
@@ -48,34 +53,42 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 use tokio_postgres::{Client, NoTls};
+use trios_trainer::fake_quant::FormatKind;
 
-// ────────────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------------
 // R5 HARDENING CONSTANTS
-// ────────────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------------
 
 /// Only optimizers actually implemented by `trios-train.rs` dispatch (PR #135).
-/// Everything else (lion, soap, tiger, lamb, prodigy, …) used to silently
-/// collapse to AdamW and produce byte-identical BPB under fake labels — see
+/// Everything else (lion, soap, tiger, lamb, prodigy, ...) used to silently
+/// collapse to AdamW and produce byte-identical BPB under fake labels -- see
 /// trios#777 / trios-trainer-igla#140. NEVER add a value here without
 /// implementing the optimizer in `train_loop::*` first.
-/// HOTFIX 2026-05-14: `muon-cwd` removed — cpu_train.rs `AlgoOpt::from_env`
+/// HOTFIX 2026-05-14: `muon-cwd` removed -- cpu_train.rs `AlgoOpt::from_env`
 /// does not implement it yet, so allowing it through caused 3 failing matrix
-/// cells (fp16/fp32/gf16 × muon-cwd seed=1597) in run 25856938977 and would
+/// cells (fp16/fp32/gf16 x muon-cwd seed=1597) in run 25856938977 and would
 /// have silently produced bit-identical bpb to `muon` if from_env had a
 /// fallback. Follow-up: implement true CWD variant in cpu_train.rs, then
 /// re-add. See trios-trainer-igla#146 (to be opened).
 const ALGO_WHITELIST: &[&str] = &["adamw", "muon"];
 
 /// Fibonacci + Lucas seed canon. Skill `leaderboard-snapshot` SEED_CANON.
-/// The legacy default `42` is FORBIDDEN — it appeared in 2554 rows before
+/// The legacy default `42` is FORBIDDEN -- it appeared in 2554 rows before
 /// the canon-name reform of 2026-05-12.
 const SEED_CANON: &[i64] = &[47, 89, 123, 144, 1597, 2584, 4181, 6765, 10946];
 
 /// IEEE / TRIOS canonical format spellings. Aliases like `binary16` map to the
 /// canonical name to prevent format-drift duplicates in the leaderboard
 /// (8483 rows under `binary16` are actually `fp16`; 245 `binary32` are `fp32`).
-fn normalize_format(raw: &str) -> &str {
-    match raw {
+///
+/// R5 GUARD 5 (2026-08-03): the old `other => other` arm passed ANY spelling
+/// through untouched. `--format=surveyprobe2` therefore reached `canon_name`
+/// and the `format` column verbatim while `cpu_train` silently fell back to
+/// F32, so the axis the matrix exists to study was a claim, never a
+/// measurement. An unrecognised spelling is now an error: a name is canonical
+/// only if `FormatKind::from_env` can actually resolve it to a kernel.
+fn normalize_format(raw: &str) -> Result<&str, String> {
+    let mapped = match raw {
         "binary16" | "float16" | "f16" => "fp16",
         "binary32" | "float32" | "f32_alias" => "fp32",
         "binary64" | "float64" | "f64_alias" => "fp64",
@@ -84,15 +97,54 @@ fn normalize_format(raw: &str) -> &str {
         "fp6e3m2" => "fp6_e3m2",
         "fp6e2m3" => "fp6_e2m3",
         "fp4e2m1" => "fp4_e2m1",
-        // `f32` is also a TRIOS-supported spelling alongside `fp32` — keep both.
+        // `f32` is also a TRIOS-supported spelling alongside `fp32` - keep both.
         other => other,
+    };
+    if FormatKind::from_env(mapped).is_none() {
+        return Err(format!(
+            "unknown format {raw:?} (normalized to {mapped:?}): no FormatKind \
+             kernel resolves it. Refusing to write an unvalidated string into \
+             canon_name and the `format` column."
+        ));
     }
+    Ok(mapped)
+}
+
+/// The format the run actually EXECUTED, as reported by `cpu_train` in its
+/// results file, must equal the format that was requested.
+///
+/// Mirrors the rationale of `neon_writer::bind_executed_optimizer` (src/
+/// neon_writer.rs:555-575): a row recorded under the wrong format is worse
+/// than a row not recorded at all, because it is indistinguishable from a real
+/// measurement of that format. `bind_executed_optimizer` closes that hole for
+/// the optimizer column on the WRITE side; this closes it for the format
+/// column here.
+///
+/// Implemented locally on purpose: `src/neon_writer.rs` is owned by another
+/// change in flight, and refactoring this binary's raw INSERT into
+/// `neon_writer` is out of scope for this round. The exit code is made honest
+/// where the INSERT actually lives.
+fn check_executed_format(requested: &str, executed: &str) -> Result<(), String> {
+    let want = FormatKind::from_env(requested).ok_or_else(|| {
+        format!("requested format {requested:?} does not resolve to a FormatKind")
+    })?;
+    let got = FormatKind::from_env(executed).ok_or_else(|| {
+        format!("cpu_train reported executed format {executed:?}, which does not resolve")
+    })?;
+    if want != got {
+        return Err(format!(
+            "FORMAT MISMATCH: requested {requested:?} ({want:?}) but cpu_train \
+             executed {executed:?} ({got:?}). The `format` column would name a \
+             kernel that never ran."
+        ));
+    }
+    Ok(())
 }
 
 /// Build the IGLA-canonical canon_name. Pattern:
 ///   IGLA-{LANE}-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}
 /// where `lr` is rendered with the leading-zero notation expected by the
-/// leaderboard-snapshot regex (e.g. `0.001` → `LR001`, `0.0001` → `LR0001`).
+/// leaderboard-snapshot regex (e.g. `0.001` -> `LR001`, `0.0001` -> `LR0001`).
 /// LANE token defaults to `MATRIX`; see leaderboard-snapshot SKILL.md LANE registry
 /// for the canonical list (MATRIX, SHORT-WAVE-MATRIX, COVERAGE-A, SCARAB-ADAMW, ...).
 fn build_canon_name(format: &str, hidden: i32, lr: f64, seed: i64, algo: &str) -> String {
@@ -114,7 +166,7 @@ fn build_canon_name_lane(
 }
 
 /// Render a learning rate as the canon LR token. The regex accepts either
-/// leading-zero compact form (`LR0001`) or decimal form (`LR0.0001`) — we
+/// leading-zero compact form (`LR0001`) or decimal form (`LR0.0001`) -- we
 /// emit the compact form because every champion canon since Wave-35 uses it.
 fn format_lr_token(lr: f64) -> String {
     // Map common LRs to their compact tokens.
@@ -123,10 +175,10 @@ fn format_lr_token(lr: f64) -> String {
     // strip trailing zeros, then "0." prefix
     let trimmed = s.trim_end_matches('0').trim_end_matches('.');
     if let Some(rest) = trimmed.strip_prefix("0.") {
-        // 0.001 → "001", 0.0001 → "0001"
+        // 0.001 -> "001", 0.0001 -> "0001"
         rest.to_string()
     } else {
-        // 1.5 or 0.5 etc. — keep as-is, dot is allowed by the regex.
+        // 1.5 or 0.5 etc. -- keep as-is, dot is allowed by the regex.
         trimmed.to_string()
     }
 }
@@ -149,10 +201,21 @@ struct CpuTrainResult {
     dim: i64,
     #[serde(default)]
     initial_bpb: f64,
+    /// The BPB measured at `step == steps`. Since 2026-08-03 `cpu_train` emits
+    /// this and `best_bpb` as two distinct keys; before that, this field
+    /// carried the running MINIMUM over all evals while this binary paired it
+    /// with `step = steps`.
     #[serde(default)]
     final_bpb: f64,
     #[serde(default)]
+    best_bpb: f64,
+    #[serde(default)]
     delta_bpb: f64,
+    /// Format `cpu_train` actually executed. Absent in results written before
+    /// 2026-08-03; an empty string means "trainer too old to declare it", which
+    /// is reported rather than treated as a match.
+    #[serde(default)]
+    format_executed: String,
 }
 
 /// Single matrix cell descriptor, logged verbatim for R7 witness trail.
@@ -164,9 +227,14 @@ struct MatrixRow {
     hidden: i32,
     seed: i64,
     step: i32,
+    /// The BPB measured at `step`, i.e. `final_bpb`. `best_bpb` is carried
+    /// alongside so a consumer can see the two are different numbers rather
+    /// than inferring one from the other.
     bpb: f64,
+    best_bpb: f64,
     initial_bpb: f64,
     delta_bpb: f64,
+    format_executed: String,
     sha: String,
     run_id: String,
     ts_unix: i64,
@@ -273,6 +341,14 @@ fn run_cpu_train(
 
 /// Write a single bpb_samples row into the Railway SSOT.
 ///
+/// SECURITY NOTE (unaddressed here on purpose): the connection below is
+/// `NoTls`, so the DSN's password and every row travel the network in
+/// plaintext. Adding TLS is a separate change with its own certificate story
+/// and is deliberately NOT attempted in this pass; it is recorded so the next
+/// reader does not mistake the omission for a decision that the endpoint is
+/// safe. Until then, treat `MATRIX_DATABASE_URL` as a credential that has been
+/// exposed on every run.
+///
 /// Uses plain `NoTls` because the Railway DSN in the session is an external
 /// proxy `interchange.proxy.rlwy.net:30942` which speaks plaintext PG (the
 /// workaround path for the stalled Neon access in trios-railway#62). If
@@ -362,29 +438,35 @@ fn main() -> ExitCode {
     // LR default matches Wave-35 champion canon.
     let lr: f64 = arg_or("lr", "0.001").parse().unwrap_or(0.001);
 
-    // ── R5 GUARD 1 — ALGO WHITELIST ────────────────────────────────────────
+    // -- R5 GUARD 1 -- ALGO WHITELIST ----------------------------------------
     let algo = algo_raw.trim();
     if !ALGO_WHITELIST.contains(&algo) {
         eprintln!(
             "[matrix_runner] R5-REJECT unsupported algo={algo:?}: \
              only {:?} are implemented. \
-             Refusing silent AdamW fallback — see trios#777 / leaderboard-snapshot Q7. \
+             Refusing silent AdamW fallback -- see trios#777 / leaderboard-snapshot Q7. \
              Fix --algo or TRIOS_ALGO_TYPE, then re-run.",
             ALGO_WHITELIST
         );
         return ExitCode::from(3);
     }
 
-    // ── R5 GUARD 2 — FORMAT ALIAS NORMALIZATION ───────────────────────────
-    let format = normalize_format(format_raw.trim()).to_string();
+    // -- R5 GUARD 2 -- FORMAT ALIAS NORMALIZATION + VALIDATION --------------
+    let format = match normalize_format(format_raw.trim()) {
+        Ok(f) => f.to_string(),
+        Err(e) => {
+            eprintln!("[matrix_runner] R5-REJECT {e}");
+            return ExitCode::from(5);
+        }
+    };
     if format != format_raw.trim() {
         eprintln!(
-            "[matrix_runner] format alias normalized: {format_raw:?} → {format:?} \
+            "[matrix_runner] format alias normalized: {format_raw:?} -> {format:?} \
              (see leaderboard-snapshot Q3 / format-drift)"
         );
     }
 
-    // ── R5 GUARD 3 — SEED CANON ───────────────────────────────────────────
+    // -- R5 GUARD 3 -- SEED CANON -------------------------------------------
     if !SEED_CANON.contains(&seed) {
         eprintln!(
             "[matrix_runner] R5-REJECT seed={seed} is not in SEED_CANON {:?}. \
@@ -407,7 +489,22 @@ fn main() -> ExitCode {
         }
     };
 
-    // ── R5 GUARD 4 — CANON NAME (IGLA pattern) ────────────────────────────
+    // -- R5 GUARD 5 -- EXECUTED FORMAT == REQUESTED FORMAT ------------------
+    // See `check_executed_format` for the bind_executed_optimizer rationale.
+    if result.format_executed.is_empty() {
+        eprintln!(
+            "[matrix_runner] R5-REJECT cpu_train did not report `format_executed`. \
+             Without it the `format` column is a request, not a measurement. \
+             Rebuild cpu_train (>= 2026-08-03) and re-run."
+        );
+        return ExitCode::from(5);
+    }
+    if let Err(e) = check_executed_format(&format, &result.format_executed) {
+        eprintln!("[matrix_runner] R5-REJECT {e}");
+        return ExitCode::from(5);
+    }
+
+    // -- R5 GUARD 4 -- CANON NAME (IGLA pattern) ---------------------------
     let lane = arg_or("lane", &env_or("TRIOS_LANE", "MATRIX"));
     let canon_name = build_canon_name_lane(&lane, &format, dim, lr, seed, algo);
 
@@ -419,8 +516,10 @@ fn main() -> ExitCode {
         seed,
         step: result.steps as i32,
         bpb: result.final_bpb,
+        best_bpb: result.best_bpb,
         initial_bpb: result.initial_bpb,
         delta_bpb: result.delta_bpb,
+        format_executed: result.format_executed.clone(),
         sha: git_sha(),
         run_id: env_or("GITHUB_RUN_ID", &format!("local-{}", now_unix())),
         ts_unix: now_unix(),
@@ -436,18 +535,56 @@ fn main() -> ExitCode {
         .ok()
         .or_else(|| env::var("DATABASE_URL").ok());
 
+    // -- R5 GUARD 6 -- A CONFIGURED DSN THAT LANDS NOTHING IS A FAILURE -----
+    //
+    // The previous version printed "DB write skipped" for a hard connection
+    // failure and returned ExitCode::SUCCESS regardless, while the workflow's
+    // collect-ledger job gates on exactly that success. Three success reports
+    // over three failures, on the pipeline that feeds the live SSOT.
+    //
+    // The distinction that matters is CONFIGURED vs NOT CONFIGURED:
+    //   * no DSN in the environment -> nothing was promised, exit 0;
+    //   * a DSN was configured and 0 of N writes landed -> exit non-zero.
     match dsn {
         Some(dsn) if !dsn.is_empty() => {
-            let rt = Runtime::new().expect("build tokio runtime");
-            match rt.block_on(write_row_async(&dsn, &row)) {
-                Ok(()) => eprintln!("[matrix_runner] wrote row to ssot.bpb_samples"),
-                Err(e) => eprintln!("[matrix_runner] DB write skipped: {e}"),
+            let attempted = 1usize;
+            let mut landed = 0usize;
+            let mut last_error = String::new();
+            match Runtime::new() {
+                Ok(rt) => match rt.block_on(write_row_async(&dsn, &row)) {
+                    Ok(()) => {
+                        landed += 1;
+                        eprintln!("[matrix_runner] wrote row to ssot.bpb_samples");
+                    }
+                    Err(e) => {
+                        last_error = e;
+                    }
+                },
+                Err(e) => {
+                    last_error = format!("build tokio runtime: {e}");
+                }
             }
+            if landed == 0 {
+                eprintln!(
+                    "[matrix_runner] DB WRITE FAILED: a DSN was configured, \
+                     {attempted} write(s) attempted, {landed} landed. \
+                     Last error: {last_error}"
+                );
+                eprintln!(
+                    "[matrix_runner] This cell produced no row in ssot.bpb_samples. \
+                     Exiting non-zero so downstream jobs do not treat it as landed."
+                );
+                return ExitCode::from(6);
+            }
+            eprintln!(
+                "[matrix_runner] DB write summary: attempted={attempted} landed={landed}"
+            );
         }
         _ => {
             eprintln!(
-                "[matrix_runner] MATRIX_DATABASE_URL unset; row only echoed on stdout \
-                 (R5 non-blocking)."
+                "[matrix_runner] no DSN configured (MATRIX_DATABASE_URL and \
+                 DATABASE_URL both unset/empty); row only echoed on stdout. \
+                 Nothing was promised to the SSOT, so this is exit 0."
             );
         }
     }
@@ -455,9 +592,9 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// TESTS — R5 guards verified at compile-time
-// ────────────────────────────────────────────────────────────────────────────
+// ----------------------------------------------------------------------------
+// TESTS -- R5 guards verified at compile-time
+// ----------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
@@ -495,15 +632,47 @@ mod tests {
 
     #[test]
     fn format_alias_normalization() {
-        assert_eq!(normalize_format("binary16"), "fp16");
-        assert_eq!(normalize_format("binary32"), "fp32");
-        assert_eq!(normalize_format("fp8e4m3"), "fp8_e4m3");
-        assert_eq!(normalize_format("fp8e5m2"), "fp8_e5m2");
-        assert_eq!(normalize_format("float16"), "fp16");
+        assert_eq!(normalize_format("binary16").unwrap(), "fp16");
+        assert_eq!(normalize_format("binary32").unwrap(), "fp32");
+        assert_eq!(normalize_format("fp8e4m3").unwrap(), "fp8_e4m3");
+        assert_eq!(normalize_format("fp8e5m2").unwrap(), "fp8_e5m2");
+        assert_eq!(normalize_format("float16").unwrap(), "fp16");
         // Canonical names pass through untouched.
-        assert_eq!(normalize_format("fp16"), "fp16");
-        assert_eq!(normalize_format("gf16"), "gf16");
-        assert_eq!(normalize_format("bf16"), "bf16");
+        assert_eq!(normalize_format("fp16").unwrap(), "fp16");
+        assert_eq!(normalize_format("gf16").unwrap(), "gf16");
+        assert_eq!(normalize_format("bf16").unwrap(), "bf16");
+        // The whole nightly format axis must survive validation.
+        for f in [
+            "fp32", "f32", "gf16", "bf16", "fp16", "fp8_e4m3", "fp8_e5m2", "int8", "int4", "nf4",
+            "posit16", "fp80",
+        ] {
+            assert!(normalize_format(f).is_ok(), "nightly format rejected: {f}");
+        }
+    }
+
+    #[test]
+    fn unknown_format_spelling_is_rejected() {
+        // The exact string that used to reach the `format` column untouched
+        // while cpu_train silently ran F32.
+        for bogus in ["surveyprobe2", "fp13", "", "FP16 ", "not-a-format"] {
+            assert!(
+                normalize_format(bogus).is_err(),
+                "unvalidated format leaked through normalize_format: {bogus:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn executed_format_must_match_requested() {
+        assert!(check_executed_format("fp16", "fp16").is_ok());
+        // Alias spellings that resolve to the same kernel are a match.
+        assert!(check_executed_format("fp32", "f32").is_ok());
+        // The silent-F32-fallback signature.
+        assert!(check_executed_format("gf16", "f32").is_err());
+        assert!(check_executed_format("fp8_e4m3", "fp32").is_err());
+        // An unresolvable executed name is an error, not a pass.
+        assert!(check_executed_format("fp16", "surveyprobe2").is_err());
+        assert!(check_executed_format("fp16", "").is_err());
     }
 
     #[test]

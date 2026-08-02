@@ -755,9 +755,20 @@ impl AttentionModel {
             .collect()
     }
 
-    pub fn loss_bpb(&self, tokens: &[usize]) -> (f32, f32) {
+    /// Cross-entropy loss and bits-per-byte over `tokens`.
+    ///
+    /// Returns `None` when nothing was measured: too few tokens to form a
+    /// single (input, target) pair, or a forward pass that produced a
+    /// non-finite or non-positive probability for a target.
+    ///
+    /// This used to clamp the probability to a 1e-9 floor via `f32::max`,
+    /// which ignores NaN, so a single poisoned weight came back as that
+    /// floor and turned into a finite ~20.7-nat / ~29.9-bpb reading that no
+    /// downstream check rejected. A number that was never measured must not
+    /// be returned as if it were.
+    pub fn loss_bpb(&self, tokens: &[usize]) -> Option<(f32, f32)> {
         if tokens.len() < 2 {
-            return (0.0, 0.0);
+            return None;
         }
         let input_ids = &tokens[..tokens.len() - 1];
         let target_ids = &tokens[1..];
@@ -772,17 +783,23 @@ impl AttentionModel {
             }
             let mut probs = logits[i].clone();
             softmax(&mut probs);
-            let p = probs[target].max(1e-9);
+            let p = probs[target];
+            if !p.is_finite() || p <= 0.0 {
+                return None;
+            }
             total_loss += -p.ln();
             count += 1;
         }
 
         if count == 0 {
-            return (0.0, 0.0);
+            return None;
         }
         let loss = total_loss / count as f32;
+        if !loss.is_finite() {
+            return None;
+        }
         let bpb = loss / LN_2;
-        (loss, bpb)
+        Some((loss, bpb))
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -989,6 +1006,37 @@ mod tests {
         }
     }
 
+    /// A single NaN weight must make `loss_bpb` report "not measured", not a
+    /// plausible number. Fails if anyone reinstates the 1e-9 `f32::max`
+    /// floor: it would turn the poisoned forward pass into a finite ~20.7 nats.
+    #[test]
+    fn test_loss_bpb_nan_weight_is_not_laundered() {
+        let config = AttentionConfig {
+            d_model: 64,
+            n_heads: 2,
+            n_layers: 1,
+            vocab_size: 32,
+            max_seq_len: 16,
+            ..Default::default()
+        };
+        let tokens: Vec<usize> = (0..16).map(|i| i % 32).collect();
+
+        let healthy = AttentionModel::new(config.clone());
+        let (loss, bpb) = healthy
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
+        assert!(loss.is_finite() && loss > 0.0, "healthy loss: {}", loss);
+        assert!(bpb.is_finite() && bpb > 0.0, "healthy bpb: {}", bpb);
+
+        let mut poisoned = AttentionModel::new(config);
+        poisoned.embed[0] = f32::NAN;
+        assert_eq!(
+            poisoned.loss_bpb(&tokens),
+            None,
+            "a NaN weight must not yield a measurement"
+        );
+    }
+
     #[test]
     fn test_loss_bpb_finite() {
         let config = AttentionConfig {
@@ -1001,7 +1049,9 @@ mod tests {
         };
         let model = AttentionModel::new(config);
         let tokens: Vec<usize> = (0..16).map(|i| i % 32).collect();
-        let (loss, bpb) = model.loss_bpb(&tokens);
+        let (loss, bpb) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
         assert!(loss.is_finite());
         assert!(bpb.is_finite());
         assert!(bpb > 0.0);
@@ -1021,13 +1071,17 @@ mod tests {
         let mut model = AttentionModel::new(config);
         let tokens: Vec<usize> = (0..16).map(|i| i % 32).collect();
 
-        let (loss_before, _) = model.loss_bpb(&tokens);
+        let (loss_before, _) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
 
         for _ in 0..5 {
             model.train_step(&tokens);
         }
 
-        let (loss_after, _) = model.loss_bpb(&tokens);
+        let (loss_after, _) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
 
         assert!(
             loss_after < loss_before,

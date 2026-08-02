@@ -1,0 +1,22 @@
+# Pin the compiler.
+#
+# A project whose claim is reproducibility cannot leave its own toolchain to
+# chance. Without this file the version is whatever each checkout happens to
+# have installed, and nothing records which compiler produced an artifact --
+# the same defect family as an empty provenance field: it looks controlled and
+# is not.
+#
+# 1.96.0 is the version that produced the calibration artifacts documented in
+# README.md (sidecar schema trios-checkpoint-record/3 records it per run).
+# Pinning it here also makes the cross-architecture reproducibility check
+# meaningful: a rust-toolchain.toml takes precedence over the `rustup default`
+# line in Dockerfile, so a Railway (x86_64 linux) build and a local
+# (aarch64 macos) build now differ ONLY in CPU architecture and OS. Without
+# this pin a hash mismatch between the two would be uninterpretable -- compiler,
+# architecture and OS would all have moved at once.
+#
+# Bump deliberately, never incidentally, and re-measure the calibration table
+# in README.md when you do: a compiler change may legitimately move the bytes.
+[toolchain]
+channel = "1.96.0"
+profile = "minimal"

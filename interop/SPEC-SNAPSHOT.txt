@@ -1,0 +1,60 @@
+//! Checkpoint save/load. Stored under `${TRIOS_CHECKPOINT_DIR}/{run-name}/{step}.bin`.
+//! Resume sets `step_done` and re-attaches optimizer state.
+//!
+//! P4 addition: `ema_average` for post-hoc EMA over last N checkpoints.
+//! Reference: Sanyal et al. 2024 — free generalization gain at zero training cost.
+//!
+//! # EPIC-446 — the on-disk artifact format (version 1)
+//!
+//! A checkpoint file is `${TRIOS_CHECKPOINT_DIR:-checkpoints}/{run}/{step}.bin`.
+//! Every multi-byte integer and float is LITTLE-ENDIAN; floats are stored as
+//! their IEEE-754 bit patterns via `to_le_bytes`, so NaN payloads and signed
+//! zeros round-trip exactly. No padding, no alignment, no compression, no
+//! trailer. Three sections:
+//!
+//! ```text
+//!   header (152 bytes) | tensor directory (152 bytes) | payload
+//! ```
+//!
+//! Header, at absolute byte offsets:
+//!
+//! ```text
+//!    0   8  magic = b"TRIOSCKP"
+//!    8   4  format_version: u32 = 1
+//!   12   4  header_len: u32 = 152 (absolute offset of the tensor directory)
+//!   16   4  vocab      20   4  dim         24   4  num_ctx
+//!   28   4  hidden     32   4  d_model     36   4  num_heads
+//!   40   4  attn_cfg_seq_len                44   4  num_attn_layers
+//!   48   4  ngram      52   4  tensor_count = 19
+//!   56   8  qk_gain: f64 bits
+//!   64   8  attn_cfg_lr: f64 bits (HybridAttnConfig::lr, NOT the training lr)
+//!   72   4  train_lr: f32 bits    76   4  attn_scale: f32 bits
+//!   80   4  attn_seq: u32
+//!   84  24  ctx_weights: [f32; 6] bits, index order 0..5
+//!  108   8  seed: u64            116   8  step: u64
+//!  124   1  gf16_enabled: u8     125   1  data_synthetic: u8
+//!  126   2  reserved (must be zero, rejected if nonzero)
+//!  128   8  optimizer: ASCII, NUL-padded
+//!  136  16  fake_quant_format: ASCII, NUL-padded
+//! ```
+//!
+//! The tensor directory is 19 consecutive `u64` element counts (f32 counts,
+//! not byte counts) in the canonical order below. It is purely redundant with
+//! the header scalars; it exists so that a load which would produce a
+//! differently shaped model fails loudly instead of reshaping silently.
+//!
+//! Canonical tensor order (MUST NOT CHANGE within version 1):
+//!
+//! ```text
+//!   0 embed  1..6 ctx[0..5]  7 proj  8 attn_down  9 attn_up  10 lm_head
+//!  11 wq  12 wk  13 wv  14 wo  15 wq2  16 wk2  17 wv2  18 wo2
+//! ```
+//!
+//! Note that `attn_down` (8) and `attn_up` (9) have identical element counts,
+//! so the directory cannot detect a swap between them: canonical-order
+//! discipline is the only protection there.
+//!
+//! `file_len = 304 + 4 * sum(directory counts)`.
+//!
+//! # Why a hand-rolled binary format
+//!

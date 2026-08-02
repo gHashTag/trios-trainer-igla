@@ -1,10 +1,16 @@
-// matrix_ledger — Phase C lane L-MATRIX-LEDGER (P0 cascade-blocker, gHashTag/trios#380).
+// matrix_ledger -- Phase C lane L-MATRIX-LEDGER (P0 cascade-blocker, gHashTag/trios#380).
 //
 // Purpose: collect every per-cell `cell.json` artifact produced by the
 // format-algo-matrix workflow, merge them into a versioned JSONL ledger
-// at `assertions/matrix_samples.jsonl`, paint forbidden seeds {42,43,44,45}
-// into phi-derived ints, and compute a per-cell `falsifier_2_hit` boolean
-// (R7 witness for AP.B Falsifier-2 IGLA-track).
+// at `assertions/matrix_samples.jsonl`, and compute a per-cell
+// `falsifier_2_hit` boolean (R7 witness for AP.B Falsifier-2 IGLA-track).
+//
+// The ledger records the seed the cell was RUN with. It does not transform it.
+// An earlier revision repainted the forbidden band {42,43,44,45} into
+// {47,89,144,123} -- values that are themselves legitimate canon seeds -- and
+// emitted only the rewritten number, so a repainted row was indistinguishable
+// from a genuine one. That rewrite is deleted; a forbidden seed now rejects the
+// whole collect run with exit code 4 and a message naming the seed.
 //
 // Invocation (CI):
 //   cargo run -p trios-trainer --bin matrix_ledger --release -- collect \
@@ -14,13 +20,13 @@
 //     --run-id "$GITHUB_RUN_ID"
 //
 // Constitutional notes:
-//   * R1 Rust-only — no .py / .sh shims. Pure Rust binary.
-//   * R3 PR-only — never force-pushes; the workflow opens an auto-PR.
-//   * R4 trace — every numeric column documented in
+//   * R1 Rust-only -- no .py / .sh shims. Pure Rust binary.
+//   * R3 PR-only -- never force-pushes; the workflow opens an auto-PR.
+//   * R4 trace -- every numeric column documented in
 //     assertions/igla_assertions.json::matrix_ledger.column_trace.
-//   * R5 honest — missing/malformed cells emit a `parse_error` row instead
+//   * R5 honest -- missing/malformed cells emit a `parse_error` row instead
 //     of silently dropping them; total rows = total cells in the matrix.
-//   * R7 witness — falsifier_2_hit derived from
+//   * R7 witness -- falsifier_2_hit derived from
 //     bpb > GATE2_TARGET (1.85) || loss diverged (final >= 1e6 || NaN/Inf).
 //
 // Anchor: phi^2 + phi^-2 = 3.
@@ -38,6 +44,29 @@ use serde::{Deserialize, Serialize};
 const GATE2_TARGET_BPB: f64 = 1.85;
 const FORBIDDEN_SEEDS: [i64; 4] = [42, 43, 44, 45];
 
+/// Exit code for a cell carrying a seed from the forbidden band. Mirrors
+/// `matrix_runner.rs` GUARD 3, which already refuses the same band with 4.
+const EXIT_FORBIDDEN_SEED: u8 = 4;
+/// Exit code for every other fatal condition (bad args, unreadable root, IO).
+const EXIT_GENERAL: u8 = 2;
+
+/// A fatal ledger condition, carrying its own exit code so `main` never has to
+/// pattern-match on message text.
+#[derive(Debug)]
+struct LedgerError {
+    code: u8,
+    message: String,
+}
+
+impl From<String> for LedgerError {
+    fn from(message: String) -> Self {
+        Self {
+            code: EXIT_GENERAL,
+            message,
+        }
+    }
+}
+
 /// Schema for one row of `assertions/matrix_samples.jsonl`. Keep in lockstep
 /// with `assertions/igla_assertions.json::matrix_ledger.column_trace` and the
 /// `\section{matrix-ledger}` block in `docs/phd/appendix/L-pollen-channel.tex`.
@@ -46,14 +75,30 @@ struct LedgerRow {
     cell_id: String,
     format: String,
     algo: String,
-    seed_phi: i64,
+    /// The seed the cell was RUN with, copied verbatim from `cell.json`.
+    /// Never transformed -- see the module header for the deleted repaint.
+    seed: i64,
     hidden: i32,
     step: i32,
+    /// `cell.json::bpb`, i.e. `cpu_train`'s `final_bpb`: the value measured at
+    /// `step == steps`. Not the minimum -- that is `best_bpb`, carried beside it.
     bpb: f64,
+    /// `cell.json::best_bpb`: the minimum over all evaluated steps, at an
+    /// unrecorded step. Carried so a reader can see the two are different
+    /// numbers instead of inferring one from the other. Empty upstream artifacts
+    /// default it to 0.0, which is why `bpb` is the column the falsifier reads.
+    best_bpb: f64,
     initial_bpb: f64,
     delta_bpb: f64,
-    loss_final: f64,
-    wallclock_ms: i64,
+    /// `cell.json::format_executed`: the FormatKind `cpu_train` actually ran,
+    /// as opposed to `format`, which is the requested spelling. An empty string
+    /// means the artifact predates the field; it is reported, never guessed.
+    format_executed: String,
+    /// Derived: `bpb * ln 2`. Carries NO independent information -- it is the
+    /// `bpb` column in nats instead of bits. Kept only because the Falsifier-2
+    /// divergence clause is phrased in loss units; do not read it as a second
+    /// measurement, and do not average or plot it alongside `bpb`.
+    loss_final_derived: f64,
     commit_sha: String,
     workflow_run_id: String,
     falsifier_2_hit: bool,
@@ -81,9 +126,13 @@ struct CellArtifact {
     #[serde(default)]
     bpb: f64,
     #[serde(default)]
+    best_bpb: f64,
+    #[serde(default)]
     initial_bpb: f64,
     #[serde(default)]
     delta_bpb: f64,
+    #[serde(default)]
+    format_executed: String,
     #[serde(default)]
     sha: String,
     #[serde(default)]
@@ -92,39 +141,40 @@ struct CellArtifact {
     ts_unix: i64,
 }
 
-/// Forbidden seeds {42,43,44,45} are repainted to phi-derived ints rooted in
-/// the closed-form Lucas/Fibonacci pair. Mapping is fixed (R4 trace) so the
-/// rewrite is reproducible and auditable:
-///
-///   42 -> Lucas(8) = 47
-///   43 -> Fib(11) = 89
-///   44 -> Fib(12) = 144
-///   45 -> Lucas(10) = 123
-///
-/// All four targets sit far from the {42..45} band and are explicitly cited
-/// by `t27/proofs/forbidden_seeds.v` (see Theorem `forbidden_seed_repaint`).
-fn paint_seed(seed: i64) -> i64 {
-    match seed {
-        42 => 47,
-        43 => 89,
-        44 => 144,
-        45 => 123,
-        other => other,
+/// A seed in the forbidden band {42,43,44,45} rejects the cell. It is never
+/// renamed. The deleted seed-repaint helper mapped 42->47, 43->89, 44->144, 45->123;
+/// because those four targets are themselves legitimate canon seeds, a
+/// repainted row was byte-indistinguishable from a genuine run at the target
+/// seed, and the only trace was an eprintln to an expiring CI log.
+/// `matrix_runner.rs` GUARD 3 refuses the band upstream; this is the second gate.
+fn reject_forbidden_seed(seed: i64, cell: &str) -> Result<(), LedgerError> {
+    if FORBIDDEN_SEEDS.contains(&seed) {
+        return Err(LedgerError {
+            code: EXIT_FORBIDDEN_SEED,
+            message: format!(
+                "cell {cell:?} carries forbidden seed {seed} (band {FORBIDDEN_SEEDS:?}); \
+                 the ledger does not rename seeds -- re-run the cell with a canon seed"
+            ),
+        });
     }
+    Ok(())
 }
 
 /// R7 witness for AP.B Falsifier-2 (IGLA-track).
 /// A cell flips the falsifier when:
 ///   * `bpb > GATE2_TARGET_BPB` (Gate-2 target = 1.85), OR
-///   * `loss_final` is NaN, +/-Inf, or >= 1e6 (numerical divergence).
-fn falsifier_2_hit(bpb: f64, loss_final: f64) -> bool {
+///   * `loss_final_derived` is NaN, +/-Inf, or >= 1e6 (numerical divergence).
+///
+/// Note the second argument is `bpb * ln 2`, so the divergence clause is a
+/// restatement of the first in loss units, not an independent check.
+fn falsifier_2_hit(bpb: f64, loss_final_derived: f64) -> bool {
     if bpb > GATE2_TARGET_BPB {
         return true;
     }
-    if loss_final.is_nan() || loss_final.is_infinite() {
+    if loss_final_derived.is_nan() || loss_final_derived.is_infinite() {
         return true;
     }
-    if loss_final >= 1e6 {
+    if loss_final_derived >= 1e6 {
         return true;
     }
     false
@@ -158,7 +208,7 @@ fn arg_value(args: &[String], flag: &str) -> Option<String> {
     None
 }
 
-fn collect(args: &[String]) -> Result<(), String> {
+fn collect(args: &[String]) -> Result<(), LedgerError> {
     let artefact_root = arg_value(args, "artefact-root").unwrap_or_else(|| "artefacts".into());
     let out_path =
         arg_value(args, "out").unwrap_or_else(|| "assertions/matrix_samples.jsonl".into());
@@ -171,9 +221,10 @@ fn collect(args: &[String]) -> Result<(), String> {
 
     let root = PathBuf::from(&artefact_root);
     if !root.exists() {
-        return Err(format!(
-            "artefact root {artefact_root:?} does not exist (CI step ordering issue?)"
-        ));
+        return Err(
+            format!("artefact root {artefact_root:?} does not exist (CI step ordering issue?)")
+                .into(),
+        );
     }
 
     // Walk every `cell.json` under the artefact root. Each per-cell artifact
@@ -189,17 +240,16 @@ fn collect(args: &[String]) -> Result<(), String> {
 
     let mut rows: Vec<LedgerRow> = Vec::with_capacity(cell_files.len());
     for path in &cell_files {
-        let row = parse_one(path, &commit_sha, &run_id);
-        rows.push(row);
+        rows.push(parse_one(path, &commit_sha, &run_id)?);
     }
 
-    // Deterministic sort: format, algo, seed_phi, hidden — so the JSONL diff
+    // Deterministic sort: format, algo, seed, hidden -- so the JSONL diff
     // on `main` is stable across reruns of the same matrix.
     rows.sort_by(|a, b| {
         a.format
             .cmp(&b.format)
             .then(a.algo.cmp(&b.algo))
-            .then(a.seed_phi.cmp(&b.seed_phi))
+            .then(a.seed.cmp(&b.seed))
             .then(a.hidden.cmp(&b.hidden))
     });
 
@@ -249,51 +299,64 @@ fn walk_for_cell_json(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn parse_one(path: &Path, commit_sha: &str, run_id: &str) -> LedgerRow {
+fn parse_one(path: &Path, commit_sha: &str, run_id: &str) -> Result<LedgerRow, LedgerError> {
     let bytes = match fs::read(path) {
         Ok(b) => b,
-        Err(e) => return parse_error_row(path, format!("read: {e}"), commit_sha, run_id),
+        Err(e) => {
+            return Ok(parse_error_row(
+                path,
+                format!("read: {e}"),
+                commit_sha,
+                run_id,
+            ))
+        }
     };
     let artifact: CellArtifact = match serde_json::from_slice(&bytes) {
         Ok(a) => a,
-        Err(e) => return parse_error_row(path, format!("json: {e}"), commit_sha, run_id),
+        Err(e) => {
+            return Ok(parse_error_row(
+                path,
+                format!("json: {e}"),
+                commit_sha,
+                run_id,
+            ))
+        }
     };
 
-    if FORBIDDEN_SEEDS.contains(&artifact.seed) {
-        eprintln!(
-            "[matrix_ledger] painting forbidden seed {} -> {} for cell {}",
-            artifact.seed,
-            paint_seed(artifact.seed),
-            artifact.canon_name
-        );
-    }
-    let seed_phi = paint_seed(artifact.seed);
-    // Loss isn't directly emitted by cpu_train; reconstruct as bpb*ln(2) per
-    // bit-per-byte definition, a convention also documented in
-    // `assertions/igla_assertions.json::matrix_ledger.column_trace.loss_final`.
-    let loss_final = if artifact.bpb.is_finite() {
+    // A forbidden seed aborts the whole collect: it means an upstream guard was
+    // bypassed, and a ledger that silently accepted it would be worthless.
+    let cell_label = if artifact.canon_name.is_empty() {
+        path.display().to_string()
+    } else {
+        artifact.canon_name.clone()
+    };
+    reject_forbidden_seed(artifact.seed, &cell_label)?;
+
+    let seed = artifact.seed;
+    // Loss isn't directly emitted by cpu_train; this is bpb restated in nats as
+    // bpb*ln(2). It is a unit conversion of the `bpb` column, NOT a second
+    // measurement -- see `LedgerRow::loss_final_derived`.
+    let loss_final_derived = if artifact.bpb.is_finite() {
         artifact.bpb * std::f64::consts::LN_2
     } else {
         f64::NAN
     };
-    let cell_id = format!(
-        "{}__{}__seedphi_{}",
-        artifact.format, artifact.algo, seed_phi
-    );
+    let cell_id = format!("{}__{}__seed_{}", artifact.format, artifact.algo, seed);
     let bpb = artifact.bpb;
-    let falsifier_2_hit = falsifier_2_hit(bpb, loss_final);
-    LedgerRow {
+    let falsifier_2_hit = falsifier_2_hit(bpb, loss_final_derived);
+    Ok(LedgerRow {
         cell_id,
         format: artifact.format,
         algo: artifact.algo,
-        seed_phi,
+        seed,
         hidden: artifact.hidden,
         step: artifact.step,
         bpb,
+        best_bpb: artifact.best_bpb,
         initial_bpb: artifact.initial_bpb,
         delta_bpb: artifact.delta_bpb,
-        loss_final,
-        wallclock_ms: 0,
+        format_executed: artifact.format_executed,
+        loss_final_derived,
         commit_sha: if !artifact.sha.is_empty() {
             artifact.sha
         } else {
@@ -307,7 +370,7 @@ fn parse_one(path: &Path, commit_sha: &str, run_id: &str) -> LedgerRow {
         falsifier_2_hit,
         ts_utc: ts_iso8601(artifact.ts_unix),
         parse_error: None,
-    }
+    })
 }
 
 fn parse_error_row(path: &Path, err: String, commit_sha: &str, run_id: &str) -> LedgerRow {
@@ -326,8 +389,9 @@ fn parse_error_row(path: &Path, err: String, commit_sha: &str, run_id: &str) -> 
         commit_sha: commit_sha.to_string(),
         workflow_run_id: run_id.to_string(),
         bpb: f64::NAN,
-        loss_final: f64::NAN,
-        // R5: a parse error is itself a witness — Falsifier-2 trips because
+        best_bpb: f64::NAN,
+        loss_final_derived: f64::NAN,
+        // R5: a parse error is itself a witness -- Falsifier-2 trips because
         // we cannot prove the cell stayed below Gate-2. Surface it to the
         // auditor instead of hiding the row.
         falsifier_2_hit: true,
@@ -342,13 +406,13 @@ fn main() -> ExitCode {
     let subcmd = args.get(1).cloned().unwrap_or_default();
     let result = match subcmd.as_str() {
         "collect" => collect(&args[2..]),
-        other => Err(format!("unknown subcommand: {other:?}; supported: collect")),
+        other => Err(format!("unknown subcommand: {other:?}; supported: collect").into()),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("[matrix_ledger] FATAL: {e}");
-            ExitCode::from(2)
+            eprintln!("[matrix_ledger] FATAL: {}", e.message);
+            ExitCode::from(e.code)
         }
     }
 }
@@ -358,13 +422,54 @@ mod tests {
     use super::*;
 
     #[test]
-    fn paint_seed_repaints_forbidden_band() {
-        assert_eq!(paint_seed(42), 47);
-        assert_eq!(paint_seed(43), 89);
-        assert_eq!(paint_seed(44), 144);
-        assert_eq!(paint_seed(45), 123);
-        assert_eq!(paint_seed(7), 7);
-        assert_eq!(paint_seed(1597), 1597);
+    fn forbidden_seeds_are_rejected_not_repainted() {
+        for seed in FORBIDDEN_SEEDS {
+            let err = reject_forbidden_seed(seed, "IGLA-MATRIX-f32-h96-LR001-rng42-adamw")
+                .expect_err("a forbidden seed must reject the cell");
+            assert_eq!(err.code, EXIT_FORBIDDEN_SEED);
+            assert!(
+                err.message.contains(&seed.to_string()),
+                "rejection must name the offending seed, got: {}",
+                err.message
+            );
+        }
+    }
+
+    #[test]
+    fn canon_seeds_are_accepted_verbatim() {
+        // 47/89/144/123 are exactly the values the deleted repaint helper wrote.
+        // They are legitimate seeds in their own right, which is why a
+        // repainted row used to be indistinguishable from a genuine one.
+        for seed in [7i64, 47, 89, 123, 144, 1597] {
+            assert!(
+                reject_forbidden_seed(seed, "cell_under_test").is_ok(),
+                "canon seed {seed} must pass"
+            );
+        }
+    }
+
+    #[test]
+    fn ledger_row_has_no_seed_rewrite_column() {
+        // Serialize a default row and assert the schema exposes the raw seed
+        // and no phi-painted alias, and no hardcoded wallclock column.
+        let json = serde_json::to_string(&LedgerRow::default()).expect("serialize");
+        assert!(json.contains("\"seed\":"), "missing raw seed column: {json}");
+        assert!(!json.contains("seed_phi"), "seed_phi resurrected: {json}");
+        assert!(!json.contains("wallclock_ms"), "wallclock resurrected: {json}");
+        assert!(
+            json.contains("\"loss_final_derived\":"),
+            "derived loss must be labelled as derived: {json}"
+        );
+        // The executed format and the running minimum are distinct columns from
+        // the requested format and the step-`steps` bpb.
+        assert!(
+            json.contains("\"format_executed\":"),
+            "executed format must be carried: {json}"
+        );
+        assert!(
+            json.contains("\"best_bpb\":"),
+            "running minimum must be carried separately from bpb: {json}"
+        );
     }
 
     #[test]

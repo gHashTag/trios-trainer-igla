@@ -29,22 +29,53 @@ const SEQ: usize = 128;
 const LN_2: f32 = std::f32::consts::LN_2;
 const PHI_INV: f32 = 0.618033988749895;
 const GF16_FLOOR_FRAC: f32 = 0.7;
-const GATE_FINAL_SEEDS: [u64; 3] = [42, 43, 44];
+/// Seeds forbidden under Canon #93. Mirrors `seed_canon::parse_seed` and
+/// `trios-train`, so no binary in this crate can start a run whose results
+/// another binary would refuse to publish.
+const FORBIDDEN_SEEDS: [u64; 4] = [42, 43, 44, 45];
+/// Default sweep, taken from the crate constant rather than copied: this file
+/// used to hard-code `[42, 43, 44]`, all three of them forbidden.
+const GATE_FINAL_SEEDS: &[u64] = trios_trainer::train_loop::GATE_FINAL_SEEDS;
+const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
+const DEFAULT_VAL_PATH: &str = "data/tiny_shakespeare_val.txt";
 const CTX_WEIGHTS: [f32; NUM_CTX] = [0.70, 0.45, 0.30, 0.20, 0.13, 0.08];
 const NCA_WEIGHT: f32 = 0.25;
 const NCA_K: usize = 9;
 const NCA_ENTROPY_MIN: f32 = 1.5;
 const NCA_ENTROPY_MAX: f32 = 2.8;
 
-fn load_data(path: &str) -> Vec<usize> {
-    let raw = fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"The quick brown fox jumps over the lazy dog. "
-            .repeat(100)
-            .to_vec()
-    });
-    assert!(!raw.is_empty(), "loaded data is empty");
-    raw.into_iter().map(|b| (b as usize) % VOCAB).collect()
+/// Read a corpus from disk. A missing or empty file is an error.
+///
+/// The previous version substituted `"The quick brown fox ...".repeat(100)` on
+/// a read failure: 45 distinct bytes that this architecture memorises to a BPB
+/// sitting comfortably between `JEPA_PROXY_BPB_FLOOR` and `BPB_CHAMPION`, so
+/// every guard downstream passed it and the ledger read it as a breakthrough.
+fn load_data(path: &str) -> Result<Vec<usize>, String> {
+    let raw = fs::read(path).map_err(|e| {
+        format!(
+            "cannot read corpus {path}: {e}. This trainer has no fallback corpus; \
+             provide the file and re-run."
+        )
+    })?;
+    if raw.is_empty() {
+        return Err(format!("corpus {path} is empty"));
+    }
+    Ok(raw.into_iter().map(|b| (b as usize) % VOCAB).collect())
+}
+
+/// Refuse a seed forbidden under Canon #93.
+///
+/// A forbidden seed is a reason to refuse a run, not a constant to preserve:
+/// results measured under 42/43/44/45 cannot be published by `trios-train` or
+/// by the ledger, so producing them costs compute and buys nothing.
+fn canon_check_seed(seed: u64) -> Result<(), String> {
+    if FORBIDDEN_SEEDS.contains(&seed) {
+        return Err(format!(
+            "Canon #93 violation: seed {seed} is forbidden (allowed: 47, 89, 123, 144). \
+             Pass --seed=<allowed>."
+        ));
+    }
+    Ok(())
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -254,9 +285,19 @@ impl HybridModel {
         (combined, ln, hidden, logits, attn_out_saved)
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats, or `None` when the sequence is too short to
+    /// hold an n-gram pair or the forward pass produced a non-number.
+    ///
+    /// A short sequence used to return `0.0`, a loss no model achieves, which
+    /// averaged into `evaluate` as a real reading. `f32::max` also ignores NaN,
+    /// so `logits[target].max(1e-10)` turned a poisoned forward pass into a
+    /// finite 23.03-nat measurement; NaN is now an absence. The 1e-10 clamp is
+    /// kept for a genuinely underflowed probability - capping it is a documented
+    /// floor on surprisal, and dropping those chunks instead would bias the
+    /// reported BPB downward.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < NGRAM + 1 {
-            return 0.0;
+            return None;
         }
         let count = tokens.len() - NGRAM;
         let mut total = 0.0f32;
@@ -264,9 +305,13 @@ impl HybridModel {
             let target = tokens[i + NGRAM].min(VOCAB - 1);
             let (_, _, _, mut logits, _) = self.forward_position(tokens, i);
             softmax(&mut logits);
-            total -= logits[target].max(1e-10).ln();
+            let p = logits[target];
+            if p.is_nan() {
+                return None;
+            }
+            total -= p.max(1e-10).ln();
         }
-        total / count as f32
+        Some(total / count as f32)
     }
 }
 
@@ -375,12 +420,19 @@ fn compute_grads_for_positions(
     }
 }
 
-fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
+/// Mean bits-per-byte over the held-out corpus, or `None` when nothing could
+/// be measured.
+///
+/// The two "f32 maximum" (3.4e38) returns were sentinels that `is_finite()`
+/// accepts, so a
+/// failed evaluation was indistinguishable from a reading everywhere downstream
+/// - including the printed headline and the ledger.
+fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
     let chunk_size = SEQ + 1;
     let num_chunks = 40usize;
     let max_start = tokens.len().saturating_sub(chunk_size);
     if max_start == 0 {
-        return f32::MAX;
+        return None;
     }
     let step = if max_start >= num_chunks * chunk_size {
         max_start / num_chunks
@@ -394,16 +446,26 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> f32 {
         if end - c < NGRAM + 2 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
+        let Some(loss) = model.loss_on_seq(&tokens[c..end]) else {
+            continue;
+        };
         if loss.is_finite() {
             total += loss / LN_2;
             n += 1;
         }
     }
     if n == 0 {
-        f32::MAX
+        None
     } else {
-        total / n as f32
+        Some(total / n as f32)
+    }
+}
+
+/// Render an optional BPB without inventing a number for an absent one.
+fn fmt_bpb(bpb: Option<f32>) -> String {
+    match bpb {
+        Some(v) => format!("{v:.4}"),
+        None => "unmeasured".to_string(),
     }
 }
 
@@ -431,10 +493,29 @@ fn nca_entropy_loss(logits: &[f32]) -> f32 {
     }
 }
 
-fn find_arg<T: std::str::FromStr>(args: &[String], key: &str, default: T) -> T {
-    args.iter()
-        .find(|a| a.starts_with(key))
-        .and_then(|a| a[key.len()..].parse().ok())
+/// Value of `--name=VALUE` or `--name VALUE`, whichever form was used.
+///
+/// The `=`-only parser silently ignored the space-separated form: `--steps 2`
+/// left `steps` at its 81000 default and the run looked like it had honoured
+/// the flag.
+fn arg_value(args: &[String], name: &str) -> Option<String> {
+    for (i, a) in args.iter().enumerate() {
+        let Some(rest) = a.strip_prefix(name) else {
+            continue;
+        };
+        if let Some(v) = rest.strip_prefix('=') {
+            return Some(v.to_string());
+        }
+        if rest.is_empty() {
+            return args.get(i + 1).cloned();
+        }
+    }
+    None
+}
+
+fn find_arg<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> T {
+    arg_value(args, name)
+        .and_then(|v| v.parse().ok())
         .unwrap_or(default)
 }
 
@@ -445,16 +526,23 @@ fn gf16_floor(weights: &mut [f32]) {
     }
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    let seed: u64 = find_arg(&args, "--seed=", 0u64);
-    let steps: usize = find_arg(&args, "--steps=", 81000usize);
-    let base_lr: f32 = find_arg(&args, "--lr=", 0.003f32);
-    let hidden: usize = find_arg(&args, "--hidden=", DEFAULT_HIDDEN);
-    let eval_every: usize = find_arg(&args, "--eval-every=", 1000usize);
-    let accum: usize = find_arg(&args, "--accum=", 4usize);
+    let seed: u64 = find_arg(&args, "--seed", 0u64);
+    let steps: usize = find_arg(&args, "--steps", 81000usize);
+    let base_lr: f32 = find_arg(&args, "--lr", 0.003f32);
+    let hidden: usize = find_arg(&args, "--hidden", DEFAULT_HIDDEN);
+    let eval_every: usize = find_arg(&args, "--eval-every", 1000usize);
+    let accum: usize = find_arg(&args, "--accum", 4usize);
+    let train_path =
+        arg_value(&args, "--train-path").unwrap_or_else(|| DEFAULT_TRAIN_PATH.to_string());
+    let val_path = arg_value(&args, "--val-path").unwrap_or_else(|| DEFAULT_VAL_PATH.to_string());
 
     let gf16_floor_step = (GF16_FLOOR_FRAC * steps as f32).floor() as usize;
+    // Shared with `train_loop` so there is exactly one definition of the knob.
+    // `gf16_floor` mutates the weights, so its cadence belongs to the recipe;
+    // gating it on `eval_every` let an observation parameter change the model.
+    let gf16_every = trios_trainer::train_loop::gf16_floor_every() as usize;
 
     let seeds: Vec<u64> = if seed > 0 {
         vec![seed]
@@ -462,11 +550,17 @@ fn main() {
         GATE_FINAL_SEEDS.to_vec()
     };
 
+    // Canon #93 at the effective post-config seed: whatever the sweep or the
+    // flag resolved to is what the run would train under.
+    for &s in &seeds {
+        canon_check_seed(s)?;
+    }
+
     for &seed in &seeds {
         eprintln!("=== Hybrid Train (ngram+attn) seed={} ===", seed);
         eprintln!(
-            "steps={} lr={} hidden={} eval_every={} accum={}",
-            steps, base_lr, hidden, eval_every, accum
+            "steps={} lr={} hidden={} eval_every={} gf16_floor_every={} accum={}",
+            steps, base_lr, hidden, eval_every, gf16_every, accum
         );
         eprintln!(
             "DIM={} NUM_CTX={} NGRAM={} SEQ={} VOCAB={}",
@@ -474,8 +568,8 @@ fn main() {
         );
         eprintln!("ctx_weights={:?}", CTX_WEIGHTS);
 
-        let train_data = load_data("data/tiny_shakespeare.txt");
-        let val_data = load_data("data/tiny_shakespeare_val.txt");
+        let train_data = load_data(&train_path)?;
+        let val_data = load_data(&val_path)?;
         eprintln!("train={} val={}", train_data.len(), val_data.len());
 
         let mut model = HybridModel::new(hidden, seed);
@@ -490,12 +584,6 @@ fn main() {
             total_params as f64 / 1000.0,
             d
         );
-
-        let train_data = load_data("data/tiny_shakespeare.txt");
-        let val_data = load_data("data/tiny_shakespeare_val.txt");
-        eprintln!("train={} val={}", train_data.len(), val_data.len());
-
-        let mut model = HybridModel::new(hidden, seed);
 
         let wd = 0.04f32;
         let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
@@ -513,10 +601,15 @@ fn main() {
         let mut opt_head = AdamW::new(VOCAB * hidden, wd);
 
         let init_bpb = evaluate(&model, &val_data);
-        eprintln!("Initial val_bpb={:.4}", init_bpb);
+        eprintln!("Initial val_bpb={}", fmt_bpb(init_bpb));
 
-        let mut best_ema_bpb = init_bpb;
-        let mut ema_bpb = init_bpb;
+        let mut best_ema_bpb: Option<f32> = init_bpb;
+        let mut ema_bpb: Option<f32> = init_bpb;
+        // The raw reading from the last evaluation this run TOOK. The headline
+        // used to be `best_ema_bpb`: a running minimum of a phi-inverse-weighted
+        // EMA seeded at init, which depends on `--eval-every` and is therefore
+        // not comparable between runs with different eval cadence.
+        let mut final_val_bpb: Option<f32> = None;
         let t0 = Instant::now();
         let warmup = steps / 10;
 
@@ -603,7 +696,7 @@ fn main() {
             opt_attn_up.update(&mut model.attn_up, &g_attn_up, lr);
             opt_head.update(&mut model.lm_head, &g_head, lr);
 
-            if step >= gf16_floor_step && step % eval_every == 0 {
+            if step >= gf16_floor_step && step % gf16_every == 0 {
                 gf16_floor(&mut model.embed);
                 gf16_floor(&mut model.proj);
                 gf16_floor(&mut model.lm_head);
@@ -613,15 +706,28 @@ fn main() {
             }
 
             if step % eval_every == 0 || step == steps {
-                let val_bpb = evaluate(&model, &val_data);
-                ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * val_bpb;
-                if ema_bpb < best_ema_bpb && ema_bpb.is_finite() {
-                    best_ema_bpb = ema_bpb;
-                }
                 let t = t0.elapsed().as_secs_f64();
+                let Some(val_bpb) = evaluate(&model, &val_data) else {
+                    println!("seed={seed} step={step} val_bpb=unmeasured t={t:.1}s");
+                    continue;
+                };
+                final_val_bpb = Some(val_bpb);
+                let ema = match ema_bpb {
+                    Some(prev) => PHI_INV * prev + (1.0 - PHI_INV) * val_bpb,
+                    None => val_bpb,
+                };
+                ema_bpb = Some(ema);
+                if ema.is_finite() && best_ema_bpb.is_none_or(|b| ema < b) {
+                    best_ema_bpb = Some(ema);
+                }
                 println!(
-                    "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={:.4} t={:.1}s",
-                    seed, step, val_bpb, ema_bpb, best_ema_bpb, t
+                    "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best={} t={:.1}s",
+                    seed,
+                    step,
+                    val_bpb,
+                    ema,
+                    fmt_bpb(best_ema_bpb),
+                    t
                 );
                 // R5-honest ledger write to ssot.bpb_samples (ARCH writer hook).
                 // No-op if TRIOS_CANON_NAME unset; safe to call every eval.
@@ -632,15 +738,28 @@ fn main() {
                             seed as i32,
                             step as i32,
                             val_bpb,
-                            Some(ema_bpb),
+                            Some(ema),
                         );
                     }
                 }
             }
         }
 
-        println!("seed={} BPB={:.4}", seed, best_ema_bpb);
+        // The headline is the measured final val_bpb, or an admission that no
+        // measurement was taken - matching `trios-train`.
+        match final_val_bpb {
+            Some(v) => println!("seed={seed} bpb={v:.4}"),
+            None => println!("seed={seed} bpb=unmeasured"),
+        }
     }
+
+    // A DSN was configured means this run was supposed to be recorded. If every
+    // write was dropped, exiting 0 would let a supervisor file it as a success.
+    let code = neon_writer::ledger_exit_code();
+    if code != 0 {
+        std::process::exit(code);
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -667,14 +786,45 @@ mod tests {
         );
     }
 
+    /// 42/43/44 used to BE the sweep, and this test asserted they stayed that
+    /// way. A forbidden seed is a reason to refuse a run, not a constant to
+    /// preserve, so the assertion is now refusal.
     #[test]
-    fn gate_final_seeds_are_42_43_44() {
-        assert_eq!(&GATE_FINAL_SEEDS, &[42u64, 43, 44]);
+    fn canon_93_refuses_the_forbidden_seeds() {
+        for seed in [42u64, 43, 44, 45] {
+            let err = canon_check_seed(seed)
+                .expect_err("a seed forbidden under Canon #93 must not start a run");
+            assert!(err.contains("forbidden"), "{err}");
+            assert!(err.contains(&seed.to_string()), "{err}");
+        }
+    }
+
+    #[test]
+    fn canon_93_admits_the_allowed_seeds() {
+        for seed in [47u64, 89, 123, 144] {
+            assert!(canon_check_seed(seed).is_ok(), "seed {seed} is allowed");
+        }
+    }
+
+    /// The default sweep must be startable: every seed in it has to survive the
+    /// same guard `main` applies.
+    #[test]
+    fn gate_final_seeds_are_canon_93_clean() {
+        assert!(!GATE_FINAL_SEEDS.is_empty());
+        for &seed in GATE_FINAL_SEEDS {
+            assert!(
+                canon_check_seed(seed).is_ok(),
+                "default sweep contains a seed the binary itself refuses: {seed}"
+            );
+        }
     }
 
     #[test]
     fn phi_hidden_is_828() {
-        assert_eq!(DEFAULT_HIDDEN, 828, "φ-scaled hidden = round(φ*512) = 828");
+        assert_eq!(
+            DEFAULT_HIDDEN, 828,
+            "phi-scaled hidden = round(phi*512) = 828"
+        );
     }
 
     #[test]
@@ -682,10 +832,49 @@ mod tests {
         assert!((PHI_INV - 0.618033988749895).abs() < 1e-12);
     }
 
+    /// `--steps 2` used to leave `steps` at its 81000 default because only the
+    /// `--steps=2` form was recognised.
     #[test]
-    fn falsify_seed_outside_gate_final_set() {
-        let allowed: Vec<u64> = GATE_FINAL_SEEDS.to_vec();
-        assert!(!allowed.contains(&41), "seed 41 frozen out");
-        assert!(!allowed.contains(&45), "seed 45 frozen out");
+    fn arg_value_reads_both_forms() {
+        let sp: Vec<String> = ["prog", "--steps", "2", "--train-path", "data/x.txt"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(arg_value(&sp, "--steps").as_deref(), Some("2"));
+        assert_eq!(arg_value(&sp, "--train-path").as_deref(), Some("data/x.txt"));
+        assert_eq!(find_arg(&sp, "--steps", 81000usize), 2usize);
+
+        let eq: Vec<String> = ["prog", "--steps=2"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(find_arg(&eq, "--steps", 81000usize), 2usize);
+
+        let none: Vec<String> = vec!["prog".to_string()];
+        assert_eq!(arg_value(&none, "--steps"), None);
+        assert_eq!(find_arg(&none, "--steps", 81000usize), 81000usize);
+    }
+
+    /// A missing corpus is an error, never a 45-byte pangram that memorises to
+    /// a plausible-looking BPB.
+    #[test]
+    fn load_data_refuses_a_missing_corpus() {
+        let err = load_data("data/definitely_absent_corpus_for_tests.txt")
+            .expect_err("a missing corpus must be an error");
+        assert!(err.contains("cannot read corpus"), "{err}");
+        assert!(!err.contains("quick brown fox"), "{err}");
+    }
+
+    /// An evaluation that measured nothing is an absence, not 3.4e38 and
+    /// not `0.0`.
+    #[test]
+    fn fmt_bpb_never_invents_a_number() {
+        assert_eq!(fmt_bpb(None), "unmeasured");
+        assert_eq!(fmt_bpb(Some(2.6141)), "2.6141");
+    }
+
+    #[test]
+    fn evaluate_returns_absence_on_a_corpus_too_short_to_measure() {
+        let model = HybridModel::new(64, 47);
+        let tokens: Vec<usize> = vec![1; SEQ];
+        assert_eq!(evaluate(&model, &tokens), None);
+        assert_eq!(model.loss_on_seq(&tokens[..NGRAM]), None);
     }
 }

@@ -1,17 +1,71 @@
 use std::fs;
 use std::io::Write;
+use std::process::ExitCode;
 use std::time::Instant;
 
 use trios_trainer::fake_quant::{self, FormatKind};
 
 const LN_2: f32 = std::f32::consts::LN_2;
 
-fn load_data(path: &str) -> Vec<usize> {
-    let raw = fs::read(path).unwrap_or_else(|e| {
-        eprintln!("Failed to load {}: {}. Using fallback.", path, e);
-        b"Hello world this is a tiny training dataset for IGLA".to_vec()
-    });
-    raw.into_iter().map(|b| b as usize).collect()
+/// Default corpus paths. These are the files that actually exist in `data/`
+/// and whose bytes are pinned by SHA-256 in `data/README.md`:
+///   tiny_shakespeare.txt      1015394 B  1a5aead1db78653f...
+///   tiny_shakespeare_val.txt   100000 B  2088af36b1c78310...
+/// train ++ val reconstructs the canonical corpus (86c4e6aa..., 1115394 B),
+/// so the two splits are byte-disjoint by construction.
+///
+/// The previous default spelled the corpus without the underscore in
+/// "tiny_shakespeare", a path that has never existed in this repository.
+/// Combined with the fallback that used to live in `load_data`, every run
+/// silently trained on a 52-byte string.
+const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
+const DEFAULT_VAL_PATH: &str = "data/tiny_shakespeare_val.txt";
+
+/// Eval-corpus preconditions, mirroring `train_loop::MIN_VAL_TOKENS` /
+/// `train_loop::MIN_EVAL_CHUNKS`. Those constants are `pub(crate)` and so are
+/// not reachable from a binary target; the values and the rationale are copied
+/// deliberately rather than weakened. If `train_loop` changes them, change them
+/// here too.
+const MIN_VAL_TOKENS: usize = 8192;
+const MIN_EVAL_CHUNKS: usize = 8;
+
+/// `eval_bpb` never looks at more than this many val tokens.
+const EVAL_TOKEN_CAP: usize = 5000;
+
+/// Number of chunks `eval_bpb` will actually average over for a val stream of
+/// `val_len` tokens at `seq_len`. Mirrors the loop in `CpuModel::eval_bpb`
+/// exactly, so the precondition below refuses precisely the streams that would
+/// have produced an under-averaged mean.
+fn eval_chunk_count(val_len: usize, seq_len: usize) -> usize {
+    let max_eval = EVAL_TOKEN_CAP.min(val_len);
+    let stride = seq_len + 1;
+    let mut n = 0usize;
+    let mut c = 0usize;
+    while c < max_eval {
+        let end = (c + stride).min(max_eval);
+        if end - c >= 3 {
+            n += 1;
+        }
+        c += stride;
+    }
+    n
+}
+
+/// Read a corpus file as byte tokens. There is no fallback: a trainer that
+/// invents its own corpus when the real one is missing reports a number that
+/// was measured against bytes nobody chose.
+fn load_data(path: &str) -> Result<Vec<usize>, String> {
+    let raw = fs::read(path).map_err(|e| {
+        format!(
+            "cannot read corpus {path}: {e}. There is no fallback corpus. \
+             Provision the pinned split (see README.md 'Quickstart' or the \
+             data/README.md manifest) and re-run."
+        )
+    })?;
+    if raw.is_empty() {
+        return Err(format!("corpus {path} is empty (0 bytes)"));
+    }
+    Ok(raw.into_iter().map(|b| b as usize).collect())
 }
 
 fn softmax(v: &mut [f32]) {
@@ -255,7 +309,7 @@ impl Sgdm {
 }
 
 // ---- Lion ------------------------------------------------------------------
-// Chen et al. 2023 — sign update with momentum interpolation
+// Chen et al. 2023 -- sign update with momentum interpolation
 
 struct Lion {
     m: Vec<f32>,
@@ -419,7 +473,7 @@ impl Adafactor {
 }
 
 // ---- LAMB ------------------------------------------------------------------
-// You et al. 2019 — AdamW + layer-wise trust ratio
+// You et al. 2019 -- AdamW + layer-wise trust ratio
 
 struct Lamb {
     m: Vec<f64>,
@@ -484,7 +538,7 @@ impl Lamb {
 }
 
 // ---- ScheduleFree ----------------------------------------------------------
-// Defazio 2024 Algorithm 1 — Polyak-Ruppert averaging with momentum
+// Defazio 2024 Algorithm 1 -- Polyak-Ruppert averaging with momentum
 // State: x (fast iterate), z (averaged iterate)
 // y = (1-beta1)*z + beta1*x  (interpolated point where grad is evaluated)
 // z_{t+1} = z_t + c_{t+1} * (x_{t+1} - z_t)   where c = 1/(t+1)
@@ -528,7 +582,7 @@ impl ScheduleFree {
         let beta1 = self.beta1 as f64;
         let n = params.len();
 
-        // y_t = (1 - beta1)*z + beta1*x  — interpolated eval point
+        // y_t = (1 - beta1)*z + beta1*x  -- interpolated eval point
         // We already have params = y_{t-1}; update in place
 
         // x_{t+1} = x_t - lr * grad(y_t)
@@ -583,7 +637,7 @@ impl RmsProp {
 }
 
 // ---- SOAP ------------------------------------------------------------------
-// Vyas et al. 2024 — "SOAP: Improving and Stabilizing Shampoo using Adam"
+// Vyas et al. 2024 -- "SOAP: Improving and Stabilizing Shampoo using Adam"
 // arXiv:2409.11321. Reference impl on flat parameter vectors:
 //   * AdamW-style (m, v) moments
 //   * Diagonal preconditioner refreshed every `precond_freq` steps from the
@@ -592,10 +646,10 @@ impl RmsProp {
 //     structure, the eigenbasis is the standard basis and SOAP collapses to
 //     a windowed AdamW with periodic preconditioner reset).
 // Honest scope (R5): faithful reduction for flat tensors. Block-structured
-// SOAP with full GG^T eigendecomposition is deferred — flagged below.
+// SOAP with full GG^T eigendecomposition is deferred -- flagged below.
 
 struct Soap {
-    m: Vec<f64>,       // first moment (Adam in eigenbasis ≡ Adam in std basis here)
+    m: Vec<f64>,       // first moment (Adam in eigenbasis == Adam in std basis here)
     v: Vec<f64>,       // second moment
     precond: Vec<f64>, // diagonal preconditioner (EMA of g^2, refreshed)
     lr: f32,
@@ -649,7 +703,7 @@ impl Soap {
             let m_hat = self.m[i] / bc1;
             let v_hat = self.v[i] / bc2;
             // Normalise by max(v_hat, precond) to apply the SOAP "max"
-            // stabiliser (Vyas et al. §3.2): keeps the update bounded by the
+            // stabiliser (Vyas et al. Sec.3.2): keeps the update bounded by the
             // longer-window second-moment estimate.
             let denom = v_hat.max(self.precond[i]).sqrt() + self.eps;
             let upd = m_hat / denom + self.wd * params[i] as f64;
@@ -659,7 +713,7 @@ impl Soap {
 }
 
 // ============================================================================
-// AlgoOpt enum — unified dispatch
+// AlgoOpt enum -- unified dispatch
 // ============================================================================
 
 enum AlgoOpt {
@@ -1247,8 +1301,14 @@ impl CpuModel {
         loss
     }
 
-    fn eval_bpb(&self, tokens: &[usize], seq_len: usize) -> f32 {
-        let max_eval = 5000.min(tokens.len());
+    /// Mean BPB over the val stream, or `None` when nothing could be measured.
+    ///
+    /// This used to return `f32::MAX` when `n == 0`, a sentinel indistinguishable
+    /// from a measurement once it had been written into a JSON field or compared
+    /// with `<`. An absence is now an absence: callers must decide explicitly
+    /// what to do, and no unmeasured value reaches the results file.
+    fn eval_bpb(&self, tokens: &[usize], seq_len: usize) -> Option<f32> {
+        let max_eval = EVAL_TOKEN_CAP.min(tokens.len());
         let eval_tokens = &tokens[..max_eval];
         let mut total_bpb = 0.0f32;
         let mut n = 0usize;
@@ -1265,13 +1325,19 @@ impl CpuModel {
             }
         }
         if n == 0 {
-            return f32::MAX;
+            return None;
         }
-        total_bpb / n as f32
+        Some(total_bpb / n as f32)
     }
 }
 
-fn main() {
+/// Exit codes. `0` only when a BPB was actually measured against a real corpus.
+const EXIT_BAD_FORMAT: u8 = 5;
+const EXIT_BAD_CORPUS: u8 = 6;
+const EXIT_NO_MEASUREMENT: u8 = 7;
+const EXIT_IO: u8 = 8;
+
+fn main() -> ExitCode {
     let format_type = std::env::var("TRIOS_FORMAT_TYPE").ok();
     let seed = arg_or("seed", "42").parse::<u64>().unwrap_or(42);
     let steps = arg_or("steps", "3000").parse::<usize>().unwrap_or(3000);
@@ -1280,9 +1346,6 @@ fn main() {
     let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
     let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
 
-<<<<<<< HEAD
-    // Parse format type for QAT (FakeQuant + STE) — fixes trios#509
-=======
     // Resolve algo name: CLI --algo=<name> takes precedence, then TRIOS_ALGO_TYPE, then "adamw"
     let algo_name_raw = arg_or("algo", "");
     let algo_name: String = if algo_name_raw.is_empty() {
@@ -1295,22 +1358,87 @@ fn main() {
     // R5-honest: announce algo at startup so CI logs can grep it
     println!("ALGO: {} enabled", algo_name);
 
-    // Parse format type for QAT (FakeQuant + STE)
->>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
+    // Parse format type for QAT (FakeQuant + STE).
+    //
+    // An unrecognised TRIOS_FORMAT_TYPE used to fall back to F32 while the
+    // caller (matrix_runner) still wrote the requested spelling into the
+    // `format` column, so a whole matrix axis could be a claim rather than a
+    // measurement. Unknown spellings are now a hard, named exit -- the same
+    // contract `AlgoOpt::from_env` already enforces for optimizers.
     let default_format = "f32".to_string();
     let format_suffix = format_type.as_ref().unwrap_or(&default_format);
-    let format_kind = format_type
-        .as_deref()
-        .and_then(FormatKind::from_env)
-        .unwrap_or(FormatKind::F32);
+    let format_kind = match format_type.as_deref().map(str::trim) {
+        None | Some("") => FormatKind::F32,
+        Some(raw) => match FormatKind::from_env(raw) {
+            Some(k) => k,
+            None => {
+                eprintln!(
+                    "TRIOS_FORMAT_TYPE: unknown format '{}'. Refusing the silent \
+                     F32 fallback that made the format column unverifiable.",
+                    raw
+                );
+                eprintln!(
+                    "Valid choices: {}",
+                    FormatKind::all()
+                        .iter()
+                        .map(|f| f.name())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                return ExitCode::from(EXIT_BAD_FORMAT);
+            }
+        },
+    };
+    // The format that will actually be executed, as opposed to the string the
+    // caller asked for. matrix_runner compares the two.
+    let format_executed = format_kind.name();
     let use_fake_quant = format_kind != FormatKind::F32;
 
     if use_fake_quant {
         println!("QAT: FakeQuant enabled for format {:?}", format_kind);
     }
+    println!(
+        "FORMAT: requested={} executed={}",
+        format_suffix, format_executed
+    );
 
-    let raw_tokens = load_data("data/tinyshakespeare.txt");
-    let tokens: Vec<usize> = raw_tokens.iter().map(|&t| t % vocab).collect();
+    // Corpus paths. Train and val are separate pinned files; the val split is
+    // never carved out of the train stream here, so there is no positional
+    // split to get wrong.
+    let train_path = arg_or(
+        "train-data",
+        &std::env::var("TRIOS_TRAIN_PATH").unwrap_or_else(|_| DEFAULT_TRAIN_PATH.to_string()),
+    );
+    let val_path = arg_or(
+        "val-data",
+        &std::env::var("TRIOS_VAL_PATH").unwrap_or_else(|_| DEFAULT_VAL_PATH.to_string()),
+    );
+    if train_path == val_path {
+        eprintln!(
+            "CORPUS REFUSED: --train-data and --val-data are the same path ({}). \
+             A val stream that is the train stream measures memorisation, not \
+             generalisation.",
+            train_path
+        );
+        return ExitCode::from(EXIT_BAD_CORPUS);
+    }
+
+    let raw_train = match load_data(&train_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("CORPUS REFUSED (train): {e}");
+            return ExitCode::from(EXIT_BAD_CORPUS);
+        }
+    };
+    let raw_val = match load_data(&val_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("CORPUS REFUSED (val): {e}");
+            return ExitCode::from(EXIT_BAD_CORPUS);
+        }
+    };
+    let train_tokens: Vec<usize> = raw_train.iter().map(|&t| t % vocab).collect();
+    let val_tokens: Vec<usize> = raw_val.iter().map(|&t| t % vocab).collect();
 
     println!("=== trios CPU Training (Analytical Backprop) ===");
     println!(
@@ -1318,14 +1446,54 @@ fn main() {
         vocab, dim, seq, steps, seed, lr
     );
 
-    let train_end = (tokens.len() as f64 * 0.9) as usize;
-    let train_tokens = &tokens[..train_end];
-    let val_tokens = &tokens[train_end..];
     println!(
-        "Dataset: {} train / {} val tokens",
+        "Dataset: {} train / {} val tokens (train={} val={})",
         train_tokens.len(),
-        val_tokens.len()
+        val_tokens.len(),
+        train_path,
+        val_path
     );
+
+    // ---- Eval-corpus precondition -----------------------------------------
+    // Mirrors train_loop::assert_train_val_disjoint's size checks. A val stream
+    // too short to yield MIN_EVAL_CHUNKS windows cannot produce a mean that
+    // means anything, and a truncated or degenerate corpus must fail loud
+    // rather than be memorised into a near-zero BPB.
+    if val_tokens.len() < MIN_VAL_TOKENS {
+        eprintln!(
+            "VAL STREAM TOO SHORT: {} tokens from {}, minimum {}. A BPB averaged \
+             over a handful of windows is not a held-out measurement.",
+            val_tokens.len(),
+            val_path,
+            MIN_VAL_TOKENS
+        );
+        return ExitCode::from(EXIT_BAD_CORPUS);
+    }
+    let chunks = eval_chunk_count(val_tokens.len(), seq);
+    if chunks < MIN_EVAL_CHUNKS {
+        eprintln!(
+            "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S) at seq={}, minimum {}. \
+             eval_bpb would average over too few windows for the mean to be \
+             informative.",
+            chunks, seq, MIN_EVAL_CHUNKS
+        );
+        return ExitCode::from(EXIT_BAD_CORPUS);
+    }
+    if train_tokens.len() < seq + 2 {
+        eprintln!(
+            "TRAIN STREAM TOO SHORT: {} tokens from {}, need at least {} for one \
+             batch at seq={}.",
+            train_tokens.len(),
+            train_path,
+            seq + 2,
+            seq
+        );
+        return ExitCode::from(EXIT_BAD_CORPUS);
+    }
+    println!("Eval chunks: {} (minimum {})", chunks, MIN_EVAL_CHUNKS);
+
+    let train_tokens: &[usize] = &train_tokens;
+    let val_tokens: &[usize] = &val_tokens;
 
     let mut model = CpuModel::new(vocab, dim, seed);
 
@@ -1357,7 +1525,17 @@ fn main() {
         }
     }
 
-    let init_bpb = model.eval_bpb(val_tokens, seq);
+    let init_bpb = match model.eval_bpb(val_tokens, seq) {
+        Some(b) => b,
+        None => {
+            eprintln!(
+                "NO MEASUREMENT: the initial eval produced zero finite windows on \
+                 {}. Refusing to report an initial BPB nobody measured.",
+                val_path
+            );
+            return ExitCode::from(EXIT_NO_MEASUREMENT);
+        }
+    };
     println!("Initial val BPB: {:.4}", init_bpb);
     println!();
     println!(
@@ -1367,7 +1545,13 @@ fn main() {
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
+    // `best_bpb` is the running MINIMUM over every eval; `final_bpb` is the
+    // single value measured at `step == steps`. They are different numbers and
+    // are now reported under different keys: the results file used to write the
+    // minimum under the name `final_bpb`, and matrix_runner then paired it with
+    // `step = steps`, attributing an early-training minimum to the last step.
     let mut best_bpb = init_bpb;
+    let mut final_bpb: Option<f32> = None;
     let data_len = train_tokens.len();
     let mut rng_state = seed;
 
@@ -1390,11 +1574,7 @@ fn main() {
         let batch = &train_tokens[offset..offset + seq + 1];
         let train_loss = model.train_step(batch, &mut opt_embed, &mut opt_head, current_lr);
 
-<<<<<<< HEAD
-        // Apply FakeQuant after optimizer step (QAT: quantize→dequantize, STE in backward)
-=======
         // Apply FakeQuant after optimizer step (QAT)
->>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
         if use_fake_quant {
             fake_quant::fake_quantize_weights(&mut model.embed, format_kind);
             fake_quant::fake_quantize_weights(&mut model.lm_head, format_kind);
@@ -1409,25 +1589,56 @@ fn main() {
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
             let val_bpb = model.eval_bpb(val_tokens, seq);
-            if val_bpb < best_bpb && val_bpb.is_finite() {
-                best_bpb = val_bpb;
+            if let Some(b) = val_bpb {
+                if b < best_bpb && b.is_finite() {
+                    best_bpb = b;
+                }
             }
-            println!(
-                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                step, train_loss, val_bpb, best_bpb, ms
-            );
+            if step == steps {
+                final_bpb = val_bpb;
+            }
+            match val_bpb {
+                Some(b) => println!(
+                    "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                    step, train_loss, b, best_bpb, ms
+                ),
+                None => println!(
+                    "{:>6} | {:>10.4} | {:>10} | {:>10.4} | {:>6}ms",
+                    step, train_loss, "unmeasured", best_bpb, ms
+                ),
+            }
         }
     }
 
     let total = t0.elapsed();
+
+    // A run whose last step produced no finite eval window has no final BPB.
+    // Emitting one anyway is exactly the class of defect this binary exists to
+    // avoid, so the run fails instead.
+    let final_bpb = match final_bpb {
+        Some(b) => b,
+        None => {
+            eprintln!(
+                "NO MEASUREMENT: the eval at the final step (step={}) produced zero \
+                 finite windows. Refusing to write a results file with a final_bpb \
+                 nobody measured.",
+                steps
+            );
+            return ExitCode::from(EXIT_NO_MEASUREMENT);
+        }
+    };
+
     println!();
     println!("=== Training Complete ===");
     println!(
-        "Time: {:.1}s | Init BPB: {:.4} | Best BPB: {:.4} | Delta: {:.4}",
+        "Time: {:.1}s | Init BPB: {:.4} | Best BPB: {:.4} | Final BPB: {:.4} | \
+         Delta(best): {:.4} | Delta(final): {:.4}",
         total.as_secs_f64(),
         init_bpb,
         best_bpb,
-        init_bpb - best_bpb
+        final_bpb,
+        init_bpb - best_bpb,
+        init_bpb - final_bpb
     );
 
     let _ = fs::create_dir_all(".trinity/results");
@@ -1441,9 +1652,23 @@ fn main() {
         "seq_len": seq,
         "steps": steps,
         "lr": lr,
+        "train_path": train_path,
+        "val_path": val_path,
+        "train_tokens": train_tokens.len(),
+        "val_tokens": val_tokens.len(),
+        "eval_chunks": chunks,
+        "format_requested": format_suffix,
+        "format_executed": format_executed,
         "initial_bpb": init_bpb,
-        "final_bpb": best_bpb,
-        "delta_bpb": init_bpb - best_bpb,
+        // `best_bpb`: minimum over all evals, at an unrecorded step.
+        // `final_bpb`: the value measured at step == steps. Consumers that pair
+        // a bpb with `steps` must read `final_bpb`.
+        "best_bpb": best_bpb,
+        "final_bpb": final_bpb,
+        // `delta_bpb` is kept for schema compatibility and is paired with
+        // `final_bpb`; `delta_best_bpb` is the improvement to the minimum.
+        "delta_bpb": init_bpb - final_bpb,
+        "delta_best_bpb": init_bpb - best_bpb,
         "duration_seconds": total.as_secs_f64(),
     });
 
@@ -1451,15 +1676,22 @@ fn main() {
         ".trinity/results/cpu_train_{}_{}_seed{}.json",
         format_suffix, algo_name, seed
     );
-    fs::File::create(&rpath)
-        .unwrap()
-        .write_all(
-            serde_json::to_string_pretty(&result_json)
-                .unwrap()
-                .as_bytes(),
-        )
-        .unwrap();
+    let serialized = match serde_json::to_string_pretty(&result_json) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("serialize results: {e}");
+            return ExitCode::from(EXIT_IO);
+        }
+    };
+    match fs::File::create(&rpath).and_then(|mut f| f.write_all(serialized.as_bytes())) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("write results {rpath}: {e}");
+            return ExitCode::from(EXIT_IO);
+        }
+    }
     println!("Results: {}", rpath);
+    ExitCode::SUCCESS
 }
 
 fn arg_or(name: &str, default: &str) -> String {
@@ -1478,7 +1710,7 @@ fn arg_or(name: &str, default: &str) -> String {
 mod tests {
     use super::*;
 
-    // test_algoopt_dispatch — each variant constructible, step() doesn't panic on 10-param vec
+    // test_algoopt_dispatch -- each variant constructible, step() doesn't panic on 10-param vec
     #[test]
     fn test_algoopt_dispatch() {
         let size = 10;
@@ -1506,7 +1738,7 @@ mod tests {
         }
     }
 
-    // test_sgdm_recovers_minimum — SGDM on f(x)=x^2 converges to 0 in <1000 steps
+    // test_sgdm_recovers_minimum -- SGDM on f(x)=x^2 converges to 0 in <1000 steps
     #[test]
     fn test_sgdm_recovers_minimum() {
         let size = 1;
@@ -1526,7 +1758,7 @@ mod tests {
         );
     }
 
-    // test_lion_sign_update — Lion with grad=+1 monotonically decreases param toward -inf
+    // test_lion_sign_update -- Lion with grad=+1 monotonically decreases param toward -inf
     #[test]
     fn test_lion_sign_update() {
         let size = 1;
@@ -1534,7 +1766,7 @@ mod tests {
         // Disable weight decay for clean test
         opt.wd = 0.0;
         let mut params = vec![10.0f32];
-        let grads = vec![1.0f32]; // positive gradient → negative sign update → param decreases
+        let grads = vec![1.0f32]; // positive gradient -> negative sign update -> param decreases
         let mut prev = params[0];
         for _ in 0..20 {
             opt.step(&mut params, &grads);
@@ -1548,13 +1780,13 @@ mod tests {
         }
     }
 
-    // test_lamb_trust_ratio — LAMB scales update by ||w||/||u||
+    // test_lamb_trust_ratio -- LAMB scales update by ||w||/||u||
     #[test]
     fn test_lamb_trust_ratio() {
         let size = 4;
         let lr = 0.1f32;
         let mut opt = Lamb::new(size, lr);
-        // large param norm, small grad → trust ratio > 1 → big step
+        // large param norm, small grad -> trust ratio > 1 -> big step
         let mut params_big = vec![100.0f32; size];
         let grads = vec![0.01f32; size];
         let before: Vec<f32> = params_big.clone();
@@ -1579,7 +1811,7 @@ mod tests {
         );
     }
 
-    // test_unknown_algo_panics — AlgoOpt::from_env("foobar", ...) panics
+    // test_unknown_algo_panics -- AlgoOpt::from_env("foobar", ...) panics
     #[test]
     #[should_panic(expected = "unknown optimizer")]
     fn test_unknown_algo_panics() {
@@ -1623,7 +1855,7 @@ mod tests {
         assert!(params[0] < before, "RMSprop should decrease param");
     }
 
-    // test_soap_recovers_minimum — SOAP on f(x)=x^2 converges with positive grad
+    // test_soap_recovers_minimum -- SOAP on f(x)=x^2 converges with positive grad
     #[test]
     fn test_soap_recovers_minimum() {
         let mut opt = Soap::new(1, 0.05);
@@ -1642,7 +1874,7 @@ mod tests {
         );
     }
 
-    // test_soap_precond_refresh — preconditioner refreshes every K steps
+    // test_soap_precond_refresh -- preconditioner refreshes every K steps
     #[test]
     fn test_soap_precond_refresh() {
         let mut opt = Soap::new(2, 0.01);
@@ -1657,5 +1889,73 @@ mod tests {
             opt.precond.iter().any(|&p| (p - 1.0).abs() > 1e-9),
             "SOAP preconditioner should refresh after >precond_freq steps"
         );
+    }
+
+    // test_load_data_refuses_missing -- no fallback corpus, ever
+    #[test]
+    fn test_load_data_refuses_missing() {
+        let err = load_data("data/this_file_does_not_exist_zzz.txt")
+            .expect_err("a missing corpus must be an error, not a fabricated one");
+        assert!(
+            err.contains("data/this_file_does_not_exist_zzz.txt"),
+            "error must name the path: {err}"
+        );
+        assert!(
+            err.contains("no fallback corpus"),
+            "error must state that no fallback exists: {err}"
+        );
+    }
+
+    // test_default_corpus_paths_use_the_file_that_exists
+    #[test]
+    fn test_default_corpus_paths_spelling() {
+        // The historical default omitted the underscore in "tiny_shakespeare",
+        // a path that has never existed. Both defaults carry the underscore.
+        assert_eq!(DEFAULT_TRAIN_PATH, "data/tiny_shakespeare.txt");
+        assert_eq!(DEFAULT_VAL_PATH, "data/tiny_shakespeare_val.txt");
+        assert_ne!(DEFAULT_TRAIN_PATH, DEFAULT_VAL_PATH);
+    }
+
+    // test_eval_chunk_count_matches_precondition
+    #[test]
+    fn test_eval_chunk_count_matches_precondition() {
+        // The 160-byte pangram fixture yields nowhere near MIN_EVAL_CHUNKS at
+        // the default seq, which is the whole point of the precondition.
+        assert!(eval_chunk_count(160, 32) < MIN_EVAL_CHUNKS);
+        // A stream at the size floor clears both checks.
+        assert!(eval_chunk_count(MIN_VAL_TOKENS, 32) >= MIN_EVAL_CHUNKS);
+        assert!(eval_chunk_count(MIN_VAL_TOKENS, 8) >= MIN_EVAL_CHUNKS);
+        // The cap is respected: more tokens than EVAL_TOKEN_CAP does not add
+        // chunks.
+        assert_eq!(
+            eval_chunk_count(EVAL_TOKEN_CAP, 32),
+            eval_chunk_count(EVAL_TOKEN_CAP * 10, 32)
+        );
+        // Empty stream measures nothing.
+        assert_eq!(eval_chunk_count(0, 32), 0);
+    }
+
+    // test_eval_bpb_absent_is_none -- not f32::MAX
+    #[test]
+    fn test_eval_bpb_absent_is_none() {
+        let model = CpuModel::new(32, 8, 47);
+        // Fewer than 3 tokens: no window can be evaluated.
+        assert!(model.eval_bpb(&[1, 2], 8).is_none());
+        assert!(model.eval_bpb(&[], 8).is_none());
+        // A real stream does produce a reading.
+        let tokens: Vec<usize> = (0..1024).map(|i| i % 32).collect();
+        let bpb = model.eval_bpb(&tokens, 8).expect("measurable stream");
+        assert!(bpb.is_finite());
+        // And it is nowhere near the sentinel the old code returned.
+        assert!(bpb < 64.0, "bpb={bpb} looks like a sentinel, not a reading");
+    }
+
+    // test_unknown_format_has_no_silent_fallback -- FormatKind resolution
+    #[test]
+    fn test_unknown_format_has_no_silent_fallback() {
+        assert!(FormatKind::from_env("bogusfmt").is_none());
+        assert!(FormatKind::from_env("surveyprobe2").is_none());
+        assert!(FormatKind::from_env("gf16").is_some());
+        assert_eq!(FormatKind::from_env("f32"), Some(FormatKind::F32));
     }
 }

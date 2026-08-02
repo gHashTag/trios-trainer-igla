@@ -29,6 +29,16 @@ path = "src/bin/entrypoint.rs"
 name = "trios-train"
 path = "src/bin/trios-train.rs"
 
+# Auditor-side spot-check verifier. Re-executes `trios-train` as a SUBPROCESS
+# and re-derives one checkpoint from its own sidecar, so a reproducibility claim
+# can be falsified by someone who has only the binary, the corpus and the JSON.
+# Returns VERIFIED / MISMATCH / INCOMPARABLE (a schema/1 record cannot state its
+# own `eval_every` and is therefore ungradable). See src/bin/ckpt_replay.rs and
+# docs/REPRODUCIBILITY-GRADING.md.
+[[bin]]
+name = "ckpt_replay"
+path = "src/bin/ckpt_replay.rs"
+
 [[bin]]
 name = "railway-sweep"
 path = "src/bin/railway_sweep.rs"
@@ -61,9 +71,14 @@ path = "src/bin/honey_audit.rs"
 name = "cpu_train"
 path = "src/bin/cpu_train.rs"
 
-[[bin]]
-name = "igla_train"
-path = "src/bin/igla_train.rs"
+# `igla_train` was removed 2026-08-02. It read a hardcoded corpus path that
+# misspelled the file in `data/` and so had never existed in this repo, it
+# silently substituted a 52-byte string, then called
+# `evaluate(&model, &tokens, SEQ)` on the very slice it had trained on. The
+# resulting BPB=2.5648 from memorising 52 bytes sat within 0.05 of the crate's
+# own BPB_CHAMPION, and `CANON_NAME` came from the environment, so it routed
+# straight into ssot.bpb_samples. Nothing referenced it: not the Dockerfile, not
+# `entrypoint.rs`'s TRIOS_TRAINER_BIN whitelist. Deleted with its source.
 
 [[bin]]
 name = "ngram_train"
@@ -222,6 +237,10 @@ rand               = "0.8"
 tracing            = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 sha1               = "0.10"
+# EPIC-446: content-addressing for checkpoint artifacts. Resolves to 0.10.9,
+# already present in Cargo.lock as a sea-orm/sqlx transitive, so promoting it
+# to a direct dependency adds no new crate to the build graph.
+sha2               = "0.10"
 uuid               = { version = "1", features = ["v4"] }
 tokio              = { version = "1", features = ["full"] }
 tokio-postgres       = { version = "0.7", features = ["with-uuid-1", "with-serde_json-1"] }

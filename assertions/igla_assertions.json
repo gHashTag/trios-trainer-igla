@@ -538,42 +538,64 @@
     }
   ],
   "matrix_ledger": {
-    "_doc": "R4 trace for L-MATRIX-LEDGER (queen order trios#380, P0 cascade-blocker). Every numeric column in assertions/matrix_samples.jsonl traces back to a Coq theorem or runtime invariant cited below. Anchor: phi^2 + phi^-2 = 3.",
+    "_doc": "R4 trace for L-MATRIX-LEDGER (queen order trios#380, P0 cascade-blocker). Every numeric column in assertions/matrix_samples.jsonl traces back to the file in THIS repository that produces it, cited below. Anchor: phi^2 + phi^-2 = 3.",
+    "_witness_status": "RETRACTED 2026-08-03. Every row currently in assertions/matrix_samples.jsonl is retracted and none may be cited as a measurement. The 20 rows were produced by GHA run 25539291483 at commit 4e861b3, where cpu_train read the hardcoded path data/tinyshakespeare.txt, the /data/ directory was gitignored, and the format-algo-matrix workflow had no step that fetched or created any corpus. load_data therefore fell through to its 52-byte literal fallback, \"Hello world this is a tiny training dataset for IGLA\". With --vocab=128 an untrained model scores log2(128) = 7.0 bpb exactly, which is what the rows report: 15 of 20 sit on 7.000391960144043 or 7.000393390655518 with delta_bpb 0.0, and falsifier_2_hit is true on 20 of 20. See the per-row retraction fields in that file.",
     "jsonl_path": "assertions/matrix_samples.jsonl",
     "writer_binary": "src/bin/matrix_ledger.rs",
     "ci_workflow": ".github/workflows/format-algo-matrix.yml::collect-ledger",
     "writer_subcommand": "cargo run --release --bin matrix_ledger -- collect",
     "gate2_target_bpb": 1.85,
-    "forbidden_seeds_painted": {
-      "42": 47,
-      "43": 89,
-      "44": 144,
-      "45": 123,
-      "_proof": "t27/proofs/forbidden_seeds.v::forbidden_seed_repaint"
+    "forbidden_seeds": {
+      "band": [
+        42,
+        43,
+        44,
+        45
+      ],
+      "policy": "REJECT",
+      "enforced_by": [
+        "src/bin/matrix_runner.rs::main GUARD 3 (SEED_CANON check, exit code 4)",
+        "src/bin/matrix_ledger.rs::reject_forbidden_seed (exit code 4, names the seed)"
+      ],
+      "tested_by": [
+        "src/bin/matrix_ledger.rs::tests::forbidden_seeds_are_rejected_not_repainted",
+        "src/bin/matrix_ledger.rs::tests::canon_seeds_are_accepted_verbatim"
+      ],
+      "_history": "Until 2026-08-03 this key was `forbidden_seeds_painted` and the ledger REWROTE the band (42->47, 43->89, 44->144, 45->123) into a column named `seed_phi`, emitting no seed_raw and no painted flag. Because 47/89/144/123 are themselves legitimate canon seeds, a repainted row was indistinguishable from a genuine run at the target seed; the only trace was an eprintln to a GitHub Actions log that expires. The repaint helper in src/bin/matrix_ledger.rs is deleted, the column is now `seed`, copied verbatim from cell.json, and a seed in the band aborts the collect run with exit code 4.",
+      "_proof_citation_audit": "This block previously carried a \"_proof\" key naming a Coq theorem (spelled 'forbidden seed repaint') in a file t27/proofs/forbidden-seeds.v, and the loss_final column trace named a second file t27/proofs/bpb-loss-isomorphism.v. Both were searched for on 2026-08-03 in the t27 checkout at /Users/playra/t27. `ls /Users/playra/t27/proofs` lists CoqMakefile, CoqMakefile.conf, README.md, _CoqProject and the subdirectories gravity/, lean4/, sacred/, trinity/ (335 files in total). A recursive grep for both theorem names across the whole checkout returned no match (exit 1), and `find /Users/playra/t27 -iname '*forbidden*'` returned nothing. Neither file exists, so both citations are removed rather than repaired, and their exact identifiers are deliberately not reproduced here so that a grep for the citation finds nothing. The seed policy is a Rust guard with a unit test, not a proven theorem, and must not be presented as one."
     },
+    "_column_trace_doc": "Every entry names the file in THIS repository that produces the column. This is a single-crate repository (package `trios-trainer`) whose sources live directly under src/ and src/bin/. The previous entries pointed at a nested crates/<crate>/src/... workspace layout that does not exist here, so none of those paths resolved.",
     "column_trace": {
-      "cell_id":          "derived(format, algo, seed_phi); reproducible identifier — no theorem needed",
-      "format":           "crates/trios-trainer/src/fake_quant.rs::FormatKind::from_env (R5 honest, kernel-tested)",
-      "algo":             "crates/trios-trainer/src/optimizer.rs::OptimizerKind (PR #101, 8 algos)",
-      "seed_phi":         "t27/proofs/forbidden_seeds.v + matrix_ledger.rs::paint_seed (R4)",
-      "hidden":            "crates/trios-trainer/src/bin/cpu_train.rs::dim arg (lr/h scale invariants)",
-      "step":              "crates/trios-trainer/src/bin/cpu_train.rs::steps arg",
-      "bpb":              "crates/trios-trainer/src/bin/cpu_train.rs::final_bpb (real BPB after PR trios#519+#532)",
-      "initial_bpb":      "crates/trios-trainer/src/bin/cpu_train.rs::initial_bpb (warmup baseline)",
-      "delta_bpb":        "derived(initial_bpb − bpb)",
-      "loss_final":       "derived(bpb · ln 2); convention bpb = loss / ln 2 — matches t27/proofs/bpb_loss_isomorphism.v",
-      "wallclock_ms":     "upcoming — currently set to 0; will be wired in L-MATRIX-LEDGER follow-up",
-      "commit_sha":       "GITHUB_SHA at the matrix run — points cell to a reproducible source state",
-      "workflow_run_id":  "GITHUB_RUN_ID — joins to GHA logs at /actions/runs/<id>",
-      "falsifier_2_hit":  "R7 witness for AP.B Falsifier-2 (IGLA-track); flips when bpb > 1.85 OR loss diverged",
-      "ts_utc":           "chrono::DateTime<Utc> RFC3339 of artifact creation"
+      "cell_id":          "derived(format, algo, seed) in src/bin/matrix_ledger.rs::parse_one; a reproducible identifier, not a measurement",
+      "format":           "REQUESTED format only. src/bin/matrix_runner.rs::normalize_format canonicalizes the --format string and forwards it as TRIOS_FORMAT_TYPE; this column is that string. It is NOT provenance of the executed kernel -- src/bin/cpu_train.rs resolves FormatKind::from_env(...).unwrap_or(FormatKind::F32), so an unrecognized spelling silently trains in f32. The executed kernel is reported by the separate `format_executed` column; read that one when you need to know what ran. Contract: matrix_runner R5-REJECTs a cell whose cpu_train run reports no `format_executed`, or one that disagrees with the request. The 20 rows in matrix_samples.jsonl predate `format_executed` and therefore state a request with no record of the execution.",
+      "format_executed":  "src/bin/cpu_train.rs result JSON key `format_executed` -- the FormatKind the trainer actually ran, carried through src/bin/matrix_runner.rs and src/bin/matrix_ledger.rs::parse_one. An empty string means the artifact predates the field and is reported as such, never guessed.",
+      "algo":             "src/bin/cpu_train.rs::AlgoOpt::from_env -- 9 variants (adamw, muon, sgdm, lion, adafactor, lamb, schedulefree, rmsprop, soap). It panics on an unknown name rather than falling back, so unlike `format` this column does reflect the optimizer that ran. Requests are narrowed upstream by src/bin/matrix_runner.rs::ALGO_WHITELIST, currently [\"adamw\", \"muon\"]. The earlier citation of src/optimizer.rs::OptimizerKind was wrong: that library type is not used by cpu_train.",
+      "seed":             "src/bin/matrix_ledger.rs::parse_one -- copied verbatim from cell.json::seed, which src/bin/matrix_runner.rs took from --seed. No transform is applied. See `forbidden_seeds` above for the deleted repaint and for the removed proof citation.",
+      "hidden":           "src/bin/cpu_train.rs --dim argument, forwarded by src/bin/matrix_runner.rs::run_cpu_train from --hidden (lr/h scale invariants)",
+      "step":             "src/bin/cpu_train.rs --steps argument, echoed back through the result JSON. This is the REQUESTED step count; it is the step at which `bpb` was measured, and it is NOT the step at which `best_bpb` occurred.",
+      "bpb":              "src/bin/cpu_train.rs result key `final_bpb` -- the value measured at step == steps. Correction: before 2026-08-03 cpu_train emitted the running MINIMUM over all evals under the name `final_bpb`, and this entry documented it as \"real BPB\". Rows written before that date therefore carry a minimum labelled as a final measurement, which overstates any run that diverged after its best step.",
+      "best_bpb":         "src/bin/cpu_train.rs result key `best_bpb` -- the minimum over all evaluated steps, at a step that is not recorded. Carried beside `bpb` so the two are visibly distinct numbers. Absent in pre-2026-08-03 artifacts, where it defaults to 0.0.",
+      "initial_bpb":      "src/bin/cpu_train.rs::init_bpb -- bpb measured before the first optimizer step (warmup baseline)",
+      "delta_bpb":        "derived(initial_bpb - bpb) in src/bin/cpu_train.rs; carries no information beyond its two operands. In pre-2026-08-03 artifacts it was init_bpb - best_bpb, i.e. an upper bound on the improvement actually held at the end of training.",
+      "loss_final_derived": "derived(bpb * ln 2) in src/bin/matrix_ledger.rs::parse_one. Carries NO independent information: it is the `bpb` column restated in nats, and was verified byte-identical to bpb*ln2 on all 20 committed rows. Do not average, plot or cite it alongside `bpb` as if it were a second measurement. The previous entry named this column `loss_final` and cited a Coq file under t27/proofs for the convention; that file does not exist (see forbidden_seeds._proof_citation_audit), and bpb = loss / ln 2 is a unit definition, not a theorem, so the citation is removed.",
+      "commit_sha":       "cell.json::sha (git rev-parse --short HEAD in src/bin/matrix_runner.rs), else GITHUB_SHA -- points the cell at a reproducible source state",
+      "workflow_run_id":  "cell.json::run_id, else GITHUB_RUN_ID -- joins to GHA logs at /actions/runs/<id>",
+      "falsifier_2_hit":  "src/bin/matrix_ledger.rs::falsifier_2_hit. R7 witness for AP.B Falsifier-2 (IGLA-track); flips when bpb > 1.85 OR the derived loss is NaN/Inf/>=1e6. Note the second clause is the first restated in nats, not an independent check, so this boolean is a function of `bpb` alone. A parse_error row sets it true because the cell cannot be shown to have stayed below Gate-2.",
+      "ts_utc":           "chrono::DateTime<Utc> RFC3339 of cell.json::ts_unix (artifact creation)"
+    },
+    "_removed_columns": {
+      "wallclock_ms": "REMOVED 2026-08-03. src/bin/matrix_ledger.rs hardcoded 0 on every row while this trace described it as \"upcoming\"; all 20 committed rows read 0. A constant shipped as data is not data. The column returns only when a real elapsed time is measured and wired.",
+      "seed_phi": "REMOVED 2026-08-03, replaced by `seed`. See forbidden_seeds._history.",
+      "loss_final": "RENAMED 2026-08-03 to `loss_final_derived` to state on its face that it is a unit conversion of `bpb`."
     },
     "falsifier_2": {
       "name":             "AP.B-F2 IGLA-track Gate-2",
-      "clause":            "Refuted iff some cell has bpb > 1.85 OR loss_final NaN/Inf/>=1e6",
+      "clause":            "Refuted iff some cell has bpb > 1.85 OR loss_final_derived NaN/Inf/>=1e6. The second disjunct is the first restated in nats, so the predicate is a function of bpb alone.",
       "witness_path":     "assertions/matrix_samples.jsonl::falsifier_2_hit (boolean per row)",
-      "appendix_block":   "docs/phd/appendix/L-pollen-channel.tex §matrix-ledger (gHashTag/trios)",
-      "unblocks":         ["L-C6 matrix-bot rendering", "L-C7 closure-gate", "AP.B Falsifier-2 witness on disk"]
+      "witness_status":   "NO VALID WITNESS ON DISK. The 20 rows at witness_path are retracted (see _witness_status above): they were measured on a 52-byte fallback corpus, so their falsifier_2_hit=true means the training data was absent, not that Gate-2 was refuted by a real run. A falsifier that fires on a missing corpus is not evidence about the model. This clause has no witness until the matrix is re-run against a named, hash-pinned corpus.",
+      "appendix_block":   "docs/phd/appendix/L-pollen-channel.tex section matrix-ledger (gHashTag/trios)",
+      "unblocks":         ["L-C6 matrix-bot rendering", "L-C7 closure-gate", "AP.B Falsifier-2 witness on disk"],
+      "unblocks_status":  "NOT UNBLOCKED -- see witness_status."
     }
   },
   "enforcement": {

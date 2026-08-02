@@ -15,6 +15,23 @@ pub const LR_CHAMPION: f64 = 0.004;
 pub const LR_SAFE_MIN: f64 = 0.002;
 pub const LR_SAFE_MAX: f64 = 0.007;
 pub const ASHA_PRUNE_THRESHOLD: f64 = 3.5;
+/// RETRACTED as a measurement (2026-08-02).
+///
+/// `docs/audit/HONEST_FINDINGS.md:41` lists 2.5193 as a "stale placeholder".
+/// No checkpoint artifact exists behind this number: it pre-dates
+/// `checkpoint::save` doing any work (the function was a stub returning
+/// `Ok(())`), so no weights were ever written for the run it claims to
+/// describe, and it must not be cited as a result.
+///
+/// The value is retained only as an internal upper bound: it is asserted
+/// against `ASHA_PRUNE_THRESHOLD` in the test below and printed by other
+/// binaries as a comparison baseline. Changing it would break those call
+/// sites without making any claim more honest, so it stays put and is
+/// documented as retracted instead.
+///
+/// The only checkpoint-backed figure in this repo is raw val_bpb 2.6169 at
+/// 12 000 steps (seed 47, h=384, 2 attention layers), sidecar
+/// `checkpoints/igla-honest-provenance/12000.json`.
 pub const BPB_CHAMPION: f64 = 2.5193;
 pub const ASHA_RUNGS: [u64; 4] = [1_000, 3_000, 9_000, 27_000];
 pub const MAX_ASHA_TRIALS: usize = 1_000;

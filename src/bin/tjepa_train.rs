@@ -224,9 +224,19 @@ impl NgramModel {
         logits
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats, or `None` when the sequence is too short to
+    /// hold a single n-gram pair or the forward pass produced a non-number.
+    ///
+    /// A short sequence used to return `0.0`, a loss no model achieves, which
+    /// averaged into `evaluate` as a real reading. `f32::max` also ignores NaN,
+    /// so `logits[target].max(1e-10)` turned a poisoned forward pass into a
+    /// finite 23.03-nat measurement; NaN is now an absence. The 1e-10 clamp is
+    /// kept for a genuinely underflowed probability - capping it is a documented
+    /// floor on surprisal, and dropping those chunks instead would bias the
+    /// reported BPB downward.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < NGRAM + 1 {
-            return 0.0;
+            return None;
         }
         let count = tokens.len() - NGRAM;
         assert!(count > 0, "no n-gram pairs in sequence");
@@ -236,9 +246,13 @@ impl NgramModel {
             let target = tokens[i + NGRAM].min(VOCAB - 1);
             let mut logits = self.predict(&self.compute_hidden(context));
             softmax(&mut logits);
-            total -= logits[target].max(1e-10).ln();
+            let p = logits[target];
+            if p.is_nan() {
+                return None;
+            }
+            total -= p.max(1e-10).ln();
         }
-        total / count as f32
+        Some(total / count as f32)
     }
 }
 
@@ -427,7 +441,15 @@ fn accumulate_input_grads(
 
 // ── evaluation ──
 
-fn evaluate(model: &NgramModel, tokens: &[usize]) -> f32 {
+/// Mean bits-per-byte over the held-out corpus, or `None` when nothing could
+/// be measured.
+///
+/// This used to return the f32 maximum (3.4e38) for "no measurable chunk".
+/// Every downstream guard tested `is_finite()`, which that value passes, so the
+/// sentinel was
+/// indistinguishable from a reading and reached both the printed headline and
+/// the ledger. An absence is now an absence.
+fn evaluate(model: &NgramModel, tokens: &[usize]) -> Option<f32> {
     assert!(!tokens.is_empty(), "evaluate: empty tokens");
     let mut total = 0.0f32;
     let mut n = 0usize;
@@ -436,56 +458,49 @@ fn evaluate(model: &NgramModel, tokens: &[usize]) -> f32 {
         if end - c < NGRAM + 1 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
+        let Some(loss) = model.loss_on_seq(&tokens[c..end]) else {
+            continue;
+        };
         if loss.is_finite() {
             total += loss / LN_2;
             n += 1;
         }
     }
     if n == 0 {
-        return f32::MAX;
+        return None;
     }
-    total / n as f32
+    Some(total / n as f32)
 }
 
-fn load_data(path: &str) -> Vec<usize> {
-    if let Ok(raw) = fs::read(path) {
-        if !raw.is_empty() {
-            eprintln!("Loaded {} bytes from {}", raw.len(), path);
-            return raw.into_iter().map(|b| (b as usize) % VOCAB).collect();
-        }
+/// Render an optional BPB without inventing a number for an absent one.
+fn fmt_bpb(bpb: Option<f32>) -> String {
+    match bpb {
+        Some(v) => format!("{v:.4}"),
+        None => "unmeasured".to_string(),
     }
+}
 
-    let is_val = path.contains("val");
-    let url =
-        "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt";
-    eprintln!("Downloading TinyShakespeare from {}...", url);
-    match ureq::get(url).call() {
-        Ok(resp) => {
-            let mut bytes = Vec::new();
-            use std::io::Read;
-            resp.into_reader()
-                .read_to_end(&mut bytes)
-                .unwrap_or_default();
-            if bytes.is_empty() {
-                panic!("Downloaded 0 bytes from {}", url);
-            }
-            eprintln!("Downloaded {} bytes", bytes.len());
-            let data = if is_val {
-                &bytes[..bytes.len().min(100_000)]
-            } else {
-                &bytes
-            };
-            if let Some(parent) = std::path::Path::new(path).parent() {
-                let _ = fs::create_dir_all(parent);
-            }
-            let _ = fs::write(path, data);
-            data.iter().map(|&b| (b as usize) % VOCAB).collect()
-        }
-        Err(e) => {
-            panic!("Failed to load {} and download failed: {}", path, e);
-        }
+/// Read a corpus from disk. A missing or empty file is an error.
+///
+/// The previous version downloaded TinyShakespeare on a miss and wrote the
+/// result BACK to `path` - and for any path containing "val" it wrote
+/// `bytes[..100_000]`, the first 100 KB of the same file it had just written to
+/// the train path. One run with either file absent therefore replaced the
+/// verified byte-disjoint corpus (train 1,015,394 B / val 100,000 B, concat
+/// sha256 86c4e6aa...) with a 100% verbatim overlap, and `data/` is gitignored
+/// so there was no undo. A trainer does not fabricate or mutate its own corpus.
+fn load_data(path: &str) -> Result<Vec<usize>, String> {
+    let raw = fs::read(path).map_err(|e| {
+        format!(
+            "cannot read corpus {path}: {e}. This trainer does not download or \
+             synthesise a corpus; provide the file and re-run."
+        )
+    })?;
+    if raw.is_empty() {
+        return Err(format!("corpus {path} is empty"));
     }
+    eprintln!("Loaded {} bytes from {}", raw.len(), path);
+    Ok(raw.into_iter().map(|b| (b as usize) % VOCAB).collect())
 }
 
 // ── config ──
@@ -682,22 +697,28 @@ fn neon_trial_start(cfg: &Config) {
     trios_trainer::neon_writer::trial_start(&cfg.trial_id, &config_json, &cfg.agent_id, "main");
 }
 
-fn neon_heartbeat(cfg: &Config, step: usize, bpb: f32, last: &mut Instant) {
+fn neon_heartbeat(cfg: &Config, step: usize, bpb: Option<f32>, last: &mut Instant) {
     if last.elapsed().as_secs() >= HEARTBEAT_INTERVAL_SECS {
         eprintln!(
             "NEON_SQL: INSERT INTO igla_agents_heartbeat (agent_id, machine_id, branch, task, status, last_heartbeat) VALUES ('{}', 'local', 'main', '{}', 'active', NOW()) ON CONFLICT (agent_id) DO UPDATE SET status=EXCLUDED.status, last_heartbeat=EXCLUDED.last_heartbeat;",
             cfg.agent_id, cfg.trial_id,
         );
-        eprintln!("NEON_SQL: UPDATE igla_race_trials SET bpb_latest={:.4}, steps_done={} WHERE trial_id='{}';", bpb, step, cfg.trial_id);
+        eprintln!(
+            "NEON_SQL: UPDATE igla_race_trials SET bpb_latest={}, steps_done={} WHERE trial_id='{}';",
+            fmt_bpb(bpb),
+            step,
+            cfg.trial_id
+        );
         trios_trainer::neon_writer::heartbeat(&cfg.trial_id, &cfg.agent_id, bpb, step);
         *last = Instant::now();
     }
 }
 
-fn neon_trial_complete(cfg: &Config, bpb: f32) {
+fn neon_trial_complete(cfg: &Config, bpb: Option<f32>) {
     eprintln!(
-        "NEON_SQL: UPDATE igla_race_trials SET bpb_final={:.4}, status='complete' WHERE trial_id='{}';",
-        bpb, cfg.trial_id,
+        "NEON_SQL: UPDATE igla_race_trials SET bpb_final={}, status='complete' WHERE trial_id='{}';",
+        fmt_bpb(bpb),
+        cfg.trial_id,
     );
     trios_trainer::neon_writer::trial_complete(&cfg.trial_id, bpb);
 }
@@ -715,7 +736,10 @@ struct TrainingState {
     ema_target: EmaTarget,
     nca: Option<NcaObjective>,
     obj_config: ObjectiveConfig,
-    best_val_bpb: f32,
+    /// Minimum over the readings this run actually TOOK. `None` until the
+    /// first one; it used to be seeded with the f32 maximum, which every heartbeat
+    /// then fed to `bpb_latest` as if 3.4e38 were a measurement.
+    best_val_bpb: Option<f32>,
     start_time: Instant,
     last_heartbeat: Instant,
 }
@@ -755,7 +779,7 @@ fn init_training(cfg: &Config) -> TrainingState {
             jepa_weight: cfg.jepa_weight,
             nca_weight: cfg.nca_weight,
         },
-        best_val_bpb: f32::MAX,
+        best_val_bpb: None,
         start_time: Instant::now(),
         last_heartbeat: Instant::now(),
     }
@@ -787,8 +811,20 @@ fn print_banner(cfg: &Config) {
 
 // ── results ──
 
-fn print_results(cfg: &Config, best_bpb: f32, elapsed: f64) {
+fn print_results(cfg: &Config, best_bpb: Option<f32>, elapsed: f64) {
     eprintln!("\n=== Training Complete ===");
+    let Some(best_bpb) = best_bpb else {
+        // A run that took no measurement says so. It does not pass a gate by
+        // default and it does not print a number it does not have.
+        eprintln!(
+            "Steps={} Time={:.1}s best_val_bpb=unmeasured",
+            cfg.steps, elapsed
+        );
+        println!("BPB=unmeasured");
+        eprintln!("Gate-1 FAILED: no val_bpb was measured");
+        eprintln!("Gate-2 FAILED: no val_bpb was measured");
+        return;
+    };
     eprintln!(
         "Steps={} Time={:.1}s best_val_bpb={:.4} vs_champion={:+.4}",
         cfg.steps,
@@ -799,12 +835,12 @@ fn print_results(cfg: &Config, best_bpb: f32, elapsed: f64) {
     println!("BPB={:.4}", best_bpb);
 
     if best_bpb <= 2.22 {
-        eprintln!("Gate-1 PASSED (≤2.22)");
+        eprintln!("Gate-1 PASSED (<=2.22)");
     } else {
         eprintln!("Gate-1 FAILED: {:.4} > 2.22", best_bpb);
     }
     if best_bpb <= 2.03 {
-        eprintln!("Gate-2 PASSED (≤2.03)");
+        eprintln!("Gate-2 PASSED (<=2.03)");
     } else {
         eprintln!("Gate-2 FAILED: {:.4} > 2.03", best_bpb);
     }
@@ -819,8 +855,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     print_banner(&cfg);
     neon_trial_start(&cfg);
 
-    let train_data = load_data("data/tiny_shakespeare.txt");
-    let val_data = load_data("data/tiny_shakespeare_val.txt");
+    let train_data = load_data("data/tiny_shakespeare.txt")?;
+    let val_data = load_data("data/tiny_shakespeare_val.txt")?;
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
     let val = if val_data.len() > 100 {
@@ -865,30 +901,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if step % 500 == 0 || step == cfg.steps {
             let elapsed = st.start_time.elapsed().as_secs_f64();
             let val_bpb = evaluate(&st.model, val);
-            if val_bpb < st.best_val_bpb && val_bpb.is_finite() {
-                st.best_val_bpb = val_bpb;
+            if let Some(v) = val_bpb {
+                if v.is_finite() && st.best_val_bpb.is_none_or(|b| v < b) {
+                    st.best_val_bpb = Some(v);
+                }
             }
             eprintln!(
-                "step={:5} ntp={:.4} jepa={:.4} nca={:.4} val_bpb={:.4} best={:.4} t={:.1}s",
+                "step={:5} ntp={:.4} jepa={:.4} nca={:.4} val_bpb={} best={} t={:.1}s",
                 step,
                 combined.components.ntp,
                 combined.components.jepa,
                 combined.components.nca,
-                val_bpb,
-                st.best_val_bpb,
+                fmt_bpb(val_bpb),
+                fmt_bpb(st.best_val_bpb),
                 elapsed
             );
             // R5-honest ledger write to ssot.bpb_samples (ARCH writer hook).
             // No-op if TRIOS_CANON_NAME unset; safe to call every eval.
-            if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
-                if !canon.is_empty() {
-                    neon_writer::bpb_sample(
-                        &canon,
-                        cfg.seed as i32,
-                        step as i32,
-                        val_bpb,
-                        Some(st.best_val_bpb),
-                    );
+            // `ema_bpb` is None: this binary tracks no EMA. It used to pass
+            // `best_val_bpb`, a running minimum, into a column labelled ema.
+            if let Some(v) = val_bpb {
+                if let Ok(canon) = std::env::var("TRIOS_CANON_NAME") {
+                    if !canon.is_empty() {
+                        neon_writer::bpb_sample(&canon, cfg.seed as i32, step as i32, v, None);
+                    }
                 }
             }
         }
@@ -899,6 +935,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let elapsed = st.start_time.elapsed().as_secs_f64();
     neon_trial_complete(&cfg, st.best_val_bpb);
     print_results(&cfg, st.best_val_bpb, elapsed);
+
+    // A DSN was configured means this run was supposed to be recorded. If every
+    // write was dropped, exiting 0 would let a supervisor file it as a success.
+    let code = neon_writer::ledger_exit_code();
+    if code != 0 {
+        std::process::exit(code);
+    }
     Ok(())
 }
 

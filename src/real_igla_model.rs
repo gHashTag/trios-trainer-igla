@@ -250,10 +250,19 @@ impl RealIglaModel {
     }
 
     /// Compute cross-entropy loss and BPB on a token sequence.
-    /// Returns (loss, bpb).
-    pub fn loss_bpb(&self, tokens: &[usize]) -> (f32, f32) {
+    ///
+    /// Returns `None` when nothing was measured: too few tokens to form a
+    /// single (input, target) pair, or a forward pass that produced a
+    /// non-finite or non-positive probability for a target.
+    ///
+    /// This used to clamp the probability to a 1e-10 floor via `f32::max`,
+    /// which ignores NaN, so a single poisoned weight came back as that
+    /// floor and turned into a finite ~23.0-nat / ~33.2-bpb reading that no
+    /// downstream check rejected. A number that was never measured must not
+    /// be returned as if it were.
+    pub fn loss_bpb(&self, tokens: &[usize]) -> Option<(f32, f32)> {
         if tokens.len() < 2 {
-            return (0.0, 0.0);
+            return None;
         }
         let input = &tokens[..tokens.len() - 1];
         let targets = &tokens[1..];
@@ -264,23 +273,35 @@ impl RealIglaModel {
         for (logit_row, &target) in logits.iter().zip(targets.iter()) {
             let mut probs = logit_row.clone();
             softmax(&mut probs);
-            let p = probs[target.min(self.vocab_size - 1)].max(1e-10);
+            let p = probs[target.min(self.vocab_size - 1)];
+            if !p.is_finite() || p <= 0.0 {
+                return None;
+            }
             total_loss -= p.ln();
         }
 
         let loss = total_loss / targets.len() as f32;
+        if !loss.is_finite() {
+            return None;
+        }
         let bpb = loss / LN_2;
-        (loss, bpb)
+        Some((loss, bpb))
     }
 
     /// SGD step: update embedding and lm_head via finite-difference gradient.
     /// In production replace with proper autograd; this is correct for CPU demo.
-    pub fn sgd_step(&mut self, tokens: &[usize], lr: f32) {
+    ///
+    /// Returns `false` and leaves the weights untouched when a loss needed for
+    /// the finite difference could not be measured. A step taken from an
+    /// unmeasurable loss is not a step; the caller has to be able to tell.
+    pub fn sgd_step(&mut self, tokens: &[usize], lr: f32) -> bool {
         if tokens.len() < 2 {
-            return;
+            return false;
         }
         let eps = 1e-3f32;
-        let (loss0, _) = self.loss_bpb(tokens);
+        let Some((loss0, _)) = self.loss_bpb(tokens) else {
+            return false;
+        };
 
         // Update embed rows for tokens in sequence
         for &id in tokens {
@@ -288,11 +309,16 @@ impl RealIglaModel {
             let start = id * self.d_model;
             for j in 0..self.d_model {
                 self.embed[start + j] += eps;
-                let (loss1, _) = self.loss_bpb(tokens);
+                let Some((loss1, _)) = self.loss_bpb(tokens) else {
+                    // Undo the probe so the model is left as we found it.
+                    self.embed[start + j] -= eps;
+                    return false;
+                };
                 let grad = (loss1 - loss0) / eps;
                 self.embed[start + j] -= eps + lr * grad;
             }
         }
+        true
     }
 }
 
@@ -309,11 +335,40 @@ mod tests {
         assert_eq!(logits[0].len(), 256);
     }
 
+    /// A single NaN weight must make `loss_bpb` report "not measured", not a
+    /// plausible number. Fails if anyone reinstates the 1e-10 `f32::max`
+    /// floor: it would turn the poisoned forward pass into a finite ~23.0 nats.
+    #[test]
+    fn test_loss_bpb_nan_weight_is_not_laundered() {
+        let tokens: Vec<usize> = (0..16).map(|i| i % 256).collect();
+
+        let healthy = RealIglaModel::new(256, 64, 1);
+        let (loss, bpb) = healthy
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
+        assert!(loss.is_finite() && loss > 0.0, "healthy loss: {}", loss);
+        assert!(bpb.is_finite() && bpb > 0.0, "healthy bpb: {}", bpb);
+
+        let mut poisoned = RealIglaModel::new(256, 64, 1);
+        poisoned.embed[0] = f32::NAN;
+        assert_eq!(
+            poisoned.loss_bpb(&tokens),
+            None,
+            "a NaN weight must not yield a measurement"
+        );
+        assert!(
+            !poisoned.sgd_step(&tokens, 0.01),
+            "a step must not be reported as taken from an unmeasurable loss"
+        );
+    }
+
     #[test]
     fn test_loss_bpb_finite() {
         let model = RealIglaModel::new(256, 64, 1);
         let tokens: Vec<usize> = (0..16).map(|i| i % 256).collect();
-        let (loss, bpb) = model.loss_bpb(&tokens);
+        let (loss, bpb) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
         assert!(loss.is_finite(), "loss must be finite");
         assert!(bpb.is_finite(), "bpb must be finite");
         assert!(bpb > 0.0, "bpb must be positive");
@@ -324,9 +379,13 @@ mod tests {
     fn test_sgd_reduces_loss() {
         let mut model = RealIglaModel::new(256, 64, 1);
         let tokens: Vec<usize> = vec![10, 20, 30, 40, 50, 60, 70, 80];
-        let (loss_before, bpb_before) = model.loss_bpb(&tokens);
-        model.sgd_step(&tokens, 0.01);
-        let (loss_after, bpb_after) = model.loss_bpb(&tokens);
+        let (loss_before, bpb_before) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
+        assert!(model.sgd_step(&tokens, 0.01), "healthy step must be taken");
+        let (loss_after, bpb_after) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
         println!("BPB before: {:.4}, after: {:.4}", bpb_before, bpb_after);
         // Loss should not explode
         assert!(loss_after.is_finite());

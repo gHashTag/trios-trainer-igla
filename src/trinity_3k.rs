@@ -805,9 +805,20 @@ impl Trinity3kModel {
             .collect()
     }
 
-    pub fn loss_bpb(&self, tokens: &[usize]) -> (f32, f32) {
+    /// Cross-entropy loss and bits-per-byte over `tokens`.
+    ///
+    /// Returns `None` when nothing was measured: too few tokens to form a
+    /// single (input, target) pair, or a forward pass that produced a
+    /// non-finite or non-positive probability for a target.
+    ///
+    /// This used to clamp the probability to a 1e-9 floor via `f32::max`,
+    /// which ignores NaN, so a single poisoned weight came back as that
+    /// floor and turned into a finite ~20.7-nat / ~29.9-bpb reading that no
+    /// downstream check rejected. A number that was never measured must not
+    /// be returned as if it were.
+    pub fn loss_bpb(&self, tokens: &[usize]) -> Option<(f32, f32)> {
         if tokens.len() < 2 {
-            return (0.0, 0.0);
+            return None;
         }
 
         let input_ids = &tokens[..tokens.len() - 1];
@@ -823,18 +834,24 @@ impl Trinity3kModel {
             }
             let mut probs = logits[i].clone();
             softmax(&mut probs);
-            let p = probs[target].max(1e-9);
+            let p = probs[target];
+            if !p.is_finite() || p <= 0.0 {
+                return None;
+            }
             total_loss += -p.ln();
             count += 1;
         }
 
         if count == 0 {
-            return (0.0, 0.0);
+            return None;
         }
 
         let loss = total_loss / count as f32;
+        if !loss.is_finite() {
+            return None;
+        }
         let bpb = loss / LN_2;
-        (loss, bpb)
+        Some((loss, bpb))
     }
 
     fn zero_grad(&mut self) {
@@ -1000,12 +1017,37 @@ mod tests {
         assert_eq!(logits[0].len(), 729);
     }
 
+    /// A single NaN weight must make `loss_bpb` report "not measured", not a
+    /// plausible number. Fails if anyone reinstates the 1e-9 `f32::max`
+    /// floor: it would turn the poisoned forward pass into a finite ~20.7 nats.
+    #[test]
+    fn test_loss_bpb_nan_weight_is_not_laundered() {
+        let tokens: Vec<usize> = (0..16).map(|i| i % 729).collect();
+
+        let healthy = Trinity3kModel::new(Trinity3kConfig::default()).unwrap();
+        let (loss, bpb) = healthy
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
+        assert!(loss.is_finite() && loss > 0.0, "healthy loss: {}", loss);
+        assert!(bpb.is_finite() && bpb > 0.0, "healthy bpb: {}", bpb);
+
+        let mut poisoned = Trinity3kModel::new(Trinity3kConfig::default()).unwrap();
+        poisoned.token_embeddings[0] = f32::NAN;
+        assert_eq!(
+            poisoned.loss_bpb(&tokens),
+            None,
+            "a NaN weight must not yield a measurement"
+        );
+    }
+
     #[test]
     fn test_loss_finite() {
         let c = Trinity3kConfig::default();
         let m = Trinity3kModel::new(c).unwrap();
         let tokens: Vec<usize> = (0..16).map(|i| i % 729).collect();
-        let (loss, bpb) = m.loss_bpb(&tokens);
+        let (loss, bpb) = m
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
         assert!(loss.is_finite());
         assert!(bpb.is_finite());
         assert!(bpb > 0.0);
@@ -1024,7 +1066,9 @@ mod tests {
         let mut model = Trinity3kModel::new(c).unwrap();
         let tokens: Vec<usize> = (0..32).collect();
 
-        let (loss_before, _) = model.loss_bpb(&tokens);
+        let (loss_before, _) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
 
         let cfg = AdamWConfig {
             lr: 1e-3,
@@ -1038,7 +1082,9 @@ mod tests {
             model.train_step(&tokens, &cfg);
         }
 
-        let (loss_after, _) = model.loss_bpb(&tokens);
+        let (loss_after, _) = model
+            .loss_bpb(&tokens)
+            .expect("a healthy model must produce a measurement");
 
         assert!(
             loss_after < loss_before,

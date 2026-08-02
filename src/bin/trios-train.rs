@@ -88,10 +88,6 @@ struct Cli {
     #[allow(dead_code)]
     ctx: Option<usize>,
 
-<<<<<<< HEAD
-    /// Format type pass-through (honoured via FakeQuant + STE in train_loop).
-    /// gf16 is the default in production. See fake_quant.rs for supported kinds.
-=======
     /// Format type pass-through.
     ///
     /// Honoured by `train_loop::resolve_fake_quant_format()` via the
@@ -102,7 +98,6 @@ struct Cli {
     /// adamw-binary32 / adamw-GF16 / muon-GF16 producing identical BPB on the
     /// same seed). The fix below re-exports `cli.format` into the env so the
     /// `--format=gf16` CLI form behaves identically to `TRIOS_FORMAT_TYPE=gf16`.
->>>>>>> befc291b489fe0a6d3caceb395efde546e7b13d9
     #[arg(long, env = "TRIOS_FORMAT_TYPE")]
     format: Option<String>,
 
@@ -329,7 +324,6 @@ fn main() -> Result<()> {
             eval_every: cli.eval_every,
             train_path: cli.train_data.clone(),
             val_path: cli.val_data.clone(),
-            format: cli.format.clone(),
         };
         // R5-honest dispatch: every supported optimizer is named explicitly.
         // Any unsupported name is a hard error, NOT a silent AdamW fallback.
@@ -347,10 +341,21 @@ fn main() -> Result<()> {
                 ));
             }
         };
-        println!(
-            "DONE: seed={} bpb={:.4} steps={} opt={}",
-            outcome.seed, outcome.final_bpb, outcome.steps_done, cli.optimizer
-        );
+        // `bpb=` is the RAW val_bpb measured at the final step. It used to be
+        // `best_bpb`: the running minimum of an EMA seeded at init (~7.0), so
+        // two runs with byte-identical weights printed 3.5506 and 4.4940 while
+        // the measurement was 2.8534 in both. A run that took no final
+        // measurement says so instead of substituting a number.
+        match outcome.final_val_bpb {
+            Some(bpb) => println!(
+                "DONE: seed={} bpb={:.4} steps={} opt={}",
+                outcome.seed, bpb, outcome.steps_done, cli.optimizer
+            ),
+            None => println!(
+                "DONE: seed={} bpb=unmeasured steps={} opt={}",
+                outcome.seed, outcome.steps_done, cli.optimizer
+            ),
+        }
         // R5/L8: flush so seed-agent reader sees DONE before EOF.
         use std::io::Write as _;
         let _ = std::io::stdout().flush();
