@@ -1,0 +1,131 @@
+# Cross-architecture reproducibility check.
+#
+# The reproducibility claim in README.md was measured on ONE machine
+# (aarch64 macOS). Determinism on a single host is the easy case and is not
+# what conformity confirmation would ask for. This job runs the SAME documented
+# command on x86_64 Linux and compares the resulting checkpoint byte-for-byte
+# against the hash recorded in README.md.
+#
+# Two variables are deliberately held fixed so a mismatch is interpretable:
+#   - the compiler, by rust-toolchain.toml (1.96.0)
+#   - the dependency graph, by `--locked`
+# What differs is CPU architecture and OS, and only that.
+#
+# A FAILING run is a legitimate and useful result: it locates the boundary of
+# the method. It must therefore fail loudly rather than warn, and it prints both
+# hashes either way so the outcome is readable without re-running anything.
+#
+# Note: the *binary* hash is expected to differ (different machine code for a
+# different architecture). Only the *checkpoint* is claimed to be portable.
+
+name: Cross-arch reproducibility
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fix/509-qat-v2]
+
+jobs:
+  repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      # From README.md, produced on aarch64 macOS with rustc 1.96.0.
+      EXPECTED_CKPT_SHA: 8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+      # From data/MANIFEST.sha256.
+      EXPECTED_TRAIN_SHA: 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+      EXPECTED_VAL_SHA: 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+      EXPECTED_UNION_SHA: 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the environment being compared against
+        run: |
+          echo "arch:   $(uname -sm)"
+          echo "rustc:  $(rustc --version)"
+          echo "libc:   $(ldd --version 2>&1 | head -1)"
+          echo "reference: aarch64 macOS, rustc 1.96.0 (see README.md)"
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The corpus is not in git. Rebuild it from the canonical source and
+      # prove it is the same bytes before any number is produced.
+      - name: Fetch and split the corpus, byte-disjoint
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          curl -sL --retry 3 \
+            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+            > data/full.txt
+          SIZE=$(wc -c < data/full.txt)
+          echo "downloaded $SIZE bytes"
+          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+          rm data/full.txt
+
+      - name: Verify the corpus against data/MANIFEST.sha256
+        run: |
+          set -euo pipefail
+          got_train=$(sha256sum data/tiny_shakespeare.txt | cut -d' ' -f1)
+          got_val=$(sha256sum data/tiny_shakespeare_val.txt | cut -d' ' -f1)
+          got_union=$(cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | sha256sum | cut -d' ' -f1)
+
+          echo "train  expected=$EXPECTED_TRAIN_SHA got=$got_train"
+          echo "val    expected=$EXPECTED_VAL_SHA got=$got_val"
+          echo "union  expected=$EXPECTED_UNION_SHA got=$got_union"
+
+          [ "$got_train" = "$EXPECTED_TRAIN_SHA" ] || { echo "::error::train corpus differs from the manifest"; exit 1; }
+          [ "$got_val"   = "$EXPECTED_VAL_SHA" ]   || { echo "::error::val corpus differs from the manifest"; exit 1; }
+          # The union hash is what proves the split is a partition, not a copy.
+          [ "$got_union" = "$EXPECTED_UNION_SHA" ] || { echo "::error::train+val do not reconstruct the canonical corpus"; exit 1; }
+
+      - name: Build the trainer
+        run: cargo build --release --locked --bin trios-train
+
+      - name: Run the documented seed
+        run: |
+          set -euo pipefail
+          env -u DATABASE_URL -u NEON_DATABASE_URL -u TRIOS_DATABASE_URL \
+            TRIOS_CANON_NAME=r4-docs-repro ./target/release/trios-train \
+            --seed 47 --steps 12000 --hidden 384 --attn-layers 2 --eval-every 1000 \
+            --lr 0.003 --train-data data/tiny_shakespeare.txt \
+            --val-data data/tiny_shakespeare_val.txt
+
+      - name: Compare the checkpoint against the aarch64 reference
+        run: |
+          set -euo pipefail
+          CKPT=checkpoints/r4-docs-repro/12000.bin
+          test -f "$CKPT" || { echo "::error::no checkpoint was produced at $CKPT"; exit 1; }
+
+          got=$(sha256sum "$CKPT" | cut -d' ' -f1)
+          echo "=============================================================="
+          echo " checkpoint : $CKPT"
+          echo " bytes      : $(wc -c < "$CKPT")"
+          echo " x86_64 linux : $got"
+          echo " aarch64 macos: $EXPECTED_CKPT_SHA"
+          echo "=============================================================="
+
+          if [ "$got" = "$EXPECTED_CKPT_SHA" ]; then
+            echo "MATCH - the artifact is byte-identical across architecture and OS."
+          else
+            echo "::error::MISMATCH - the checkpoint is NOT portable across architectures."
+            echo "This is a real finding, not a flake. Same source, same compiler"
+            echo "(rust-toolchain.toml), same locked dependencies, same verified corpus."
+            echo "The remaining difference is CPU architecture and OS, so that is where"
+            echo "the divergence comes from - most likely floating-point contraction or"
+            echo "reduction order in the training loop. Record it in README.md rather"
+            echo "than relaxing this check."
+            exit 1
+          fi
+
+      - name: Publish the sidecar as evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkpoint-sidecar-x86_64
+          path: |
+            checkpoints/r4-docs-repro/12000.json
+            checkpoints/r4-docs-repro/12000.bin
+          if-no-files-found: warn
