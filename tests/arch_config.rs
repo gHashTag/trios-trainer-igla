@@ -118,6 +118,12 @@ fn all_defaults_wave30_baseline() {
             num_attn_layers: 1,
             gf16_enabled: false,
         },
-        "all-defaults must be the Wave-30 baseline (h=384, 1L, no GF16)"
+        "all-defaults must be the Wave-30 parse baseline (h=384, 1L)"
     );
+    // NOTE on `gf16_enabled: false` above: that is this PARSER's fallback for
+    // an unset variable, not the trainer's executed default. With
+    // `GF16_ENABLED` unset, `train_loop::resolve_gf16_knob` never calls
+    // `parse_gf16_enabled` at all - it falls back to the legacy
+    // `TRIOS_GF16_DISABLE` reading, which is ON. The executed default is GF16
+    // ON; see `train_loop::gf16_enabled_false_is_distinguishable_from_unset`.
 }

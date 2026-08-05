@@ -58,3 +58,205 @@
 //!
 //! # Why a hand-rolled binary format
 //!
+================================================================================
+ADDENDUM, added 2026-08-03. NOT part of the frozen text above.
+================================================================================
+
+The 60 lines above are the frozen specification snapshot, sha256
+d9e99c298296a1741f36d0e3ae009db3d1bfce6601dcb3c0a4f3ebb6a4fd12fe
+(reproduce with: head -60 interop/SPEC-SNAPSHOT.txt | shasum -a 256).
+They are the ONLY text `interop/triosckp_reader.py` was written from, and they
+are left byte-for-byte unchanged so that claim stays checkable. Everything below
+this line was added later, describes the UNHASHED sidecar record rather than the
+binary container, and is documentation only: no reader may cite it as evidence
+that the container survived independent implementation.
+
+Why an addendum exists at all: ambiguity A6 in interop/README.md - the sidecar
+is the object that actually carries the provenance claim to a third party, and
+the specification never mentioned it. The container format is still version 1
+and is unchanged by anything below.
+
+--------------------------------------------------------------------------------
+The sidecar record: `<step>.json` beside `<step>.bin`
+--------------------------------------------------------------------------------
+
+One JSON object per checkpoint, written whether or not a ledger database is
+reachable. Its `schema` field carries a tag of the form
+`trios-checkpoint-record/N`. The versions were intended to be PURELY ADDITIVE
+from /2 onward, so that a newer reader loads an older record and an older reader
+loads a newer one. THEY ARE NOT, and the exceptions are marked "retired" below:
+/6 stopped writing best_val_bpb and /7 stopped writing run_id. A reader that
+believes the additive claim will misreport those two names.
+
+  schema  added
+  ------  -------------------------------------------------------------------
+   /1     canon_name, seed, step, path, sha256, bytes, format_version, hidden,
+          d_model, num_attn_layers, optimizer, fake_quant_format,
+          data_synthetic, bpb, ema_bpb, git_sha, git_dirty, corpus, run_id,
+          ledger, ts
+   /2     steps_total, gf16_floor_every, eval_every, git_provenance;
+          renamed bpb -> final_val_bpb and added best_val_bpb;
+          widened git_dirty to nullable
+   /3     lr, attn_scale, attn_seq, platform, source_sha256
+   /4     trainer (path, sha256, provenance), vocab
+   /5     gf16_enabled
+   /6     eval_chunks, eval_tokens, eval_seq (the grid the metric was read on),
+          val_bpb_stderr, optimizer_params (beta1, beta2, eps, weight_decay,
+          source);
+          RETIRED best_val_bpb, replaced by min_observed_val_bpb
+   /7     inside platform: rustflags_sha256, rustflags_source,
+          source_digest_scope, remap_applied;
+          RETIRED run_id
+
+The /6 and /7 rows were derived by diffing the records under checkpoints/
+against each other on 2026-08-03, not from the encoder and not from any earlier
+prose. Every name in them is present in EVERY record on disk carrying that tag
+or a higher one; a name held by only some records of a version is not listed as
+that version's addition, because version inference must not depend on which run
+happened to write it.
+
+DRIFT OBSERVED, recorded because a reader has to handle it: platform's
+source_digest_scope is listed at /7 because every /7 record carries it, but
+three records on disk carry it under a /6 TAG - checkpoints/trios-train-rng47/
+2000.json and both of checkpoints/loc-v3/ - written 2026-08-03 08:24-08:33 UTC,
+about an hour before the first /7 tag at 09:25 UTC. The field shipped before its
+version did. A conforming reader reports a later-schema field found under an
+earlier tag rather than ignoring it or failing on it: the record is not lying
+about anything, the tag is simply younger than the field.
+
+Fields with a counterpart in the 152-byte header, and therefore cross-checkable
+against the container by a reader holding both halves:
+
+  sidecar field    header offset  header type
+  --------------   -------------  --------------------------------------------
+  sha256           (whole file)   SHA-256 of every byte of the .bin
+  bytes            (whole file)   file length
+  format_version    8   4         u32
+  vocab            16   4         u32                        (schema 4)
+  hidden           28   4         u32
+  d_model          32   4         u32
+  num_attn_layers  44   4         u32
+  lr               72   4         f32 bits, train_lr         (schema 3)
+  attn_scale       76   4         f32 bits                   (schema 3)
+  attn_seq         80   4         u32                        (schema 3)
+  seed            108   8         u64
+  step            116   8         u64
+  gf16_enabled    124   1         u8                         (schema 5)
+  data_synthetic  125   1         u8
+  optimizer       128   8         ASCII, NUL-padded
+  fake_quant_format 136 16        ASCII, NUL-padded
+
+Fields with NO counterpart in the container. A reader holding the bytes can
+report their presence and their value but cannot confirm or refute either:
+`platform` and `source_sha256` (schema 3), `trainer` (schema 4), the eval grid
+and optimizer fields of schema 6 (`eval_chunks`, `eval_tokens`, `eval_seq`,
+`val_bpb_stderr`, `optimizer_params`, `min_observed_val_bpb`), the whole of
+schema 7 (`platform.rustflags_sha256`, `platform.rustflags_source`,
+`platform.source_digest_scope`, `platform.remap_applied`), and every
+schema /1 and /2 field not listed in the table above - notably `final_val_bpb`,
+`best_val_bpb` and `ema_bpb`, which are measurements the container does not
+carry, and `corpus`, `git_sha`, `git_dirty`, `git_provenance`, `steps_total`,
+`gf16_floor_every`, `eval_every`, `run_id`, `ledger`, `ts`, `canon_name`,
+`path`.
+
+The count matters and is not flattering. A /1 record has 22 top-level keys and
+11 of them are checkable against the container. A /7 record has 39 and the
+checkable set is still 16: /6 added five fields and /7 four, and not one of the
+nine has a counterpart in the bytes. Every schema bump since /5 has widened the
+part of the record that must be taken on trust. `source_sha256` in particular
+states a digest and a scope name (`platform.source_digest_scope`) but not the
+file list, the ordering or the hashing rule, so no second implementation can
+recompute it - it is an assertion, not a check.
+
+A conforming reader must therefore state the scope of its own verdict: which
+fields it compared against the container, which it merely echoed, and which it
+had no meaning for at all. A bare "agrees on N fields" is a claim with an
+unstated denominator.
+
+Note that `vocab` (offset 16) and `gf16_enabled` (byte 124) were ALREADY in the
+hashed header before schemas 4 and 5 existed. Those versions did not change a
+single artifact byte; they surfaced in the evidence record two quantities that
+had already decided the artifact's identity. That is why the container's
+`format_version` is deliberately not bumped in step with the record schema:
+bumping it would invalidate every archived artifact hash for a JSON field.
+
+--------------------------------------------------------------------------------
+Reading rule for the schema tag
+--------------------------------------------------------------------------------
+
+A tag is a CLAIM about a record; the fields are the record. A conforming reader
+therefore dispatches on FIELD PRESENCE and treats the tag as one more assertion
+to check, with three outcomes:
+
+  1. Tag <= the highest version the reader knows, and every field of every
+     version up to the tag is present: read and cross-check normally.
+  2. Tag names a version whose fields are missing (whatever the tag's number):
+     FAIL. The record over-promises about its own content. A defaulted value is
+     not a measurement, and an absent field is not a zero.
+  3. Tag ABOVE the highest version the reader knows, with every field of that
+     highest known version present: PASS, with a note naming both versions. The
+     record carries fields whose meaning the reader does not have; that is a
+     difference in instrument age, not a defect in the artifact, and failing it
+     would make every future record unreadable by every deployed reader.
+
+Case 3 is the difference between a format that can be audited for a decade and
+one that breaks at the next additive change.
+
+Case 3 has a failure mode of its own, and it is quieter than case 2. A reader
+whose table is merely STALE takes branch 3 on every newer record and passes it,
+reporting agreement over only the fields it happens to know. That is how
+`interop/triosckp_reader.py` behaved against /6 and /7 records while its table
+stopped at /5: PASS, with a note about instrument age, and not one word about
+`eval_chunks` or `rustflags_sha256`. The rule is right; a stale table makes it
+report a shrinking fraction of the record as if it were the whole. Hence a
+fourth requirement, orthogonal to the three cases above:
+
+  4. Any key the reader has no meaning for - top level or nested - is reported
+     BY NAME as present and not interpreted. Never a silent pass. A field the
+     instrument cannot see is a field it cannot agree or disagree about, and an
+     instrument that passes everything it cannot see is not a second opinion.
+
+--------------------------------------------------------------------------------
+Exit codes of `ckpt_replay`, the reference grader
+--------------------------------------------------------------------------------
+
+`src/bin/ckpt_replay.rs` is this repository's own falsifier: it re-derives an
+artifact from the sidecar that describes it and grades the result. Its exit code
+IS the verdict, and a third party wiring it into their own audit needs the whole
+table, not the two codes they happen to hit. `ckpt_replay --help` prints the same
+list; if the two ever disagree, the binary is right and this file is stale.
+
+  exit 0  VERIFIED. The bytes re-derived from the record's own parameters, and
+          the metric was confirmed too when the record states one. Scoped to ONE
+          platform triple, which is printed with the verdict.
+  exit 1  MISMATCH, ARTIFACT ALTERED, ARTIFACT MISSING, CORPUS MISMATCH,
+          TRAINER MISMATCH. The evidence and the re-derivation disagree; for the
+          last three, nothing was executed at all.
+  exit 2  INCOMPARABLE. The record cannot state its own recipe, or it
+          contradicts the header inside the artifact it describes. This is a
+          verdict, not a failure: the run may have been perfectly reproducible
+          and its record simply does not say so.
+  exit 3  REFUSED. The replay would cost more than `--max-steps` authorised.
+          Nothing was executed.
+  exit 4  ERROR. The check itself could not be run, so there is no verdict to
+          record. Never a statement about the artifact.
+  exit 5  BPB MISMATCH, BPB NOT CONFIRMED, GRID MISMATCH. The weights
+          re-derived exactly and the NUMBER the record certifies did not, or was
+          not gradeable against the replay.
+  exit 6  L2 PASS / L3 FAIL. The bytes did NOT re-derive and the metric did,
+          within a tolerance the binary prints (`--bpb-tolerance`, default
+          0.005 bpb, derived from the paired cross-laboratory deltas published
+          in docs/REPRODUCIBILITY-GRADING.md). This is the shape an honest
+          second laboratory takes on another platform, and it is deliberately
+          NOT exit 1: an instrument whose only outcomes are "bit-identical" and
+          "indistinguishable from fraud" has no false-positive control.
+
+A BPB verdict is scoped to the EVAL GRID the record declares. `final_val_bpb` is
+a reading taken over `eval_chunks` windows of `eval_seq` tokens (schema 6, and
+movable at training time through `TRIOS_EVAL_CHUNKS`), so a replay on a different
+grid measures a different quantity: `ckpt_replay` drives the child to the
+recorded grid, reads back the grid the replay actually used from the replay's own
+sidecar, and reports any difference as GRID MISMATCH rather than as a claim that
+the record misstated its number. A record from a schema older than /6 declares no
+grid; those runs predate the knob and are replayed at the default, which is
+stated in the verdict rather than assumed away.

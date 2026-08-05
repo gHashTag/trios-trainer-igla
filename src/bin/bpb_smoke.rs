@@ -5,7 +5,9 @@
 //! exits.
 //!
 //! Acceptance for trios#444: this binary, given a working DSN, MUST produce
-//! exactly one new row in NEON within 90 seconds, with no panics.
+//! exactly one new row in NEON within 90 seconds, with no panics. That
+//! contract is now enforced by the exit status: any verdict other than
+//! `written` exits non-zero (exit 3), and a missing DSN exits 2.
 //!
 //! ## The BPB here is typed, not measured
 //!
@@ -65,6 +67,27 @@ fn main() {
          WHERE canon_name='{canon}' ORDER BY ts DESC LIMIT 1;",
         outcome.as_str()
     );
+
+    // This binary makes exactly ONE write and its whole contract is that the
+    // write produces exactly one new row. So it can read the verdict directly
+    // instead of inferring it from process-wide counters: anything other than
+    // `Written` means the row this probe exists to produce does not exist.
+    //
+    // `ledger_exit_code()` alone was not enough. A `Rejected` verdict (a BPB
+    // below PUBLISHED_BPB_FLOOR, a canon/algo mismatch) wrote no row, printed
+    // `ledger=rejected` and -- because a refusal touched neither the landed
+    // nor the dropped counter -- exited 0. A supervisor read that as a green
+    // probe against a DSN that had received nothing.
+    if outcome != trios_trainer::neon_writer::LedgerWrite::Written {
+        eprintln!(
+            "[bpb_smoke] FAIL: verdict '{}' is not 'written'. The acceptance \
+             contract of this probe is exactly one new row; none was created.",
+            outcome.as_str()
+        );
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        std::process::exit(3);
+    }
 
     let code = trios_trainer::neon_writer::ledger_exit_code();
     let _ = std::io::stdout().flush();

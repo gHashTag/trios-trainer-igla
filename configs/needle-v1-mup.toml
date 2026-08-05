@@ -15,6 +15,11 @@ seq_len     = 1024
 hybrid_attn = true
 
 [optimizer]
+# NOT IMPLEMENTED. See the same note in configs/gate2-attempt.toml:
+# "muon+adamw" is not in train_loop::SUPPORTED_OPTIMIZERS {adamw, muon,
+# muon-cwd}, so `--config` refuses this file instead of running AdamW under it.
+# The declaration stays as written - it records the intended experiment, and a
+# silent rewrite to "adamw" would erase that.
 kind         = "muon+adamw"
 lr           = 0.004        # muP-anchored, validated by INV-8 φ-band
 beta1        = 0.9
@@ -36,6 +41,13 @@ w_jepa = 0.5
 w_nca  = 0.1
 
 [ledger]
-jsonl_path   = "assertions/seed_results.jsonl"
-push         = true
+# Was "assertions/seed_results.jsonl" with push = true, i.e. running this file
+# committed and pushed to origin as a side effect of measuring a BPB. That
+# ledger is retracted (renamed to assertions/RETRACTED-seed_results.jsonl.txt);
+# re-creating the path republishes retracted evidence, and
+# `falsify_live_ledger_resurrected` in tests/preregistration_seed_lock.rs fails
+# if it reappears. An empty path makes run() skip the emit entirely: this
+# config cannot mint a row, and it cannot touch git.
+jsonl_path   = ""
+push         = false
 embargo_path = ".embargo"

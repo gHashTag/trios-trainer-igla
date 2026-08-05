@@ -5,10 +5,25 @@ checkpoint container and the record of what comparing it against the first
 implementation did and did not establish.
 
 - `SPEC-SNAPSHOT.txt` - the frozen specification text (lines 1-60 of
-  `src/checkpoint.rs`), sha256
-  `d9e99c298296a1741f36d0e3ae009db3d1bfce6601dcb3c0a4f3ebb6a4fd12fe`.
+  `src/checkpoint.rs` as of the snapshot date), sha256
+  `d9e99c298296a1741f36d0e3ae009db3d1bfce6601dcb3c0a4f3ebb6a4fd12fe`, which is
+  now the digest of the first 60 lines only
+  (`head -60 interop/SPEC-SNAPSHOT.txt | shasum -a 256`). Those 60 lines are
+  left byte-for-byte unchanged. Everything after them is a clearly delimited
+  addendum added 2026-08-03 that documents the **sidecar record** schemas /1
+  through /7; it is documentation, not part of the text the reader was written
+  from, and no result may be attributed to it. The /6 and /7 rows were derived
+  by diffing the records under `checkpoints/` against each other, not from the
+  encoder.
 - `triosckp_reader.py` - a Python 3 standard-library reader written from that
   text alone.
+
+**Interoperability rule, established this round.** A checkpoint is citable only
+when BOTH instruments pass it - `ckpt_replay` and this reader - because two
+instruments that disagree on the same file pair have between them no verdict at
+all; and a record whose `schema` tag is above this reader's table is a NOTE, not
+a failure, provided every field of the highest schema the reader knows is
+present and cross-checked.
 
 Method rule, and the only reason this exercise means anything: the Rust encoder
 and decoder were not read while writing the Python. Specifically,
@@ -18,8 +33,32 @@ specification was ambiguous, the ambiguity was resolved by choosing an
 interpretation and recording it below, never by consulting the Rust. The
 sidecar JSON records were read, because they are the artifacts under test.
 
-Environment: Darwin 25.5.0 arm64, Python 3.14.6, repository at
-`77eba48aac933c067e87b7fc7ed27e8865926bd8` (working tree dirty).
+**Environment of the run this file reports.** Darwin 25.5.0 arm64, Python 3.14.6
+(CPython, Clang 21.0.0). Repository HEAD
+`3c1f751cf4376c13d26e247c2cd86357ab51dd20` ("ci(repro): check the checkpoint is
+byte-identical across architectures", committed 2026-08-03T04:15:49+07:00), and
+**the working tree carries uncommitted changes** - 865 entries in
+`git status --porcelain` at the time of the run, `interop/triosckp_reader.py`
+among them. That commit hash therefore names code that is NOT the code that ran,
+and no reader should treat it as one. Naming a clean tree here would be the
+easiest sentence to write and the only false one.
+
+The field that does pin the source is `source_sha256` in the sidecar itself:
+`a7785bf73a7dd22318500db838409757af476636eb4def54abfd7acd84a560e1` for
+`checkpoints/verify-round3-ref/12000.json`, over the scope the same record
+declares as `platform.source_digest_scope: repository-root`. **This reader cannot
+re-derive that digest** and does not try: the record states a hash and a scope
+name, not the file list, the ordering or the hashing rule, so an independent
+implementation has nothing to recompute it from. `source_sha256` is echoed and
+believed here, exactly like the rest of the provenance block (see section 2a).
+
+The stamp this replaces named a commit two behind HEAD, dated 2026-07-28, also
+over a dirty tree - stale by two commits and by six days. It is not reproduced
+here, because a stale anchor left in the text is the thing most likely to be
+copied forward. An artifact whose entire value is that a second implementation
+agreed with the first has to be able to say which bytes the first implementation
+was; the honest version of that sentence today is the commit above plus the
+admission that the tree did not match it.
 
 ---
 
@@ -91,7 +130,122 @@ Does **not** establish:
   pass every check this reader performs, and would only be caught by comparing
   against the externally recorded SHA-256.
 
+## 2a. What this instrument does NOT check
+
+This section exists because the reader's own output used to hide the answer. It
+printed `RESULT PASS ... sidecar agrees on 16 fields` with no statement of the
+denominator, and a `/6` record has 40 top-level and nested keys. Sixteen of
+forty is not "agreement about the record"; it is agreement about the container
+geometry and the file digest. Everything else was echoed back or, until this
+round, silently ignored.
+
+**Checked against the container bytes** - 16 fields at schema `/5` and above, and
+these are the only interlaboratory agreement this directory has ever produced:
+
+| sidecar field | what confirms it |
+| --- | --- |
+| `sha256` | SHA-256 of the file as read back, computed in Python |
+| `bytes` | actual file length |
+| `format_version`, `hidden`, `d_model`, `num_attn_layers` | header u32 at offsets 8, 28, 32, 44 |
+| `seed`, `step` | header u64 at offsets 108, 116 |
+| `optimizer`, `fake_quant_format` | NUL-padded ASCII at 128 and 136 |
+| `data_synthetic` | header u8 at byte 125 |
+| `lr`, `attn_scale`, `attn_seq` | header offsets 72, 76, 80 (schema `/3`) |
+| `vocab` | header u32 at offset 16 (schema `/4`) |
+| `gf16_enabled` | header u8 at byte 124 (schema `/5`) |
+
+**Echoed, never checked** - read out of the sidecar and reported, with nothing in
+the container able to confirm or refute a single one. On a `/7` record this is 31
+fields, roughly twice the checked set:
+
+- The entire provenance block: `platform` (`os`, `arch`, `pointer_width`,
+  `libc`, `toolchain`, `toolchain_provenance`, and the schema `/7` additions
+  `rustflags_sha256`, `rustflags_source`, `remap_applied`,
+  `source_digest_scope`), `source_sha256`, `trainer` (`path`, `sha256`,
+  `provenance`), `git_sha`, `git_dirty`, `git_provenance`.
+- The entire sampling plan the uncertainty argument rests on: `eval_chunks`,
+  `eval_tokens`, `eval_seq`, `val_bpb_stderr`.
+- Every measurement: `final_val_bpb`, `best_val_bpb`, `min_observed_val_bpb`,
+  `ema_bpb`, `bpb`.
+- The recipe fields the container does not carry: `steps_total`, `eval_every`,
+  `gf16_floor_every`, `optimizer_params`, `corpus`, `canon_name`, `path`,
+  `ledger`, `ts`, `run_id`.
+
+So when this directory reports that two implementations agree, the agreement is
+over container geometry and the file digest. **It is not confirmation of the
+provenance block, and it is not confirmation of the eval grid.** A reader that
+holds only the `.bin` cannot check either, because neither is in the bytes.
+
+**Not interpreted at all** - as of this round the reader also reports, by name,
+every key in a record it has no meaning for, top level or inside `platform`,
+`trainer`, `optimizer_params`, `corpus`. Before this round `MAX_KNOWN_SCHEMA`
+derived to 5 and the file contained no occurrence of `eval_chunks`,
+`val_bpb_stderr`, `optimizer_params` or `rustflags_sha256`: run against a `/6` or
+`/7` record it printed PASS while reporting the provenance block as
+"UNVERIFIABLE from the container" and passing over every schema `/6` and `/7`
+addition without a word. It could not disagree about them, which is precisely why
+it agreed. An unrecognised key is now a NOTE and never a silent pass - the
+correct behaviour when another agent is adding fields to the record in parallel.
+
+Two further limits, unchanged: no tensor value is decoded, so nothing here
+compares weights; and there is no digest inside the container (ambiguity A7), so
+a flipped payload bit is caught only by the externally recorded SHA-256.
+
 ## 3. Measured result
+
+**Re-run of 2026-08-03, schema `/7` reader, at the HEAD and dirty tree stamped at
+the top of this file.** The tree has grown since the round recorded below; every
+number in this paragraph was observed, not carried forward.
+
+```
+$ python3 interop/triosckp_reader.py --verify-all checkpoints
+summary: 74 pair(s), 74 passed, 0 failed
+no key in any record was left uninterpreted by this reader
+$ echo $?
+0
+```
+
+Schema tags present in the tree at the moment of that run, counted over all 74
+records: `/1` 9, `/3` 18, `/4` 4, `/5` 1, `/6` 22, `/7` 20. The tree is being
+written to by other work in parallel, so these counts are a reading, not a
+constant - what is stable is that every tag from `/1` to `/7` is represented and
+all pairs passed. The `/7` headline record
+`checkpoints/verify-round3-ref/12000.json` over
+`8a86fe69...` reports 16 fields verified against the container, 31 echoed and
+unverifiable from the container, 0 uninterpreted. Six negative controls were
+re-run against the extended reader and all six exit 1 with a named error:
+truncation (`TRUNCATED_PAYLOAD`), four appended zero bytes (`TRAILING_GARBAGE`),
+byte 126 set (`RESERVED_NONZERO`), a `/7` tag over a record with
+`platform.rustflags_sha256` removed (over-promise), a zeroed `sha256`, and a
+`vocab` of 256 over a container that says 128.
+
+**The unknown-key report earned itself within the hour, unprompted.** Between the
+75-pair and 76-pair sweeps of this same session, another agent's work landed two
+records tagged `trios-checkpoint-record/8` - `checkpoints/untracked-probe/10.json`
+at 10:47:23 UTC and `checkpoints/gf16-off/200.json` at 10:48:14 UTC. This
+reader's table stops at `/7` and was not extended to meet them. It graded them
+PASS on the forward-compatibility rule, and printed:
+
+```
+scope 16 verified / 31 echoed unverifiable / 4 not interpreted
+  [git_untracked, platform.features, platform.libc_provenance,
+   platform.libc_version]
+```
+
+Under the previous reader those four fields would have produced no output at all.
+The `/8` additions are, on inspection of the artifacts, a `git_untracked` boolean
+and three platform keys - `features` (the cargo feature set),
+`libc_provenance` and `libc_version` - and this instrument has no meaning for any
+of them and says so. That is the difference between an instrument that agrees and
+an instrument that agrees about something.
+
+The other statement worth carrying out of this run is that
+`platform.source_digest_scope` was found under a `/6` tag on three records
+written about an hour before the `/7` tag existed, and the reader said so instead
+of passing over it.
+
+Everything from here to the end of section 3 records the earlier 9-pair round and
+is left as measured then; the per-file digests in the table below still hold.
 
 Command 1, full decode and sidecar cross-check of the honest-provenance final
 checkpoint:
@@ -236,16 +390,79 @@ provenance claim to a third party, and it is the undocumented half of the
 format.
 
 The record has since been versioned. The tag lives in the record's own `schema`
-field and is currently `trios-checkpoint-record/3`; the container's
+field, and the WRITER's current tag is `trios-checkpoint-record/8`
+(`CHECKPOINT_RECORD_SCHEMA`, `src/checkpoint.rs`). The container's
 `format_version` is still 1 and is deliberately NOT bumped in step, because the
 sidecar is unhashed evidence and rewriting the container spec for a JSON field
 would invalidate every archived artifact hash for nothing.
+
+**Separately, and deliberately: this reader's marker table stops at `/7`, so its
+derived `MAX_KNOWN_SCHEMA` is 7.** That is not the same statement as the one
+above and must not be collapsed into it. The writer emits `/8`; the reader knows
+`/7`. The two numbers are allowed to differ, because the reader's job is to be an
+independent second opinion, and an instrument that silently absorbs every new
+field the writer invents has stopped being one. What the gap requires is that a
+`/8` record be handled CORRECTLY, not that it be handled fully - and it is.
+Measured on `checkpoints/untracked-probe/10.bin`, exit 0:
+
+```
+sidecar         schema tag 'trios-checkpoint-record/8', fields present up to schema 7
+sidecar         NOTE: record declares schema/8, this reader knows up to schema/7; all schema/7 fields present and checked
+scope           VERIFIED against the container (16): ...
+scope           ECHOED from the sidecar, NOT verified against the container (31): ...
+scope           present but NOT INTERPRETED by this reader (4): git_untracked, platform.features, platform.libc_provenance, platform.libc_version
+RESULT PASS
+```
+
+That is the interoperability rule stated at the top of this file, applied: a
+record tagged above this reader's table is a NOTE and not a failure, PROVIDED
+every field of the highest schema the reader does know is present and
+cross-checked - and the four fields it cannot interpret are named rather than
+passed over in silence. A `/8` record missing a `/7` field would still FAIL.
+Extending the table to `/8` is the correct next step; until it happens, the
+honest reading of a PASS here is "nothing this instrument can see disagrees",
+which is weaker than "the record is correct" and is printed as such. Section 4
+records what happened the last two times this table went stale - at `/4`, where
+it produced a FAIL, and at `/6`/`/7`, where it produced the quieter and worse
+failure of passing everything it could not see.
 
 | schema | what it added |
 | --- | --- |
 | `/1` | the original record: identity (`canon_name`, `seed`, `step`, `path`), integrity (`sha256`, `bytes`, `format_version`), architecture (`hidden`, `d_model`, `num_attn_layers`), `optimizer`, `fake_quant_format`, `data_synthetic`, `bpb`, `ema_bpb`, `git_sha`, `git_dirty`, `corpus`, `run_id`, `ledger`, `ts` |
 | `/2` | `steps_total`, `gf16_floor_every`, `eval_every`, `git_provenance`; renamed `bpb` -> `final_val_bpb` and added `best_val_bpb`; widened `git_dirty` to nullable |
 | `/3` | `lr`, `attn_scale`, `attn_seq`, `platform` (`os`, `arch`, `pointer_width`, `libc`, `toolchain`, `toolchain_provenance`), `source_sha256` |
+| `/4` | `trainer` (`path`, `sha256`, `provenance`), `vocab` |
+| `/5` | `gf16_enabled` |
+| `/6` | `eval_chunks`, `eval_tokens`, `eval_seq` (the grid the metric was read on), `val_bpb_stderr`, `optimizer_params` (`beta1`, `beta2`, `eps`, `weight_decay`, `source`); replaced `best_val_bpb` with `min_observed_val_bpb` |
+| `/7` | inside `platform`: `rustflags_sha256`, `rustflags_source`, `source_digest_scope`, `remap_applied`; dropped `run_id` |
+| `/8` | `git_untracked`; inside `platform`: `features`, `libc_provenance`, `libc_version` |
+
+The `/6`, `/7` and `/8` rows were derived here by diffing the records on disk,
+since they postdate the addendum's first draft. The `/8` row is additionally
+outside this reader's marker table, so its four fields are reported as "present
+but NOT INTERPRETED" rather than checked - see the note above the table. Two
+things that diff shows and no prose had recorded:
+
+- **`/6` and `/7` are not purely additive.** `/6` stops writing `best_val_bpb`
+  and `/7` stops writing `run_id`. The spec's own reading rule (SPEC-SNAPSHOT
+  addendum) says the versions are "PURELY ADDITIVE from /2 onward"; they are not,
+  and a reader that took the sentence at face value would misreport a `/7` record
+  that still carried `run_id`. The reader now notes retired fields explicitly.
+- **`platform.source_digest_scope` shipped before its version did.** Three
+  records on disk carry it under a `/6` tag - `checkpoints/trios-train-rng47/2000.json`
+  and both of `checkpoints/loc-v3/` - written between 08:24 and 08:33 UTC on
+  2026-08-03, about an hour before the first `/7` tag at 09:25 UTC. The field
+  arrived without a tag bump, which is exactly the drift a presence-based reader
+  exists to catch, so it is reported as "schema 7 field present under a record
+  that reaches only schema 6" rather than smoothed over.
+
+Schemas `/4` and `/5` are the same defect family as `/3`: the record could not
+describe its own inputs. Neither changed a single artifact byte - `vocab` was
+already the u32 at header offset 16 and `gf16_enabled` the u8 at byte 124, i.e.
+both had already decided the artifact's hash - so this reader cross-checks them
+against the container exactly as it cross-checks `lr`, `attn_scale` and
+`attn_seq`. `trainer` has no counterpart in the bytes and is reported as
+unverifiable.
 
 **The nine archived checkpoints under `checkpoints/` are all schema `/1`.** They
 carry none of the `/2` and none of the `/3` fields. For an auditor holding only
@@ -278,10 +495,53 @@ those artifacts, that costs, precisely:
   it.
 
 `interop/triosckp_reader.py` therefore dispatches on FIELD PRESENCE rather than
-on matching the `schema` string, accepts `/1`, `/2` and `/3` alike, and prints
-for every record which of the five schema `/3` provenance fields are absent. On
-the nine archived pairs it prints all five as absent, which is the correct and
-unflattering answer.
+on matching the `schema` string, accepts `/1` through `/7` alike, and prints for
+every record which of the post-`/2` fields are absent. On the nine archived
+pairs it prints all of them as absent, which is the correct and unflattering
+answer.
+
+That dispatch rule had a hole, and the hole cost this directory its credibility
+for one round: the reader's marker table stopped at `/3`, so every record the
+trainer wrote at `/4` and `/5` was reported as a tag over-promising fields it
+did not carry - a FAIL. The same checkpoint bytes
+(`8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c`) passed
+under a `/3` sidecar and failed under a `/4` one, while `ckpt_replay` graded the
+`/4` pair `VERIFIED`. Two conformity instruments returning opposite verdicts on
+one file pair is the worst possible artifact to present in a conformity
+discussion, and the disagreement was pure bookkeeping in the reader. The fix is
+in three parts: the `/4` and `/5` markers are in the table; `vocab` and
+`gf16_enabled` are cross-checked against header offsets 16 and 124; and a tag
+ABOVE the highest version the reader knows is now a note rather than a failure,
+provided every field of that highest known version is present. Version inference
+also became contiguous - the schemas are additive, so a record carrying a `/5`
+field while missing a `/4` one has not reached `/5`, and saying so is what keeps
+the over-promise check meaningful.
+
+A record that claims a version this reader DOES know while omitting that
+version's fields is still a failure, and so is every container defect: the
+negative controls in section 3 were re-run against the extended reader together
+with four new ones - a lying `sha256`, a flipped `gf16_enabled`, a `vocab` of
+256 over a container that says 128, and a `/9` tag over a record missing
+`gf16_enabled` - and all of them still exit 1 with a named error.
+
+**The same hole reopened at `/6` and `/7`, in the quieter direction.** The marker
+table stopped at `/5`, so `MAX_KNOWN_SCHEMA` derived to 5 and the reader took the
+forward-compatibility branch on every `/6` and `/7` record: PASS, with a note
+saying it knew up to `/5`. That is the correct rule applied to a stale table, and
+its effect was worse than the `/4` FAIL, because a FAIL gets investigated. The
+file contained no occurrence of `eval_chunks`, `eval_tokens`, `eval_seq`,
+`val_bpb_stderr`, `optimizer_params` or `rustflags_sha256`; it could not disagree
+about any of them, and reported agreement on the 16 fields it could see. An
+instrument that passes everything it cannot see is not a second opinion.
+
+Two changes close it. The marker table now reaches `/7`, including nested markers
+of the form `platform.<key>` because every `/7` addition lives inside the
+`platform` object and a table of top-level names is blind to them. And an
+unrecognised key - top level, or inside `platform`, `trainer`, `optimizer_params`
+or `corpus` - is now reported by name as "present but NOT INTERPRETED", never
+passed over. With another agent adding fields to the record in parallel, a NOTE
+is the only defensible default; silence is a claim of agreement over a field the
+instrument never read.
 
 **A7. There is no digest inside the container.** The integrity of a checkpoint
 rests entirely on an external assertion in a separate file. A `.bin` handed over
@@ -334,20 +594,51 @@ should be amended on all nine points before anyone is asked to rely on it.
 ## 6. Usage
 
 ```
-python3 interop/triosckp_reader.py <path.bin>                 # decode and report
+python3 interop/triosckp_reader.py <path.bin>                 # pairs <path>.json if present
 python3 interop/triosckp_reader.py <path.bin> --sidecar <p.json>
+python3 interop/triosckp_reader.py <path.bin> --no-sidecar    # container only, on purpose
 python3 interop/triosckp_reader.py --verify-all <dir>
 ```
+
+A bare `<path.bin>` now pairs the `<step>.json` beside it by the naming
+convention and says on stdout which file it paired, because the old behaviour -
+decode the container, report PASS, never open the record - read as a clean verdict
+over an artifact whose provenance half had not been looked at. `--no-sidecar`
+keeps that behaviour when it is what you actually want, and the result line then
+says so.
 
 Exit 0 when every requested check passed, 1 on any container defect or sidecar
 disagreement, 2 on a usage error. Standard library only; no third-party
 dependency, by design - an independent implementation that needs the first
 implementation's toolchain is not independent.
 
-Whenever a sidecar is read, the reader also prints the record's `schema` tag,
-the highest schema version whose fields are actually all present, and the list
-of schema `/3` provenance fields the record lacks (see A6). A record whose tag
-claims a version it does not carry is a failure, not a warning. For a schema
-`/3` record the reader additionally cross-checks `lr`, `attn_scale` and
-`attn_seq` against header offsets 72, 76 and 80, taking the count of compared
-fields from 11 to 14.
+Whenever a sidecar is read, the reader prints the record's `schema` tag, the
+highest schema version whose fields are actually all present, the post-`/2`
+provenance fields the record lacks, any later-schema field found under an earlier
+tag, any field a later schema retired but the record still carries, and then the
+three-way scope of its own verdict:
+
+```
+scope  VERIFIED against the container (16): sha256, bytes, ...
+scope  ECHOED from the sidecar, NOT verified against the container (31): ...
+scope  present but NOT INTERPRETED by this reader (0): none
+```
+
+The same three sets are named in full on the `RESULT PASS` line, so a quoted
+verdict carries its own denominator. `--verify-all` prints counts per pair plus
+any uninterpreted key by name, and aggregates every uninterpreted key across the
+tree in its summary; run a single record for the field-by-field lists.
+
+A record whose tag claims a KNOWN version it does not carry is a failure, not a
+warning; a tag above the reader's table is a note and the record passes; an
+unrecognised key is a note and the record passes, but the key is named.
+
+Cross-checks against the container grow with the schema, so the compared-field
+count is itself a schema readout: 11 fields for a `/1` or `/2` record, 14 for a
+`/3` record (`lr`, `attn_scale`, `attn_seq` at header offsets 72, 76, 80), 15
+for `/4` (`vocab` at offset 16) and 16 for `/5` and above (`gf16_enabled` at byte
+124). It stops at 16: `/6` added five fields and `/7` four, and not one of the
+nine has a counterpart in the container. The record has grown from 22 keys to 39
+while the checked set has grown from 11 to 16, and the fraction this instrument
+can actually confirm has been falling with every schema bump. That trend, not the
+pass rate, is the honest headline of this directory.

@@ -42,6 +42,42 @@
 //      `^IGLA-[A-Z][A-Z0-9-]*-[a-z0-9_]+-h\d+-LR[0-9.]+-rng\d+-[a-z0-9-]+$`.
 //      Old format `cpu_train_{format}_{algo}` is dead.
 //
+// ----------------------------------------------------------------------------
+// RETRACTION (2026-08-03) -- EVERY ROW THIS BINARY WROTE BEFORE THIS COMMIT
+// CARRIES A LABEL THAT DOES NOT DESCRIBE THE RUN. Two independent defects:
+//
+//   1. LR MISLABEL. `run_cpu_train` took no `lr` and never passed `--lr` to the
+//      child, so EVERY cell trained at `cpu_train`'s own default 0.003 no
+//      matter what `--lr` said. The parsed `lr` reached `canon_name` and the
+//      ledger row and nothing else. The nightly schedule passes LR=0.001, so
+//      every nightly row ever written is stamped `LR001` and was trained at
+//      0.003. Verified by execution: `--lr=0.001` and `--lr=0.9` through this
+//      runner produced a bit-identical bpb=4.299640655517578.
+//      This is the `--eval-every` defect inverted: there an OBSERVATION knob
+//      silently changed the artefact; here a RECIPE knob silently changed
+//      nothing while the record claimed it did.
+//
+//   2. FORMAT ROWS THAT ARE NOT DISTINCT MEASUREMENTS. `fp80` is returned
+//      UNCHANGED by `fake_quantize_f32` (`FormatKind::is_unsupported_in_f32`,
+//      src/fake_quant.rs), so every `fp80` row in the ledger is arithmetically
+//      an `fp32` row -- including any `fp80` vs `fp32` "tie", which is an
+//      identity, not a result. `posit16` is an IEEE 10-bit mantissa mask, not
+//      a posit encoder, and `gf4`/`gf12`/`gf20`/`gf24` are absent from the GF
+//      dispatch and fall through to that same mask.
+//
+//   3. `git_sha()` stamped a short sha with NO dirty check, so a row could
+//      name a commit whose tree it was not built from (observed: sha 3c1f751
+//      recorded from a tree with 874 dirty entries).
+//
+// Rows written from this commit onward: `--lr` is passed to the child AND the
+// child's own reported `lr` is checked against the request before a row is
+// built; a non-faithful format is refused outright unless
+// TRIOS_ALLOW_UNFAITHFUL_FORMAT=1, which stamps `format_faithful=false` on the
+// row; `format_lr_token` is injective; git provenance carries a dirty flag.
+// Old rows cannot be repaired -- they must be read as "trained at 0.003" and,
+// for fp80/posit16, as "not a distinct format measurement".
+// ----------------------------------------------------------------------------
+//
 // Anchor: phi^2 + phi^-2 = 3.
 
 use std::env;
@@ -141,6 +177,79 @@ fn check_executed_format(requested: &str, executed: &str) -> Result<(), String> 
     Ok(())
 }
 
+/// The LR the child ACTUALLY trained at, as it reports it in its own results
+/// file, must equal the LR this row is going to be labelled with.
+///
+/// F1 FIX. Passing `--lr` to the child is necessary but not sufficient: the
+/// bug being closed is precisely that a label was trusted without a
+/// measurement behind it, and a silently-ignored flag would reproduce it
+/// exactly. So the request is checked against the child's own report, in the
+/// same shape as the `format_executed` refusal.
+///
+/// TOLERANCE, and why it is not the literal `1e-12` on the raw request:
+/// `cpu_train` parses `--lr` into an **f32** and serialises that f32 widened
+/// back to f64, so `--lr=0.001` comes back as `0.0010000000474974513` -- off
+/// the f64 request by 4.7e-11. Comparing the raw request at 1e-12 would refuse
+/// EVERY cell. The comparison is therefore against the request NARROWED TO f32
+/// AND WIDENED BACK, which is the exact value the trainer is able to hold; at
+/// 1e-12 that is effectively an equality test, and it is a STRONGER claim than
+/// a loosened absolute tolerance would have been: it says the child trained at
+/// exactly the f32 this label denotes, not merely near it.
+fn check_executed_lr(requested: f64, executed: Option<f64>) -> Result<(), String> {
+    let got = executed.ok_or_else(|| {
+        "cpu_train did not report `lr` in its results file. Without it the LR in \
+         canon_name is a request, not a measurement -- which is exactly the \
+         defect this check exists to close. Rebuild cpu_train and re-run."
+            .to_string()
+    })?;
+    let representable = (requested as f32) as f64;
+    if (got - representable).abs() > 1e-12 {
+        return Err(format!(
+            "LR MISMATCH: requested {requested} (f32-representable as \
+             {representable}) but cpu_train reports it trained at {got}. The \
+             canon_name would name a learning rate that never ran."
+        ));
+    }
+    Ok(())
+}
+
+/// Whether a row for this format is a distinct measurement at all.
+///
+/// F2 FIX. `FormatKind::is_faithful()` is the crate's OWN marker for "the
+/// round trip through this format is not really this format", and until now it
+/// was read by NOTHING outside its definition and two unit tests. Meanwhile
+/// `fp80` is returned UNCHANGED by `fake_quantize_f32` (it is
+/// `is_unsupported_in_f32`), so an `fp80` row is arithmetically an `fp32` row,
+/// and an `fp80`-equals-`fp32` "tie" is an identity dressed as a result.
+/// `posit16` is an IEEE 10-bit mantissa mask, not a posit encoder.
+///
+/// Enforcement lives HERE rather than in `cpu_train`: `cpu_train` measuring a
+/// degenerate kernel is a legitimate experiment; this binary PUBLISHING that
+/// measurement as a peer of the real ones is the defect.
+///
+/// Returns `Ok(true)` for a faithful format, `Ok(false)` for an unfaithful one
+/// that the operator explicitly opted into via `TRIOS_ALLOW_UNFAITHFUL_FORMAT=1`
+/// (the row is then stamped `format_faithful=false`), and `Err` otherwise.
+fn resolve_format_faithful(format: &str, allow_unfaithful: bool) -> Result<bool, String> {
+    let kind = FormatKind::from_env(format)
+        .ok_or_else(|| format!("format {format:?} does not resolve to a FormatKind"))?;
+    if kind.is_faithful() {
+        return Ok(true);
+    }
+    if allow_unfaithful {
+        return Ok(false);
+    }
+    Err(format!(
+        "NON-FAITHFUL FORMAT {format:?} ({kind:?}): FormatKind::is_faithful() is \
+         false, i.e. the crate itself declares the f32 round trip through this \
+         format is not really this format (identity passthrough, mantissa-mask \
+         stand-in, or a deferred encoder). Publishing it alongside real kernels \
+         makes an identity look like a result. Set \
+         TRIOS_ALLOW_UNFAITHFUL_FORMAT=1 to run it anyway; the row is then \
+         stamped format_faithful=false."
+    ))
+}
+
 /// Build the IGLA-canonical canon_name. Pattern:
 ///   IGLA-{LANE}-{format}-h{hidden}-LR{lr}-rng{seed}-{algo}
 /// where `lr` is rendered with the leading-zero notation expected by the
@@ -168,18 +277,41 @@ fn build_canon_name_lane(
 /// Render a learning rate as the canon LR token. The regex accepts either
 /// leading-zero compact form (`LR0001`) or decimal form (`LR0.0001`) -- we
 /// emit the compact form because every champion canon since Wave-35 uses it.
+///
+/// F4 FIX (2026-08-03): the previous body was NOT INJECTIVE, and `canon_name`
+/// is the ledger's identity key that `ON CONFLICT` de-duplicates on, so two
+/// different recipes collided into one row:
+///   * `format!("{:.6}", lr)` truncated everything below 1e-6, so `1e-7` and
+///     `0` both rendered `LR0`;
+///   * values >= 1 kept their bare digits, so `0.1` ("0.1" -> strip "0." ->
+///     "1") and `1.0` ("1") both rendered `LR1`.
+/// Both are now distinguishable:
+///   * the source string is the SHORTEST ROUND-TRIP decimal (`{}` on f64,
+///     which never uses exponent notation), so no magnitude is truncated;
+///   * a value in (0,1) keeps the legacy compact form (`0.001` -> `001`) and
+///     therefore NEVER contains a `.`, while every other value is emitted with
+///     an explicit `.` (`1.0` -> `1.0`, `0` -> `0.0`). The two token shapes are
+///     disjoint, so no cross-branch collision is possible, and within each
+///     branch the round-trip property of the decimal makes distinct f64 values
+///     produce distinct strings.
+/// Every LR token this repo has actually published (`001`, `0001`, `003`,
+/// `01`) is byte-identical to what the old body produced, so no historical
+/// canon_name changes shape.
 fn format_lr_token(lr: f64) -> String {
-    // Map common LRs to their compact tokens.
-    // Anything outside the table falls back to a dot-notation string.
-    let s = format!("{:.6}", lr);
-    // strip trailing zeros, then "0." prefix
-    let trimmed = s.trim_end_matches('0').trim_end_matches('.');
-    if let Some(rest) = trimmed.strip_prefix("0.") {
-        // 0.001 -> "001", 0.0001 -> "0001"
+    // Shortest decimal that round-trips back to this f64. Rust's `Display` for
+    // floats never emits exponent notation, so `1e-7` becomes "0.0000001"
+    // rather than being flattened to zero by a fixed precision.
+    let s = format!("{lr}");
+    if let Some(rest) = s.strip_prefix("0.") {
+        // 0 < lr < 1 -- legacy compact form. Contains no '.' by construction.
         rest.to_string()
+    } else if s.contains('.') {
+        // 1.5 -> "1.5". Dot is allowed by the leaderboard regex.
+        s
     } else {
-        // 1.5 or 0.5 etc. -- keep as-is, dot is allowed by the regex.
-        trimmed.to_string()
+        // 1 -> "1.0", 0 -> "0.0". The appended ".0" is what keeps these from
+        // colliding with the compact form of 0.1 and of a hypothetical 0.0.
+        format!("{s}.0")
     }
 }
 
@@ -216,6 +348,14 @@ struct CpuTrainResult {
     /// is reported rather than treated as a match.
     #[serde(default)]
     format_executed: String,
+    /// The learning rate `cpu_train` actually trained at, as it reports it.
+    /// `Option` on purpose: `0.0` is a legal (if useless) LR, so a `#[serde
+    /// (default)] f64` would make "trainer did not declare it" indistinguishable
+    /// from "trainer trained at zero" -- the same sentinel-vs-measurement
+    /// confusion that `loss_on_seq` was fixed for. `None` is refused, never
+    /// treated as a match.
+    #[serde(default)]
+    lr: Option<f64>,
 }
 
 /// Single matrix cell descriptor, logged verbatim for R7 witness trail.
@@ -235,7 +375,19 @@ struct MatrixRow {
     initial_bpb: f64,
     delta_bpb: f64,
     format_executed: String,
+    /// F1: the LR the child REPORTED training at, not the one that was asked
+    /// for. `check_executed_lr` has already proven the two agree; carrying the
+    /// reported value means the row cites a measurement rather than a request.
+    lr: f64,
+    /// F2: `false` marks a row whose format is the crate's own
+    /// `is_faithful() == false` -- i.e. not a distinct measurement. Emitted on
+    /// EVERY row, so a consumer never has to infer it from the format name.
+    format_faithful: bool,
     sha: String,
+    /// F5: `None` means `git status` could not be run. A failed query is not a
+    /// clean tree.
+    git_dirty: Option<bool>,
+    git_provenance: String,
     run_id: String,
     ts_unix: i64,
 }
@@ -254,20 +406,48 @@ fn env_or(key: &str, default: &str) -> String {
     env::var(key).unwrap_or_else(|_| default.to_string())
 }
 
-/// Short git sha if we're inside a git tree, else "unknown".
-fn git_sha() -> String {
-    Command::new("git")
-        .args(["rev-parse", "--short", "HEAD"])
-        .output()
-        .ok()
-        .and_then(|o| {
-            if o.status.success() {
-                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| "unknown".to_string())
+/// Exit code for an argument this binary understands but cannot use. Distinct
+/// from the algo (3) and format (5) rejections so a supervisor can tell a
+/// malformed invocation from a rejected experiment.
+const EXIT_BAD_ARGS: u8 = 4;
+
+/// Read a known flag and parse it, or reject the invocation.
+///
+/// The R5 guards below already refuse an unsupported `--algo` and an unknown
+/// `--format`. A recognised NUMERIC flag with an unusable value was the
+/// remaining silent path, and it is worse: the substituted default became the
+/// row's published LABEL, so the matrix asserted a seed and a learning rate
+/// that had never run.
+fn parse_flag_or_reject<T: std::str::FromStr>(flag: &str, default: &str) -> Result<T, ExitCode> {
+    let raw = arg_or(flag, default);
+    trios_trainer::parse_flag_value::<T>(flag, &raw).map_err(|e| {
+        eprintln!("[matrix_runner] R5-REJECT {e}");
+        ExitCode::from(EXIT_BAD_ARGS)
+    })
+}
+
+/// Git identity of the tree this cell was produced from.
+///
+/// F5 FIX. The old body ran `git rev-parse --short HEAD` and stamped the
+/// result with NO dirty check, so a row could name a commit whose tree it was
+/// not built from -- observed this round as sha `3c1f751` recorded from a tree
+/// with 874 dirty entries. This is the identical defect that
+/// `checkpoint::resolve_git_provenance` was written to close for checkpoint
+/// sidecars, so it is reused rather than re-derived: one implementation, one
+/// meaning of "dirty", across both artefact families.
+///
+/// Returns `(sha, dirty, provenance)`. `dirty == None` means `git status`
+/// could not be run: a failed query is NOT a clean tree, and recording it as
+/// one is the whole point of the fix. The sha is truncated to the same 7-char
+/// short form the `sha` column has always carried so old rows stay readable.
+fn git_identity() -> (String, Option<bool>, &'static str) {
+    let (full_sha, dirty, provenance) = trios_trainer::checkpoint::resolve_git_provenance();
+    let short = if full_sha.is_empty() {
+        "unknown".to_string()
+    } else {
+        full_sha.chars().take(7).collect()
+    };
+    (short, dirty, provenance)
 }
 
 fn now_unix() -> i64 {
@@ -277,6 +457,36 @@ fn now_unix() -> i64 {
         .unwrap_or(0)
 }
 
+/// The exact argv handed to the child, isolated so a test can assert on it
+/// without spawning a trainer. F1: `--lr` was missing here, which is why every
+/// cell trained at `cpu_train`'s default 0.003 regardless of its label.
+fn build_cpu_train_argv(
+    algo: &str,
+    seed: i64,
+    dim: i32,
+    steps: i32,
+    vocab: i32,
+    seq: i32,
+    lr: f64,
+) -> Vec<String> {
+    vec![
+        "run".to_string(),
+        "--quiet".to_string(),
+        "--release".to_string(),
+        "--bin".to_string(),
+        "cpu_train".to_string(),
+        "--".to_string(),
+        format!("--seed={seed}"),
+        format!("--steps={steps}"),
+        format!("--dim={dim}"),
+        format!("--vocab={vocab}"),
+        format!("--seq={seq}"),
+        format!("--algo={algo}"),
+        format!("--lr={lr}"),
+    ]
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_cpu_train(
     format_type: &str,
     algo: &str,
@@ -285,31 +495,19 @@ fn run_cpu_train(
     steps: i32,
     vocab: i32,
     seq: i32,
+    lr: f64,
 ) -> Result<CpuTrainResult, String> {
     // Prefer `cargo run --release --bin cpu_train` so the child resolves the
     // already-compiled artefact from `target/release/`. In CI this is
     // pre-built in an earlier job, so the call is a no-op rebuild.
     let mut cmd = Command::new("cargo");
-    cmd.args([
-        "run",
-        "--quiet",
-        "--release",
-        "--bin",
-        "cpu_train",
-        "--",
-        &format!("--seed={seed}"),
-        &format!("--steps={steps}"),
-        &format!("--dim={dim}"),
-        &format!("--vocab={vocab}"),
-        &format!("--seq={seq}"),
-        &format!("--algo={algo}"),
-    ]);
+    cmd.args(build_cpu_train_argv(algo, seed, dim, steps, vocab, seq, lr));
     cmd.env("TRIOS_FORMAT_TYPE", format_type);
     cmd.env("TRIOS_ALGO_TYPE", algo);
 
     eprintln!(
         "[matrix_runner] spawning cpu_train format={format_type} algo={algo} \
-         seed={seed} dim={dim} steps={steps}"
+         seed={seed} dim={dim} steps={steps} lr={lr}"
     );
     let out = cmd
         .output()
@@ -330,9 +528,32 @@ fn run_cpu_train(
         ));
     }
 
-    let path: PathBuf = PathBuf::from(format!(
-        ".trinity/results/cpu_train_{format_type}_{algo}_seed{seed}.json"
-    ));
+    // Read the path the CHILD says it wrote, rather than reconstructing it.
+    //
+    // This used to be `format!(".trinity/results/cpu_train_{format_type}_\
+    // {algo}_seed{seed}.json")` -- a name keyed on 3 of the 7 parameters that
+    // define a cell. Two cells differing only in dim/seq/steps/lr resolved to
+    // the SAME path, so this reader could pick up the previous cell's file and
+    // "verify" an lr that never ran; that is the mechanism behind the reported
+    // matrix flake. A reconstructed path is a guess about someone else's
+    // behaviour. `cpu_train` prints `Results: <path>`, and that line is now the
+    // handshake: if it is absent, the child did not write a results file and
+    // this cell has no measurement.
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let announced = stdout
+        .lines()
+        .filter_map(|l| l.strip_prefix("Results: "))
+        .last()
+        .map(|p| p.trim().to_string())
+        .ok_or_else(|| {
+            format!(
+                "cpu_train printed no `Results: <path>` line, so it named no \
+                 results file. Refusing to guess a path and read whatever cell \
+                 happens to be sitting there (format={format_type} algo={algo} \
+                 seed={seed} dim={dim} steps={steps} lr={lr})."
+            )
+        })?;
+    let path: PathBuf = PathBuf::from(announced);
     let bytes = fs::read(&path).map_err(|e| format!("read result {path:?}: {e}"))?;
     let parsed: CpuTrainResult =
         serde_json::from_slice(&bytes).map_err(|e| format!("parse result {path:?}: {e}"))?;
@@ -355,6 +576,14 @@ fn run_cpu_train(
 /// callers later switch to a TLS-required endpoint they can point
 /// `MATRIX_DATABASE_URL` at it; this binary is intentionally simple and does
 /// NOT reuse `src/neon_writer.rs`'s rustls path.
+/// SCHEMA LIMIT (2026-08-03, recorded so it is not mistaken for a decision):
+/// `lr`, `format_faithful`, `git_dirty` and `git_provenance` are emitted on the
+/// `MATRIX_ROW` stdout witness -- the record the matrix-bot reconstructs from --
+/// but are NOT inserted below, because `ssot.bpb_samples` has no such columns
+/// and adding them is a migration against a live SSOT that this pass cannot
+/// exercise (it runs with no DSN by construction). Until that migration lands,
+/// the DATABASE row still carries only the labels; the stdout witness is the
+/// artefact that carries the proof.
 async fn write_row_async(dsn: &str, row: &MatrixRow) -> Result<(), String> {
     let (client, connection) = tokio_postgres::connect(dsn, NoTls)
         .await
@@ -429,14 +658,37 @@ async fn ensure_schema(client: &Client) -> Result<(), String> {
 fn main() -> ExitCode {
     let format_raw = arg_or("format", &env_or("TRIOS_FORMAT_TYPE", "fp32"));
     let algo_raw = arg_or("algo", &env_or("TRIOS_ALGO_TYPE", "adamw"));
+    // Every one of these used to be `.parse().unwrap_or(<default>)`, so a known
+    // flag carrying an unusable value ran at the default and this binary then
+    // LABELLED the row with that default. `--seed=oops` published a seed-47
+    // row for a run nobody asked for. An unparseable value is a refusal; see
+    // `parse_flag_or_reject`.
     // Seed default switched from legacy `42` (FORBIDDEN) to Lucas `47`.
-    let seed: i64 = arg_or("seed", "47").parse().unwrap_or(47);
-    let dim: i32 = arg_or("hidden", "128").parse().unwrap_or(128);
-    let steps: i32 = arg_or("steps", "3000").parse().unwrap_or(3000);
-    let vocab: i32 = arg_or("vocab", "128").parse().unwrap_or(128);
-    let seq: i32 = arg_or("seq", "32").parse().unwrap_or(32);
+    let seed: i64 = match parse_flag_or_reject("seed", "47") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let dim: i32 = match parse_flag_or_reject("hidden", "128") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let steps: i32 = match parse_flag_or_reject("steps", "3000") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let vocab: i32 = match parse_flag_or_reject("vocab", "128") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let seq: i32 = match parse_flag_or_reject("seq", "32") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
     // LR default matches Wave-35 champion canon.
-    let lr: f64 = arg_or("lr", "0.001").parse().unwrap_or(0.001);
+    let lr: f64 = match parse_flag_or_reject("lr", "0.001") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
     // -- R5 GUARD 1 -- ALGO WHITELIST ----------------------------------------
     let algo = algo_raw.trim();
@@ -476,12 +728,50 @@ fn main() -> ExitCode {
         return ExitCode::from(4);
     }
 
+    // -- R5 GUARD 8 -- FORMAT MUST BE A DISTINCT MEASUREMENT ---------------
+    // See `resolve_format_faithful`. Checked BEFORE spawning so a degenerate
+    // cell costs no compute at all.
+    let allow_unfaithful = env_or("TRIOS_ALLOW_UNFAITHFUL_FORMAT", "0") == "1";
+    let format_faithful = match resolve_format_faithful(&format, allow_unfaithful) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("[matrix_runner] R5-REJECT {e}");
+            return ExitCode::from(7);
+        }
+    };
+    if !format_faithful {
+        eprintln!(
+            "[matrix_runner] WARNING: format={format} is NOT faithful and is \
+             running only because TRIOS_ALLOW_UNFAITHFUL_FORMAT=1. The row will \
+             carry format_faithful=false. Do not read it as a measurement of \
+             {format}."
+        );
+    }
+
+    // -- R5 GUARD 4 -- CANON NAME (IGLA pattern) ---------------------------
+    let lane = arg_or("lane", &env_or("TRIOS_LANE", "MATRIX"));
+    let canon_name = build_canon_name_lane(&lane, &format, dim, lr, seed, algo);
+
+    // `--dry-run-canon`: run every label guard above, print the canon_name this
+    // cell WOULD be filed under, and exit without training. Exists so the
+    // identity key -- the thing `ON CONFLICT` de-duplicates on, and the thing
+    // F4 showed was not injective -- is observable from a test in one second
+    // instead of one training run.
+    if arg_or("dry-run-canon", "0") == "1" || env::args().any(|a| a == "--dry-run-canon") {
+        println!("CANON_NAME {canon_name}");
+        eprintln!(
+            "[matrix_runner] dry-run-canon: no training performed, no row written"
+        );
+        return ExitCode::SUCCESS;
+    }
+
     eprintln!(
         "[matrix_runner] cell: format={format} algo={algo} seed={seed} \
-         hidden={dim} lr={lr} steps={steps} vocab={vocab} seq={seq}"
+         hidden={dim} lr={lr} steps={steps} vocab={vocab} seq={seq} \
+         format_faithful={format_faithful}"
     );
 
-    let result = match run_cpu_train(&format, algo, seed, dim, steps, vocab, seq) {
+    let result = match run_cpu_train(&format, algo, seed, dim, steps, vocab, seq, lr) {
         Ok(r) => r,
         Err(e) => {
             eprintln!("[matrix_runner] cpu_train ERROR: {e}");
@@ -504,9 +794,16 @@ fn main() -> ExitCode {
         return ExitCode::from(5);
     }
 
-    // -- R5 GUARD 4 -- CANON NAME (IGLA pattern) ---------------------------
-    let lane = arg_or("lane", &env_or("TRIOS_LANE", "MATRIX"));
-    let canon_name = build_canon_name_lane(&lane, &format, dim, lr, seed, algo);
+    // -- R5 GUARD 9 -- EXECUTED LR == REQUESTED LR --------------------------
+    // F1: a cell that cannot PROVE it ran at the labelled lr must not become a
+    // row. See `check_executed_lr`.
+    if let Err(e) = check_executed_lr(lr, result.lr) {
+        eprintln!("[matrix_runner] R5-REJECT {e}");
+        return ExitCode::from(8);
+    }
+    let executed_lr = result.lr.unwrap_or(lr);
+
+    let (sha, git_dirty, git_provenance) = git_identity();
 
     let row = MatrixRow {
         canon_name,
@@ -520,7 +817,11 @@ fn main() -> ExitCode {
         initial_bpb: result.initial_bpb,
         delta_bpb: result.delta_bpb,
         format_executed: result.format_executed.clone(),
-        sha: git_sha(),
+        lr: executed_lr,
+        format_faithful,
+        sha,
+        git_dirty,
+        git_provenance: git_provenance.to_string(),
         run_id: env_or("GITHUB_RUN_ID", &format!("local-{}", now_unix())),
         ts_unix: now_unix(),
     };
@@ -587,6 +888,26 @@ fn main() -> ExitCode {
                  Nothing was promised to the SSOT, so this is exit 0."
             );
         }
+    }
+
+    // -- R5 GUARD 7 -- THE SHARED neon_writer LEDGER ------------------------
+    //
+    // GUARD 6 above covers this binary's OWN raw INSERT. `src/neon_writer.rs`
+    // keeps a second, process-wide tally for every write that goes through it,
+    // and `neon_writer::ledger_exit_code()` is the one verdict the other
+    // trainer binaries honour. Reporting it here means a future call routed
+    // through that module cannot be dropped silently just because this main
+    // ended in `ExitCode::SUCCESS`. With no DSN configured it returns 0, so
+    // the ordinary exit status is unchanged.
+    let landed = trios_trainer::neon_writer::landed_writes();
+    let dropped = trios_trainer::neon_writer::dropped_writes();
+    eprintln!(
+        "[matrix_runner] ledger: attempted={} landed={landed} dropped={dropped}",
+        landed + dropped
+    );
+    let ledger_code = trios_trainer::neon_writer::ledger_exit_code();
+    if ledger_code != 0 {
+        return ExitCode::from(ledger_code as u8);
     }
 
     ExitCode::SUCCESS
@@ -718,5 +1039,132 @@ mod tests {
         assert_eq!(format_lr_token(0.0001), "0001");
         assert_eq!(format_lr_token(0.003), "003");
         assert_eq!(format_lr_token(0.01), "01");
+    }
+
+    /// F4: `canon_name` is the ledger's identity key that `ON CONFLICT`
+    /// de-duplicates on, so two LRs sharing a token merge two recipes into one
+    /// row. The two collisions that existed are named explicitly.
+    #[test]
+    fn lr_token_is_injective() {
+        // The full LR set the two workflows can produce: the dispatch input
+        // default (0.001,0.0001), the nightly and PR-smoke constant (0.001),
+        // cpu_train's own default (0.003), plus the pairs that used to collide.
+        let lrs: &[f64] = &[
+            0.001, 0.0001, 0.003, 0.01, 0.1, 0.5, 1.0, 1.5, 3.0, 0.9, 1e-5, 1e-6, 1e-7, 0.0,
+        ];
+        let mut seen: Vec<(f64, String)> = Vec::new();
+        for &lr in lrs {
+            let token = format_lr_token(lr);
+            for (prev_lr, prev_token) in &seen {
+                assert_ne!(
+                    *prev_token, token,
+                    "LR token collision: {prev_lr} and {lr} both render {token:?}; \
+                     canon_name would de-duplicate two different recipes into one row"
+                );
+            }
+            seen.push((lr, token));
+        }
+        // The two documented collisions, called out individually so a
+        // regression names the defect rather than an index.
+        assert_ne!(
+            format_lr_token(0.1),
+            format_lr_token(1.0),
+            "0.1 and 1.0 both rendered LR1 before this fix"
+        );
+        assert_ne!(
+            format_lr_token(1e-7),
+            format_lr_token(0.0),
+            "1e-7 and 0 both rendered LR0 before this fix ({:.6} truncation)",
+            1e-7
+        );
+    }
+
+    /// F1: the missing `--lr` is the whole defect. Assert on the argv itself so
+    /// the regression is caught without spawning a trainer.
+    #[test]
+    fn cpu_train_argv_carries_lr() {
+        let argv = build_cpu_train_argv("adamw", 1597, 128, 200, 128, 32, 0.001);
+        assert!(
+            argv.iter().any(|a| a == "--lr=0.001"),
+            "argv does not pass --lr, so the child would train at its own \
+             default 0.003 while the row is labelled 0.001: {argv:?}"
+        );
+        let argv_high = build_cpu_train_argv("adamw", 1597, 128, 200, 128, 32, 0.9);
+        assert!(argv_high.iter().any(|a| a == "--lr=0.9"), "{argv_high:?}");
+    }
+
+    /// F1 round trip: a cell that cannot prove it ran at the labelled lr must
+    /// not become a row.
+    #[test]
+    fn executed_lr_must_match_requested() {
+        // The exact value cpu_train reports for `--lr=0.001` (f32 widened).
+        assert!(check_executed_lr(0.001, Some(0.0010000000474974513)).is_ok());
+        assert!(check_executed_lr(0.9, Some(0.8999999761581421)).is_ok());
+        assert!(check_executed_lr(0.003, Some(0.003000000026077032)).is_ok());
+        // The defect signature: label says 0.001, trainer ran its default.
+        assert!(check_executed_lr(0.001, Some(0.003000000026077032)).is_err());
+        assert!(check_executed_lr(0.9, Some(0.003000000026077032)).is_err());
+        // A trainer too old to declare `lr` is refused, not assumed to match.
+        assert!(check_executed_lr(0.001, None).is_err());
+        // Zero is a legal report, distinguishable from "not declared".
+        assert!(check_executed_lr(0.0, Some(0.0)).is_ok());
+        assert!(check_executed_lr(0.001, Some(0.0)).is_err());
+    }
+
+    /// F2: `is_faithful()` had no call site outside its own definition and two
+    /// unit tests. This is the call site.
+    #[test]
+    fn unfaithful_formats_are_refused_by_default() {
+        // fp80 is returned UNCHANGED by fake_quantize_f32, so an fp80 row is an
+        // fp32 row wearing a different name. posit16 is a 10-bit mantissa mask.
+        for degenerate in ["fp80", "posit16"] {
+            assert!(
+                resolve_format_faithful(degenerate, false).is_err(),
+                "{degenerate} must not be publishable as a peer of real kernels"
+            );
+            assert_eq!(
+                resolve_format_faithful(degenerate, true),
+                Ok(false),
+                "opt-in must permit {degenerate} AND stamp format_faithful=false"
+            );
+        }
+        // Real kernels are unaffected, with or without the opt-in.
+        for real in ["fp32", "fp16", "bf16", "gf16", "fp8_e4m3", "fp8_e5m2", "int8", "int4"] {
+            assert_eq!(
+                resolve_format_faithful(real, false),
+                Ok(true),
+                "real kernel {real} was refused"
+            );
+            assert_eq!(resolve_format_faithful(real, true), Ok(true));
+        }
+        // An unresolvable name is an error under both settings -- the opt-in
+        // relaxes faithfulness, not validation.
+        assert!(resolve_format_faithful("surveyprobe2", true).is_err());
+    }
+
+    /// F5: a sha with no dirty flag can name a commit the row was not built
+    /// from. The flag must be carried, and an unavailable answer must not be
+    /// rendered as "clean".
+    #[test]
+    fn git_identity_carries_dirty_flag() {
+        let (sha, dirty, provenance) = git_identity();
+        assert!(!sha.is_empty());
+        assert!(sha.len() <= 7, "short sha shape changed: {sha:?}");
+        // Whatever the tree state, the provenance string must be one of the
+        // declared constants -- never an empty string or a guess.
+        assert!(
+            matches!(
+                provenance,
+                trios_trainer::checkpoint::GIT_PROVENANCE_VERIFIED
+                    | trios_trainer::checkpoint::GIT_PROVENANCE_ASSERTED
+                    | trios_trainer::checkpoint::GIT_PROVENANCE_NONE
+            ),
+            "unknown provenance {provenance:?}"
+        );
+        // `None` is a legal answer (git unavailable); `Some(false)` asserted on
+        // a tree that was never queried is what the fix forbids.
+        if provenance == trios_trainer::checkpoint::GIT_PROVENANCE_NONE {
+            assert!(dirty.is_none());
+        }
     }
 }

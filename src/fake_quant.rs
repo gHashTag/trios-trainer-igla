@@ -414,18 +414,34 @@ impl FormatKind {
             | FormatKind::Fp8E5M2
             | FormatKind::Fp6E2M3
             | FormatKind::Fp6E3M2
-            | FormatKind::Fp4E2M1
-            | FormatKind::Mxfp4
-            | FormatKind::Mxfp6
-            | FormatKind::Mxfp8 => true,
+            | FormatKind::Fp4E2M1 => true,
+            // Mxfp4/Mxfp6/Mxfp8 are NOT in the list above. They were, and that
+            // was a self-contradiction inside this same file: `max_finite()`
+            // states "OCP MX block-floats - element max (block-scale not
+            // modelled here)", and the kernel applies only a per-VALUE
+            // mantissa mask (E2M1 / E3M2 / E4M3 elements). An MX format is
+            // DEFINED by its shared per-32-element E8M0 block scale: without
+            // it, what ran is the bare element type, and a row labelled
+            // `mxfp4` names a format that was not executed. Declaring that
+            // faithful is exactly the mislabelling this marker exists to
+            // prevent - the same argument already applied to Int32 below.
+            // Fixed 2026-08-03; no quantisation arithmetic changed, only the
+            // honesty of the marker. `matrix_runner` will now refuse an mxfp*
+            // row unless the operator sets TRIOS_ALLOW_UNFAITHFUL_FORMAT=1, in
+            // which case the row is stamped `format_faithful=false`.
             // Golden Float canonical kernels
             FormatKind::Gf16 | FormatKind::Gf8 | FormatKind::Gf32 | FormatKind::Gf64 => true,
-            // Integer formats — per-tensor symmetric quantisation is faithful
-            FormatKind::Int4
-            | FormatKind::Int8
-            | FormatKind::Int16
-            | FormatKind::Int32
-            | FormatKind::Uint8 => true,
+            // Integer formats — per-tensor symmetric quantisation is faithful.
+            //
+            // Int32 is NOT in this list. It was, and that was a
+            // self-contradiction: `fake_quantize_f32` returns Int32 as an
+            // EXPLICIT identity ("2^32 levels exceed f32's 24-bit mantissa
+            // precision — degenerate"), so the round trip through Int32 is not
+            // a round trip through Int32 at all. Declaring it faithful while
+            // the kernel declares it degenerate is exactly the mislabelling
+            // this marker exists to prevent. Fixed 2026-08-03; no quantisation
+            // arithmetic changed, only the honesty of the marker.
+            FormatKind::Int4 | FormatKind::Int8 | FormatKind::Int16 | FormatKind::Uint8 => true,
             // Everything else: deferred to Phase 2
             _ => false,
         }
@@ -1528,11 +1544,91 @@ mod tests {
             FormatKind::Q15,
             FormatKind::UnumI8,
             FormatKind::UnumII8,
+            // Returned UNCHANGED by fake_quantize_f32 via
+            // `is_unsupported_in_f32`: an fp80 measurement is an f32
+            // measurement, so a "tie" between them is an identity, not a
+            // result. Named here because the nightly matrix used to publish it
+            // as a peer of the real kernels.
+            FormatKind::Fp80,
+            // Explicit identity at the Int32 arm of fake_quantize_f32. Used to
+            // be declared faithful; see the comment on `is_faithful`.
+            FormatKind::Int32,
+            // The kernel masks the element mantissa (E2M1 / E3M2 / E4M3) and
+            // never applies the shared per-32-element E8M0 block scale that
+            // DEFINES an MX format -- `max_finite()` says so in this same file.
+            // A row labelled mxfp4 therefore names a format that was not
+            // executed. Used to be declared faithful.
+            FormatKind::Mxfp4,
+            FormatKind::Mxfp6,
+            FormatKind::Mxfp8,
         ] {
             assert!(
                 !fmt.is_faithful(),
                 "{fmt:?} should be non-faithful (deferred)"
             );
+        }
+    }
+
+    /// The invariant that makes `is_faithful()` checkable instead of merely
+    /// declarative: if a format leaves a value UNTOUCHED that it provably
+    /// cannot hold, the round trip did not go through that format, and the
+    /// marker must say so.
+    ///
+    /// The probe carries all 23 f32 mantissa bits. A format whose own
+    /// `mantissa_bits()` is below 23 cannot represent it, so identity on it is
+    /// a stand-in, not a measurement. Formats that CAN hold it (F32 itself,
+    /// Gf64 at 42 bits, F64 at 52, ...) are excluded on that stated ground
+    /// rather than by silence -- for those, identity is the correct answer and
+    /// says nothing about faithfulness.
+    #[test]
+    fn identity_on_unrepresentable_value_implies_not_faithful() {
+        // f32 with every mantissa bit set: ~0.99999994, 23 significant bits,
+        // far more than the 10 a masked half-precision format can keep.
+        let probe = f32::from_bits(0x3F7F_FFFF);
+        assert!(probe.to_bits() & 0x007F_FFFF != 0, "probe has no mantissa");
+        assert!(probe.is_finite());
+
+        let mut flagged = Vec::new();
+        for &fmt in FormatKind::all().iter() {
+            let out = fake_quantize_f32(probe, fmt);
+            if out.to_bits() != probe.to_bits() {
+                continue; // the format did something; nothing to prove here
+            }
+            if fmt.mantissa_bits() >= 23 && fmt.is_float() {
+                continue; // wide enough to hold the probe exactly
+            }
+            flagged.push(fmt);
+            assert!(
+                !fmt.is_faithful(),
+                "{fmt:?} declares {} mantissa bits yet is the IDENTITY on a \
+                 full-23-bit value ({probe}), and still reports \
+                 is_faithful()==true: the round trip never went through {fmt:?}",
+                fmt.mantissa_bits()
+            );
+        }
+        // The check must actually bite; an empty sweep would pass vacuously.
+        assert!(
+            flagged.contains(&FormatKind::Int32),
+            "Int32 is an explicit identity in fake_quantize_f32 and must be \
+             flagged by this sweep; flagged={flagged:?}"
+        );
+    }
+
+    /// A format wider than f32 is returned unchanged by `fake_quantize_f32`
+    /// (`is_unsupported_in_f32`), so a row measured under it is an f32 row. The
+    /// arithmetic is defensible; the LABEL is not. This is the clause that
+    /// covers `Fp80`, which the nightly matrix used to publish as a peer of the
+    /// real kernels -- including an `fp80` vs `fp32` "tie" that is an identity.
+    #[test]
+    fn unsupported_in_f32_implies_not_faithful() {
+        for &fmt in FormatKind::all().iter() {
+            if fmt.is_unsupported_in_f32() {
+                assert!(
+                    !fmt.is_faithful(),
+                    "{fmt:?} cannot be simulated from f32 (identity passthrough) \
+                     yet reports is_faithful()==true"
+                );
+            }
         }
     }
 }

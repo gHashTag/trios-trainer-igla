@@ -10,7 +10,8 @@
 
 - Architecture decisions (still belong in `trios`)
 - Lane dispatch + claims (operational, belongs *here*)
-- BPB evidence rows (data, lives in `assertions/seed_results.jsonl` here)
+- BPB evidence rows (data, lived in `assertions/seed_results.jsonl` here — that
+  ledger is now retracted, see [`RETRACTION.md`](RETRACTION.md))
 - ONE SHOT mission specs (operational, belongs *here*)
 - Heartbeat / R5 audits (operational, belongs *here*)
 
@@ -22,7 +23,7 @@ Splitting concerns:
 | `trios-igla-race`, `trios-golden-float`, `trios-phi-schedule`, `trios-data` | `gHashTag/trios` (canonical crates) |
 | **Trainer code, configs, Dockerfile, Railway wiring** | **`gHashTag/trios-trainer-igla` (here)** |
 | **Lane claims, ONE SHOTs, BPB evidence rows** | **`gHashTag/trios-trainer-igla` (here)** |
-| Final ledger of victory rows | **mirrored** here, eventually pushed back to `gHashTag/trios/assertions/seed_results.jsonl` after L-T4 lands |
+| Final ledger of victory rows | the local mirror is **retracted** (see [`RETRACTION.md`](RETRACTION.md)); nothing is pushed back to `gHashTag/trios/assertions/seed_results.jsonl` until canon-legal, checkpoint-backed rows exist |
 
 ## Issue map
 
@@ -48,13 +49,29 @@ Splitting concerns:
 - **R9** — embargo list is law; no override exists.
 - **R10** — atomicity: never edit ONE SHOT body, always file new comments.
 
-## Champion guard
+## Champion guard — RETRACTED 2026-08-03
 
-[`assertions/seed_results.jsonl`](assertions/seed_results.jsonl) is mirrored
-from `gHashTag/trios/assertions/seed_results.jsonl` at the time of migration.
-The champion baseline at
-[`2446855`](https://github.com/gHashTag/trios/commit/2446855) — **BPB=2.2393
-@ 27K steps, seed=43** — is the immutable reference for every PR's CI smoke.
+There is no champion guard. This section used to read:
+
+> [`assertions/seed_results.jsonl`](assertions/seed_results.jsonl) is mirrored
+> from `gHashTag/trios/assertions/seed_results.jsonl` at the time of migration.
+> The champion baseline at `2446855` — BPB=2.2393 @ 27K steps, seed=43 (retracted,
+> not citable) — is the immutable reference for every PR's CI smoke.
+
+Both halves of that are withdrawn:
+
+- The mirrored ledger is retracted. It is preserved verbatim at
+  [`assertions/RETRACTED-seed_results.jsonl.txt`](assertions/RETRACTED-seed_results.jsonl.txt)
+  behind a header naming what each row family is missing.
+- **2.2393 is RETRACTED and not citable.** `2446855` does not resolve to an object in this
+  repository, no checkpoint artifact exists behind the number, and seed 43 is
+  forbidden under Canon #93 (`src/seed_canon.rs`). `assertions/champion_lock.txt`
+  now holds a pointer instead of a number, and
+  `tests/champion_reproduction.rs` no longer asserts a reproduction tolerance
+  around it.
+
+Full accounting, including the four other BPB figures that coexisted with it:
+[`RETRACTION.md`](RETRACTION.md).
 
 [`assertions/embargo.txt`](assertions/embargo.txt) lists embargoed SHAs that
 must be refused by `src/ledger.rs::is_embargoed` before any row is appended.

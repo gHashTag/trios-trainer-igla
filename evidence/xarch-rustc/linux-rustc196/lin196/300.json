@@ -1,0 +1,40 @@
+{
+  "schema": "trios-checkpoint-record/2",
+  "canon_name": "lin196",
+  "seed": 47,
+  "step": 300,
+  "path": "/src/xout/lin196/300.bin",
+  "sha256": "9866cb2a0b13b5b3e8a630e74f9a8c792dc02c4cb43e9880f317e33be831d115",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 300,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 3.416599988937378,
+  "best_val_bpb": 3.416599988937378,
+  "ema_bpb": 5.631365776062012,
+  "git_sha": "",
+  "git_provenance": "unavailable",
+  "git_dirty": null,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare.txt",
+      "bytes": 1015394,
+      "sha256": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_val.txt",
+      "bytes": 100000,
+      "sha256": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+    }
+  },
+  "run_id": "",
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-02T18:55:10.807881926+00:00"
+}

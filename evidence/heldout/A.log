@@ -1,0 +1,62 @@
+[trios-train] startup args=["evidence/heldout/trios-train.frozen", "--seed", "47", "--steps", "12000", "--hidden", "384", "--attn-layers", "2", "--lr", "0.003", "--eval-every", "1000", "--train-data", "data/tiny_shakespeare_train_core.txt", "--val-data", "data/tiny_shakespeare_test.txt"] cwd=Some("/Users/playra/trios-trainer-igla")
+[trios-train] Canon #93 OK: seed=47 (no SEED env, validated cli.seed)
+[migrator] TRINITY_AUTOMIGRATE="0" is not "1" - skipping automigrate
+[trios-train] eval_chunks=40 (default)
+[trios-train] parsed seed=47 steps=12000 hidden=384 lr=0.003 ctx=None optimizer=adamw neon=None
+=== trios-train seed=47 steps=12000 hidden=384 lr=0.0030 attn_layers=2 eval_every=1000 gf16_enabled=true gf16_floor_every=1 checkpoint_every=0 checkpoint_init=false ===
+train=915394 val=100000
+params=196608 (196.6K) attn_d=64 attn_layers=2
+Initial val_bpb=7.0001 over 40 windows of 129 tokens (5.16% of 100000 val tokens)
+EVAL-PLAN: seed=47 step=0 val_bpb_mean=7.000093 val_bpb_stdev=0.009233 val_bpb_stderr=0.001460 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+seed=47 step=1000 val_bpb=3.3156 ema_bpb=5.5927 best_val_bpb=3.3156 nca_h=0.597 t=28.5s
+EVAL-PLAN: seed=47 step=1000 val_bpb_mean=3.315578 val_bpb_stdev=0.180502 val_bpb_stderr=0.028540 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=2000 val_bpb=3.1077 ema_bpb=4.6435 best_val_bpb=3.1077 nca_h=0.487 t=58.1s
+EVAL-PLAN: seed=47 step=2000 val_bpb_mean=3.107676 val_bpb_stdev=0.226314 val_bpb_stderr=0.035783 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=3000 val_bpb=2.9690 ema_bpb=4.0039 best_val_bpb=2.9690 nca_h=0.361 t=86.3s
+EVAL-PLAN: seed=47 step=3000 val_bpb_mean=2.968956 val_bpb_stdev=0.227056 val_bpb_stderr=0.035901 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=4000 val_bpb=2.9283 ema_bpb=3.5930 best_val_bpb=2.9283 nca_h=0.308 t=115.3s
+EVAL-PLAN: seed=47 step=4000 val_bpb_mean=2.928262 val_bpb_stdev=0.223643 val_bpb_stderr=0.035361 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=5000 val_bpb=2.9128 ema_bpb=3.3332 best_val_bpb=2.9128 nca_h=0.471 t=143.5s
+EVAL-PLAN: seed=47 step=5000 val_bpb_mean=2.912831 val_bpb_stdev=0.243641 val_bpb_stderr=0.038523 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=6000 val_bpb=2.7512 ema_bpb=3.1109 best_val_bpb=2.7512 nca_h=0.307 t=173.4s
+EVAL-PLAN: seed=47 step=6000 val_bpb_mean=2.751183 val_bpb_stdev=0.241759 val_bpb_stderr=0.038225 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=7000 val_bpb=2.7145 ema_bpb=2.9595 best_val_bpb=2.7145 nca_h=0.235 t=201.9s
+EVAL-PLAN: seed=47 step=7000 val_bpb_mean=2.714497 val_bpb_stdev=0.269271 val_bpb_stderr=0.042575 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=8000 val_bpb=2.6716 ema_bpb=2.8495 best_val_bpb=2.6716 nca_h=0.243 t=230.6s
+EVAL-PLAN: seed=47 step=8000 val_bpb_mean=2.671640 val_bpb_stdev=0.264328 val_bpb_stderr=0.041794 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=9000 val_bpb=2.6577 ema_bpb=2.7763 best_val_bpb=2.6577 nca_h=0.434 t=271.4s
+EVAL-PLAN: seed=47 step=9000 val_bpb_mean=2.657720 val_bpb_stdev=0.266660 val_bpb_stderr=0.042163 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=10000 val_bpb=2.6461 ema_bpb=2.7265 best_val_bpb=2.6461 nca_h=0.265 t=299.8s
+EVAL-PLAN: seed=47 step=10000 val_bpb_mean=2.646070 val_bpb_stdev=0.268918 val_bpb_stderr=0.042520 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=11000 val_bpb=2.6396 ema_bpb=2.6933 best_val_bpb=2.6396 nca_h=0.207 t=344.8s
+EVAL-PLAN: seed=47 step=11000 val_bpb_mean=2.639638 val_bpb_stdev=0.268706 val_bpb_stderr=0.042486 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+seed=47 step=12000 val_bpb=2.6385 ema_bpb=2.6724 best_val_bpb=2.6385 nca_h=0.100 t=373.0s
+EVAL-PLAN: seed=47 step=12000 val_bpb_mean=2.638520 val_bpb_stdev=0.268076 val_bpb_stderr=0.042386 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] WARN: canon_name=r6-heldout-test publishes with NO declared optimizer (bind_executed_optimizer never called, canon carries no suffix): ALGO_WHITELIST cannot be applied to this row.
+[ledger] no connection (DSN unset) - skipping bpb_sample
+[ledger] no connection (DSN unset) - skipping checkpoint_record
+[ckpt] /Users/playra/trios-trainer-igla/evidence/heldout/r6-heldout-test/12000.bin sha256=902cfb69a84bdcf4d6ab524576ff375d612fd8f485dcbc7e02f35f6379599146 bytes=852272 ledger=skipped-no-dsn eval_chunks=40 eval_tokens=5160 coverage=0.0516
+DONE: seed=47 bpb=2.6385 steps=12000 opt=adamw
+LEDGER: no DSN configured; no rows attempted

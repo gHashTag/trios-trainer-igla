@@ -1,32 +1,88 @@
 # trios-trainer-igla corpus manifest
 #
-# The corpora themselves are NOT in git (see .gitignore: /data/*). This file is
-# how a third party confirms they are holding the same bytes this repository's
-# checkpoints were measured against. Every line below was produced by running
-# `shasum -a 256` on this machine on 2026-08-03; nothing here is copied from a
-# log or from another document.
+# This file is how a third party confirms they are holding the same bytes this
+# repository's checkpoints were measured against. Every line below was produced
+# by running `shasum -a 256` on this machine on 2026-08-03; nothing here is
+# copied from a log or from another document.
 #
 # Verify (from the repository root):
 #
 #   shasum -a 256 -c data/MANIFEST.sha256
 #
-# Byte counts, for the same files, in the same order:
+# What is and is not in git. An earlier header of this file asserted "the
+# corpora themselves are NOT in git (see .gitignore: /data/*)". That was false
+# for two of them, and .gitignore is the reason it looked true: an ignore rule
+# does not untrack a file that was committed before the rule existed.
+# `git ls-files data/` lists, and `git cat-file` confirms at HEAD:
 #
-#   data/tiny_shakespeare.txt      1015394 bytes
-#   data/tiny_shakespeare_val.txt   100000 bytes
+#   data/fineweb_train.bin          IN GIT, 61030 bytes, blob 1be86d32
+#   data/pangram_fixture_160b.bin   IN GIT,   160 bytes, blob 34696311
 #
-# The two streams are byte-DISJOINT. Concatenated in the order train then val
-# they reconstruct the canonical 1 115 394-byte tinyshakespeare corpus:
+# Both blobs hash to the same SHA-256 as the working-tree files listed below, so
+# a checkout reproduces them exactly. Everything else in data/ is genuinely
+# untracked and must be fetched or reconstructed, which is what the hashes are
+# for. The two committed files were also absent from this manifest's hash lines
+# entirely, so the one document that is supposed to say what bytes exist was
+# silent about the only bytes a `git clone` actually delivers. They are listed
+# now.
+#
+# Byte counts, in the same order as the hash lines:
+#
+#   data/fineweb_train.bin                    61030 bytes
+#   data/fineweb_train_duplicate.bin          61030 bytes
+#   data/pangram_fixture_160b.bin               160 bytes
+#   data/tiny_shakespeare.txt               1015394 bytes
+#   data/tiny_shakespeare_train_core.txt     915394 bytes
+#   data/tiny_shakespeare_test.txt           100000 bytes
+#   data/tiny_shakespeare_val.txt            100000 bytes
+#
+# Fitness for use as an evaluation corpus is NOT a property of a hash. See
+# data/README.md: fineweb_train_duplicate.bin is byte-identical to the training
+# set, and pangram_fixture_160b.bin yields exactly one 129-token window.
+#
+# ---------------------------------------------------------------------------
+# The TinyShakespeare partition
+# ---------------------------------------------------------------------------
+#
+# Two-way split (the headline run, checkpoints/r6-headline). The two streams are
+# byte-DISJOINT. Concatenated in the order train then val they reconstruct the
+# canonical 1 115 394-byte tinyshakespeare corpus:
 #
 #   cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | shasum -a 256
 #   sha256 = 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
 #   bytes  = 1115394
 #
-# That concatenation hash is the evidence that the split is a partition and not
-# a copy. An earlier README documented the split as `head -c 100000 train > val`,
-# which is a LEAKING split; the Dockerfile had already been fixed, the prose had
-# not. A hash of the union is checkable, a sentence about a shell command is not.
+# Three-way split (the held-out protocol, docs/HELD-OUT-PROTOCOL.md). Added
+# 2026-08-03. tiny_shakespeare.txt is cut at byte 915394 into a smaller training
+# stream and a test stream that no run is permitted to select on:
 #
+#   train_core = tiny_shakespeare.txt[0, 915394)
+#   test       = tiny_shakespeare.txt[915394, 1015394)
+#   val        = tiny_shakespeare_val.txt, unchanged
+#
+#   cat data/tiny_shakespeare_train_core.txt \
+#       data/tiny_shakespeare_test.txt \
+#       data/tiny_shakespeare_val.txt | shasum -a 256
+#   sha256 = 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+#   bytes  = 1115394
+#
+# The same union hash, from three pieces instead of two: the third split is a
+# recut of the same bytes and introduces no new data. train_core and test
+# concatenated reproduce tiny_shakespeare.txt
+# (1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d), which is
+# the separate proof that test was removed from the training stream.
+#
+# A concatenation hash is the evidence that a split is a partition and not a
+# copy. An earlier README documented the two-way split as
+# `head -c 100000 train > val`, which is a LEAKING split; the Dockerfile had
+# already been fixed, the prose had not. A hash of the union is checkable, a
+# sentence about a shell command is not.
+#
+bce85ff54f13c3d088f39aec4a37e34ee5a51a6d1c65b6317f2a9ae8bdc0732c  data/fineweb_train.bin
+bce85ff54f13c3d088f39aec4a37e34ee5a51a6d1c65b6317f2a9ae8bdc0732c  data/fineweb_train_duplicate.bin
+07ea982f70dea0c0bd10a5d33f87c5a38f1e0801566057470b46cd83da66af40  data/pangram_fixture_160b.bin
 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d  data/tiny_shakespeare.txt
+21f0788a3b5ef3d8138047559f393233f1282403887e1bda2de458af64877da6  data/tiny_shakespeare_train_core.txt
+00365e8aa883ffe50d954234fe810d9b2413450c944a67f0a621d433464e9603  data/tiny_shakespeare_test.txt
 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502  data/tiny_shakespeare_val.txt
 #

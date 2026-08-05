@@ -360,11 +360,24 @@ impl NgramModel {
         logits
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats, or `None` when the sequence is too short to
+    /// hold a single context/target pair or the forward pass produced a
+    /// non-number.
+    ///
+    /// A short sequence used to return `0.0`, a loss no model achieves.
+    /// `f32::max` also ignores NaN, so clamping `logits[target]` with
+    /// `.max(1e-10)` turned a poisoned forward pass into a finite 23.03-nat
+    /// measurement - 33.2 bpb,
+    /// which is positive, finite and small enough that every downstream guard
+    /// accepted it. NaN is now an absence. The 1e-10 clamp is kept for a
+    /// genuinely underflowed probability - capping it is a documented floor on
+    /// surprisal, and dropping those chunks instead would bias the reported
+    /// BPB downward.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let num_ctx = self.ctx.len();
         let ngram = num_ctx + 2;
         if tokens.len() < ngram + 1 {
-            return 0.0;
+            return None;
         }
         let count = tokens.len() - ngram;
         let mut total = 0.0f32;
@@ -375,9 +388,13 @@ impl NgramModel {
             let target = tokens[i + ngram].min(self.vocab - 1);
             let mut logits = self.predict(&hidden);
             softmax(&mut logits);
-            total -= logits[target].max(1e-10).ln();
+            let p = logits[target];
+            if p.is_nan() {
+                return None;
+            }
+            total -= p.max(1e-10).ln();
         }
-        total / count as f32
+        Some(total / count as f32)
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -518,25 +535,59 @@ impl NgramModel {
     }
 }
 
-fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> (f32, f32) {
+/// Mean `(loss, bpb)` over evenly spaced chunks, or `None` when nothing could
+/// be measured.
+///
+/// This used to return `f32::MAX` for both the loss and the BPB. That is a
+/// finite value, so it
+/// passed the caller's `is_finite()` guard, survived into `best_bpb`, and was
+/// handed to `write_experience`, which appended
+/// `bpb=340282346638528860000000000000000000000.0000` to a file agents read
+/// back later as prior evidence. An absence is now an absence.
+///
+/// It then still dropped individual non-finite windows and published the mean
+/// of the survivors, which is biased DOWNWARD: the windows a partial poison
+/// kills are exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the
+/// correct line and this now matches it -- ONE unmeasurable window invalidates
+/// the whole eval -- while the `dropped` counter keeps the skip from being
+/// silent about HOW MUCH of the corpus failed.
+fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> Option<(f32, f32)> {
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
         if end - c < model.ctx.len() + 3 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() {
-            total += loss / LN_2;
-            n += 1;
+        // An unmeasurable chunk is COUNTED, never averaged in as `0.0` and
+        // never as the 23.03 nats a laundered NaN used to produce.
+        match model.loss_on_seq(&tokens[c..end]) {
+            Some(loss) if loss.is_finite() => {
+                total += loss / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
     }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
+    }
     if n == 0 {
-        return (f32::MAX, f32::MAX);
+        return None;
     }
     let bpb = total / n as f32;
-    (bpb * LN_2, bpb)
+    if bpb.is_finite() {
+        Some((bpb * LN_2, bpb))
+    } else {
+        None
+    }
 }
 
 fn get_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize, cosine: bool) -> f32 {
@@ -552,21 +603,31 @@ fn get_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize, cosine: bo
     }
 }
 
-fn write_experience(
+/// Render an optional BPB without inventing a number for an absent one.
+fn fmt_bpb(bpb: Option<f32>) -> String {
+    match bpb {
+        Some(v) => format!("{v:.4}"),
+        None => "unmeasured".to_string(),
+    }
+}
+
+/// The experience row for one trial, or `None` when the trial measured no BPB.
+///
+/// `.trinity/experience/` is read back later as prior evidence, so a row is a
+/// claim. `best_bpb` used to be an `f32` that could be the `f32::MAX` sentinel,
+/// and the row it produced read
+/// `bpb=340282346638528860000000000000000000000.0000`. Kept separate from the
+/// write so the refusal can be tested without touching the filesystem.
+fn experience_row(
+    ts: &str,
     trial_name: &str,
     config: &TrialConfig,
-    best_bpb: f32,
+    best_bpb: Option<f32>,
     steps: usize,
     duration_sec: f64,
     outcome: &str,
-) {
-    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
-    let ep = format!(
-        ".trinity/experience/trios_{}.trinity",
-        chrono::Utc::now().format("%Y%m%d")
-    );
-    let _ = fs::create_dir_all(".trinity/experience");
-
+) -> Option<String> {
+    let best_bpb = best_bpb?;
     let mut entry = format!(
         "[{}] ARCH-EXPLORER | trial={} | outcome={} | h={} | lr={:.6}",
         ts, trial_name, outcome, config.hidden, config.base_lr
@@ -589,7 +650,43 @@ fn write_experience(
         " | bpb={:.4} | steps={} | {:.1}s\n",
         best_bpb, steps, duration_sec
     ));
+    Some(entry)
+}
 
+/// Append one trial row to the experience log, or refuse.
+///
+/// An unmeasured trial writes nothing at all: the absence of a row is honest,
+/// a fabricated number is not.
+fn write_experience(
+    trial_name: &str,
+    config: &TrialConfig,
+    best_bpb: Option<f32>,
+    steps: usize,
+    duration_sec: f64,
+    outcome: &str,
+) {
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let Some(entry) = experience_row(
+        &ts,
+        trial_name,
+        config,
+        best_bpb,
+        steps,
+        duration_sec,
+        outcome,
+    ) else {
+        eprintln!(
+            "[arch-explorer] trial {trial_name} measured no BPB ({outcome}); \
+             writing no experience row rather than a sentinel"
+        );
+        return;
+    };
+
+    let ep = format!(
+        ".trinity/experience/trios_{}.trinity",
+        chrono::Utc::now().format("%Y%m%d")
+    );
+    let _ = fs::create_dir_all(".trinity/experience");
     let _ = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -604,7 +701,7 @@ fn run_trial(
     max_steps: usize,
     prune_step: usize,
     prune_threshold: f32,
-) -> (f32, usize, String, f64) {
+) -> (Option<f32>, usize, String, f64) {
     let ngram_order = 6; // Fixed at 6-gram for all trials
     let num_ctx = 4;
 
@@ -663,8 +760,19 @@ fn run_trial(
     };
     let mut opt_head = AdamW::new(head_size, 0.01);
 
-    let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
-    println!("\nInitial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
+    // A baseline nobody measured is not a baseline; it used to bind
+    // `f32::MAX` and seed `best_bpb` with it.
+    let init = evaluate(&model, val, SEQ);
+    match init {
+        Some((init_loss, init_bpb)) => {
+            println!("\nInitial val: loss={:.4} bpb={:.4}", init_loss, init_bpb)
+        }
+        None => println!(
+            "\nInitial val: unmeasured ({} val tokens produced zero finite windows)",
+            val.len()
+        ),
+    }
+    let init_bpb = init.map(|(_, b)| b);
     println!(
         "\n{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
         "step", "val_loss", "val_bpb", "best_bpb", "lr"
@@ -672,7 +780,7 @@ fn run_trial(
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
-    let mut best_bpb = init_bpb;
+    let mut best_bpb: Option<f32> = init_bpb;
     let mut best_step = 0;
     let mut pruned = false;
     let mut results: Vec<(usize, f32, f32)> = Vec::new();
@@ -699,14 +807,30 @@ fn run_trial(
 
         if step % 500 == 0 || step == max_steps || step == prune_step {
             let _ms = t0.elapsed().as_millis();
-            let (vl, vb) = evaluate(&model, val, SEQ);
-            if vb < best_bpb && vb.is_finite() {
-                best_bpb = vb;
+            // An eval that measured nothing is reported as nothing: no row in
+            // `results`, no candidate for `best_bpb`, no invented number.
+            let Some((vl, vb)) = evaluate(&model, val, SEQ) else {
+                println!(
+                    "{:>6} | {:>10} | {:>10} | {:>10} | {:.6}",
+                    step,
+                    "unmeasured",
+                    "unmeasured",
+                    fmt_bpb(best_bpb),
+                    lr
+                );
+                continue;
+            };
+            if vb.is_finite() && best_bpb.is_none_or(|best| vb < best) {
+                best_bpb = Some(vb);
                 best_step = step;
             }
             println!(
-                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:.6}",
-                step, vl, vb, best_bpb, lr
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10} | {:.6}",
+                step,
+                vl,
+                vb,
+                fmt_bpb(best_bpb),
+                lr
             );
             results.push((step, vl, vb));
 
@@ -731,11 +855,15 @@ fn run_trial(
 
     println!("\n=== TRIAL {} DONE ===", config.name);
     println!("Outcome: {}", outcome);
+    let delta = match (init_bpb, best_bpb) {
+        (Some(i), Some(b)) => format!("{:.4}", b - i),
+        _ => "unmeasured".to_string(),
+    };
     println!(
-        "BPB: {:.4} → {:.4} | Delta: {:.4}",
-        init_bpb,
-        best_bpb,
-        best_bpb - init_bpb
+        "BPB: {} -> {} | Delta: {}",
+        fmt_bpb(init_bpb),
+        fmt_bpb(best_bpb),
+        delta
     );
     println!("Time: {:.1}s", total.as_secs_f64());
 
@@ -873,27 +1001,38 @@ fn main() {
         } else {
             outcome.clone()
         };
-        println!("{:5} | {:9.4} | {:5} | {}", name, bpb, step, outcome_trunc);
+        println!(
+            "{:5} | {:>9} | {:5} | {}",
+            name,
+            fmt_bpb(*bpb),
+            step,
+            outcome_trunc
+        );
     }
 
-    // Check for winner
+    // Check for winner. Only a measured trial can win: `Option<f32>` orders
+    // `None` below every `Some`, so a minimum over the raw options would crown
+    // the trial that measured nothing.
     let best_result = all_results
         .iter()
-        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-    if let Some((name, bpb, step, _, _)) = best_result {
-        if *bpb < target_bpb {
-            println!("\n🎯🎯🎯 WINNER FOUND! 🎯🎯🎯");
+        .filter_map(|(name, bpb, step, _, _)| bpb.map(|b| (name, b, step)))
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    match best_result {
+        Some((name, bpb, step)) if bpb < target_bpb => {
+            println!("\nWINNER FOUND");
             println!(
                 "Trial {} achieved BPB={:.4} < {:.4} at step {}",
                 name, bpb, target_bpb, step
             );
-        } else {
+        }
+        Some((name, bpb, _)) => {
             println!(
-                "\n📊 Best trial: {} with BPB={:.4} (target: <{:.4})",
+                "\nBest trial: {} with BPB={:.4} (target: <{:.4})",
                 name, bpb, target_bpb
             );
             println!("Delta to target: +{:.4}", bpb - target_bpb);
         }
+        None => println!("\nNo trial produced a BPB measurement."),
     }
 
     // Write summary to experience
@@ -909,9 +1048,11 @@ fn main() {
         .unwrap()
         .write_all(
             format!(
-            "[{}] ARCH-EXPLORER SUMMARY | machine={} | trials={} | best_bpb={:.4} | target={:.4}\n",
+            "[{}] ARCH-EXPLORER SUMMARY | machine={} | trials={} | best_bpb={} | target={:.4}\n",
             ts, MACHINE_ID, all_results.len(),
-            best_result.map(|(_, b, _, _, _)| *b).unwrap_or(999.9), target_bpb
+            // `999.9` was a stand-in for "no trial measured anything" that
+            // reads back from the experience file as a BPB.
+            fmt_bpb(best_result.map(|(_, b, _)| b)), target_bpb
         )
             .as_bytes(),
         );
@@ -939,5 +1080,99 @@ mod tests {
         assert_eq!(corpus.bytes, 160);
         assert_eq!(corpus.sha256.len(), 64, "sha256 must be 64 hex chars");
         assert!(!corpus.synthetic);
+    }
+
+    fn small_model() -> NgramModel {
+        NgramModel::new(8, 4, 8, "relu".to_string(), 47, 1, false)
+    }
+
+    fn small_config() -> TrialConfig {
+        TrialConfig {
+            name: "T".to_string(),
+            hidden: 8,
+            weight_tying: false,
+            cosine_lr: false,
+            gradient_clip: None,
+            warmup_steps: 0,
+            base_lr: 0.004,
+        }
+    }
+
+    /// The exact laundering this guard removes: `f32::max` returns the
+    /// non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose negative log is
+    /// 23.026 nats and whose BPB is 33.2 - positive, finite, and small enough
+    /// that nothing downstream rejected it.
+    #[test]
+    fn f32_max_launders_nan_into_a_publishable_bpb() {
+        let laundered = f32::NAN.max(1e-10);
+        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let bpb = -laundered.ln() / LN_2;
+        assert!(
+            (bpb - 33.2).abs() < 0.05,
+            "the laundered reading is 33.2 bpb, got {bpb}"
+        );
+        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every downstream guard");
+    }
+
+    /// A poisoned forward pass is an absence, not 33.2 bpb.
+    #[test]
+    fn nan_forward_pass_yields_no_measurement() {
+        let tokens: Vec<usize> = vec![1, 2, 3, 4, 5, 6, 7, 0, 1, 2];
+
+        let healthy = small_model();
+        assert!(
+            healthy.loss_on_seq(&tokens).is_some_and(f32::is_finite),
+            "the fixture must be measurable before the NaN is introduced"
+        );
+
+        let mut model = small_model();
+        model.lm_head[0] = f32::NAN;
+
+        assert_eq!(model.loss_on_seq(&tokens), None, "NaN is not a loss");
+        assert_eq!(
+            evaluate(&model, &tokens, 8),
+            None,
+            "a poisoned model measures nothing"
+        );
+        if let Some((_, v)) = evaluate(&model, &tokens, 8) {
+            assert!(
+                (v - 33.2).abs() > 1.0,
+                "33.2 bpb is the laundered NaN, not a measurement: {v}"
+            );
+        }
+    }
+
+    /// A sequence too short to hold a context/target pair is an absence, not
+    /// the perfect `0.0` loss it used to report, and `evaluate` no longer
+    /// answers `f32::MAX` - a finite value every downstream guard accepted.
+    #[test]
+    fn short_sequence_yields_no_measurement() {
+        let model = small_model();
+        assert_eq!(model.loss_on_seq(&[1, 2, 3]), None);
+        assert_eq!(model.loss_on_seq(&[]), None);
+        assert_eq!(evaluate(&model, &[1, 2, 3], 8), None);
+        assert_eq!(evaluate(&model, &[], 8), None);
+    }
+
+    /// An unmeasured trial contributes no row to `.trinity/experience/`. The
+    /// old code formatted `f32::MAX` into it as
+    /// `bpb=340282346638528860000000000000000000000.0000`.
+    #[test]
+    fn experience_row_refuses_an_unmeasured_trial() {
+        let cfg = small_config();
+        assert_eq!(
+            experience_row("TS", "T", &cfg, None, 500, 1.0, "COMPLETED 500 steps"),
+            None,
+            "no measurement means no row"
+        );
+
+        let row = experience_row("TS", "T", &cfg, Some(2.6141), 500, 1.0, "COMPLETED")
+            .expect("a measured trial still writes its row");
+        assert!(row.contains("bpb=2.6141"), "{row}");
+        assert!(!row.contains("34028234"), "no sentinel digits: {row}");
+
+        // And the sentinel is exactly what used to be formatted here.
+        assert!(format!("{:.4}", f32::MAX).starts_with("34028234"));
+        assert_eq!(fmt_bpb(None), "unmeasured");
     }
 }

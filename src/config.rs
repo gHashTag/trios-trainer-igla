@@ -137,6 +137,131 @@ impl TrainConfig {
             "lr {} violates INV-8 φ-band [1e-3, 1e-2]",
             self.optimizer.lr
         );
+        // Canon #93. `seed_canon::parse_seed` takes NO argument: it reads only
+        // the `SEED` environment variable, so it cannot check a `--seed` flag
+        // or a TOML field. Exactly one binary calls it at all -
+        // `src/bin/trios-train.rs`, and only on the `SEED` env path; every
+        // other `src/bin/*` main is unchecked by it. A config-driven run
+        // therefore reached `train_loop::run` with an unvalidated seed:
+        // `trios-train --config <path>` validates `cli.seed` and then ignores
+        // it. Enforcing here closes that bypass at the single point every
+        // config passes through, whatever route the seed arrived by.
+        anyhow::ensure!(
+            !FORBIDDEN_SEEDS.contains(&self.seed),
+            "seed {} forbidden under Canon #93 (allowed: 47, 89, 123, 144). \
+             Set TRIOS_SEED to an allowed value or fix the config.",
+            self.seed
+        );
         Ok(())
+    }
+}
+
+/// Seeds forbidden under Canon #93. Mirrors the set in
+/// [`crate::seed_canon::parse_seed`], which can only see a seed that arrives
+/// through the `SEED` env var and therefore never sees one read from a TOML.
+const FORBIDDEN_SEEDS: &[u64] = &[42, 43, 44, 45];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A config that passes every check, so each test below changes exactly
+    /// one field and the failure it observes has exactly one cause.
+    fn valid_config() -> TrainConfig {
+        TrainConfig {
+            name: "unit-test".into(),
+            steps: 4000,
+            seed: 47,
+            target_bpb: 2.5,
+            champion_bpb: None,
+            model: ModelConfig {
+                d_model: 256,
+                n_layers: 2,
+                n_heads: 4,
+                vocab_size: 256,
+                seq_len: 128,
+                hybrid_attn: false,
+            },
+            optimizer: OptimizerConfig {
+                kind: "adamw".into(),
+                lr: 0.004,
+                beta1: 0.9,
+                beta2: 0.95,
+                weight_decay: 0.04,
+                schedule: "phi".into(),
+                warmup_steps: 500,
+            },
+            data: DataConfig {
+                corpus: "tinyshakespeare".into(),
+                train_path: "data/train.txt".into(),
+                val_path: "data/val.txt".into(),
+                batch_size: 1,
+                batch_tokens: 1024,
+            },
+            objective: ObjectiveConfig {
+                w_ce: 1.0,
+                w_jepa: 0.0,
+                w_nca: 0.0,
+            },
+            ledger: LedgerConfig {
+                jsonl_path: String::new(),
+                push: false,
+                embargo_path: ".embargo".into(),
+            },
+        }
+    }
+
+    #[test]
+    fn baseline_config_validates() {
+        valid_config().validate().expect("baseline must validate");
+    }
+
+    #[test]
+    fn validate_rejects_forbidden_seeds() {
+        for seed in [42u64, 43, 44, 45] {
+            let mut cfg = valid_config();
+            cfg.seed = seed;
+            let err = cfg
+                .validate()
+                .expect_err("Canon #93 seed must not reach train_loop::run");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("Canon #93") && msg.contains(&seed.to_string()),
+                "seed {seed}: error must name the canon and the seed: {msg}"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_accepts_canon_seeds() {
+        for seed in [47u64, 89, 123, 144] {
+            let mut cfg = valid_config();
+            cfg.seed = seed;
+            cfg.validate()
+                .unwrap_or_else(|e| panic!("seed {seed} is allowed under Canon #93: {e}"));
+        }
+    }
+
+    #[test]
+    fn validate_still_rejects_zero_steps() {
+        let mut cfg = valid_config();
+        cfg.steps = 0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_still_rejects_non_positive_target_bpb() {
+        let mut cfg = valid_config();
+        cfg.target_bpb = 0.0;
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_still_rejects_lr_outside_the_phi_band() {
+        for lr in [9.9e-4, 1.1e-2] {
+            let mut cfg = valid_config();
+            cfg.optimizer.lr = lr;
+            assert!(cfg.validate().is_err(), "lr {lr} must violate INV-8");
+        }
     }
 }

@@ -1103,8 +1103,21 @@ impl CpuModel {
                 }
             }
             softmax(&mut logits);
-            let p_target = logits[target].max(1e-10);
-            total_loss -= p_target.ln();
+            let p_target = logits[target];
+            if p_target.is_nan() {
+                // `f32::max` ignores NaN, so clamping `logits[target]` with
+                // `.max(1e-10)` used to return 1e-10 here, whose negative log is 23.026 nats -
+                // a finite 33.2 bpb that passed `eval_bpb`'s `is_finite()`
+                // filter and was published as a measurement. A poisoned
+                // forward pass now yields a NaN loss, which that filter
+                // rejects. NaN is absorbing, so one bad position invalidates
+                // the whole sequence, which is the honest reading. The 1e-10
+                // clamp is kept for a genuinely underflowed probability - a
+                // documented floor on surprisal.
+                total_loss = f32::NAN;
+            } else {
+                total_loss -= p_target.max(1e-10).ln();
+            }
             for (vi, dl) in d_logits[i].iter_mut().enumerate() {
                 *dl = logits[vi] - if vi == target { 1.0 } else { 0.0 };
             }
@@ -1301,50 +1314,238 @@ impl CpuModel {
         loss
     }
 
-    /// Mean BPB over the val stream, or `None` when nothing could be measured.
+    /// Mean BPB over the val stream, together with the sample it was averaged
+    /// over; `None` when nothing at all could be measured.
     ///
     /// This used to return `f32::MAX` when `n == 0`, a sentinel indistinguishable
     /// from a measurement once it had been written into a JSON field or compared
     /// with `<`. An absence is now an absence: callers must decide explicitly
     /// what to do, and no unmeasured value reaches the results file.
-    fn eval_bpb(&self, tokens: &[usize], seq_len: usize) -> Option<f32> {
+    ///
+    /// It also used to return only the mean, so a run that quietly evaluated 9
+    /// of 152 windows and a run that evaluated all 152 published the same
+    /// shape of number. The realised count travels with the mean now; see
+    /// `require_complete_sample` for why a shrunken sample is refused.
+    fn eval_bpb(&self, tokens: &[usize], seq_len: usize) -> Option<EvalSample> {
         let max_eval = EVAL_TOKEN_CAP.min(tokens.len());
         let eval_tokens = &tokens[..max_eval];
         let mut total_bpb = 0.0f32;
-        let mut n = 0usize;
+        // `planned` counts the windows this loop intends to evaluate -- the
+        // same windows `eval_chunk_count` counts, and the same number
+        // `MIN_EVAL_CHUNKS` grades. `realised` counts the ones that produced a
+        // finite loss.
+        let mut planned = 0usize;
+        let mut realised = 0usize;
         for c in (0..eval_tokens.len()).step_by(seq_len + 1) {
             let end = (c + seq_len + 1).min(eval_tokens.len());
             if end - c < 3 {
                 continue;
             }
+            planned += 1;
             let seq = &eval_tokens[c..end];
             let (loss, _, _) = self.loss_and_grad(seq);
             if loss.is_finite() {
                 total_bpb += loss / LN_2;
-                n += 1;
+                realised += 1;
             }
         }
-        if n == 0 {
+        if realised == 0 {
             return None;
         }
-        Some(total_bpb / n as f32)
+        Some(EvalSample {
+            mean: total_bpb / realised as f32,
+            planned,
+            realised,
+        })
     }
 }
 
+/// One eval pass: the mean, and the sample the mean was actually taken over.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct EvalSample {
+    mean: f32,
+    /// Windows the eval loop set out to measure.
+    planned: usize,
+    /// Windows that produced a finite loss.
+    realised: usize,
+}
+
+impl EvalSample {
+    fn dropped(&self) -> usize {
+        self.planned.saturating_sub(self.realised)
+    }
+}
+
+/// Opt-in that permits publishing a mean taken over fewer windows than were
+/// planned. Off by default; see `require_complete_sample`.
+const ALLOW_DROPPED_EVAL_WINDOWS_VAR: &str = "TRIOS_ALLOW_DROPPED_EVAL_WINDOWS";
+
+/// Fault-injection hook, used by `tests/eval_window_drop_truth.rs`.
+///
+/// `TRIOS_TEST_POISON_EMBED_ROW=<token_id>` writes NaN into one embedding row
+/// right after init, so exactly the eval windows containing that token go
+/// non-finite. That PARTIAL poison is the case the in-file total-poison test
+/// (`test_nan_forward_pass_yields_no_measurement`, which NaNs `lm_head[0]` and
+/// so poisons every window) cannot reach, and there is no way to produce it
+/// from outside the process without a hook. Any run that sets this announces
+/// itself on stderr and stamps `fault_injected: true` into the results file:
+/// nothing measured under this variable is a model result.
+const POISON_EMBED_ROW_VAR: &str = "TRIOS_TEST_POISON_EMBED_ROW";
+
+/// Grade one eval against the sample it planned.
+///
+/// `MIN_EVAL_CHUNKS` grades the PLAN -- a window count computed from the stream
+/// length before a single forward pass -- and never the realisation. The
+/// dropped-window filter in `eval_bpb` therefore used to shrink the sample in
+/// silence: a NaN confined to one embedding row, or an overflow that only
+/// occurs on certain contexts, drops exactly the affected windows and leaves a
+/// plausible mean over the easy remainder. That bias is DOWNWARD -- the
+/// direction that manufactures a champion. `src/train_loop.rs` takes the strict
+/// line (the first non-finite window aborts the eval); these binaries keep the
+/// per-window filter but refuse to publish what it produced unless the caller
+/// asked for the reduced sample in writing.
+fn require_complete_sample(
+    label: &str,
+    sample: Option<EvalSample>,
+    val_path: &str,
+    allow_dropped: bool,
+) -> Result<EvalSample, u8> {
+    let s = match sample {
+        Some(s) => s,
+        None => {
+            eprintln!(
+                "NO MEASUREMENT ({label}): zero finite eval windows on {val_path}. \
+                 Refusing to report a BPB nobody measured."
+            );
+            return Err(EXIT_NO_MEASUREMENT);
+        }
+    };
+    if s.dropped() > 0 && !allow_dropped {
+        eprintln!(
+            "EVAL SAMPLE SHRANK ({}): {} of {} planned windows on {} went \
+             non-finite and were dropped. A mean over the survivors is biased \
+             DOWNWARD and is not a held-out measurement. Set {}=1 to publish it \
+             anyway; the results file then carries eval_windows_dropped.",
+            label,
+            s.dropped(),
+            s.planned,
+            val_path,
+            ALLOW_DROPPED_EVAL_WINDOWS_VAR
+        );
+        return Err(EXIT_NO_MEASUREMENT);
+    }
+    Ok(s)
+}
+
 /// Exit codes. `0` only when a BPB was actually measured against a real corpus.
+const EXIT_BAD_ARGS: u8 = 4;
 const EXIT_BAD_FORMAT: u8 = 5;
 const EXIT_BAD_CORPUS: u8 = 6;
 const EXIT_NO_MEASUREMENT: u8 = 7;
 const EXIT_IO: u8 = 8;
 
+/// Usage text. Without it `--help` started a full 3000-step training run and
+/// overwrote the git-tracked results file for `--format f32 --algo adamw
+/// --seed 42`, because `arg_or` matches only `--name=value` and ignored every
+/// argument it did not recognise. `src/bin/train_v2.rs` has had a `USAGE` for
+/// exactly this reason; the binary CI actually spawns did not.
+const USAGE: &str = "\
+cpu_train - embed+bigram+smear+lm_head char model, BPB measured on a held-out corpus.
+
+Usage: cpu_train [--seed=N] [--steps=N] [--lr=F] [--vocab=N] [--dim=N] [--seq=N]
+                 [--algo=NAME] [--ffn] [--ffn-layers=N]
+                 [--train-data=PATH] [--val-data=PATH]
+
+Writes .trinity/results/cpu_train_<format>_<algo>_seed<seed>.json and exits 0
+only when a BPB was measured over the FULL planned eval sample.
+Env: TRIOS_FORMAT_TYPE, TRIOS_ALGO_TYPE, TRIOS_TRAIN_PATH, TRIOS_VAL_PATH,
+     TRIOS_ALLOW_DROPPED_EVAL_WINDOWS=1 (publish a reduced eval sample).
+Exit codes: 4 = bad argument, 5 = unknown format, 6 = corpus refused,
+            7 = nothing measured / eval sample shrank, 8 = results I/O.";
+
+/// Every argument this binary reads. `--ffn` is a bare flag; the rest are
+/// `--name=value`.
+const KNOWN_VALUE_ARGS: [&str; 10] = [
+    "seed",
+    "steps",
+    "lr",
+    "vocab",
+    "dim",
+    "seq",
+    "algo",
+    "ffn-layers",
+    "train-data",
+    "val-data",
+];
+const KNOWN_FLAG_ARGS: [&str; 3] = ["--ffn", "--help", "-h"];
+
+/// Name the first argument that means nothing here, or `None` if all are known.
+///
+/// Silently ignoring an unrecognised argument is how `--help` became a
+/// training run: the caller believes it asked for something, the binary does
+/// something else, and only the overwritten results file records the
+/// disagreement.
+fn first_unknown_arg<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter().skip(1).find(|a| {
+        if KNOWN_FLAG_ARGS.contains(&a.as_str()) {
+            return false;
+        }
+        !KNOWN_VALUE_ARGS
+            .iter()
+            .any(|name| a.starts_with(&format!("--{name}=")))
+    })
+}
+
 fn main() -> ExitCode {
+    // Argument handling comes first, before any training and before any file
+    // is opened: `--help` used to fall through to a 3000-step run whose
+    // results file replaced the checked-in one.
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", USAGE);
+        return ExitCode::SUCCESS;
+    }
+    if let Some(bad) = first_unknown_arg(argv) {
+        eprintln!("UNKNOWN ARGUMENT: {bad}");
+        eprintln!(
+            "cpu_train ignored unrecognised arguments, so a caller could ask for \
+             one run and silently get another. Refusing instead."
+        );
+        eprintln!();
+        eprintln!("{}", USAGE);
+        return ExitCode::from(EXIT_BAD_ARGS);
+    }
+
     let format_type = std::env::var("TRIOS_FORMAT_TYPE").ok();
-    let seed = arg_or("seed", "42").parse::<u64>().unwrap_or(42);
-    let steps = arg_or("steps", "3000").parse::<usize>().unwrap_or(3000);
-    let lr = arg_or("lr", "0.003").parse::<f32>().unwrap_or(0.003);
-    let vocab: usize = arg_or("vocab", "128").parse().unwrap_or(128);
-    let dim: usize = arg_or("dim", "96").parse().unwrap_or(96);
-    let seq: usize = arg_or("seq", "32").parse().unwrap_or(32);
+    // Every one of these used to be `.parse().unwrap_or(<default>)`. A KNOWN
+    // flag with an unusable value therefore trained at the default and exited
+    // 0: `--seed=oops --lr=0,001` printed `seed=42 lr=0.003`. The seed and the
+    // learning rate are the identity of a reproducibility claim, so an
+    // unparseable value is a refusal. See `parse_flag_or_refuse`.
+    let seed: u64 = match parse_flag_or_refuse("seed", "42") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let steps: usize = match parse_flag_or_refuse("steps", "3000") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let lr: f32 = match parse_flag_or_refuse("lr", "0.003") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let vocab: usize = match parse_flag_or_refuse("vocab", "128") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let dim: usize = match parse_flag_or_refuse("dim", "96") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
+    let seq: usize = match parse_flag_or_refuse("seq", "32") {
+        Ok(v) => v,
+        Err(code) => return code,
+    };
 
     // Resolve algo name: CLI --algo=<name> takes precedence, then TRIOS_ALGO_TYPE, then "adamw"
     let algo_name_raw = arg_or("algo", "");
@@ -1497,6 +1698,44 @@ fn main() -> ExitCode {
 
     let mut model = CpuModel::new(vocab, dim, seed);
 
+    // Whether a reduced eval sample may be published, decided once so every
+    // eval in the run is graded the same way.
+    let allow_dropped = std::env::var(ALLOW_DROPPED_EVAL_WINDOWS_VAR)
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if allow_dropped {
+        eprintln!(
+            "{}=1: a reduced eval sample will be published. The mean is taken \
+             over the windows that survived and is biased DOWNWARD.",
+            ALLOW_DROPPED_EVAL_WINDOWS_VAR
+        );
+    }
+
+    // Fault injection, off unless asked for by name. See POISON_EMBED_ROW_VAR.
+    let fault_injected = match std::env::var(POISON_EMBED_ROW_VAR) {
+        Ok(raw) => match raw.trim().parse::<usize>() {
+            Ok(row) if row < vocab => {
+                for x in model.embed[row * dim..(row + 1) * dim].iter_mut() {
+                    *x = f32::NAN;
+                }
+                eprintln!(
+                    "FAULT INJECTED: {}={} put NaN into embedding row {}. This run \
+                     is a fault-injection probe, not a model result.",
+                    POISON_EMBED_ROW_VAR, row, row
+                );
+                true
+            }
+            _ => {
+                eprintln!(
+                    "{}: '{}' is not a token id below vocab={}.",
+                    POISON_EMBED_ROW_VAR, raw, vocab
+                );
+                return ExitCode::from(EXIT_BAD_ARGS);
+            }
+        },
+        Err(_) => false,
+    };
+
     // Build both optimizers from algo_name (same algo for embed and head)
     let mut opt_embed = AlgoOpt::from_env(algo_name, vocab * dim, lr);
     let mut opt_head = AlgoOpt::from_env(algo_name, vocab * dim, lr);
@@ -1525,18 +1764,25 @@ fn main() -> ExitCode {
         }
     }
 
-    let init_bpb = match model.eval_bpb(val_tokens, seq) {
-        Some(b) => b,
-        None => {
-            eprintln!(
-                "NO MEASUREMENT: the initial eval produced zero finite windows on \
-                 {}. Refusing to report an initial BPB nobody measured.",
-                val_path
-            );
-            return ExitCode::from(EXIT_NO_MEASUREMENT);
-        }
+    // Every eval in this run, including the initial one, must average over the
+    // full planned window set; `dropped_total` accumulates what was lost when
+    // the operator opted into a reduced sample.
+    let mut dropped_total = 0usize;
+    let init_sample = match require_complete_sample(
+        "initial eval",
+        model.eval_bpb(val_tokens, seq),
+        &val_path,
+        allow_dropped,
+    ) {
+        Ok(s) => s,
+        Err(code) => return ExitCode::from(code),
     };
-    println!("Initial val BPB: {:.4}", init_bpb);
+    dropped_total += init_sample.dropped();
+    let init_bpb = init_sample.mean;
+    println!(
+        "Initial val BPB: {:.4} (eval windows {}/{})",
+        init_bpb, init_sample.realised, init_sample.planned
+    );
     println!();
     println!(
         "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
@@ -1551,7 +1797,7 @@ fn main() -> ExitCode {
     // minimum under the name `final_bpb`, and matrix_runner then paired it with
     // `step = steps`, attributing an early-training minimum to the last step.
     let mut best_bpb = init_bpb;
-    let mut final_bpb: Option<f32> = None;
+    let mut final_sample: Option<EvalSample> = None;
     let data_len = train_tokens.len();
     let mut rng_state = seed;
 
@@ -1588,25 +1834,28 @@ fn main() -> ExitCode {
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
-            let val_bpb = model.eval_bpb(val_tokens, seq);
-            if let Some(b) = val_bpb {
-                if b < best_bpb && b.is_finite() {
-                    best_bpb = b;
-                }
+            // An intermediate eval is not a lesser measurement: it feeds
+            // `best_bpb`, which is published. It is graded like the final one.
+            let sample = match require_complete_sample(
+                &format!("eval at step {step}"),
+                model.eval_bpb(val_tokens, seq),
+                &val_path,
+                allow_dropped,
+            ) {
+                Ok(s) => s,
+                Err(code) => return ExitCode::from(code),
+            };
+            dropped_total += sample.dropped();
+            if sample.mean < best_bpb && sample.mean.is_finite() {
+                best_bpb = sample.mean;
             }
             if step == steps {
-                final_bpb = val_bpb;
+                final_sample = Some(sample);
             }
-            match val_bpb {
-                Some(b) => println!(
-                    "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                    step, train_loss, b, best_bpb, ms
-                ),
-                None => println!(
-                    "{:>6} | {:>10.4} | {:>10} | {:>10.4} | {:>6}ms",
-                    step, train_loss, "unmeasured", best_bpb, ms
-                ),
-            }
+            println!(
+                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                step, train_loss, sample.mean, best_bpb, ms
+            );
         }
     }
 
@@ -1615,8 +1864,8 @@ fn main() -> ExitCode {
     // A run whose last step produced no finite eval window has no final BPB.
     // Emitting one anyway is exactly the class of defect this binary exists to
     // avoid, so the run fails instead.
-    let final_bpb = match final_bpb {
-        Some(b) => b,
+    let final_sample = match final_sample {
+        Some(s) => s,
         None => {
             eprintln!(
                 "NO MEASUREMENT: the eval at the final step (step={}) produced zero \
@@ -1627,6 +1876,7 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_NO_MEASUREMENT);
         }
     };
+    let final_bpb = final_sample.mean;
 
     println!();
     println!("=== Training Complete ===");
@@ -1641,7 +1891,13 @@ fn main() -> ExitCode {
         init_bpb - final_bpb
     );
 
-    let _ = fs::create_dir_all(".trinity/results");
+    let rpath = results_path(&format_suffix, algo_name, seed, dim, seq, steps, lr);
+    if let Some(parent) = std::path::Path::new(&rpath).parent() {
+        if let Err(e) = fs::create_dir_all(parent) {
+            eprintln!("create results dir {parent:?}: {e}");
+            return ExitCode::from(EXIT_IO);
+        }
+    }
     let result_json = serde_json::json!({
         "experiment": "cpu-backprop-scalable",
         "model": "embed+bigram+smear+lm_head",
@@ -1656,7 +1912,21 @@ fn main() -> ExitCode {
         "val_path": val_path,
         "train_tokens": train_tokens.len(),
         "val_tokens": val_tokens.len(),
+        // `eval_chunks` is the PLAN, computed from the stream length before a
+        // single forward pass. The two keys below are the REALISATION of the
+        // final eval: how many windows it set out to measure and how many
+        // produced a finite loss. A consumer comparing runs must check that
+        // realised == planned before comparing the means.
         "eval_chunks": chunks,
+        "eval_windows_planned": final_sample.planned,
+        "eval_windows_realised": final_sample.realised,
+        "eval_windows_dropped": final_sample.dropped(),
+        // Dropped windows across every eval in the run (init + intermediate +
+        // final), since `best_bpb` is drawn from the intermediate ones.
+        "eval_windows_dropped_total": dropped_total,
+        // True only when TRIOS_TEST_POISON_EMBED_ROW was set. Nothing measured
+        // under fault injection is a model result.
+        "fault_injected": fault_injected,
         "format_requested": format_suffix,
         "format_executed": format_executed,
         "initial_bpb": init_bpb,
@@ -1672,10 +1942,6 @@ fn main() -> ExitCode {
         "duration_seconds": total.as_secs_f64(),
     });
 
-    let rpath = format!(
-        ".trinity/results/cpu_train_{}_{}_seed{}.json",
-        format_suffix, algo_name, seed
-    );
     let serialized = match serde_json::to_string_pretty(&result_json) {
         Ok(s) => s,
         Err(e) => {
@@ -1700,6 +1966,71 @@ fn arg_or(name: &str, default: &str) -> String {
         .find(|a| a.starts_with(&prefix))
         .map(|a| a[prefix.len()..].to_string())
         .unwrap_or_else(|| default.to_string())
+}
+
+/// Read a known flag and parse it, or exit with the same refusal shape as
+/// `first_unknown_arg`.
+///
+/// `first_unknown_arg` already refuses a flag NAME this binary does not know.
+/// A name it DOES know carrying a value it cannot use was the remaining silent
+/// path, and it is the worse one: an unknown name is at least visible in the
+/// argv, whereas `--seed=oops` produced a complete, plausible, git-tracked
+/// results file for a run nobody asked for.
+fn parse_flag_or_refuse<T: std::str::FromStr>(name: &str, default: &str) -> Result<T, ExitCode> {
+    let raw = arg_or(name, default);
+    trios_trainer::parse_flag_value::<T>(name, &raw).map_err(|e| {
+        eprintln!("{e}");
+        eprintln!();
+        eprintln!("{}", USAGE);
+        ExitCode::from(EXIT_BAD_ARGS)
+    })
+}
+
+/// Directory the results JSON is written to. Defaults to `.trinity/results`,
+/// which `.gitignore` excludes.
+const RESULTS_DIR_VAR: &str = "TRIOS_RESULTS_DIR";
+const DEFAULT_RESULTS_DIR: &str = ".trinity/results";
+
+/// Render a float for use inside a filename: shortest form that round-trips,
+/// with the decimal point kept (it is legal in every filesystem this runs on)
+/// so `0.01` and `0.001` cannot collapse onto each other.
+fn lr_file_token(lr: f32) -> String {
+    format!("{lr}")
+}
+
+/// Path of the results file for ONE cell of the matrix.
+///
+/// This used to be `cpu_train_{format}_{algo}_seed{seed}.json`: a name keyed on
+/// 3 of the 7 parameters that define the run. Two cells differing only in
+/// `dim`, `seq`, `steps` or `lr` wrote to the SAME path and the last one won,
+/// and `matrix_runner` then read that file back to verify the executed `lr` -
+/// which is the mechanism behind the reported matrix flake. Eight of those
+/// legacy names are also git-TRACKED (they predate the `.trinity/results/`
+/// ignore rule), so a five-step probe run overwrote checked-in evidence.
+///
+/// The full identity is in the name now, which makes the legacy spellings
+/// unreachable from this binary and makes cross-cell collision impossible.
+/// `matrix_runner` no longer reconstructs this string at all: it reads the
+/// `Results:` line this binary prints, so the reader uses the writer's own
+/// statement of where it wrote.
+fn results_path(
+    format_suffix: &str,
+    algo_name: &str,
+    seed: u64,
+    dim: usize,
+    seq: usize,
+    steps: usize,
+    lr: f32,
+) -> String {
+    let dir = std::env::var(RESULTS_DIR_VAR)
+        .ok()
+        .filter(|d| !d.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_RESULTS_DIR.to_string());
+    format!(
+        "{dir}/cpu_train_{format_suffix}_{algo_name}_seed{seed}_dim{dim}_seq{seq}\
+         _steps{steps}_lr{}.json",
+        lr_file_token(lr)
+    )
 }
 
 // ============================================================================
@@ -1944,10 +2275,129 @@ mod tests {
         assert!(model.eval_bpb(&[], 8).is_none());
         // A real stream does produce a reading.
         let tokens: Vec<usize> = (0..1024).map(|i| i % 32).collect();
-        let bpb = model.eval_bpb(&tokens, 8).expect("measurable stream");
+        let sample = model.eval_bpb(&tokens, 8).expect("measurable stream");
+        let bpb = sample.mean;
         assert!(bpb.is_finite());
         // And it is nowhere near the sentinel the old code returned.
         assert!(bpb < 64.0, "bpb={bpb} looks like a sentinel, not a reading");
+        // A healthy model drops nothing: the mean covers the whole plan.
+        assert_eq!(sample.realised, sample.planned);
+        assert_eq!(sample.dropped(), 0);
+        assert_eq!(sample.planned, eval_chunk_count(tokens.len(), 8));
+    }
+
+    /// The exact laundering the guard in `loss_and_grad` removes: `f32::max`
+    /// returns the non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose
+    /// negative log is 23.026 nats and whose BPB is 33.2 - positive, finite,
+    /// and below `BPB_SENTINEL_CEILING`, so `eval_bpb`'s `is_finite()` filter
+    /// passed it straight through to the results file.
+    #[test]
+    fn test_f32_max_launders_nan_into_a_publishable_bpb() {
+        let laundered = f32::NAN.max(1e-10);
+        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let bpb = -laundered.ln() / LN_2;
+        assert!(
+            (bpb - 33.2).abs() < 0.05,
+            "the laundered reading is 33.2 bpb, got {bpb}"
+        );
+        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every downstream guard");
+    }
+
+    /// A NaN forward pass produces no measurement, not 33.2 bpb.
+    #[test]
+    fn test_nan_forward_pass_yields_no_measurement() {
+        let tokens: Vec<usize> = (0..1024).map(|i| i % 32).collect();
+
+        let healthy = CpuModel::new(32, 8, 47);
+        let (healthy_loss, _, _) = healthy.loss_and_grad(&tokens[..9]);
+        assert!(
+            healthy_loss.is_finite(),
+            "the fixture must be measurable before the NaN is introduced"
+        );
+        assert!(healthy.eval_bpb(&tokens, 8).is_some());
+
+        let mut model = CpuModel::new(32, 8, 47);
+        model.lm_head[0] = f32::NAN;
+
+        let (loss, _, _) = model.loss_and_grad(&tokens[..9]);
+        assert!(loss.is_nan(), "a poisoned forward pass is not a loss: {loss}");
+        assert!(
+            (loss - 23.026).abs() > 1.0 || loss.is_nan(),
+            "23.026 nats is the laundered NaN, not a loss: {loss}"
+        );
+
+        let bpb = model.eval_bpb(&tokens, 8);
+        assert_eq!(bpb, None, "a poisoned model publishes nothing");
+        if let Some(s) = bpb {
+            assert!(
+                (s.mean - 33.2).abs() > 1.0,
+                "33.2 bpb is the laundered NaN, not a measurement: {}",
+                s.mean
+            );
+        }
+    }
+
+    /// The case the total poison above cannot reach: ONE embedding row is
+    /// NaN, so only the windows containing that token go non-finite.
+    ///
+    /// `eval_bpb` still returns a mean here -- the survivors are real windows
+    /// and their losses are finite -- and before the realised count travelled
+    /// with it, that mean was published as though it covered the whole eval.
+    /// It does not, and the windows it drops are not a random subset.
+    #[test]
+    fn test_partial_poison_shrinks_the_sample_and_says_so() {
+        let vocab = 32usize;
+        let dim = 8usize;
+        // Token 31 appears in roughly one window in eight, so most windows
+        // stay measurable and the mean over them stays plausible.
+        let tokens: Vec<usize> = (0..1024)
+            .map(|i| if i % 71 == 0 { 31 } else { i % 30 })
+            .collect();
+
+        let healthy = CpuModel::new(vocab, dim, 47);
+        let clean = healthy.eval_bpb(&tokens, 8).expect("measurable stream");
+        assert_eq!(clean.realised, clean.planned, "fixture must start complete");
+
+        let mut model = CpuModel::new(vocab, dim, 47);
+        for x in model.embed[31 * dim..32 * dim].iter_mut() {
+            *x = f32::NAN;
+        }
+        let poisoned = model
+            .eval_bpb(&tokens, 8)
+            .expect("a partial poison still leaves measurable windows");
+        assert!(
+            poisoned.dropped() > 0,
+            "the poisoned token must cost some windows"
+        );
+        assert!(
+            poisoned.realised > 0,
+            "and must not cost all of them, or this is the total-poison case"
+        );
+        assert_eq!(poisoned.planned, clean.planned, "the PLAN is unchanged");
+        assert!(
+            poisoned.mean.is_finite(),
+            "the mean over the survivors is finite -- that is the whole problem"
+        );
+
+        // The plan-level precondition cannot see any of this: it is computed
+        // from the stream length and is identical either way.
+        assert_eq!(
+            eval_chunk_count(tokens.len(), 8),
+            poisoned.planned,
+            "MIN_EVAL_CHUNKS grades this number, which the poison does not move"
+        );
+
+        // So the refusal has to live where the realisation is known.
+        assert_eq!(
+            require_complete_sample("test", Some(poisoned), "fixture", false),
+            Err(EXIT_NO_MEASUREMENT),
+            "a shrunken sample is refused by default"
+        );
+        assert_eq!(
+            require_complete_sample("test", Some(poisoned), "fixture", true),
+            Ok(poisoned),
+            "and published only when the operator opts in"
+        );
     }
 
     // test_unknown_format_has_no_silent_fallback -- FormatKind resolution

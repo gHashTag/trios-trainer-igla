@@ -21,6 +21,26 @@ categories  = ["science", "command-line-utilities"]
 name = "trios_trainer"
 path = "src/lib.rs"
 
+# QUARANTINE PASS, 2026-08-03. Seven files under src/bin/ were git-tracked with
+# their [[bin]] stanzas commented out: train_cpu.rs, transformer_train.rs,
+# trinity_3k_fineweb_train.rs, trinity_3k_simple_train.rs,
+# trinity_3k_tinyshakespeare.rs, trinity_tournament.rs, lr_calibration.rs. A
+# commented-out stanza declares nothing and `autobins = false` means cargo
+# discovers nothing, so no compiler had ever read them and no #[test] inside
+# them could ever fail - while a reader cloning the repo saw them sitting in
+# src/ next to live code. All seven are now in attic/, each with the reason it
+# never compiled recorded at the stanza it used to occupy.
+#
+# Moved with them: src/bin/tjepa_modules/ (mod.rs, encoder.rs, ntp.rs). That
+# directory looked like a module tree of src/bin/tjepa_train.rs, which is a
+# LIVE binary - but tjepa_train.rs declares no `mod tjepa_modules` and nothing
+# else in src/, tests/ or this manifest referenced the name. It compiled under
+# no target at all. tjepa_train.rs itself is untouched and still declared below.
+#
+# `every_tracked_bin_source_is_a_declared_bin` in
+# tests/ledger_exit_code_binaries.rs fails if a file is ever tracked under
+# src/bin/ again without a live [[bin]] stanza.
+
 [[bin]]
 name = "entrypoint"
 path = "src/bin/entrypoint.rs"
@@ -71,6 +91,17 @@ path = "src/bin/honey_audit.rs"
 name = "cpu_train"
 path = "src/bin/cpu_train.rs"
 
+# Concatenated-context MLP char model. Self-contained: it depends on no module
+# that lives in attic/. Declared 2026-08-03 -- it had been git-tracked and
+# undeclared, which meant its round-1 hardening (`loss_on_seq`/`evaluate`
+# returning `Option` instead of the 0.0 and `f32::MAX` sentinels, and the
+# removal of the `probs[target].max(1e-10)` NaN launder) and the regression test
+# that guards its corpus refusal had never once been compiled. A fix no compiler
+# reads is a fix nobody has.
+[[bin]]
+name = "concat_train"
+path = "src/bin/concat_train.rs"
+
 # `igla_train` was removed 2026-08-02. It read a hardcoded corpus path that
 # misspelled the file in `data/` and so had never existed in this repo, it
 # silently substituted a 52-byte string, then called
@@ -88,46 +119,33 @@ path = "src/bin/ngram_train.rs"
 name = "ngram_train_gf16"
 path = "src/bin/ngram_train_gf16.rs"
 
-# TODO: fix imports - requires missing modules (bench, backward, etc.)
-# [[bin]]
-# name = "train_cpu"
-# path = "src/bin/train_cpu.rs"
+# MOVED to attic/train_cpu.rs on 2026-08-03. It needed the `bench` / `backward`
+# modules, unbuilt files already in attic/, so this stanza could never have been
+# uncommented as written. See attic/README.md before reviving it.
 
 [[bin]]
 name = "train_v2"
 path = "src/bin/train_v2.rs"
 
-# Smoke proof binary — minimal end-to-end pipeline test, runs in <60s on CPU
+# Smoke proof binary -- minimal end-to-end pipeline test, runs in <60s on CPU
 # with synthetic data and writes one bpb_samples row. See src/bin/smoke_train.rs.
 [[bin]]
 name = "smoke_train"
 path = "src/bin/smoke_train.rs"
 
-# Scarab Worker — fungible-pool claim loop. One image, N replicas.
+# Scarab Worker -- fungible-pool claim loop. One image, N replicas.
 # See src/bin/scarab.rs and docs/SCARAB_WORKER.md.
 [[bin]]
 name = "scarab"
 path = "src/bin/scarab.rs"
 
-# TODO: fix imports - requires transformer_trainer module
-# [[bin]]
-# name = "transformer_train"
-# path = "src/bin/transformer_train.rs"
+# MOVED to attic/transformer_train.rs on 2026-08-03. It needed the
+# `transformer_trainer` module, an unbuilt file already in attic/ that prints a
+# fabricated "IMPROVEMENT" number. See attic/README.md.
 
-# TODO: fix imports - requires trinity_3k module
-# [[bin]]
-# name = "trinity_3k_fineweb_train"
-# path = "src/bin/trinity_3k_fineweb_train.rs"
-
-# TODO: fix imports - requires trinity_3k module
-# [[bin]]
-# name = "trinity_3k_simple_train"
-# path = "src/bin/trinity_3k_simple_train.rs"
-
-# TODO: fix imports - requires trinity_3k module
-# [[bin]]
-# name = "trinity_3k_tinyshakespeare"
-# path = "src/bin/trinity_3k_tinyshakespeare.rs"
+# MOVED to attic/ on 2026-08-03: trinity_3k_fineweb_train.rs,
+# trinity_3k_simple_train.rs, trinity_3k_tinyshakespeare.rs. All three needed the
+# `trinity_3k` module, an unbuilt file already in attic/. See attic/README.md.
 
 # Temporary test bins removed after run
 
@@ -135,24 +153,30 @@ path = "src/bin/scarab.rs"
 name = "trinity_pr1722"
 path = "src/bin/trinity_pr1722.rs"
 
-# TODO: fix imports - requires backward, bench, swa_phi, etc.
-# [[bin]]
-# name = "trinity_tournament"
-# path = "src/bin/trinity_tournament.rs"
+# MOVED to attic/trinity_tournament.rs on 2026-08-03. It needed the `backward` /
+# `bench` / `swa_phi` modules, unbuilt files already in attic/. See
+# attic/README.md.
 
 [[bin]]
 name = "arch_explorer"
 path = "src/bin/arch_explorer.rs"
 
-# TODO: fix imports - requires attention module
-# [[bin]]
-# name = "attn_train"
-# path = "src/bin/attn_train.rs"
-
-# TODO: fix imports - requires bench module
-# [[bin]]
-# name = "bench_cpu"
-# path = "src/bin/bench_cpu.rs"
+# MOVED to attic/attn_train.rs on 2026-08-03. It needed `trios_trainer::attention`,
+# an unbuilt file already in attic/, so the commented-out stanza below could never
+# be uncommented as written -- and being commented out is what let its `evaluate`
+# keep returning `f32::MAX` from both barren paths, seeding `best_val_bpb` and
+# printing `BPB=340282346638528859811704183484516925440.0000` directly above
+# `vs champion 2.5193`. A tracked file that no compiler ever reads cannot be
+# hardened, only believed. See attic/README.md before reviving it.
+#
+# MOVED to attic/bench_cpu.rs on 2026-08-03. Needed `trios_trainer::bench`, also
+# already in attic/, and its output is emoji-decorated (violates ASCII-only).
+#
+# MOVED to attic/ptq_eval.rs on 2026-08-03. It imported `trios_trainer_igla::*`,
+# a crate name that does not exist in this workspace (the lib is `trios_trainer`),
+# so it had never compiled; its body ends at
+# "TODO: implement model loading and BPB measurement" -- it quantizes nothing and
+# measures nothing.
 
 [[bin]]
 name = "gf16_test"
@@ -162,10 +186,9 @@ path = "src/bin/gf16_test.rs"
 name = "igla_trigram"
 path = "src/bin/igla_trigram.rs"
 
-# TODO: fix imports - requires trios_phi_schedule external crate
-# [[bin]]
-# name = "lr_calibration"
-# path = "src/bin/lr_calibration.rs"
+# MOVED to attic/lr_calibration.rs on 2026-08-03. It imported the
+# `trios_phi_schedule` crate, which is not a dependency of this workspace, so it
+# had never compiled. See attic/README.md before reviving it.
 
 [[bin]]
 name = "lstm_train"
@@ -194,19 +217,19 @@ path = "src/bin/f2_harness.rs"
 # Default builds standalone with internal stub modules. No network deps required.
 default = []
 race = []
-# Enable when running alongside the trios workspace — pulls invariants, ASHA and
+# Enable when running alongside the trios workspace -- pulls invariants, ASHA and
 # victory gate from the canonical implementations via git.
 trios-integration = []
 # Enable in CI to enforce embargo + triplet validation strictly.
 ci-strict = []
 # Smoke-proof: minimal train that runs in <60s with synthetic data, steps=1,
 # CPU-only, and writes one row to bpb_samples. Used by .github/workflows/smoke.yml
-# to prove the queue → worker → trainer → JSONL → DB pipe is alive end-to-end.
+# to prove the queue -> worker -> trainer -> JSONL -> DB pipe is alive end-to-end.
 # Refs: trios-trainer-igla#57, trios#445.
 smoke = []
 # GPU acceleration using Candle with CUDA support
 gpu = ["candle-core", "candle-nn"]
-# GF16 ternary matmul kernel — compile-time gate for Wave 32.
+# GF16 ternary matmul kernel -- compile-time gate for Wave 32.
 # Build with: cargo build --features gf16
 # Without this flag, GF16_ENABLED=true at runtime returns an error.
 gf16 = []
@@ -219,7 +242,7 @@ candle-nn   = { version = "0.7", features = ["cuda"], optional = true }
 
 # Standard[dependencies]
 # Internal canonical crates (opt-in via `trios-integration` feature).
-# Temporarily disabled due to submodule issue — use local path or fix submodule.
+# Temporarily disabled due to submodule issue -- use local path or fix submodule.
 # trios-igla-race        = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
 # trios-precision-router = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
 # trios-phi-schedule     = { git = "https://github.com/gHashTag/trios.git", branch = "main", optional = true }
@@ -322,3 +345,15 @@ path = "src/bin/matrix_ledger.rs"
 [[bin]]
 name = "format_champion_sweep"
 path = "src/bin/format_champion_sweep.rs"
+
+# Per-primitive cross-architecture arithmetic probe. Runs each floating-point
+# primitive of the training path ALONE -- sequential dot, split-accumulator
+# dot, exp/ln/sqrt/powf/cos, squared ReLU, softmax, layer_norm, the `proj`
+# matvec and one full forward pass -- and hashes the raw little-endian f32
+# output bytes, so the cross-architecture divergence can be attributed to
+# reduction order or to libm instead of merely localised. No randomness, no
+# file I/O, no environment reads. See src/bin/xarch_probe.rs and
+# docs/DIVERGENCE-MECHANISM.md.
+[[bin]]
+name = "xarch_probe"
+path = "src/bin/xarch_probe.rs"

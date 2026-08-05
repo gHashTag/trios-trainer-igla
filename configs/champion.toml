@@ -1,10 +1,107 @@
-# Champion baseline reproduction.
-# Reference SHA: 2446855 (gHashTag/trios) — BPB=2.2393 @ 27K seed=43.
-# Standing rule: this config must reproduce 2.2393 ± 0.01 on a fresh checkout.
+# Champion baseline reproduction - RETRACTED REFERENCE, PARTIALLY INERT CONFIG.
+#
+# The old header read:
+#   Reference SHA: 2446855 (gHashTag/trios) - BPB=2.2393 @ 27K seed=43.
+#   Standing rule: this config must reproduce 2.2393 +/- 0.01 on a fresh checkout.
+# 2446855 does not resolve to an object in this repository, no artifact exists
+# behind 2.2393, and the seed that header pinned - 43 - is forbidden by
+# src/seed_canon.rs (Canon #93) and by TrainConfig::validate(). This file now
+# carries seed = 47, so it loads; that is a canon fix, NOT a re-dating of the
+# retracted number, and 2.2393 was never measured at seed 47 either.
+# See RETRACTION.md at the repository root, section 2. There is no standing
+# reproduction rule for this file any more.
+#
+# THIS FILE DOES NOT RUN. IT IS REFUSED, BY DESIGN.
+# -------------------------------------------------
+# An earlier version of this header said the surplus fields were "PARSED AND
+# THROWN AWAY - changing any of these changes nothing about a run". That was
+# true when it was written and is false now. Measured on 2026-08-03:
+#
+#   $ ./target/release/trios-train --config configs/champion.toml
+#   Error: [declaration-truth] config "champion" declares 10 parameter(s) this
+#   build cannot execute:
+#     - model.d_model declares 256 but this build would run hidden=828 (config mode has no width knob)
+#     - model.n_layers declares 2 but this build would run attn_layers=1 (derived from model.hybrid_attn=false)
+#     - model.vocab_size declares 32000 but this build would run 128 (byte-level, fixed by train_loop::VOCAB)
+#     - model.seq_len declares 1024 but this build would run 8 attention positions (HybridAttnConfig; the n-gram context is NUM_CTX=6 slots)
+#     - optimizer.beta2 declares 0.95 but this build would run 0.999
+#     - optimizer.schedule declares "phi" but this build would run "cosine" (train_loop::cosine_lr, the only schedule)
+#     - optimizer.warmup_steps declares 500 but this build would run 2700 (steps/10, fixed)
+#     - data.batch_size declares 4 but this build would run 32 (accum=4 chunks x 8 sampled positions)
+#     - objective.w_nca declares 0 but this build would run 0.25 (NcaObjective::default)
+#     - eval cadence declares nothing (TRIOS_EVAL_EVERY unset; TrainConfig has no field for it) but this build would run eval_every=1000
+#   Refusing to run: an artifact filed under this declaration would record what
+#   was substituted, not what was declared. Declare what this crate executes, or
+#   implement the declaration first.
+#   $ echo $?
+#   1
+#
+# So: changing one of those ten fields does change something about a run - it
+# changes which line of the refusal you get, and setting all ten to what this
+# build executes is what would let the file run at all. The values below are
+# left exactly as they were so the gap stays visible; they are a record of what
+# was intended, not a recipe this crate can follow.
+#
+# WHAT run() STILL RESOLVES ON ITS OWN
+# -----------------------------------
+# The two values that used to be silent literals are still resolved by
+# `config_train_args` (src/train_loop.rs:3240) from named constants
+# (src/train_loop.rs:2962):
+#   hidden     = CONFIG_MODE_HIDDEN     = 828
+#   eval_every = CONFIG_MODE_EVAL_EVERY = 1000
+# What changed is that they are no longer SUBSTITUTED behind a declaration's
+# back. `model.d_model` is graded against CONFIG_MODE_HIDDEN and refused when it
+# differs, and the eval cadence - which TrainConfig has no field for - must be
+# declared out of band in TRIOS_EVAL_EVERY or the run is refused. The cadence is
+# graded because it decides which steps are measured, hence the EMA,
+# `min_observed_val_bpb`, every `bpb_samples` row and the `eval_every` field of
+# the sidecar; an observation parameter chosen for you by a default is not a
+# declared measurement. It no longer gates the in-place gf16_floor weight
+# transform - that coupling is removed, the floor cadence is now
+# train_loop::gf16_floor_every(), default 1, overridable with
+# TRIOS_GF16_FLOOR_EVERY, and recorded as `gf16_floor_every` in the sidecar (a
+# schema-/2 addition; the current record tag is trios-checkpoint-record/8, see
+# CHECKPOINT_RECORD_SCHEMA in src/checkpoint.rs).
+#
+# WHICH FIELDS THE TRAINER CONSUMES WHEN A CONFIG IS EXECUTABLE
+# ------------------------------------------------------------
+# Source: `pub fn run(cfg: &crate::TrainConfig)` in src/train_loop.rs. Past the
+# refusal it builds a TrainArgs and hands the whole cfg to ledger::emit_row.
+# Nothing else here reaches a run.
+#
+# Consumed by run() -> TrainArgs:
+#   seed                  -> TrainArgs.seed
+#   steps                 -> TrainArgs.steps
+#   optimizer.lr          -> TrainArgs.lr (cast to f32)
+#   model.hybrid_attn     -> TrainArgs.attn_layers, as `if hybrid_attn {2} else {1}`
+#   data.train_path       -> TrainArgs.train_path
+#   data.val_path         -> TrainArgs.val_path
+# Consumed by run() -> ledger::emit_row:
+#   name, target_bpb, champion_bpb, ledger.jsonl_path, ledger.push,
+#   ledger.embargo_path  (gate_status, agent string, embargo check, row append)
+#
+# STILL PARSED AND IGNORED - exactly two fields, and this is a known gap:
+#   [data] corpus        a label for train_path/val_path, which ARE honoured and
+#                        whose bytes are hashed into every artifact
+#   [data] batch_tokens  no counterpart exists to grade it against: the token
+#                        count a step touches depends on the sampled positions,
+#                        so any number stated here would be invented
+# Both are recorded as ungraded in `unhonoured_fields` (src/train_loop.rs) and
+# are the remaining mislabel risk in this schema.
+#
+# Fields NOT in the refusal above because this file happens to declare what the
+# build runs: optimizer.kind ("adamw", in SUPPORTED_OPTIMIZERS), optimizer.beta1
+# (0.9 = ADAMW_BETA1), optimizer.weight_decay (0.04 = TRAIN_LOOP_WEIGHT_DECAY),
+# model.n_heads (4 = HybridAttnConfig::num_heads), objective.w_ce (1.0) and
+# objective.w_jepa (0.0). Change any of them and an eleventh refusal appears.
+#
+# `champion_toml_declares_exactly_these_unhonourable_fields` and
+# `champion_toml_run_exits_non_zero_and_names_every_refused_field` in
+# tests/champion_reproduction.rs fail if this list stops matching the build.
 
 name        = "champion"
 steps       = 27_000
-seed        = 43
+seed        = 47
 target_bpb  = 1.50
 champion_bpb = 2.2393
 
@@ -38,6 +135,11 @@ w_jepa = 0.0
 w_nca  = 0.0
 
 [ledger]
-jsonl_path    = "assertions/seed_results.jsonl"
+# Was "assertions/seed_results.jsonl". That ledger is retracted (renamed to
+# assertions/RETRACTED-seed_results.jsonl.txt); re-creating the old path would
+# republish retracted evidence under the name five documents still call the
+# SSOT, and `falsify_live_ledger_resurrected` fails if it reappears. An empty
+# path makes run() skip the emit entirely: this config cannot mint a row.
+jsonl_path    = ""
 push          = false
 embargo_path  = ".embargo"

@@ -7,10 +7,20 @@
 //! |------------------|---------|---------------|-----------|
 //! | `HIDDEN_DIM`     | 384     | 1024          | <256      |
 //! | `NUM_ATTN_LAYERS`| 1       | 4             | <1        |
-//! | `GF16_ENABLED`   | false   | true          | —         |
+//! | `GF16_ENABLED`   | see below | true        | n/a       |
 //!
-//! Defaults preserve the Wave-30 baseline (h=384, 1L, no GF16).
-//! Wave 32 redeploy sets all three to attack Gate-2 (BPB<1.85).
+//! `HIDDEN_DIM` and `NUM_ATTN_LAYERS` default to the Wave-30 baseline
+//! (h=384, 1L). Wave 32 redeploy raises both to attack Gate-2 (BPB<1.85).
+//!
+//! GF16 IS DIFFERENT, and this file used to state the opposite. The "false"
+//! below is only the fallback [`parse_gf16_enabled`] uses to keep its return
+//! type total; the trainer consults it ONLY when `GF16_ENABLED` is actually
+//! set. With `GF16_ENABLED` unset, `train_loop::resolve_gf16_knob` falls back
+//! to the legacy `TRIOS_GF16_DISABLE` reading, which is ON. So the EXECUTED
+//! default is GF16 ON - that is what produced every published artifact in this
+//! repository, including the aarch64 anchor in README.md - and `GF16_ENABLED=
+//! false` is what turns it off. Documenting the default as "no GF16" is what
+//! let `GF16_ENABLED=false` look like a working knob while changing nothing.
 
 /// Parse `HIDDEN_DIM` from environment.
 ///
@@ -42,8 +52,13 @@ pub fn parse_num_attn_layers() -> Result<usize, String> {
 
 /// Parse `GF16_ENABLED` from environment.
 ///
-/// Default: false (Wave-30 baseline, no GF16 quantisation).
 /// Accepts: true/1/yes/on → true; false/0/no/off → false.
+///
+/// The `"false"` fallback is NOT the trainer's default. It only makes this
+/// function total for an unset variable; `train_loop::resolve_gf16_knob` tests
+/// `env::var("GF16_ENABLED").is_ok()` first and only calls this when the
+/// variable is set. The executed default is GF16 ON via the legacy
+/// `TRIOS_GF16_DISABLE` path - see the module docs.
 pub fn parse_gf16_enabled() -> Result<bool, String> {
     let raw = std::env::var("GF16_ENABLED").unwrap_or_else(|_| "false".to_string());
     match raw.to_lowercase().as_str() {

@@ -55,6 +55,24 @@ struct Cli {
     #[arg(long, env = "TRIOS_EVAL_EVERY", default_value_t = 1000)]
     eval_every: usize,
 
+    /// How many val windows each evaluation averages; 0 = full coverage.
+    ///
+    /// The same knob `TRIOS_EVAL_CHUNKS` reads (see
+    /// `train_loop::eval_chunks_target`). The env var stays supported and the
+    /// flag wins when both are given: this flag is re-exported into the env
+    /// below, before any evaluation runs. It is deliberately NOT declared with
+    /// clap's `env =` - `eval_chunks_target()` resolves an unparseable value to
+    /// the default rather than aborting, and clap would turn that into a hard
+    /// parse error.
+    ///
+    /// Existed only as an env var until now, so a second laboratory following
+    /// the documented command line had no way to learn the published BPB was a
+    /// 5% sample. Whichever route sets it, the achieved value is written to the
+    /// checkpoint record's `eval_chunks` field from the `EvalStats` that
+    /// produced the reading.
+    #[arg(long)]
+    eval_chunks: Option<usize>,
+
     /// Path to training data.
     #[arg(
         long,
@@ -131,29 +149,45 @@ fn install_panic_hook() {
     }));
 }
 
-/// Run SeaORM schema migrations at startup if TRINITY_AUTOMIGRATE != "0".
+/// Run SeaORM schema migrations at startup, and ONLY on explicit consent.
 ///
-/// Gating: TRINITY_AUTOMIGRATE=0 disables for local CI; default is ON.
-/// Logs: "[migrator] schema up-to-date (N migrations applied)"
+/// Gating: opt-IN, twice over. `TRINITY_AUTOMIGRATE` defaulted to "1"
+/// (`.unwrap_or_else(|_| "1")`), so merely having a `DATABASE_URL` /
+/// `NEON_DATABASE_URL` / `TRIOS_NEON_DSN` in the ambient environment was enough
+/// for this trainer to run `Migrator::up` DDL against it - no host check, no
+/// consent flag. A survey run on 2026-08-03 did in fact apply migrations and
+/// insert rows into a database nobody intended to touch.
+///
+/// The repo's own `tests/ledger_seaorm.rs` gates the identical operation with
+/// the words: "Having a DSN in the environment is not consent". Applying that
+/// rule to the flagship binary is what `TRIOS_ALLOW_AUTOMIGRATE=1` is for.
+/// Writing rows may stay default-on; applying DDL must not be.
+///
+/// The decision itself lives in `train_loop::decide_automigrate` so it is unit
+/// testable without an ambient database. Exactly one `[migrator]` line names
+/// the decision taken, in every branch, so a grep for `[migrator]` still tells
+/// the whole story of what was and was not done.
 fn run_automigrate() {
-    let automigrate = std::env::var("TRINITY_AUTOMIGRATE").unwrap_or_else(|_| "1".to_string());
-    if automigrate == "0" {
-        eprintln!("[migrator] TRINITY_AUTOMIGRATE=0 — skipping");
-        return;
-    }
-
+    let automigrate = std::env::var("TRINITY_AUTOMIGRATE").ok();
+    let consent = std::env::var("TRIOS_ALLOW_AUTOMIGRATE").ok();
     let raw_dsn = std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("NEON_DATABASE_URL"))
         .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
-        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"));
+        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
+        .ok();
 
-    let dsn = match raw_dsn {
-        Ok(d) => strip_channel_binding(&d),
-        Err(_) => {
-            eprintln!("[migrator] DATABASE_URL unset — skipping automigrate");
-            return;
-        }
-    };
+    let decision = train_loop::decide_automigrate(
+        automigrate.as_deref(),
+        consent.as_deref(),
+        raw_dsn.as_deref(),
+    );
+    eprintln!("[migrator] {decision:?}: {}", decision.reason());
+    if decision != train_loop::AutomigrateDecision::Apply {
+        return;
+    }
+
+    // `Apply` is only returned with a non-empty DSN.
+    let dsn = strip_channel_binding(raw_dsn.as_deref().unwrap_or_default());
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -172,6 +206,51 @@ fn run_automigrate() {
             Err(e) => eprintln!("[migrator] connect failed (non-fatal): {e}"),
         }
     });
+}
+
+/// Print the ledger tally and exit with the code the ledger demands.
+///
+/// `neon_writer::ledger_exit_code` exists to turn "a DSN was configured, N
+/// writes were attempted and 0 landed" into a non-zero exit status. It was
+/// already honoured by `smoke_train`, `bpb_smoke`, `ngram_train_gf16` and
+/// `hybrid_train` -- but NOT by `trios-train`, the binary CI runs, the binary
+/// README documents and the binary that produced the r6-headline run with a
+/// DSN set. That run could have had every `bpb_sample` and `checkpoint_record`
+/// rejected on stderr and still reported success to its supervisor.
+///
+/// With no DSN configured `ledger_exit_code()` returns 0 -- proved by
+/// `ledger_exit_code_is_zero_without_a_dsn` in src/neon_writer.rs -- so the
+/// ordinary exit status is unchanged. Every error path in `main` returns `Err`
+/// before reaching here, so nothing is swallowed.
+/// `rejected` is reported separately and counted into `attempted`. It used to
+/// be counted nowhere: a run in which every BPB row was REFUSED as
+/// unpublishable printed `attempted=0 landed=0 dropped=0`, telling its
+/// supervisor that nothing had even been tried.
+///
+/// With no DSN the tally is NOT printed. It said
+/// `LEDGER: attempted=3 landed=0 dropped=3 rejected=0` on a run where no DSN
+/// had ever been configured: the counters are honest about the calls -- each
+/// write function does note a drop when it finds no connection -- but the LINE
+/// asserts that three writes were attempted and lost, and "dropped" means
+/// "lost in transport" to everyone who reads it. A run that was never asked to
+/// record itself must say so instead of reporting three failures it did not
+/// have. The exit code on that path stays 0, as before.
+fn exit_with_ledger_status() -> ! {
+    let landed = trios_trainer::neon_writer::landed_writes();
+    let dropped = trios_trainer::neon_writer::dropped_writes();
+    let rejected = trios_trainer::neon_writer::rejected_writes();
+    if trios_trainer::neon_writer::dsn_configured() {
+        println!(
+            "LEDGER: attempted={} landed={landed} dropped={dropped} rejected={rejected}",
+            landed + dropped + rejected
+        );
+    } else {
+        println!("LEDGER: no DSN configured; no rows attempted");
+    }
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    std::process::exit(trios_trainer::neon_writer::ledger_exit_code());
 }
 
 fn main() -> Result<()> {
@@ -258,7 +337,7 @@ fn main() -> Result<()> {
         );
     }
 
-    // Run SeaORM migrations at startup (gated by TRINITY_AUTOMIGRATE != "0").
+    // Run SeaORM migrations at startup - only with TRIOS_ALLOW_AUTOMIGRATE=1.
     run_automigrate();
 
     // R5/L8 fix (trios#509 follow-up): re-export `--format` into the env so
@@ -270,6 +349,24 @@ fn main() -> Result<()> {
             std::env::set_var("TRIOS_FORMAT_TYPE", fmt);
         }
     }
+
+    // `--eval-chunks` is the CLI face of `TRIOS_EVAL_CHUNKS`. Re-exported here,
+    // before any run starts, so the flag and the env var reach exactly one
+    // resolver (`train_loop::eval_chunks_target`) and the flag wins. The
+    // achieved value is announced either way: it is a published measurement's
+    // sampling grid, not a private detail.
+    if let Some(chunks) = cli.eval_chunks {
+        std::env::set_var("TRIOS_EVAL_CHUNKS", chunks.to_string());
+    }
+    eprintln!(
+        "[trios-train] eval_chunks={} ({})",
+        train_loop::eval_chunks_target(),
+        match cli.eval_chunks {
+            Some(_) => "--eval-chunks",
+            None if std::env::var("TRIOS_EVAL_CHUNKS").is_ok() => "TRIOS_EVAL_CHUNKS",
+            None => "default",
+        }
+    );
 
     // Set NEON_DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
     // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first
@@ -290,11 +387,16 @@ fn main() -> Result<()> {
         tracing::info!(name = %cfg.name, seed = cfg.seed, steps = cfg.steps, "config mode");
         let outcome = train_loop::run(&cfg)?;
         tracing::info!(?outcome, "training complete");
-        return Ok(());
+        // Config mode trains and writes to the same ledger, so it must not be
+        // the one exit path that returns 0 regardless.
+        exit_with_ledger_status();
     }
 
     if cli.sweep || cli.seed == 0 {
         tracing::info!("3-seed sweep: {:?}", GATE_FINAL_SEEDS);
+        // `--optimizer` reaches the sweep. It did not: this branch had no
+        // optimizer argument at all, so `--sweep --optimizer soap` ran AdamW
+        // three times and exited 0 with a `GATE-2:` verdict attached.
         let results = train_loop::run_sweep(
             cli.steps,
             cli.hidden,
@@ -303,16 +405,28 @@ fn main() -> Result<()> {
             cli.eval_every,
             &cli.train_data,
             &cli.val_data,
+            &cli.optimizer,
         )?;
+        // One formatter for both branches (`train_loop::format_done_line`), so
+        // the sweep arm and the single-seed arm cannot report different things
+        // about the same kind of run. The sweep line used to carry no `opt=`
+        // token, which is what let a run launched as `--optimizer soap` and
+        // executed as AdamW leave a stdout trail naming no optimizer. It also
+        // printed `r.final_bpb`, the compat mirror that is NaN when the run
+        // took no final measurement - and `f64::from_str` accepts "NaN", so
+        // every downstream parser read it back as a number.
         for r in &results {
-            println!(
-                "DONE: seed={} bpb={:.4} steps={}",
-                r.seed, r.final_bpb, r.steps_done
-            );
+            println!("{}", train_loop::format_done_line(r, &cli.optimizer));
         }
-        let all_pass = results
-            .iter()
-            .all(|r| r.final_bpb < train_loop::DEFAULT_IGLA_TARGET_BPB);
+        // `.all()` alone is vacuously true on an empty result set: zero seeds,
+        // zero measurements, `GATE-2: PASS`. A seed that took no final
+        // measurement is not a passing seed either - `None` cannot be below a
+        // target.
+        let all_pass = !results.is_empty()
+            && results.iter().all(|r| {
+                r.final_val_bpb
+                    .is_some_and(|bpb| bpb < train_loop::DEFAULT_IGLA_TARGET_BPB)
+            });
         println!("GATE-2: {}", if all_pass { "PASS" } else { "NOT YET" });
     } else {
         let args = TrainArgs {
@@ -329,37 +443,23 @@ fn main() -> Result<()> {
         // Any unsupported name is a hard error, NOT a silent AdamW fallback.
         // Pre-Wave-35 bug: 12 optimizer-named canons (lion/soap/tiger/...)
         // silently ran AdamW, producing byte-identical BPB across the fleet.
-        let outcome = match cli.optimizer.as_str() {
-            "adamw" => train_loop::run_single(&args)?,
-            "muon" => train_loop::run_single_muon(&args, false)?,
-            "muon-cwd" => train_loop::run_single_muon(&args, true)?,
-            other => {
-                return Err(anyhow::anyhow!(
-                    "[R5-honesty] unsupported optimizer={:?}: only {{adamw, muon, muon-cwd}} are implemented. \
-                     Refusing silent AdamW fallback. Fix env, redeploy, or implement the optimizer first.",
-                    other
-                ));
-            }
-        };
+        // The match that used to live here was duplicated in the library as
+        // `run_with_optimizer` and diverged from the sweep arm, which had no
+        // dispatch at all; there is now exactly one.
+        let outcome = train_loop::run_with_optimizer(&cli.optimizer, &args)?;
         // `bpb=` is the RAW val_bpb measured at the final step. It used to be
         // `best_bpb`: the running minimum of an EMA seeded at init (~7.0), so
         // two runs with byte-identical weights printed 3.5506 and 4.4940 while
         // the measurement was 2.8534 in both. A run that took no final
         // measurement says so instead of substituting a number.
-        match outcome.final_val_bpb {
-            Some(bpb) => println!(
-                "DONE: seed={} bpb={:.4} steps={} opt={}",
-                outcome.seed, bpb, outcome.steps_done, cli.optimizer
-            ),
-            None => println!(
-                "DONE: seed={} bpb=unmeasured steps={} opt={}",
-                outcome.seed, outcome.steps_done, cli.optimizer
-            ),
-        }
+        println!("{}", train_loop::format_done_line(&outcome, &cli.optimizer));
         // R5/L8: flush so seed-agent reader sees DONE before EOF.
         use std::io::Write as _;
         let _ = std::io::stdout().flush();
     }
 
-    Ok(())
+    // A configured DSN is a statement that this run was supposed to be
+    // recorded. If every write was dropped, exiting 0 would let a supervisor
+    // file it as a success.
+    exit_with_ledger_status();
 }

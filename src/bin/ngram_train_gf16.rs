@@ -394,7 +394,19 @@ impl NgramModelGF16 {
         hidden
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats, or `None` when the sequence is too short to
+    /// hold a single context/target pair or the forward pass produced a
+    /// non-number.
+    ///
+    /// A short sequence used to return `0.0`, a loss no model achieves, masked
+    /// only by `evaluate`'s incidental `loss > 0.0` test. `f32::max` also
+    /// ignores NaN, so clamping `logits[target]` with `.max(1e-10)` turned a
+    /// poisoned forward pass into a finite 23.03-nat measurement - which becomes a 33.2 bpb
+    /// reading that passes every downstream guard and reaches the ledger. NaN
+    /// is now an absence. The 1e-10 clamp is kept for a genuinely underflowed
+    /// probability - capping it is a documented floor on surprisal, and
+    /// dropping those chunks instead would bias the reported BPB downward.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let start = if self.use_ctx5 {
             5
         } else if self.use_ctx4 {
@@ -405,7 +417,7 @@ impl NgramModelGF16 {
             2
         };
         if tokens.len() < start + 2 {
-            return 0.0;
+            return None;
         }
         let v = self.vocab;
         let mut total = 0.0f32;
@@ -437,9 +449,13 @@ impl NgramModelGF16 {
                 }
             }
             softmax(&mut logits);
-            total -= logits[target].max(1e-10).ln();
+            let p = logits[target];
+            if p.is_nan() {
+                return None;
+            }
+            total -= p.max(1e-10).ln();
         }
-        total / (tokens.len() - start - 1) as f32
+        Some(total / (tokens.len() - start - 1) as f32)
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -685,24 +701,46 @@ impl NgramModelGF16 {
 /// published `bpb=340282346638528859811704183484516925440.0000` followed by a
 /// divide-by-zero panic. A sentinel that is indistinguishable from a
 /// measurement is not a sentinel.
+///
+/// It then still dropped individual non-finite windows and published the mean
+/// of the survivors, which is biased DOWNWARD: the windows a partial poison
+/// kills are exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the
+/// correct line and this now matches it -- ONE unmeasurable window invalidates
+/// the whole eval -- while the `dropped` counter keeps the skip from being
+/// silent about HOW MUCH of the corpus failed.
 fn evaluate(model: &NgramModelGF16, tokens: &[usize], seq_len: usize) -> Option<f32> {
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
         let end = (c + seq_len + 1).min(tokens.len());
-        // `loss_on_seq` returns the 0.0 sentinel when the chunk is shorter
-        // than `start + 2`, and `start` is 5 under `use_ctx5`. Chunks of
-        // length 5 and 6 therefore passed the old `< 5` guard and averaged a
-        // fake perfect score into the result (#62). Require the longest
-        // context this model can be configured with, plus the target token.
+        // `loss_on_seq` reports an absence when the chunk is shorter than
+        // `start + 2`, and `start` is 5 under `use_ctx5`. Chunks of length 5
+        // and 6 therefore passed the old `< 5` guard and averaged a fake
+        // perfect score into the result (#62). Require the longest context
+        // this model can be configured with, plus the target token.
         if end - c < 7 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() && loss > 0.0 {
-            total += loss / LN_2;
-            n += 1;
+        // An unmeasurable chunk is COUNTED, never averaged in as `0.0` and
+        // never as the 23.03 nats a laundered NaN used to produce -- and it
+        // invalidates the whole eval below.
+        match model.loss_on_seq(&tokens[c..end]) {
+            Some(loss) if loss.is_finite() => {
+                total += loss / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
+    }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
     }
     if n == 0 {
         return None;
@@ -721,7 +759,16 @@ fn evaluate(model: &NgramModelGF16, tokens: &[usize], seq_len: usize) -> Option<
 /// in `neon_writer::bpb_sample_with_algo` so no caller can bypass it; this
 /// wrapper exists so the printed line is the writer's own verdict rather than
 /// an unconditional success announcement on the line after `- skipping`.
-fn publish_bpb(canon_name: &str, seed: u64, step: usize, bpb: f32, algo: &str) {
+///
+/// `bpb` is optional so an absence cannot be laundered into a row on the way
+/// here: there is no float that means "not measured", and every one that has
+/// been used as such (`0.0`, `f32::MAX`, the 33.2 a NaN turns into) is a value
+/// the ledger accepts.
+fn publish_bpb(canon_name: &str, seed: u64, step: usize, bpb: Option<f32>, algo: &str) {
+    let Some(bpb) = bpb else {
+        eprintln!("[neon] step={step} ledger=skipped-unmeasured");
+        return;
+    };
     let outcome = nw::bpb_sample_with_algo(canon_name, seed as i32, step as i32, bpb, None, algo);
     eprintln!("[neon] step={step} ledger={}", outcome.as_str());
 }
@@ -935,7 +982,7 @@ fn run() -> Result<(), String> {
     // Step=0 ping so the queue knows the trainer started. Guarded like every
     // other write: the old unconditional call published whatever `evaluate`
     // had returned, sentinel included.
-    publish_bpb(&canon_name, seed, 0, init_bpb, EXECUTED_OPTIMIZER);
+    publish_bpb(&canon_name, seed, 0, Some(init_bpb), EXECUTED_OPTIMIZER);
 
     println!();
     println!(
@@ -980,7 +1027,7 @@ fn run() -> Result<(), String> {
                     "\n>>> Early stopping at step {} (patience={} exceeded)",
                     step, patience
                 );
-                publish_bpb(&canon_name, seed, step, vb, EXECUTED_OPTIMIZER);
+                publish_bpb(&canon_name, seed, step, Some(vb), EXECUTED_OPTIMIZER);
                 break;
             }
 
@@ -994,7 +1041,7 @@ fn run() -> Result<(), String> {
             );
             results.push((step, vl, vb));
 
-            publish_bpb(&canon_name, seed, step, vb, EXECUTED_OPTIMIZER);
+            publish_bpb(&canon_name, seed, step, Some(vb), EXECUTED_OPTIMIZER);
         }
     }
 
@@ -1082,4 +1129,106 @@ fn run() -> Result<(), String> {
     // L-R8: stdout must end with BPB=X.XXXX for ASHA worker parsing
     println!("BPB={:.4}", best_bpb);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A model whose `lm_head` holds a NaN weight, so every softmax output on
+    /// its forward pass is NaN.
+    fn model_with_poisoned_forward() -> NgramModelGF16 {
+        let mut model = NgramModelGF16::new(
+            8,
+            4,
+            4,
+            "gelu".to_string(),
+            47,
+            0.0,
+            false,
+            false,
+            false,
+            0.0,
+        );
+        model.lm_head.set(0, f32::NAN);
+        model
+    }
+
+    /// The exact laundering this guard removes: `f32::max` returns the
+    /// non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose negative log is
+    /// 23.026 nats and whose BPB is 33.2 - greater than 0.0, finite, and below
+    /// `BPB_SENTINEL_CEILING`, so nothing downstream could reject it.
+    #[test]
+    fn f32_max_launders_nan_into_a_publishable_bpb() {
+        let laundered = f32::NAN.max(1e-10);
+        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let bpb = -laundered.ln() / LN_2;
+        assert!(
+            (bpb - 33.2).abs() < 0.05,
+            "the laundered reading is 33.2 bpb, got {bpb}"
+        );
+        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every ledger guard");
+    }
+
+    /// A poisoned forward pass is an absence, not 33.2 bpb.
+    #[test]
+    fn nan_forward_pass_yields_no_measurement() {
+        let model = model_with_poisoned_forward();
+        let tokens: Vec<usize> = vec![1, 2, 3, 4, 5, 6, 7, 0, 1];
+
+        let healthy = NgramModelGF16::new(
+            8,
+            4,
+            4,
+            "gelu".to_string(),
+            47,
+            0.0,
+            false,
+            false,
+            false,
+            0.0,
+        );
+        assert!(
+            healthy.loss_on_seq(&tokens).is_some_and(f32::is_finite),
+            "the fixture must be measurable before the NaN is introduced"
+        );
+
+        assert_eq!(model.loss_on_seq(&tokens), None, "NaN is not a loss");
+        assert_eq!(
+            evaluate(&model, &tokens, 8),
+            None,
+            "a poisoned model publishes nothing"
+        );
+
+        // Explicitly: the old expression's output must not come back.
+        let laundered_bpb = -f32::NAN.max(1e-10).ln() / LN_2;
+        assert_ne!(evaluate(&model, &tokens, 8), Some(laundered_bpb));
+        if let Some(v) = evaluate(&model, &tokens, 8) {
+            assert!(
+                (v - 33.2).abs() > 1.0,
+                "33.2 bpb is the laundered NaN, not a measurement: {v}"
+            );
+        }
+    }
+
+    /// A sequence too short to hold a context/target pair is an absence, not
+    /// the perfect `0.0` loss it used to report.
+    #[test]
+    fn short_sequence_yields_no_measurement() {
+        let model = NgramModelGF16::new(
+            8,
+            4,
+            4,
+            "gelu".to_string(),
+            47,
+            0.0,
+            false,
+            false,
+            false,
+            0.0,
+        );
+        assert_eq!(model.loss_on_seq(&[1, 2]), None);
+        assert_eq!(model.loss_on_seq(&[]), None);
+        assert_eq!(evaluate(&model, &[1, 2, 3], 8), None);
+    }
 }

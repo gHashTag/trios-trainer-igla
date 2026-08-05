@@ -40,6 +40,11 @@ const SEQ: usize = 64;
 const LN_2: f32 = std::f32::consts::LN_2;
 const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 
+/// Exit code for "this run measured nothing". Same number the rest of the
+/// crate uses (`cpu_train`, `ngram_train`, `igla_trigram`, `concat_train`), so
+/// a supervisor grading a batch does not have to special-case this binary.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
 // ── primitives ──
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -265,7 +270,10 @@ struct TrainGrads {
     g_head: Vec<f32>,
 }
 
-fn compute_grads(model: &NgramModel, tokens: &[usize]) -> (TrainGrads, Vec<Vec<f32>>, f32) {
+/// Gradients, hidden activations and the step's NTP loss -- or `None` when the
+/// step produced no loss at all. It used to hand back a `0.0` loss for that
+/// case; see `backward_pass`.
+fn compute_grads(model: &NgramModel, tokens: &[usize]) -> Option<(TrainGrads, Vec<Vec<f32>>, f32)> {
     let count = tokens.len().saturating_sub(NGRAM);
     assert!(count > 0, "sequence too short for gradient computation");
 
@@ -286,7 +294,7 @@ fn compute_grads(model: &NgramModel, tokens: &[usize]) -> (TrainGrads, Vec<Vec<f
         &mut g_ctx,
         &mut g_proj,
         &mut g_head,
-    );
+    )?;
 
     let n = count as f32;
     for x in g_embed.iter_mut() {
@@ -310,7 +318,7 @@ fn compute_grads(model: &NgramModel, tokens: &[usize]) -> (TrainGrads, Vec<Vec<f
         g_proj,
         g_head,
     };
-    (grads, all_hidden, total_loss)
+    Some((grads, all_hidden, total_loss))
 }
 
 fn forward_pass(
@@ -362,15 +370,19 @@ fn backward_pass(
     g_ctx: &mut [Vec<f32>],
     g_proj: &mut [f32],
     g_head: &mut [f32],
-) -> f32 {
+) -> Option<f32> {
     assert!(count > 0, "backward_pass: count=0");
     if all_hidden.len() != count {
+        // Used to print this warning and return `0.0` -- a PERFECT loss, which
+        // the caller then averaged into the reported NTP figure and printed
+        // beside a BPB. "I could not compute this" and "the loss was zero" are
+        // not the same statement.
         eprintln!(
-            "WARN: hidden count mismatch: {} != {}, skipping step",
+            "NO MEASUREMENT: hidden count mismatch: {} != {}, this step has no loss",
             all_hidden.len(),
             count
         );
-        return 0.0;
+        return None;
     }
     assert_eq!(all_ln.len(), count, "ln count mismatch");
     let mut total_loss = 0.0f32;
@@ -381,7 +393,20 @@ fn backward_pass(
         let mut d_hidden = vec![0.0f32; HIDDEN];
         let mut logits = model.predict(hidden);
         softmax(&mut logits);
-        total_loss -= logits[target].max(1e-10).ln();
+        // `logits[target].max(1e-10)` was the NaN launder removed from the eval
+        // path in round 1 and left standing here: `f32::max` returns the OTHER
+        // operand when one side is NaN, so a poisoned forward pass silently
+        // became `1e-10` and contributed a plausible ~23.03 nats. A probability
+        // that is not finite and positive is not a measurement.
+        let p = logits[target];
+        if !p.is_finite() || p <= 0.0 {
+            eprintln!(
+                "NO MEASUREMENT: target probability {p} at window {i} is not a \
+                 finite positive number, so this step has no loss"
+            );
+            return None;
+        }
+        total_loss -= p.ln();
 
         for (vi, prob) in logits.iter().enumerate() {
             let grad = prob - if vi == target { 1.0 } else { 0.0 };
@@ -410,7 +435,7 @@ fn backward_pass(
         );
     }
 
-    total_loss / count as f32
+    Some(total_loss / count as f32)
 }
 
 fn accumulate_input_grads(
@@ -449,22 +474,42 @@ fn accumulate_input_grads(
 /// sentinel was
 /// indistinguishable from a reading and reached both the printed headline and
 /// the ledger. An absence is now an absence.
+///
+/// It then still dropped individual non-finite windows and published the mean
+/// of the survivors. That mean is biased DOWNWARD -- the direction that
+/// manufactures a champion -- because the windows a partial poison kills are
+/// exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the correct line
+/// and this now matches it: ONE unmeasurable window invalidates the whole
+/// eval. The `dropped` counter exists so that the skip can never be silent;
+/// the loop finishes counting rather than returning at the first failure, so
+/// the operator is told how much of the corpus failed and not merely that
+/// something did.
 fn evaluate(model: &NgramModel, tokens: &[usize]) -> Option<f32> {
     assert!(!tokens.is_empty(), "evaluate: empty tokens");
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in (0..tokens.len()).step_by(SEQ + 1) {
         let end = (c + SEQ + 1).min(tokens.len());
         if end - c < NGRAM + 1 {
             continue;
         }
-        let Some(loss) = model.loss_on_seq(&tokens[c..end]) else {
-            continue;
-        };
-        if loss.is_finite() {
-            total += loss / LN_2;
-            n += 1;
+        match model.loss_on_seq(&tokens[c..end]) {
+            Some(loss) if loss.is_finite() => {
+                total += loss / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
+    }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
     }
     if n == 0 {
         return None;
@@ -873,7 +918,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let off = (step * 97 + cfg.seed as usize) % dl.saturating_sub(SEQ + 1);
         let seq = &train[off..off + SEQ + 1];
 
-        let (grads, hidden_vecs, ntp_loss) = compute_grads(&st.model, seq);
+        // A step with no loss is not a step with loss 0.0. Continuing here
+        // would average an unmeasured window into the reported NTP figure and
+        // print it beside a BPB, which is how an unmeasured number reaches a
+        // ledger row.
+        let Some((grads, hidden_vecs, ntp_loss)) = compute_grads(&st.model, seq) else {
+            eprintln!(
+                "NO MEASUREMENT (step {step}): the training step produced no loss. \
+                 Refusing to continue a run whose reported NTP loss would be a \
+                 laundered absence."
+            );
+            std::process::exit(EXIT_NO_MEASUREMENT);
+        };
 
         let jepa_loss_val = run_jepa_step(&cfg, &mut st, &hidden_vecs, seq, step);
         let nca_loss_val = run_nca_step(&cfg, &st, step);

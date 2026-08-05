@@ -43,7 +43,17 @@ fn main() {
         println!("[entrypoint-trace] NUM_ATTN_LAYERS={v} (consumed inside train_loop::run_single)");
     }
     if let Ok(v) = env::var("GF16_ENABLED") {
-        println!("[entrypoint-trace] GF16_ENABLED={v} (consumed inside train_loop::run_single)");
+        // This line asserted the knob was consumed. It was not: `run_single`
+        // resolved it into a discarded binding and the live gate read the
+        // legacy `TRIOS_GF16_DISABLE` instead, so `GF16_ENABLED=false` left
+        // both the weights and the sidecar unchanged. It is now genuinely
+        // authoritative when set; the value the run actually executed is
+        // printed by the trainer's own banner as `gf16_enabled=`, and an
+        // operator should confirm it there rather than trusting this line.
+        println!(
+            "[entrypoint-trace] GF16_ENABLED={v} (consumed inside \
+             train_loop::resolve_gf16_knob; verify against gf16_enabled= in the run banner)"
+        );
     }
 
     let train_data = env_or("TRIOS_TRAIN_DATA", "/work/data/tiny_shakespeare.txt");

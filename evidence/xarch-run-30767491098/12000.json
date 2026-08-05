@@ -1,0 +1,58 @@
+{
+  "schema": "trios-checkpoint-record/4",
+  "canon_name": "r4-docs-repro",
+  "seed": 47,
+  "step": 12000,
+  "path": "checkpoints/r4-docs-repro/12000.bin",
+  "sha256": "bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 12000,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 2.637763500213623,
+  "best_val_bpb": 2.637763500213623,
+  "ema_bpb": 2.6730456352233887,
+  "git_sha": "3c1f751cf4376c13d26e247c2cd86357ab51dd20",
+  "git_provenance": "verified-local",
+  "git_dirty": false,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare.txt",
+      "bytes": 1015394,
+      "sha256": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_val.txt",
+      "bytes": 100000,
+      "sha256": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+    }
+  },
+  "run_id": "",
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-02T21:22:56.161462381+00:00",
+  "lr": 0.003000000026077032,
+  "attn_scale": 0.10000000149011612,
+  "attn_seq": 8,
+  "platform": {
+    "os": "linux",
+    "arch": "x86_64",
+    "pointer_width": 64,
+    "libc": "gnu",
+    "toolchain": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "toolchain_provenance": "runtime-path-query"
+  },
+  "source_sha256": "19aa22fb7cd187774b71cbde7cb89b664aff7260b57f55afd865dd447707108b",
+  "trainer": {
+    "path": "/home/runner/work/trios-trainer-igla/trios-trainer-igla/target/release/trios-train",
+    "sha256": "8528b1fee99a411fcbf6db3510593b966f86175ce658faaa681024be236eecdd",
+    "provenance": "self-hashed"
+  },
+  "vocab": 128
+}

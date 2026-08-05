@@ -242,10 +242,17 @@ impl Model {
         (Grads { g_embed, g_pos, g_proj1, g_proj2, g_head }, loss)
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean NLL over `tokens`, or `None` when nothing could be measured.
+    ///
+    /// The `0.0` returned for a too-short sequence was a sentinel that read as
+    /// a perfect score, and `probs[target].max(1e-10)` laundered a poisoned
+    /// forward pass into a finite one: `f32::max` returns the OTHER operand
+    /// when one side is NaN, so a NaN probability silently became 1e-10 and
+    /// contributed a plausible ~23 nats. Both are now an explicit absence.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let cl = self.ctx_len;
         let count = tokens.len().saturating_sub(cl + 1);
-        if count == 0 { return 0.0; }
+        if count == 0 { return None; }
         let mut total = 0.0f32;
         for i in 0..count {
             let context = &tokens[i..i + cl];
@@ -253,9 +260,16 @@ impl Model {
             let st = self.forward_one(context);
             let mut probs = st.logits;
             softmax(&mut probs);
-            total -= probs[target].max(1e-10).ln();
+            let p = probs[target];
+            if !p.is_finite() || p <= 0.0 {
+                return None;
+            }
+            total -= p.ln();
         }
-        total / count as f32
+        if !total.is_finite() {
+            return None;
+        }
+        Some(total / count as f32)
     }
 }
 
@@ -270,6 +284,22 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
 /// Exit code for a corpus that could not be honestly loaded. Same value
 /// `cpu_train` uses, so a sweep can tell a refused corpus from a crash.
 const EXIT_BAD_CORPUS: i32 = 6;
+
+/// Exit code for a run that measured nothing. Same value `cpu_train`,
+/// `trinity_pr1722` and `igla_trigram` use, so a sweep can tell an unmeasured
+/// run from a crash and from a refused corpus.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
+/// Usage text. Without it `--help` starts a full 15000-step training run.
+const USAGE: &str = "\
+concat_train - concatenated-context MLP char model, BPB on a held-out corpus.
+
+Usage: concat_train [--seed=N] [--steps=N] [--lr=F] [--dim=N] [--hidden=N]
+                    [--ctx=N] [--train-data=PATH] [--val-data=PATH]
+
+Prints `BPB=<value>` on stdout and exits 0 when a BPB was measured; prints
+`BPB=unmeasured` and exits 7 when no eval window was finite.
+Exit codes: 6 = corpus refused, 7 = nothing measured.";
 
 /// Pinned split. Both files ship in `data/`; neither is derived from the other.
 const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
@@ -395,36 +425,74 @@ fn load_or_refuse(path: &str) -> (Vec<usize>, CorpusInfo) {
     }
 }
 
-fn evaluate(model: &Model, tokens: &[usize]) -> f32 {
+/// Mean BPB over the eval stream, or `None` when nothing could be measured.
+///
+/// This used to return `f32::MAX` on every barren path. `f32::MAX` is finite,
+/// so it passed the caller's `is_finite()` guard, survived into `best_bpb` and
+/// was printed on stdout as `BPB=340282346638528859811704183484516925440.0000`
+/// beside `exit 0` - exactly the shape of number the out-of-repo stdout parser
+/// turned into ledger rows that later had to be retracted. An absence is now an
+/// absence, and the caller has to decide what to do with it.
+///
+/// It then still dropped individual unmeasurable windows and published the mean
+/// of the survivors, which is biased DOWNWARD: the windows a partial poison
+/// kills are exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the
+/// correct line and this now matches it -- ONE unmeasurable window invalidates
+/// the whole eval -- while the `dropped` counter keeps the skip from being
+/// silent about HOW MUCH of the corpus failed.
+fn evaluate(model: &Model, tokens: &[usize]) -> Option<f32> {
     let cl = model.ctx_len;
     let dl = tokens.len();
     let num_possible = dl.saturating_sub(SEQ + 1);
-    if num_possible == 0 { return f32::MAX; }
+    if num_possible == 0 { return None; }
     let nc = EVAL_CHUNKS.min(num_possible);
     let stride = num_possible / nc;
-    if stride == 0 { return f32::MAX; }
+    if stride == 0 { return None; }
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in 0..nc {
         let start = c * stride;
         let end = (start + SEQ + 1).min(dl);
         if end <= start + cl + 1 { continue; }
         let chunk = &tokens[start..end];
-        // One non-finite chunk used to turn the whole eval into NaN, and the
-        // 0.0 sentinel from a too-short chunk used to be averaged in as a
-        // perfect score. Skip both rather than reporting either (#62).
-        let loss = model.loss_on_seq(chunk);
-        if !loss.is_finite() || loss <= 0.0 {
-            continue;
+        // A chunk that measured nothing is `None` rather than a 0.0 that
+        // averaged in as a perfect score (#62), and it is COUNTED here rather
+        // than skipped, because one unmeasurable window invalidates the eval.
+        //
+        // The `l > 0.0` predicate that used to sit beside `is_finite()` is
+        // GONE. It filtered on the VALUE, not on measurability: a model that
+        // had genuinely learned a near-deterministic continuation produces a
+        // legitimately tiny mean NLL, and this discarded exactly those windows
+        // as "broken" -- biasing the published mean UPWARD on a good model and
+        // DOWNWARD on a poisoned one. A measurement is filtered on finiteness,
+        // never on magnitude.
+        match model.loss_on_seq(chunk) {
+            Some(l) if l.is_finite() => {
+                total += l / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
-        total += loss / LN_2;
-        n += 1;
     }
-    if n == 0 { f32::MAX } else { total / n as f32 }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
+    }
+    if n == 0 || !total.is_finite() { None } else { Some(total / n as f32) }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", USAGE);
+        return Ok(());
+    }
     // Canon #93 forbids seeds {42, 43, 44, 45} (see src/seed_canon.rs); the
     // default is a permitted one so an argument-free run is not born invalid.
     let seed: u64 = args.iter().find(|a| a.starts_with("--seed="))
@@ -447,6 +515,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
     let val = if val_data.len() > 100 { &val_data } else { &train_data[train_end..] };
+    // Named here, where the choice is made, so a refusal can say which bytes
+    // it failed to measure.
+    let eval_source = if val_data.len() > 100 {
+        val_corpus.path.clone()
+    } else {
+        format!("the held-out tail of {}", train_corpus.path)
+    };
 
     let mut model = Model::new(dim, hidden, ctx_len, seed);
     let cat_dim = ctx_len * dim;
@@ -466,14 +541,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut acc_head = vec![0.0f32; VOCAB * h];
     let accum = 4;
 
-    let mut best_bpb = f32::MAX;
+    // `None` until an eval actually measures something. The old `f32::MAX`
+    // seed was finite, so `val_bpb < best_bpb && val_bpb.is_finite()` never
+    // rejected it and never replaced it either.
+    let mut best_bpb: Option<f32> = None;
     let warmup = steps / 10;
     let start = Instant::now();
     let dl = train.len();
 
     let total_params = VOCAB * dim + ctx_len * dim + h * cat_dim + h * h + VOCAB * h;
     eprintln!(
-        "concat: dim={} hidden={} ctx={} cat_dim={} lr={} seed={} steps={} params≈{}",
+        "concat: dim={} hidden={} ctx={} cat_dim={} lr={} seed={} steps={} params~{}",
         dim, h, ctx_len, cat_dim, lr, seed, steps, total_params
     );
 
@@ -526,20 +604,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if step % EVAL_INTERVAL == 0 || step == steps {
             let elapsed = start.elapsed().as_secs_f64();
             let val_bpb = evaluate(&model, val);
-            if val_bpb < best_bpb && val_bpb.is_finite() {
-                best_bpb = val_bpb;
+            if let Some(b) = val_bpb {
+                if best_bpb.is_none_or(|best| b < best) {
+                    best_bpb = Some(b);
+                }
             }
+            let val_text = match val_bpb {
+                Some(b) => format!("{b:.4}"),
+                None => "unmeasured".to_string(),
+            };
+            let best_text = match best_bpb {
+                Some(b) => format!("{b:.4}"),
+                None => "unmeasured".to_string(),
+            };
             eprintln!(
-                "step={:5} val_bpb={:.4} best={:.4} t={}s",
-                step, val_bpb, best_bpb, elapsed as u64
+                "step={:5} val_bpb={} best={} t={}s",
+                step, val_text, best_text, elapsed as u64
             );
         }
     }
 
     let elapsed = start.elapsed().as_secs_f64();
-    eprintln!("done: best_bpb={:.4} time={:.1}s", best_bpb, elapsed);
-    println!("BPB={:.4}", best_bpb);
-    Ok(())
+    match best_bpb {
+        Some(b) => {
+            eprintln!("done: best_bpb={:.4} time={:.1}s", b, elapsed);
+            println!("BPB={:.4}", b);
+            Ok(())
+        }
+        // A run that measured nothing has no BPB. Printing a sentinel under
+        // the `BPB=` key beside `exit 0` is what put unmeasured numbers into
+        // the ledger; the run now says so and fails.
+        None => {
+            eprintln!(
+                "NO MEASUREMENT: every eval over {} steps produced zero finite \
+                 windows on {} ({} eval tokens). Refusing to print a BPB nobody \
+                 measured.",
+                steps,
+                eval_source,
+                val.len()
+            );
+            eprintln!("done: best_bpb=unmeasured time={:.1}s", elapsed);
+            println!("BPB=unmeasured");
+            std::process::exit(EXIT_NO_MEASUREMENT);
+        }
+    }
 }
 
 #[cfg(test)]

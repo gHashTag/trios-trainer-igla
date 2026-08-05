@@ -4,3 +4,4 @@
 [2026-08-02T20:08:58Z] TASK: IGLA trigram training | seed=42 | steps=8000 | bpb=7.0300->0.2876 | delta=-6.7423 | 3.2s
 [2026-08-02T20:40:26Z] TASK: IGLA trigram training | seed=47 | steps=8000 | bpb=7.0047->3.2780 | delta=-3.7267 | 55.9s
 [2026-08-02T20:42:09Z] TASK: IGLA trigram training | seed=47 | steps=8000 | bpb=7.0047->3.2780 | delta=-3.7267 | 57.3s
+[2026-08-02T21:20:54Z] TASK: 4-gram training | seed=47 | steps=10000 | val_bpb=6.9883->2.7435 | 316.9s

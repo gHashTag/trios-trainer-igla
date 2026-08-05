@@ -38,15 +38,49 @@
 //! are Popper-razor counter-examples: if any of them ever passes, INV-7
 //! is empirically refuted and the gate must be tightened before merging.
 //!
+//! ## RETRACTED as a publication gate (2026-08-03)
+//!
+//! The whole admissible victory band -- `JEPA_PROXY_BPB_FLOOR` (0.1) <= bpb <
+//! `BPB_VICTORY_TARGET` (1.5), and the t-test band `mean <= TTEST_BASELINE_MU0
+//! - TTEST_EFFECT_SIZE_MIN` (1.50) -- lies ENTIRELY below
+//! `invariants::PUBLISHED_BPB_FLOOR` (2.0), which `train_loop::guard_bpb` and
+//! `neon_writer::reject_bpb` both enforce. So the only way to satisfy this gate
+//! is with a number the crate refuses to print, ship, or write to the ledger.
+//! That band is exactly where the two retracted figures came from (1.5492, the
+//! uncitable "honest Gate-2 pass" of `LEAK_INVESTIGATION.md`, and 1.038).
+//!
+//! The gate is therefore INERT, in the same sense as `invariants::BPB_CHAMPION`
+//! and `champion.toml`: the constants stay put so existing call sites keep
+//! compiling and the automaton keeps its typed refusals, but a pass here is NOT
+//! a result and must not be cited as one.
+//!
+//! It is not re-derived above the publication floor because there is no
+//! recorded measurement to derive a new target from. The honest calibration on
+//! this architecture (h=384, 2 attention layers, ~196.6K params, verified
+//! byte-disjoint tinyshakespeare) bottoms out at raw val_bpb ~2.61 at 12 000
+//! steps; picking any victory target from that would be inventing a number, not
+//! measuring one. Retract first, measure later.
+//!
+//! The relationship is pinned by a `const` assertion below so the two cannot
+//! drift apart silently again: if someone raises `BPB_VICTORY_TARGET` above the
+//! publication floor on the strength of a new measurement, the build breaks
+//! here and this notice has to be removed in the same commit.
+//!
 //! Refs: trios#143 lane L7 · TASK-COQ-001 · INV-7 · L-R14 · R8.
 
 use std::collections::HashSet;
 
-use crate::invariants::INV2_WARMUP_BLIND_STEPS;
+use crate::invariants::{INV2_WARMUP_BLIND_STEPS, PUBLISHED_BPB_FLOOR};
 use crate::race::hive_automaton::{BPB_VICTORY_TARGET, VICTORY_SEED_TARGET};
 
 // Sanity: constants match (L-R14)
 const _: () = assert!((BPB_VICTORY_TARGET - 1.5).abs() < f64::EPSILON);
+
+// RETRACTION PIN (see "RETRACTED as a publication gate" above). Every value the
+// gate can admit is below the publication floor, so no pass is publishable.
+// Raising the target above the floor is a claim about results: it needs new
+// measurements AND the removal of the retraction notice, not an edit here.
+const _: () = assert!(BPB_VICTORY_TARGET < PUBLISHED_BPB_FLOOR as f64);
 
 // ----------------------------------------------------------------------
 // INV-7: Welch's t-test for statistical strength (pre-registered)
@@ -75,14 +109,29 @@ pub struct TtestReport {
 }
 
 /// Pre-registered baseline BPB for Welch's t-test.
-/// This is the null hypothesis mean μ₀.
+/// This is the null hypothesis mean μ₀, and it is the value actually used by
+/// [`stat_strength`], printed by `ledger_check`, and reported in
+/// [`TtestReport::baseline_mu0`].  Those three used to disagree.
 pub const TTEST_BASELINE_MU0: f64 = 1.55;
 
 /// Pre-registered significance level α = 0.01 (one-tailed).
 pub const TTEST_ALPHA: f64 = 0.01;
 
-/// Minimum effect size: ΔBPB ≥ 0.05 (i.e. winning mean ≤ 1.45).
+/// Minimum effect size: ΔBPB ≥ 0.05, i.e. the winning mean must satisfy
+/// `mean <= TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN` (= 1.50).  Enforced in
+/// the [`stat_strength`] pass predicate; a declared, printed and exported
+/// constant that no comparison reads is worse than no constant at all.
 pub const TTEST_EFFECT_SIZE_MIN: f64 = 0.05;
+
+/// The largest sample mean the t-test can admit.  Named so the retraction pin
+/// below can talk about it.
+const TTEST_MAX_PASSING_MEAN: f64 = TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN;
+
+// RETRACTION PIN, t-test half. The effect-size floor lands exactly on
+// `BPB_VICTORY_TARGET`, so the statistical band is the same unpublishable band
+// as the gate's, and is retracted with it (see the module header).
+const _: () = assert!((TTEST_MAX_PASSING_MEAN - BPB_VICTORY_TARGET).abs() < 1e-12);
+const _: () = assert!(TTEST_MAX_PASSING_MEAN < PUBLISHED_BPB_FLOOR as f64);
 
 /// Welch's two-sample t-test for IGLA victory gate.
 ///
@@ -98,7 +147,10 @@ pub const TTEST_EFFECT_SIZE_MIN: f64 = 0.05;
 /// # Errors
 ///
 /// - `VictoryError::InsufficientSeeds` if fewer than 3 samples provided
-/// - `VictoryError::TtestFailed` if p ≥ α or t ≥ 0 (mean not below baseline)
+/// - `VictoryError::DegenerateSample` if the sample has zero variance
+/// - `VictoryError::TtestFailed` if p ≥ α, or t ≥ 0, or the sample mean misses
+///   the pre-registered effect-size floor
+///   (`mean > TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN`)
 ///
 /// # Formula
 ///
@@ -110,6 +162,19 @@ pub const TTEST_EFFECT_SIZE_MIN: f64 = 0.05;
 ///
 /// where x̄ is sample mean, s is sample std deviation.
 pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError> {
+    stat_strength_against(results, TTEST_BASELINE_MU0)
+}
+
+/// [`stat_strength`] with the null-hypothesis mean supplied explicitly.
+///
+/// Exists so a test can prove the verdict actually depends on μ₀ — asserting
+/// that `TTEST_BASELINE_MU0 == 1.55` proves only that a literal was typed
+/// twice, not that the arithmetic reads it.  The effect-size floor moves with
+/// `baseline_mu0`; α does not.
+pub fn stat_strength_against(
+    results: &[SeedResult],
+    baseline_mu0: f64,
+) -> Result<TtestReport, VictoryError> {
     let n = results.len();
 
     // Need at least 3 seeds for victory statistical strength
@@ -126,9 +191,6 @@ pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError
     // Compute sample mean
     let sample_mean: f64 = bpbs.iter().sum::<f64>() / n as f64;
 
-    // Use BPB_VICTORY_TARGET from hive_automaton as baseline (L-R14 anchor)
-    // TTEST_BASELINE_MU0 = BPB_VICTORY_TARGET - 0.05 (ΔBPB ≥ 0.05 effect size)
-
     // Compute sample standard deviation (Bessel's correction)
     let variance: f64 = if n > 1 {
         let mean_diff_sq: f64 = bpbs.iter().map(|&b| (b - sample_mean).powi(2)).sum();
@@ -138,21 +200,32 @@ pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError
     };
     let sample_std = variance.sqrt();
 
+    // Zero variance is a FINDING, not a win.  Identical BPB values across
+    // distinct seeds are the signature of the constant-proxy / degenerate-eval
+    // artefact this module exists to detect (see the docstring, case 1), and a
+    // sample with no spread cannot support a t-test at all: the standard error
+    // is genuinely zero, not "very small".  The old code divided by 1e-9 and
+    // called the resulting t ≈ -1e8 (p → 0) "a strong result"; a positive t
+    // from that same division would have been equally meaningless.
+    //
+    // The test is NOT `sample_std == 0.0`.  Three bit-identical readings of
+    // 1.40 sum to 4.199999999999999 and give sample_std = 2.7e-16, which is
+    // round-off in the mean, not variance in the measurement — and it produces
+    // t = -9.6e14, p = 0, `passed = true`.  So the sample is degenerate
+    // whenever the spread is at or below the floating-point resolution of the
+    // values themselves: n ulps of the mean.  This is a numerical bound on the
+    // arithmetic, not a claim about BPB.
+    let noise_floor = sample_mean.abs() * f64::EPSILON * n as f64;
+    if !(sample_std > noise_floor) {
+        return Err(VictoryError::DegenerateSample {
+            std: sample_std,
+            n,
+        });
+    }
+
     // t-statistic: (x̄ - μ₀) / (s / √n)
-    let (t_statistic, _std_error) = if sample_std > 0.0 {
-        let se = sample_std / (n as f64).sqrt();
-        ((sample_mean - BPB_VICTORY_TARGET) / se, se)
-    } else {
-        // Zero variance: if all samples are below baseline, this is a strong result
-        // If all samples are at/above baseline, reject
-        if sample_mean < BPB_VICTORY_TARGET {
-            // Use large negative t to indicate strong evidence
-            ((sample_mean - BPB_VICTORY_TARGET) / 1e-9, 1e-9)
-        } else {
-            // Use large positive t to indicate rejection
-            ((sample_mean - BPB_VICTORY_TARGET) / 1e-9, 1e-9)
-        }
-    };
+    let se = sample_std / (n as f64).sqrt();
+    let t_statistic = (sample_mean - baseline_mu0) / se;
 
     // Degrees of freedom for one-sample t-test
     let df = (n - 1) as f64;
@@ -161,8 +234,11 @@ pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError
     // For df=2, we use the exact t-distribution CDF
     let p_value = t_cdf_lower_tail(t_statistic, df);
 
-    // Test passes if p < α AND t < 0 (mean below baseline)
-    let passed = p_value < TTEST_ALPHA && t_statistic < 0.0;
+    // Test passes if p < α AND t < 0 (mean below baseline) AND the
+    // pre-registered effect-size floor is met.
+    let passed = p_value < TTEST_ALPHA
+        && t_statistic < 0.0
+        && sample_mean <= baseline_mu0 - TTEST_EFFECT_SIZE_MIN;
 
     if !passed {
         return Err(VictoryError::TtestFailed {
@@ -178,7 +254,7 @@ pub fn stat_strength(results: &[SeedResult]) -> Result<TtestReport, VictoryError
         p_value,
         sample_mean,
         sample_std,
-        baseline_mu0: BPB_VICTORY_TARGET,
+        baseline_mu0,
         alpha: TTEST_ALPHA,
         passed,
     })
@@ -247,6 +323,10 @@ fn incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
 /// which already treats `bpb < 0.1` as the proxy band — we use the same
 /// band here, so callers cannot route around `validate_config` by going
 /// through the victory gate.
+/// NOT a publication gate: this is the JEPA-proxy DETECTOR only. For "is this
+/// number fit to print, ship or write to the ledger" use
+/// `invariants::PUBLISHED_BPB_FLOOR` (2.0), which is derived from the measured
+/// calibration. Conflating the two is what let BPB 1.5492 through every gate.
 pub const JEPA_PROXY_BPB_FLOOR: f64 = 0.1;
 
 /// One observed seed result.  Carries enough provenance for the caller
@@ -303,13 +383,22 @@ pub enum VictoryError {
     /// `bpb` is non-finite (NaN / ±∞).  Defensive guard against numeric
     /// pipeline corruption.
     NonFiniteBpb { seed: u64, bpb: f64 },
-    /// Welch's t-test failed: p ≥ α or t ≥ 0 (mean not below baseline).
-    /// Pre-registered analysis: α = 0.01, baseline μ₀ = 1.55.
+    /// Welch's t-test failed: p ≥ α, or t ≥ 0 (mean not below baseline), or
+    /// the sample mean missed the pre-registered effect-size floor
+    /// (`mean > μ₀ − TTEST_EFFECT_SIZE_MIN`).
+    /// Pre-registered analysis: α = 0.01, baseline μ₀ = 1.55, ΔBPB ≥ 0.05.
     TtestFailed {
         t_statistic: f64,
         p_value: f64,
         alpha: f64,
     },
+    /// The sample has no measurable variance: every seed reported the same
+    /// BPB, or a spread no larger than floating-point round-off in the mean.
+    /// That is not evidence of a win, it is the signature of a constant
+    /// proxy or a degenerate eval corpus (docstring case 1), and no t-test
+    /// is defined on it — the standard error is zero to within the
+    /// resolution of the arithmetic.
+    DegenerateSample { std: f64, n: usize },
 }
 
 // ----------------------------------------------------------------------
@@ -332,6 +421,11 @@ pub enum VictoryError {
 ///
 /// Caller contract: pass the **full** seed result set, not a filtered
 /// subset.  The gate is the only authority that may filter.
+///
+/// RETRACTED as a publication gate — see the module header.  An `Ok` here
+/// means the seed set is internally consistent, NOT that the numbers are fit
+/// to print: every admissible BPB is below `invariants::PUBLISHED_BPB_FLOOR`,
+/// which `train_loop::guard_bpb` and `neon_writer::reject_bpb` enforce.
 pub fn check_victory(results: &[SeedResult]) -> Result<VictoryReport, VictoryError> {
     // 1. duplicate seed detection (must run before anything else: a
     //    duplicate is a structural error regardless of values).
@@ -605,23 +699,26 @@ mod tests {
     #[test]
     fn ttest_rejects_when_p_value_above_alpha() {
         // Pre-registered analysis: Welch's t-test, alpha = 0.01
-        // Three seeds ALL at baseline mu0 = 1.55 — p > 0.01, gate refuses.
+        // Three seeds ABOVE baseline mu0 = 1.55 — t > 0, p > 0.01, gate
+        // refuses.  (The values must differ: three identical readings are a
+        // DegenerateSample, not a t-test input — see
+        // `falsify_zero_variance_is_degenerate`.)
         let r = vec![
             SeedResult {
                 seed: 42,
-                bpb: 1.55,
+                bpb: 1.56,
                 step: 5000,
                 sha: "a".into(),
             },
             SeedResult {
                 seed: 43,
-                bpb: 1.55,
+                bpb: 1.57,
                 step: 5000,
                 sha: "b".into(),
             },
             SeedResult {
                 seed: 44,
-                bpb: 1.55,
+                bpb: 1.58,
                 step: 5000,
                 sha: "c".into(),
             },
@@ -794,5 +891,125 @@ mod tests {
         let report = stat_strength(&r).expect("Gate-final 3-seed stat strength");
         assert!(report.passed);
         assert!(report.p_value < 0.01);
+    }
+
+    /// Falsification: a zero-variance sample is a DEGENERATE SAMPLE, never a
+    /// win.  Three identical BPB readings across three distinct seeds are the
+    /// signature of the constant-proxy / degenerate-eval artefact this module
+    /// exists to detect; the old code divided by 1e-9 and reported p → 0.
+    ///
+    /// Note the readings need not sum to an exactly-zero variance: three
+    /// bit-identical 1.40s give sample_std = 2.7e-16 through round-off in the
+    /// mean, which an `== 0.0` guard would wave through as t = -9.6e14.
+    #[test]
+    fn falsify_zero_variance_is_degenerate() {
+        for bpb in [1.40, 0.5, 1.55, 1.60, 2.6169] {
+            let r = vec![mk(1, bpb), mk(2, bpb), mk(3, bpb)];
+            match stat_strength(&r) {
+                Err(VictoryError::DegenerateSample { std, n }) => {
+                    assert!(
+                        (0.0..=bpb * f64::EPSILON * 3.0).contains(&std),
+                        "std {std} must be round-off, not spread"
+                    );
+                    assert_eq!(n, 3);
+                }
+                other => panic!("expected DegenerateSample for {bpb}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The degeneracy guard must not swallow a real, tight sample.  A spread
+    /// of 0.005 bpb is small but is a genuine measurement difference, many
+    /// orders of magnitude above the round-off floor.
+    #[test]
+    fn tight_but_real_spread_is_not_degenerate() {
+        let r = vec![mk(1, 1.400), mk(2, 1.405), mk(3, 1.410)];
+        let report = stat_strength(&r).expect("a real spread must reach the t-test");
+        assert!(report.sample_std > 0.004);
+    }
+
+    /// Falsification: the effect-size floor is enforced, not merely declared.
+    /// Mean 1.51 is below μ₀ = 1.55 with a spread tight enough that p < α and
+    /// t < 0 — so the ONLY thing that can reject it is
+    /// `mean <= μ₀ - TTEST_EFFECT_SIZE_MIN` (= 1.50).  The assertions on the
+    /// returned error prove exactly that.
+    #[test]
+    fn falsify_effect_size_floor_rejects_marginal_mean() {
+        let r = vec![mk(1, 1.505), mk(2, 1.510), mk(3, 1.515)];
+        let mean = (1.505 + 1.510 + 1.515) / 3.0;
+        assert!(mean < TTEST_BASELINE_MU0, "sample is below the baseline");
+        assert!(
+            mean > TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN,
+            "but misses the effect-size floor"
+        );
+        match stat_strength(&r) {
+            Err(VictoryError::TtestFailed {
+                t_statistic,
+                p_value,
+                alpha,
+            }) => {
+                assert!((alpha - TTEST_ALPHA).abs() < f64::EPSILON);
+                assert!(
+                    t_statistic < 0.0,
+                    "t = {t_statistic} — rejection was not on sign"
+                );
+                assert!(
+                    p_value < TTEST_ALPHA,
+                    "p = {p_value} — rejection was not on significance"
+                );
+            }
+            other => panic!("expected TtestFailed on effect size, got {other:?}"),
+        }
+    }
+
+    /// The verdict must actually DEPEND on μ₀.  The same sample that passes
+    /// against the pre-registered 1.55 must fail against 1.50 — proof that the
+    /// t-statistic reads `TTEST_BASELINE_MU0` and not `BPB_VICTORY_TARGET`.
+    #[test]
+    fn mu0_moves_the_verdict() {
+        let r = vec![mk(1, 1.46), mk(2, 1.47), mk(3, 1.48)];
+        let pass = stat_strength_against(&r, TTEST_BASELINE_MU0)
+            .expect("must pass against the pre-registered mu0 = 1.55");
+        assert!(pass.passed);
+        assert!(
+            (pass.baseline_mu0 - TTEST_BASELINE_MU0).abs() < f64::EPSILON,
+            "the report must echo the mu0 the arithmetic used"
+        );
+        assert!(
+            stat_strength_against(&r, BPB_VICTORY_TARGET).is_err(),
+            "the same sample must fail against mu0 = 1.50"
+        );
+        // And the default entry point agrees with the pre-registered value.
+        assert_eq!(stat_strength(&r), Ok(pass));
+    }
+
+    /// RETRACTION witness: the entire band this gate can admit lies below
+    /// `invariants::PUBLISHED_BPB_FLOOR`, so a "victory" is by construction
+    /// unpublishable.  If this test ever fails, the gate has been re-derived
+    /// above the publication floor and the retraction notice in the module
+    /// header must be removed in the same commit.
+    #[test]
+    fn victory_band_lies_entirely_below_the_publication_floor() {
+        let floor = PUBLISHED_BPB_FLOOR as f64;
+        assert!(
+            JEPA_PROXY_BPB_FLOOR < floor,
+            "the proxy DETECTOR floor is far below any real reading"
+        );
+        assert!(
+            BPB_VICTORY_TARGET < floor,
+            "every bpb the gate admits is refused by guard_bpb / reject_bpb"
+        );
+        assert!(
+            TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN < floor,
+            "the statistical band is the same unpublishable band"
+        );
+        // Both retracted figures sit under the publication floor — which is
+        // the only reason they were ever printed.
+        for retracted in [1.5492, 1.038] {
+            assert!(
+                retracted >= JEPA_PROXY_BPB_FLOOR && retracted < floor,
+                "{retracted} is unpublishable but passed the old proxy floor"
+            );
+        }
     }
 }

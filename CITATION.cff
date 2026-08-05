@@ -1,15 +1,13 @@
 cff-version: 1.2.0
 message: "If you use the IGLA trainer pipeline in research, please cite it as below."
-title: "trios-trainer-igla · IGLA Training Pipeline (Trinity S³AI)"
-abstract: "trios-trainer-igla is the ONE-SOURCE-OF-TRUTH training pipeline for the IGLA architecture-search race of the Trinity S³AI / GOLDEN SUNFLOWERS research programme. Owns the 5-lane migration L-T1..L-T5, the embargo ledger, the triplet format, and the pre-registered Gate G1/G2/G3 acceptance gates (Gate-2 BPB<1.85, Gate-3 BPB<1.5). Anchor: phi^2 + phi^-2 = 3. Canonical Zenodo source of truth: https://zenodo.org/communities/trinity-s3ai/."
+title: "trios-trainer-igla - IGLA Training Pipeline (Trinity S3AI)"
+abstract: "trios-trainer-igla is a from-scratch Rust byte-level trainer (no PyTorch) together with the reproducibility-grading method it exists to demonstrate: checkpoints are written atomically and hashed, every run emits a JSON sidecar recording the corpus hashes, the eval grid, the toolchain, the binary hash and the platform, and a result is quoted only with the conditions under which it holds. Same-machine determinism is demonstrated (identical parameters yield byte-identical checkpoints); byte-identity ACROSS CPU architectures is not claimed and is measured to fail, so the platform is declared rather than assumed. The repository is also the ONE-SOURCE-OF-TRUTH training pipeline for the IGLA architecture-search race of the Trinity S3AI / GOLDEN SUNFLOWERS research programme, and owns the 5-lane migration L-T1..L-T5, the embargo ledger and the triplet format. It makes no capability claim: the calibration fixture is a ~196.6K-parameter byte model, and withdrawn numbers are listed in docs/audit/HONEST_FINDINGS.md. Anchor: phi^2 + phi^-2 = 3. Canonical Zenodo community: https://zenodo.org/communities/trinity-s3ai/."
 authors:
   - family-names: "Vasilev"
     given-names: "Dmitrii"
     orcid: "https://orcid.org/0009-0008-4294-6159"
     affiliation: "Trinity Research Collective"
-version: 1.0.0
-doi: 10.5281/zenodo.19227877
-date-released: 2026-05-14
+version: "0.1.0"
 url: "https://github.com/gHashTag/trios-trainer-igla"
 repository-code: "https://github.com/gHashTag/trios-trainer-igla"
 license: MIT
@@ -19,5 +17,6 @@ keywords:
   - "IGLA training"
   - "Trinity S3AI"
   - "GF16 matmul"
-  - "Gate-2 BPB"
+  - "reproducible training"
+  - "bits per byte"
   - "phi^2 + phi^-2 = 3"

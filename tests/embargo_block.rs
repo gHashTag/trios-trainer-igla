@@ -4,9 +4,22 @@
 //! matches the embargo list. Uses a synthetic embargo file.
 //!
 //! Also tests R8 (step ≥ 4000) and non-finite BPB rejection.
+//!
+//! Retraction note: the fixture below used to carry `champion_bpb: Some(2.2393)`,
+//! copied from `assertions/champion_lock.txt`. That number is retracted - no
+//! artifact, no corpus digest, no resolvable commit; see `RETRACTION.md`
+//! section 2, and the lock file itself, which now holds only a pointer here.
+//! `emit_row` reads `champion_bpb` solely to pick a `gate_status` string, so the
+//! fixture uses an explicitly synthetic value that no document cites.
 
 use trios_trainer::config::*;
 use trios_trainer::ledger;
+
+/// Deliberately not any published BPB. `emit_row` compares against this only to
+/// choose a `gate_status`; using a retracted champion figure here would put that
+/// number back into the tree as if a test depended on it. The value only has to
+/// sit in (2.0, 2.5] to keep both `gate_status` branches below exercised.
+const SYNTHETIC_CHAMPION_BPB: f64 = 2.345;
 
 fn make_test_config(embargo_path: &str) -> TrainConfig {
     TrainConfig {
@@ -14,7 +27,7 @@ fn make_test_config(embargo_path: &str) -> TrainConfig {
         steps: 27_000,
         seed: 43,
         target_bpb: 1.50,
-        champion_bpb: Some(2.2393),
+        champion_bpb: Some(SYNTHETIC_CHAMPION_BPB),
         model: ModelConfig {
             d_model: 256,
             n_layers: 2,

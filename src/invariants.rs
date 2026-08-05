@@ -33,6 +33,54 @@ pub const ASHA_PRUNE_THRESHOLD: f64 = 3.5;
 /// 12 000 steps (seed 47, h=384, 2 attention layers), sidecar
 /// `checkpoints/igla-honest-provenance/12000.json`.
 pub const BPB_CHAMPION: f64 = 2.5193;
+/// Lowest bits-per-byte this architecture can honestly report.
+///
+/// Distinct from `race::victory::JEPA_PROXY_BPB_FLOOR` (0.1), which is a
+/// DETECTOR for the constant-proxy artefact and is deliberately far below any
+/// real reading. That floor was doing double duty as the publication gate, and
+/// 0.1 is 26x below the band the measured calibration implies, so it admitted
+/// every retracted number this audit exists to remove.
+///
+/// Derivation, from the calibration quoted in `train_loop::guard_bpb` and
+/// measured on the verified byte-disjoint tinyshakespeare split (h=384, 2
+/// attention layers, ~196.6K params, 128-symbol byte vocabulary):
+///
+///   * ~7.00 at init (= log2(128), the uniform-model ceiling),
+///   * ~3.31 at step 1000,
+///   * 2.59-2.64 at step 12000. An earlier revision of this comment said
+///     "2.75-2.83", which the repository's own headline record falsifies: the
+///     artifact-backed run reads `final_val_bpb` 2.6347548961639404 at step
+///     12000 (README.md "why three figures", checkpoint sha256 `8a86fe69...`,
+///     852 272 B), the archived sidecars read 2.616914749145508
+///     (`checkpoints/igla-honest-provenance/12000.json`) and 2.614117383956909
+///     (`checkpoints/igla-honest-20260802/12000.json`), and the four-cadence
+///     table in README.md spans 2.5911 to 2.6348. The spread is the eval-cadence
+///     effect, not noise: `train_loop` gates the in-place `gf16_floor` on
+///     `step % eval_every == 0` after 70% of training, so runs differing only in
+///     `--eval-every` end with different weights. Cite any of these only with
+///     its cadence.
+///   * ~2.71 even with a 100% verbatim train/val overlap - a total leak buys
+///     only ~0.12 bpb on this architecture,
+///   * `BPB_CHAMPION` = 2.5193, the crate's own best CLAIMED figure - retracted
+///     as a measurement (see its doc comment) and named here only because the
+///     floor must not refuse it.
+///
+/// A ~200K-parameter byte-level model therefore cannot honestly go under about
+/// 2.5. 2.0 is a deliberately generous hard floor: it still admits 2.5193 with
+/// room to spare, while refusing 1.5492 (the uncitable "honest Gate-2 pass" of
+/// `LEAK_INVESTIGATION.md`, better than the champion at a commit where nothing
+/// in the training loop sampled BPB at all) and 1.038. Anything under it is a
+/// degenerate or duplicated eval corpus, an out-of-repo parser, or a sentinel -
+/// never a measurement of held-out text.
+///
+/// What this floor does NOT do: it is a plausibility bound on the VALUE, so it
+/// admits the 2.2393 / 2.2111 / 2.1919 family that `RETRACTION.md` grades
+/// uncitable. Those are refused on PROVENANCE - no artifact, no corpus digest,
+/// forbidden seed 43 - and no numeric threshold can express that.
+///
+/// Raise this only with new measured evidence. Never lower it to make a
+/// fixture pass.
+pub const PUBLISHED_BPB_FLOOR: f32 = 2.0;
 pub const ASHA_RUNGS: [u64; 4] = [1_000, 3_000, 9_000, 27_000];
 pub const MAX_ASHA_TRIALS: usize = 1_000;
 pub const GF16_SAFE_D_MODEL: usize = 256;
@@ -293,6 +341,43 @@ mod tests {
     fn test_validate_bpb_catches_jepa_proxy() {
         let r = std::panic::catch_unwind(|| validate_bpb(0.014, "J-002"));
         assert!(r.is_err());
+    }
+    /// The publication floor and the JEPA-proxy detector floor are two
+    /// different numbers with two different jobs, and the ordering between
+    /// them, `BPB_CHAMPION` and the retracted figures is the whole claim.
+    #[test]
+    fn published_floor_sits_between_the_detector_and_the_champion() {
+        let published = PUBLISHED_BPB_FLOOR as f64;
+        assert!(
+            published > crate::race::victory::JEPA_PROXY_BPB_FLOOR,
+            "the publication floor must be far above the proxy DETECTOR floor"
+        );
+        assert!(
+            published < BPB_CHAMPION,
+            "the floor must admit the crate's own best claimed figure"
+        );
+        // The two retracted numbers this floor CAN refuse, named so the build
+        // refuses them.
+        assert!(1.5492 < published, "LEAK_INVESTIGATION.md 'Gate-2 pass'");
+        assert!(1.038 < published, "the second sub-champion outlier");
+        // The honest calibration band must stay above the floor end to end:
+        // init, step 1000, and the three artifact-backed step-12000 readings.
+        for measured in [7.00, 3.31, 2.6348, 2.6169, 2.6141] {
+            assert!(
+                measured > published,
+                "floor {published} would refuse the measured reading {measured}"
+            );
+        }
+        // And the boundary, stated rather than implied: the 2.2x family
+        // `RETRACTION.md` grades uncitable clears this floor comfortably. It is
+        // refused on provenance, elsewhere, and pretending otherwise here would
+        // be the same mistake this floor exists to correct.
+        for retracted_by_provenance in [2.2393, 2.2111, 2.1919] {
+            assert!(
+                retracted_by_provenance > published,
+                "documents that the floor does NOT catch {retracted_by_provenance}"
+            );
+        }
     }
     #[test]
     fn test_lucas_sequence() {

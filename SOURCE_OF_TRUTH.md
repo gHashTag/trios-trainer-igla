@@ -4,6 +4,14 @@
 > with respect to the IGLA RACE training pipeline.
 > Effective: 2026-04-26. Anchor: φ² + φ⁻² = 3.
 
+> **AMENDED 2026-08-03 — the evidence ledger this document pointed at is retracted.**
+> `assertions/seed_results.jsonl` is now
+> [`assertions/RETRACTED-seed_results.jsonl.txt`](assertions/RETRACTED-seed_results.jsonl.txt).
+> See [`RETRACTION.md`](RETRACTION.md). This document remains canonical about
+> *code ownership*; it is no longer canonical about any BPB number, and it never
+> should have been read as endorsing the rows in that file. Nothing in this repo
+> currently holds a citable champion.
+
 ## Statement
 
 `gHashTag/trios-trainer-igla` is the **single source of truth** for:
@@ -15,7 +23,9 @@
 - The BPE tokenizer + dataloader pipeline
 - The triplet-validated ledger emit
   (`BPB=<v> @ step=<N> seed=<S> sha=<7c> jsonl_row=<L> gate_status=<g>`)
-- The embargo enforcement against `assertions/seed_results.jsonl`
+- The embargo enforcement in `src/ledger.rs` (its former target,
+  `assertions/seed_results.jsonl`, is retracted — see
+  [`RETRACTION.md`](RETRACTION.md); the embargo code itself is unaffected)
 - The TOML run-config schema (`champion`, `gate2-attempt`, `needle-v1-mup`)
 - The Dockerfile + Railway service config
 
@@ -28,7 +38,9 @@ These remain canonical in [`gHashTag/trios`](https://github.com/gHashTag/trios):
 - GoldenFloat16 number type (`trios-golden-float`)
 - φ-schedule primitives (`trios-phi-schedule`)
 - Precision router (`trios-precision-router`)
-- `assertions/seed_results.jsonl` itself (the ledger file)
+- `assertions/seed_results.jsonl` itself (the ledger file) — the local mirror is
+  **retracted**: [`assertions/RETRACTED-seed_results.jsonl.txt`](assertions/RETRACTED-seed_results.jsonl.txt),
+  [`RETRACTION.md`](RETRACTION.md)
 - `assertions/embargo.jsonl` (the embargo list)
 
 `trios-trainer` consumes those crates as **versioned git dependencies**
@@ -77,6 +89,12 @@ welcome. Any fork that wishes to feed back into the IGLA RACE ledger
 - Pass the embargo + triplet validation from `src/ledger.rs` unmodified
 - Cite [`gHashTag/trios#143`](https://github.com/gHashTag/trios/issues/143)
   in the row's `agent` field
+
+The local mirror of that ledger was retracted precisely because rows reached it
+*without* the second bullet: none of its eleven rows carried `agent`,
+`jsonl_row` or `ts`, so none had been through `emit_row`. A row that skips the
+validated path is not evidence, whatever number it carries. See
+[`RETRACTION.md`](RETRACTION.md).
 
 ## Ownership
 

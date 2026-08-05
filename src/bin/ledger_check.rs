@@ -33,6 +33,19 @@
 //! [`trios_trainer::race::TtestReport`].  Both surfaces are honest — the CLI
 //! never silently drops a row, and never re-grades a partial victory.
 //!
+//! A sample with zero variance (every seed reporting the same BPB) is neither:
+//! it is `VictoryError::DegenerateSample`, surfaced as NECESSARY-OK /
+//! STAT-ERROR.  Identical readings are the constant-proxy signature, and no
+//! t-test is defined on them.
+//!
+//! ## The verdict is RETRACTED as a publication claim
+//!
+//! Every BPB this gate can admit is below `invariants::PUBLISHED_BPB_FLOOR`
+//! (2.0), which `train_loop::guard_bpb` and `neon_writer::reject_bpb` enforce.
+//! A `🏆 IGLA FOUND` line therefore says the ledger is internally consistent,
+//! NOT that the numbers are fit to publish.  See the RETRACTED section of
+//! `race::victory` for why the target was not simply moved.
+//!
 //! ## Ledger format (mirror of `assertions/seed_results.jsonl`)
 //!
 //! - First non-empty line is a schema header (object with keys whose
@@ -450,17 +463,90 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    /// L-R14 anchor check — every constant the CLI prints is sourced
-    /// from the race crate, not redeclared here.  If any of the
-    /// re-exports moves or changes value, this test is the canary.
+    use trios_trainer::race::victory::stat_strength_against;
+
+    /// L-R14 anchor check — the constants the CLI prints must be the ones
+    /// the gate actually computes with.  Asserting their literal values
+    /// only proved that the same number was typed twice: `μ₀ = 1.55` was
+    /// printed here and exported as `welch_baseline_mu0` for months while
+    /// `stat_strength` silently tested against 1.5.  So instead we assert
+    /// that MOVING μ₀ MOVES THE VERDICT — a sample that passes at 1.55 must
+    /// fail at 1.50.  A printed constant the arithmetic ignores cannot
+    /// satisfy this.
     #[test]
     fn test_ledger_constants_traceable() {
         assert_eq!(IGLA_TARGET_BPB, 1.5);
         assert_eq!(VICTORY_SEED_TARGET, 3);
-        assert!((JEPA_PROXY_BPB_FLOOR - 0.1).abs() < f64::EPSILON);
-        assert!((TTEST_BASELINE_MU0 - 1.55).abs() < f64::EPSILON);
-        assert!((TTEST_ALPHA - 0.01).abs() < f64::EPSILON);
+
+        let rows = vec![
+            SeedResult {
+                seed: 1,
+                bpb: 1.46,
+                step: 5000,
+                sha: "a".into(),
+            },
+            SeedResult {
+                seed: 2,
+                bpb: 1.47,
+                step: 5000,
+                sha: "b".into(),
+            },
+            SeedResult {
+                seed: 3,
+                bpb: 1.48,
+                step: 5000,
+                sha: "c".into(),
+            },
+        ];
+
+        let at_mu0 = stat_strength_against(&rows, TTEST_BASELINE_MU0)
+            .expect("sample must pass against the printed baseline");
+        assert!(at_mu0.passed);
+        assert!(
+            (at_mu0.baseline_mu0 - TTEST_BASELINE_MU0).abs() < f64::EPSILON,
+            "the report must echo the μ₀ the CLI prints"
+        );
+        assert_eq!(
+            stat_strength(&rows),
+            Ok(at_mu0),
+            "the default entry point must use the printed μ₀"
+        );
+        assert!(
+            stat_strength_against(&rows, IGLA_TARGET_BPB).is_err(),
+            "the same sample must fail at μ₀ = 1.50 — otherwise μ₀ is decorative"
+        );
+
+        // The effect-size floor is likewise load-bearing, not decorative:
+        // mean 1.51 clears significance but misses μ₀ − 0.05.
+        let marginal = vec![
+            SeedResult {
+                seed: 4,
+                bpb: 1.505,
+                step: 5000,
+                sha: "a".into(),
+            },
+            SeedResult {
+                seed: 5,
+                bpb: 1.510,
+                step: 5000,
+                sha: "b".into(),
+            },
+            SeedResult {
+                seed: 6,
+                bpb: 1.515,
+                step: 5000,
+                sha: "c".into(),
+            },
+        ];
+        match stat_strength(&marginal) {
+            Err(VictoryError::TtestFailed { p_value, .. }) => assert!(
+                p_value < TTEST_ALPHA,
+                "p = {p_value}: rejection must be the effect-size floor, not α"
+            ),
+            other => panic!("expected TtestFailed on effect size, got {other:?}"),
+        }
         assert!((TTEST_EFFECT_SIZE_MIN - 0.05).abs() < f64::EPSILON);
+        assert!((JEPA_PROXY_BPB_FLOOR - 0.1).abs() < f64::EPSILON);
     }
 
     /// Schema-header row only → empty verdict (NOT victory, NOT
@@ -498,11 +584,16 @@ mod tests {
         assert_eq!(v.exit_code(), 0);
     }
 
-    /// Three distinct passing seeds with mean exactly at μ₀ −
-    /// effect-size floor: t-test should NOT pass (effect_size_min is a
-    /// strict ≤, but with zero variance we surface ZeroVariance).
+    /// Three distinct seeds reporting the IDENTICAL BPB.  That is the
+    /// signature of a constant proxy or a degenerate eval corpus, and no
+    /// t-test is defined on a sample with zero spread.  The gate's structural
+    /// checks still pass (3 distinct seeds, post-warmup, non-proxy), so the
+    /// honest verdict is NECESSARY-OK / STAT-ERROR, never victory.
+    ///
+    /// This ledger used to be graded `Victory`: `stat_strength` divided by
+    /// 1e-9, produced t ≈ -1e8 and p → 0, and called it "a strong result".
     #[test]
-    fn falsify_zero_variance_surfaces_victory() {
+    fn falsify_zero_variance_is_stat_error_not_victory() {
         let rows = [
             r#"{"seed":10,"bpb":1.40,"step":5000,"sha":"a"}"#,
             r#"{"seed":11,"bpb":1.40,"step":5000,"sha":"b"}"#,
@@ -510,17 +601,22 @@ mod tests {
         ]
         .join("\n");
         let v = evaluate_ledger(&rows).unwrap();
+        assert!(!v.is_victory(), "zero variance is a finding, not a win");
         match v {
-            LedgerVerdict::Victory { report, ttest } => {
-                assert!(ttest.passed);
-                assert!(ttest.t_statistic < 0.0);
+            LedgerVerdict::GateOkStatError {
+                report,
+                ttest_err: VictoryError::DegenerateSample { std, n },
+            } => {
+                // Not exactly 0.0: three bit-identical 1.40s leave 2.7e-16 of
+                // round-off in the mean, which is precisely why the guard is a
+                // noise floor rather than an `== 0.0` test.
+                assert!((0.0..1e-15).contains(&std), "std {std} must be round-off");
+                assert_eq!(n, 3);
                 assert!(report.mean_bpb < TTEST_BASELINE_MU0);
             }
-            other => panic!(
-                "expected Victory (zero variance with mean < target passes), got {:?}",
-                other
-            ),
+            other => panic!("expected GateOkStatError/DegenerateSample, got {:?}", other),
         }
+        assert_eq!(evaluate_ledger(&rows).unwrap().exit_code(), 3);
     }
 
     /// Three distinct seeds with one above the target — gate flags it

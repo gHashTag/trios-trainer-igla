@@ -43,6 +43,14 @@ filters/
 LOG
 $LOG
 *.log
+# ...except the ones that ARE the evidence. `docs/HELD-OUT-PROTOCOL.md` names
+# `evidence/heldout/A.log` and `B.log` as the artifacts of the only held-out
+# measurement this crate has made, and `*.log` silently kept them out of
+# `git add -A` -- the same defect `/data/*` above was written to fix: the file
+# that lets a third party check the claim was the one file that could not be
+# committed. The negation fires here because no parent directory of these files
+# is excluded (git never descends into an excluded directory).
+!evidence/**/*.log
 
 # History / eval artifacts
 .trinity/history/

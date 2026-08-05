@@ -34,7 +34,7 @@
 
 | Phase | Status | Result |
 |-------|--------|--------|
-| P0: Audit | ✅ DONE | Replication: 2.2393 @ 27K |
+| P0: Audit | WITHDRAWN | Replication target ~~2.2393~~ @ 27K is RETRACTED, see `RETRACTION.md` |
 | P1: Optimizer | ✅ NULL | Muon +0.07 BPB worse |
 | P2: muP Transfer | ⚪ READY | Not started |
 | P3: Schedule-Free | ⚪ READY | Not started |
@@ -45,11 +45,11 @@
 
 | Metric | Value | Target | Gap |
 |--------|-------|--------|-----|
-| Best BPB (seed 43) | 2.2111 @ 81K | < 1.85 | 0.3611 |
-| Champion BPB | 2.2393 @ 27K | < 1.85 | 0.3893 |
-| Gate-1 Threshold | 2.22 | - | PASSED (2.2111 < 2.22) |
-| Gate-2 Threshold | 1.85 | - | GAP: 0.3611 |
-| IGLA Target | 1.50 | - | GAP: 0.7111 |
+| Best BPB (seed 43) | ~~2.2111 @ 81K~~ RETRACTED | < 1.85 | no ledger row, no artifact, no reproducible recipe; see `RETRACTION.md`. No gap |
+| Champion BPB | ~~2.2393 @ 27K~~ RETRACTED | < 1.85 | see `RETRACTION.md`; no champion, no gap |
+| Gate-1 Threshold | 2.22 | - | ~~PASSED (2.2111 < 2.22)~~ RETRACTED - the pass rested on a number that is not citable |
+| Gate-2 Threshold | 1.85 | - | gap retracted - no citable BPB to measure from |
+| IGLA Target | 1.50 | - | gap retracted - no citable BPB to measure from |
 
 ### Deployment Status
 
@@ -69,7 +69,9 @@
 ### Next Actions
 
 **Immediate (when E36-E40 complete):**
-1. Analyze results - check if any config beats 2.2111
+1. Analyze results - the "beats 2.2111" comparison is RETRACTED; 2.2111 has no
+   ledger row, no artifact and no reproducible recipe, so it is not a baseline
+   anything can be compared against
 2. If improvement found, prepare next batch
 3. If no improvement, pivot to new architecture/hyperparams
 

@@ -1,0 +1,269 @@
+# Runs the falsifier.
+#
+# `ckpt_replay` is the instrument the reproducibility claim rests on: it takes a
+# checkpoint sidecar, re-derives the artifact from the parameters that sidecar
+# itself records, and grades the result. Until this file existed, NOTHING
+# invoked it. `grep -rn ckpt_replay .github/` returned nothing and there is no
+# Makefile target either, so the only way anyone ever learned that 2 of 30
+# sidecars graded VERIFIED was a human running the tool thirty times by hand.
+# Two changes landed in one night that silently contradicted each other for
+# exactly that reason.
+#
+# Two design decisions are load-bearing and are not conveniences:
+#
+# 1. THE JOB PRODUCES ITS OWN ARTIFACT FIRST. `checkpoints/` is gitignored
+#    (.gitignore:13) and `git ls-files checkpoints/` is empty, so a job that
+#    only iterated committed sidecars would find zero files and pass. A green
+#    check that proves nothing is the exact defect class this repository exists
+#    to catch, so the job trains a short run itself and then asserts that at
+#    least one record graded VERIFIED. "Everything was INCOMPARABLE" cannot
+#    pass as success here.
+#
+# 2. THE EXIT-CODE POLICY DISTINGUISHES VERDICTS FROM ERRORS.
+#
+#      exit 0  VERIFIED         counted, and at least one is REQUIRED
+#      exit 1  MISMATCH         FAILS the job (also ARTIFACT ALTERED,
+#                               CORPUS MISMATCH, TRAINER MISMATCH)
+#      exit 2  INCOMPARABLE     counted, does NOT fail - the archived schema/1
+#                               records cannot state their own recipe, and a
+#                               permanently red CI is a CI nobody reads
+#      exit 3  REFUSED          counted, does NOT fail - a refusal to spend an
+#                               hour on a spot check is a verdict, not a defect
+#      exit 4  ERROR            FAILS the job - the check could not be RUN, so
+#                               there is no verdict at all to census
+#      exit 5  BPB MISMATCH     FAILS the job (also BPB NOT CONFIRMED and
+#                               GRID MISMATCH) via the catch-all: the bytes
+#                               re-derived and the certified number did not
+#      exit 6  L2 pass, L3 fail  counted, does NOT fail - see below
+#
+#    Exits 2, 3 and 6 are tolerated, and all are printed with counts so a drift
+#    toward "everything is INCOMPARABLE" is visible in the log rather than
+#    absorbed by it.
+#
+#    WHY EXIT 6 DOES NOT FAIL THE JOB. Exit 6 says the replayed WEIGHTS differ
+#    and the replayed METRIC agrees within the tolerance the binary printed -
+#    the L2 rung of docs/REPRODUCIBILITY-GRADING.md. That is what an honest
+#    second laboratory looks like: the one cross-architecture run this
+#    repository has performed (run 30767491098) was a faithful x86_64 execution
+#    of the same source, the same rustc, --locked, with the corpus verified
+#    against the manifest, and it differed in bytes while the metric moved by
+#    at most 0.0035 bpb. Failing the job on that would make the audit assert
+#    bit-identity ACROSS platforms, which this trainer does not have and does
+#    not claim (see "L3 holds only inside a fixed platform triple"). It is
+#    counted and printed instead, so a drift from 0 is visible; a forger whose
+#    metric also disagrees exits 1 and still fails.
+#
+# The job needs no secret, no DSN, no GPU and no credential. It fetches the
+# public tinyshakespeare corpus (the corpora are distributed by hash, not by
+# git) and proves it against data/MANIFEST.sha256 before any number is produced.
+
+name: ckpt_replay audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, fix/509-qat-v2]
+  pull_request:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      # A short run: long enough to exercise the whole save/record/replay path,
+      # short enough that the job re-trains it twice (once to produce, once to
+      # replay) inside the timeout. 200 steps is ~12s per pass.
+      AUDIT_STEPS: 200
+      AUDIT_CANON: ci-audit-selftest
+      # Replay budget. `ckpt_replay` refuses (exit 3) rather than silently
+      # spending an hour, and that refusal is censused, not failed.
+      REPLAY_MAX_STEPS: 2000
+      # From data/MANIFEST.sha256.
+      EXPECTED_TRAIN_SHA: 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+      EXPECTED_VAL_SHA: 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+      EXPECTED_UNION_SHA: 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the environment the verdicts will be scoped to
+        run: |
+          echo "arch:  $(uname -sm)"
+          echo "rustc: $(rustc --version)"
+          echo "note:  a ckpt_replay VERIFIED verdict is scoped to ONE platform"
+          echo "       triple; see docs/REPRODUCIBILITY-GRADING.md"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the trainer and the auditor
+        run: cargo build --release --locked --bin trios-train --bin ckpt_replay
+
+      # The corpus is not in git. Rebuild it from the canonical source and
+      # prove it is the same bytes before any number is produced.
+      - name: Fetch and split the corpus, byte-disjoint
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          curl -sL --retry 3 \
+            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+            > data/full.txt
+          SIZE=$(wc -c < data/full.txt)
+          echo "downloaded $SIZE bytes"
+          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+          rm data/full.txt
+
+      - name: Verify the corpus against data/MANIFEST.sha256
+        run: |
+          set -euo pipefail
+          got_train=$(sha256sum data/tiny_shakespeare.txt | cut -d' ' -f1)
+          got_val=$(sha256sum data/tiny_shakespeare_val.txt | cut -d' ' -f1)
+          got_union=$(cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | sha256sum | cut -d' ' -f1)
+
+          echo "train  expected=$EXPECTED_TRAIN_SHA got=$got_train"
+          echo "val    expected=$EXPECTED_VAL_SHA got=$got_val"
+          echo "union  expected=$EXPECTED_UNION_SHA got=$got_union"
+
+          [ "$got_train" = "$EXPECTED_TRAIN_SHA" ] || { echo "::error::train corpus differs from the manifest"; exit 1; }
+          [ "$got_val"   = "$EXPECTED_VAL_SHA" ]   || { echo "::error::val corpus differs from the manifest"; exit 1; }
+          # The union hash is what proves the split is a partition, not a copy.
+          [ "$got_union" = "$EXPECTED_UNION_SHA" ] || { echo "::error::train+val do not reconstruct the canonical corpus"; exit 1; }
+
+      # An ALLOWLIST, not a denylist. The trainer resolves a DSN through four
+      # aliases in order - DATABASE_URL, NEON_DATABASE_URL, TRIOS_NEON_DSN,
+      # TRIOS_DATABASE_URL (src/neon_writer.rs:53-56,
+      # src/bin/trios-train.rs:145-148) - and `TRINITY_AUTOMIGRATE` defaults to
+      # "1" when unset (src/bin/trios-train.rs:139), so any DSN that reached
+      # this job would run `migration::Migrator::up` against the live SSOT
+      # before a single step of training. An `env -u` list has to enumerate
+      # every alias correctly forever; `env -i` has to enumerate nothing. This
+      # step proves the emptiness rather than asserting it.
+      - name: Prove the training environment carries no DSN and no automigrate
+        run: |
+          set -euo pipefail
+          child=$(env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
+                    TRIOS_CANON_NAME="$AUDIT_CANON" env | sort)
+          echo "$child"
+          for alias in DATABASE_URL NEON_DATABASE_URL TRIOS_NEON_DSN TRIOS_DATABASE_URL; do
+            if printf '%s\n' "$child" | grep -q "^${alias}="; then
+              echo "::error::${alias} survives into the training environment"
+              exit 1
+            fi
+          done
+          printf '%s\n' "$child" | grep -qx 'TRINITY_AUTOMIGRATE=0' || {
+            echo "::error::TRINITY_AUTOMIGRATE is not pinned to 0; automigrate defaults to ON"
+            exit 1
+          }
+          echo "no DSN alias reaches the trainer; automigrate is off"
+
+      - name: Produce an artifact for the auditor to grade
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
+            TRIOS_CANON_NAME="$AUDIT_CANON" ./target/release/trios-train \
+            --seed 47 --steps "$AUDIT_STEPS" --hidden 384 --attn-layers 2 \
+            --eval-every 1000 --lr 0.003 \
+            --train-data data/tiny_shakespeare.txt \
+            --val-data data/tiny_shakespeare_val.txt
+
+      # Vacuity guard. If this ever finds nothing, the job must go red here and
+      # not sail past an empty `for` loop.
+      - name: Refuse to audit an empty evidence directory
+        run: |
+          set -euo pipefail
+          count=$(ls -1 checkpoints/*/*.json 2>/dev/null | wc -l | tr -d ' ')
+          echo "sidecars to grade: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "::error::no checkpoints/*/*.json exist, so the audit would grade nothing"
+            echo "checkpoints/ is gitignored; this job must produce its own artifact first"
+            exit 1
+          fi
+          ls -1 checkpoints/*/*.json
+
+      - name: Replay every sidecar and census the verdicts
+        run: |
+          set -uo pipefail
+          # The runner's default shell is `bash -e`. `errexit` has to be turned
+          # OFF here on purpose: exits 1..4 are the readings this loop exists to
+          # collect, and dying on the first one would replace a census with a
+          # single anecdote.
+          set +e
+          verified=0; mismatch=0; incomparable=0; refused=0; errored=0; l2only=0; other=0
+          failures=""
+          mkdir -p "$RUNNER_TEMP/replay"
+          i=0
+          for record in checkpoints/*/*.json; do
+            i=$((i + 1))
+            echo "=============================================================="
+            echo "record $i: $record"
+            echo "--------------------------------------------------------------"
+            out="$RUNNER_TEMP/replay/$i.log"
+            ./target/release/ckpt_replay \
+              --record "$record" \
+              --trainer ./target/release/trios-train \
+              --max-steps "$REPLAY_MAX_STEPS" \
+              --workdir "$RUNNER_TEMP/replay/wd-$i" > "$out" 2>&1
+            code=$?
+            cat "$out"
+            echo "exit: $code"
+
+            # These two lines already exit 1, but they are the verdicts that
+            # mean the evidence itself was tampered with, so they are matched
+            # by name as well: a future exit-code regression must not be able
+            # to turn them into a pass.
+            if grep -qE '^(TRAINER MISMATCH|ARTIFACT ALTERED)' "$out"; then
+              echo "::error::$record :: tamper verdict (see log above)"
+              failures="$failures $record(tamper)"
+              mismatch=$((mismatch + 1))
+              continue
+            fi
+
+            case "$code" in
+              0) verified=$((verified + 1)) ;;
+              1) mismatch=$((mismatch + 1)); failures="$failures $record(MISMATCH)" ;;
+              2) incomparable=$((incomparable + 1)) ;;
+              3) refused=$((refused + 1)) ;;
+              4) errored=$((errored + 1)); failures="$failures $record(ERROR)" ;;
+              # L2 pass, L3 fail: the metric reproduced within the printed
+              # tolerance and the bytes did not. Counted and printed, NOT added
+              # to $failures - an honest second laboratory is a reading, not a
+              # defect. See the exit-code policy at the top of this file.
+              6) l2only=$((l2only + 1)); echo "::notice::$record :: L2 pass, L3 fail (metric reproduced, bytes did not)" ;;
+              *) other=$((other + 1)); failures="$failures $record(exit $code)" ;;
+            esac
+          done
+
+          echo "=============================================================="
+          echo " ckpt_replay census over $i record(s)"
+          echo "   VERIFIED      $verified   (bytes re-derived from the record)"
+          echo "   MISMATCH      $mismatch   (fails this job)"
+          echo "   INCOMPARABLE  $incomparable   (record cannot state its own recipe)"
+          echo "   REFUSED       $refused   (over the --max-steps $REPLAY_MAX_STEPS budget)"
+          echo "   ERROR         $errored   (the check could not be run; fails this job)"
+          echo "   L2 pass, L3 fail  $l2only   (metric reproduced within tolerance, bytes did not)"
+          echo "   other         $other   (includes exit 5: BPB / GRID mismatch; fails this job)"
+          echo "=============================================================="
+
+          rc=0
+          if [ -n "$failures" ]; then
+            echo "::error::ckpt_replay failed on:$failures"
+            rc=1
+          fi
+          # INCOMPARABLE is not a pass. A run where every record was
+          # INCOMPARABLE would report "0 failures" and mean nothing was checked.
+          if [ "$verified" -eq 0 ]; then
+            echo "::error::no record graded VERIFIED; the falsifier proved nothing this run"
+            rc=1
+          fi
+          exit $rc
+
+      - name: Publish the graded evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ckpt-replay-audit
+          path: |
+            checkpoints/
+          if-no-files-found: warn

@@ -50,6 +50,11 @@ fn activate_grad(x: f32, name: &str) -> f32 {
 /// `cpu_train` uses, so a sweep can tell a refused corpus from a crash.
 const EXIT_BAD_CORPUS: i32 = 6;
 
+/// Exit code for a run that measured nothing. Same value `cpu_train` and
+/// `concat_train` use, so a sweep can tell an unmeasured run from a crash and
+/// from a refused corpus.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
 /// Default corpus. The shipped file is `data/tiny_shakespeare.txt`; the old
 /// default here spelled it without the underscore, and that file has never
 /// existed in this repo, so every argument-free run took the fallback path and
@@ -416,10 +421,23 @@ impl NgramModel {
         logits
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats, or `None` when the sequence is too short to
+    /// hold a single context/target pair or the forward pass produced a
+    /// non-number.
+    ///
+    /// A short sequence used to return `0.0`, a loss no model achieves.
+    /// `f32::max` also ignores NaN, so clamping `logits[target]` with
+    /// `.max(1e-10)` turned a poisoned forward pass into a finite 23.03-nat
+    /// measurement - 33.2 bpb,
+    /// which is positive, finite and under the ledger's sentinel ceiling, so it
+    /// was published as a reading. NaN is now an absence. The 1e-10 clamp is
+    /// kept for a genuinely underflowed probability - capping it is a
+    /// documented floor on surprisal, and dropping those chunks instead would
+    /// bias the reported BPB downward.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let ngram = self.ctx.len() + 2;
         if tokens.len() < ngram + 1 {
-            return 0.0;
+            return None;
         }
         let v = self.vocab;
         let h = self.hidden;
@@ -440,7 +458,11 @@ impl NgramModel {
                 let target = tokens[i + ngram].min(v - 1);
                 let mut logits = logits;
                 softmax(&mut logits);
-                total -= logits[target].max(1e-10).ln();
+                let p = logits[target];
+                if p.is_nan() {
+                    return None;
+                }
+                total -= p.max(1e-10).ln();
             }
         } else {
             for i in 0..count {
@@ -455,10 +477,14 @@ impl NgramModel {
                     }
                 }
                 softmax(&mut logits);
-                total -= logits[target].max(1e-10).ln();
+                let p = logits[target];
+                if p.is_nan() {
+                    return None;
+                }
+                total -= p.max(1e-10).ln();
             }
         }
-        total / count as f32
+        Some(total / count as f32)
     }
 
     #[allow(clippy::needless_range_loop)]
@@ -755,7 +781,23 @@ impl NgramModel {
     }
 }
 
-fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> (f32, f32) {
+/// Mean `(loss, bpb)` over evenly spaced chunks, or `None` when nothing could
+/// be measured.
+///
+/// This used to return `f32::MAX` for both the loss and the BPB. That is a
+/// finite value, so it
+/// passed every downstream `is_finite()` guard, compared as better-than-nothing
+/// under `<`, and printed as `BPB=340282346638528859811704183484516925440.0000`
+/// beside `exit 0`. A sentinel indistinguishable from a measurement is not a
+/// sentinel; an absence is now an absence.
+///
+/// It then still dropped individual non-finite windows and published the mean
+/// of the survivors, which is biased DOWNWARD: the windows a partial poison
+/// kills are exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the
+/// correct line and this now matches it -- ONE unmeasurable window invalidates
+/// the whole eval -- while the `dropped` counter keeps the skip from being
+/// silent about HOW MUCH of the corpus failed.
+fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> Option<(f32, f32)> {
     let eval_step = if model.use_attention {
         (seq_len + 1) * 8
     } else {
@@ -763,22 +805,40 @@ fn evaluate(model: &NgramModel, tokens: &[usize], seq_len: usize) -> (f32, f32) 
     };
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in (0..tokens.len()).step_by(eval_step) {
         let end = (c + seq_len + 1).min(tokens.len());
         if end - c < model.ctx.len() + 3 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() {
-            total += loss / LN_2;
-            n += 1;
+        // An unmeasurable chunk is COUNTED, never averaged in as `0.0` and
+        // never as the 23.03 nats a laundered NaN used to produce.
+        match model.loss_on_seq(&tokens[c..end]) {
+            Some(loss) if loss.is_finite() => {
+                total += loss / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
     }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
+    }
     if n == 0 {
-        return (f32::MAX, f32::MAX);
+        return None;
     }
     let bpb = total / n as f32;
-    (bpb * LN_2, bpb)
+    if bpb.is_finite() {
+        Some((bpb * LN_2, bpb))
+    } else {
+        None
+    }
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
@@ -901,7 +961,18 @@ fn main() {
     let mut opt_av: Box<dyn Optimizer> =
         make_opt(if use_attention { ad * hidden } else { 1 }, wd, use_muon);
 
-    let (init_loss, init_bpb) = evaluate(&model, val, SEQ);
+    // A baseline nobody measured is not a baseline. This used to bind
+    // `f32::MAX` and carry it into `best_bpb`, the printed table and the
+    // results JSON.
+    let Some((init_loss, init_bpb)) = evaluate(&model, val, SEQ) else {
+        eprintln!(
+            "NO MEASUREMENT: the initial evaluation over {} val tokens produced \
+             zero finite windows. Refusing to start a run whose baseline nobody \
+             measured.",
+            val.len()
+        );
+        std::process::exit(EXIT_NO_MEASUREMENT);
+    };
     println!("Initial val: loss={:.4} bpb={:.4}", init_loss, init_bpb);
     println!();
     println!(
@@ -934,7 +1005,16 @@ fn main() {
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
-            let (vl, vb) = evaluate(&model, val, SEQ);
+            // An eval that measured nothing is reported as nothing: no row in
+            // `results`, no candidate for `best_bpb`, no invented number in
+            // the table.
+            let Some((vl, vb)) = evaluate(&model, val, SEQ) else {
+                println!(
+                    "{:>6} | {:>10} | {:>10} | {:>10.4} | {:>6}ms",
+                    step, "unmeasured", "unmeasured", best_bpb, ms
+                );
+                continue;
+            };
             if vb < best_bpb && vb.is_finite() {
                 best_bpb = vb;
             }
@@ -1021,5 +1101,75 @@ mod tests {
         assert_eq!(corpus.bytes, 160);
         assert_eq!(corpus.sha256.len(), 64, "sha256 must be 64 hex chars");
         assert!(!corpus.synthetic);
+    }
+
+    fn small_model(use_attention: bool) -> NgramModel {
+        NgramModel::new(8, 4, 8, "gelu".to_string(), 47, 1, use_attention)
+    }
+
+    /// The exact laundering this guard removes: `f32::max` returns the
+    /// non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose negative log is
+    /// 23.026 nats and whose BPB is 33.2 - positive, finite, and below the
+    /// ledger's sentinel ceiling, so nothing downstream could reject it.
+    #[test]
+    fn f32_max_launders_nan_into_a_publishable_bpb() {
+        let laundered = f32::NAN.max(1e-10);
+        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let bpb = -laundered.ln() / LN_2;
+        assert!(
+            (bpb - 33.2).abs() < 0.05,
+            "the laundered reading is 33.2 bpb, got {bpb}"
+        );
+        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every ledger guard");
+    }
+
+    /// A poisoned forward pass is an absence, on both the attention and the
+    /// plain path, not 33.2 bpb.
+    #[test]
+    fn nan_forward_pass_yields_no_measurement() {
+        let tokens: Vec<usize> = vec![1, 2, 3, 4, 5, 6, 7, 0, 1, 2];
+        let laundered_bpb = -f32::NAN.max(1e-10).ln() / LN_2;
+
+        for use_attention in [false, true] {
+            let healthy = small_model(use_attention);
+            assert!(
+                healthy.loss_on_seq(&tokens).is_some_and(f32::is_finite),
+                "the fixture must be measurable before the NaN is introduced \
+                 (use_attention={use_attention})"
+            );
+
+            let mut model = small_model(use_attention);
+            model.lm_head[0] = f32::NAN;
+
+            assert_eq!(
+                model.loss_on_seq(&tokens),
+                None,
+                "NaN is not a loss (use_attention={use_attention})"
+            );
+            assert_eq!(
+                evaluate(&model, &tokens, 8),
+                None,
+                "a poisoned model publishes nothing (use_attention={use_attention})"
+            );
+            if let Some((_, v)) = evaluate(&model, &tokens, 8) {
+                assert!(
+                    (v - 33.2).abs() > 1.0,
+                    "33.2 bpb is the laundered NaN, not a measurement: {v}"
+                );
+                assert_ne!(v, laundered_bpb);
+            }
+        }
+    }
+
+    /// A sequence too short to hold a context/target pair is an absence, not
+    /// the perfect `0.0` loss it used to report, and `evaluate` no longer
+    /// answers `f32::MAX` - a finite value every downstream guard accepted.
+    #[test]
+    fn short_sequence_yields_no_measurement() {
+        let model = small_model(false);
+        assert_eq!(model.loss_on_seq(&[1, 2, 3]), None);
+        assert_eq!(model.loss_on_seq(&[]), None);
+        assert_eq!(evaluate(&model, &[1, 2, 3], 8), None);
+        assert_eq!(evaluate(&model, &[], 8), None);
     }
 }

@@ -313,25 +313,38 @@ impl LstmTrain {
         }
     }
 
-    fn eval_bpb(&mut self, tokens: &[usize]) -> f32 {
+    /// Mean BPB over the eval stream, or `None` when nothing could be measured.
+    ///
+    /// This used to return `f32::MAX` on every barren path. `f32::MAX` is
+    /// finite, so it passed the caller's `is_finite()` guard, survived into
+    /// `best_bpb` and was printed on stdout as
+    /// `BPB=340282346638528859811704183484516925440.0000` beside `exit 0` -
+    /// exactly the shape of number the out-of-repo stdout parser turned into
+    /// ledger rows that later had to be retracted. An absence is now an
+    /// absence, and the caller has to decide what to do with it.
+    fn eval_bpb(&mut self, tokens: &[usize]) -> Option<EvalSample> {
         let dl = tokens.len();
         if dl < 2 {
-            return f32::MAX;
+            return None;
         }
         let num_possible = dl.saturating_sub(SEQ + 1);
         if num_possible == 0 {
-            return f32::MAX;
+            return None;
         }
         let nc = EVAL_SEQS.min(num_possible);
         let stride = num_possible / nc;
         if stride == 0 {
-            return f32::MAX;
+            return None;
         }
         let h = self.h;
         let d = self.d;
         let g4 = self.g4;
 
         let mut total = 0.0f32;
+        // `planned` counts windows this loop intends to measure (the check
+        // below is a shape check, not a measurement failure); `n` counts the
+        // ones that produced a finite loss.
+        let mut planned = 0usize;
         let mut n = 0usize;
         for c in 0..nc {
             let start = c * stride;
@@ -339,10 +352,12 @@ impl LstmTrain {
             if end <= start + 2 {
                 continue;
             }
+            planned += 1;
             let chunk = &tokens[start..end];
             let mut h_st = vec![0.0f32; h];
             let mut c_st = vec![0.0f32; h];
             let mut loss = 0.0f32;
+            let mut chunk_ok = true;
             for t in 0..chunk.len() - 1 {
                 let tok = chunk[t].min(VOCAB - 1);
                 let ex = &self.embed[tok * DIM..(tok + 1) * DIM];
@@ -378,17 +393,101 @@ impl LstmTrain {
                 }
                 softmax(&mut logits);
                 let target = chunk[t + 1].min(VOCAB - 1);
-                loss -= logits[target].max(1e-10).ln();
+                // `logits[target].max(1e-10)` used to launder a poisoned
+                // forward pass into a finite reading: `f32::max` returns the
+                // OTHER operand when one side is NaN, so a NaN probability
+                // silently became 1e-10 and contributed a plausible ~23 nats.
+                // A probability that is not finite and positive is not a
+                // measurement, so the whole chunk is dropped instead.
+                let p = logits[target];
+                if !p.is_finite() || p <= 0.0 {
+                    chunk_ok = false;
+                    break;
+                }
+                loss -= p.ln();
+            }
+            if !chunk_ok || !loss.is_finite() {
+                continue;
             }
             total += loss / (chunk.len() - 1) as f32 / LN_2;
             n += 1;
         }
-        if n == 0 {
-            f32::MAX
+        if n == 0 || !total.is_finite() {
+            None
         } else {
-            total / n as f32
+            Some(EvalSample {
+                mean: total / n as f32,
+                planned,
+                realised: n,
+            })
         }
     }
+}
+
+/// One eval pass: the mean, and the sample the mean was actually taken over.
+///
+/// Without the counts, an eval that measured 3 of 20 windows and one that
+/// measured all 20 print the same shape of number. They are not the same
+/// measurement; see `require_complete_sample`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct EvalSample {
+    mean: f32,
+    /// Windows the eval loop set out to measure.
+    planned: usize,
+    /// Windows that produced a finite loss.
+    realised: usize,
+}
+
+impl EvalSample {
+    fn dropped(&self) -> usize {
+        self.planned.saturating_sub(self.realised)
+    }
+}
+
+/// Refuse to publish a mean taken over fewer windows than were planned.
+///
+/// The `n == 0` guard in `eval_bpb` only fires under TOTAL poisoning. A NaN
+/// confined to one embedding row, or an overflow that only occurs on certain
+/// contexts, drops exactly the affected windows and leaves a plausible mean
+/// over the easy remainder - biased DOWNWARD, the direction that manufactures
+/// a champion. `src/train_loop.rs` takes the strict line and aborts on the
+/// first non-finite window; this binary keeps the per-window filter but will
+/// not publish what it produced unless the operator asks in writing.
+fn require_complete_sample(
+    label: &str,
+    sample: Option<EvalSample>,
+    eval_source: &str,
+    eval_tokens: usize,
+    allow_dropped: bool,
+) -> EvalSample {
+    let s = match sample {
+        Some(s) => s,
+        None => {
+            eprintln!(
+                "NO MEASUREMENT ({label}): zero finite eval windows on \
+                 {eval_source} ({eval_tokens} eval tokens). Refusing to print a \
+                 BPB nobody measured."
+            );
+            println!("BPB=unmeasured");
+            std::process::exit(EXIT_NO_MEASUREMENT);
+        }
+    };
+    if s.dropped() > 0 && !allow_dropped {
+        eprintln!(
+            "EVAL SAMPLE SHRANK ({}): {} of {} planned windows on {} went \
+             non-finite and were dropped. A mean over the survivors is biased \
+             DOWNWARD and is not a held-out measurement. Set {}=1 to publish it \
+             anyway.",
+            label,
+            s.dropped(),
+            s.planned,
+            eval_source,
+            ALLOW_DROPPED_EVAL_WINDOWS_VAR
+        );
+        println!("BPB=unmeasured");
+        std::process::exit(EXIT_NO_MEASUREMENT);
+    }
+    s
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
@@ -402,6 +501,68 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
 /// Exit code for a corpus that could not be honestly loaded. Same value
 /// `cpu_train` uses, so a sweep can tell a refused corpus from a crash.
 const EXIT_BAD_CORPUS: i32 = 6;
+
+/// Exit code for a run that measured nothing. Same value `cpu_train`,
+/// `trinity_pr1722` and `igla_trigram` use, so a sweep can tell an unmeasured
+/// run from a crash and from a refused corpus.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
+/// Exit code for an argument this binary does not understand. Same value
+/// `cpu_train` uses.
+const EXIT_BAD_ARGS: i32 = 4;
+
+/// Opt-in that permits publishing a mean taken over fewer windows than were
+/// planned. Off by default; see `require_complete_sample`.
+const ALLOW_DROPPED_EVAL_WINDOWS_VAR: &str = "TRIOS_ALLOW_DROPPED_EVAL_WINDOWS";
+
+/// Usage text. Without it `--help` starts a full 10000-step training run.
+const USAGE: &str = "\
+lstm_train - single-layer LSTM char model, BPB measured on a held-out corpus.
+
+Usage: lstm_train [--seed=N] [--steps=N] [--lr=F] [--hidden=N]
+                  [--train-data=PATH] [--val-data=PATH]
+
+Prints `BPB=<value>` on stdout and exits 0 when a BPB was measured over the
+FULL planned eval sample; prints `BPB=unmeasured` and exits 7 when no eval
+window was finite or when the sample shrank. The realised window count is
+printed beside the BPB as EVAL_WINDOWS_PLANNED / _REALISED / _DROPPED.
+Env: TRIOS_ALLOW_DROPPED_EVAL_WINDOWS=1 (publish a reduced eval sample).
+Exit codes: 4 = bad argument, 6 = corpus refused, 7 = nothing measured.";
+
+/// Every argument this binary reads, as `--name=value` prefixes. `--train-data`
+/// and `--val-data` also accept a space-separated value (see `arg_path`).
+const KNOWN_VALUE_ARGS: [&str; 6] = ["seed", "steps", "lr", "hidden", "train-data", "val-data"];
+/// The two flags `arg_path` will consume a following argv entry for.
+const SPACE_VALUE_ARGS: [&str; 2] = ["--train-data", "--val-data"];
+
+/// Name the first argument that means nothing here, or `None` if all are known.
+///
+/// Silently ignoring an unrecognised argument lets a caller believe it asked
+/// for one run while the binary performs another.
+fn first_unknown_arg(args: &[String]) -> Option<String> {
+    let mut i = 1usize;
+    while i < args.len() {
+        let a = &args[i];
+        if a == "--help" || a == "-h" {
+            i += 1;
+            continue;
+        }
+        if SPACE_VALUE_ARGS.contains(&a.as_str()) {
+            // `arg_path` reads the next entry as this flag's value.
+            i += 2;
+            continue;
+        }
+        if KNOWN_VALUE_ARGS
+            .iter()
+            .any(|name| a.starts_with(&format!("--{name}=")))
+        {
+            i += 1;
+            continue;
+        }
+        return Some(a.clone());
+    }
+    None
+}
 
 /// Pinned split. Both files ship in `data/`; neither is derived from the other.
 const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
@@ -529,6 +690,28 @@ fn load_or_refuse(path: &str) -> (Vec<usize>, CorpusInfo) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", USAGE);
+        return Ok(());
+    }
+    if let Some(bad) = first_unknown_arg(&args) {
+        eprintln!("UNKNOWN ARGUMENT: {bad}");
+        eprintln!();
+        eprintln!("{}", USAGE);
+        std::process::exit(EXIT_BAD_ARGS);
+    }
+    // Whether a reduced eval sample may be published, decided once so every
+    // eval in the run is graded the same way.
+    let allow_dropped = std::env::var(ALLOW_DROPPED_EVAL_WINDOWS_VAR)
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if allow_dropped {
+        eprintln!(
+            "{}=1: a reduced eval sample will be published. The mean is taken \
+             over the windows that survived and is biased DOWNWARD.",
+            ALLOW_DROPPED_EVAL_WINDOWS_VAR
+        );
+    }
     // Canon #93 forbids seeds {42, 43, 44, 45} (see src/seed_canon.rs); the
     // default is a permitted one so an argument-free run is not born invalid.
     let seed: u64 = args
@@ -563,6 +746,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         &train_data[train_end..]
     };
+    // Named here, where the choice is made, so a refusal can say which bytes
+    // it failed to measure.
+    let eval_source = if val_data.len() > 100 {
+        val_corpus.path.clone()
+    } else {
+        format!("the held-out tail of {}", train_corpus.path)
+    };
 
     let mut m = LstmTrain::new(hidden, seed);
     let d = DIM + hidden;
@@ -574,7 +764,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut opt_b = AdamW::new(g4);
     let mut opt_h = AdamW::new(VOCAB * hidden);
 
-    let mut best_bpb = f32::MAX;
+    // `None` until an eval actually measures something. The old `f32::MAX`
+    // seed was finite, so `val_bpb < best_bpb && val_bpb.is_finite()` never
+    // rejected it and never replaced it either. The whole sample is kept, not
+    // just its mean, so the BPB that is finally printed can name the window
+    // count it was averaged over.
+    let mut best: Option<EvalSample> = None;
+    let mut dropped_total = 0usize;
     let warmup = steps / 10;
     let start = Instant::now();
     let dl = train.len();
@@ -603,21 +799,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if step % EVAL_INTERVAL == 0 || step == steps {
             let elapsed = start.elapsed().as_secs_f64();
-            let val_bpb = m.eval_bpb(val);
-            if val_bpb < best_bpb && val_bpb.is_finite() {
-                best_bpb = val_bpb;
+            // An intermediate eval is not a lesser measurement: it feeds the
+            // BPB that is finally printed, so it is graded like any other.
+            let sample = require_complete_sample(
+                &format!("eval at step {step}"),
+                m.eval_bpb(val),
+                &eval_source,
+                val.len(),
+                allow_dropped,
+            );
+            dropped_total += sample.dropped();
+            if best.is_none_or(|b| sample.mean < b.mean) {
+                best = Some(sample);
             }
+            let best_text = match best {
+                Some(b) => format!("{:.4}", b.mean),
+                None => "unmeasured".to_string(),
+            };
             eprintln!(
-                "step={:5} val_bpb={:.4} best={:.4} t={}s",
-                step, val_bpb, best_bpb, elapsed as u64
+                "step={:5} val_bpb={:.4} best={} windows={}/{} t={}s",
+                step, sample.mean, best_text, sample.realised, sample.planned, elapsed as u64
             );
         }
     }
 
     let elapsed = start.elapsed().as_secs_f64();
-    eprintln!("done: best_bpb={:.4} time={:.1}s", best_bpb, elapsed);
-    println!("BPB={:.4}", best_bpb);
-    Ok(())
+    match best {
+        Some(b) => {
+            eprintln!("done: best_bpb={:.4} time={:.1}s", b.mean, elapsed);
+            // This binary has no results JSON; stdout IS its results record,
+            // so the realised window count is printed beside the BPB rather
+            // than written to a file. A reader that cannot see the sample
+            // cannot tell a full eval from a shrunken one.
+            println!("EVAL_WINDOWS_PLANNED={}", b.planned);
+            println!("EVAL_WINDOWS_REALISED={}", b.realised);
+            println!("EVAL_WINDOWS_DROPPED={}", b.dropped());
+            println!("EVAL_WINDOWS_DROPPED_TOTAL={}", dropped_total);
+            println!("BPB={:.4}", b.mean);
+            Ok(())
+        }
+        // A run that measured nothing has no BPB. Printing a sentinel under
+        // the `BPB=` key beside `exit 0` is what put unmeasured numbers into
+        // the ledger; the run now says so and fails.
+        None => {
+            eprintln!(
+                "NO MEASUREMENT: every eval over {} steps produced zero finite \
+                 windows on {} ({} eval tokens). Refusing to print a BPB nobody \
+                 measured.",
+                steps,
+                eval_source,
+                val.len()
+            );
+            eprintln!("done: best_bpb=unmeasured time={:.1}s", elapsed);
+            println!("BPB=unmeasured");
+            std::process::exit(EXIT_NO_MEASUREMENT);
+        }
+    }
 }
 
 #[cfg(test)]

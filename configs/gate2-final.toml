@@ -43,8 +43,15 @@ w_jepa = 0.15    # JEPA auxiliary weight (P4 sweep result)
 w_nca  = 0.10    # NCA auxiliary weight (P4 sweep result)
 
 [ledger]
-jsonl_path    = "assertions/seed_results.jsonl"
-push          = true     # Auto-commit and push after each seed
+# Was "assertions/seed_results.jsonl" with push = true, i.e. running this file
+# committed and pushed to origin as a side effect of measuring a BPB. That
+# ledger is retracted (renamed to assertions/RETRACTED-seed_results.jsonl.txt);
+# re-creating the path republishes retracted evidence, and
+# `falsify_live_ledger_resurrected` in tests/preregistration_seed_lock.rs fails
+# if it reappears. An empty path makes run() skip the emit entirely: this
+# config cannot mint a row, and it cannot touch git.
+jsonl_path    = ""
+push          = false
 embargo_path  = ".embargo"
 
 [gate2]

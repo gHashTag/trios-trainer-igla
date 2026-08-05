@@ -10,14 +10,15 @@
 
 | Metric | Value | Target | Status |
 |--------|-------|--------|--------|
-| Best BPB (Seed 43) | 2.2111 @ 81K steps | < 1.85 | 🔴 GAP: 0.3611 |
-| Champion BPB | 2.2393 | < 1.85 | 🔴 GAP: 0.3893 |
+| Best BPB (Seed 43) | ~~2.2111 @ 81K steps~~ RETRACTED | < 1.85 | no ledger row, no artifact, no reproducible recipe; see `RETRACTION.md`. No best BPB, no gap |
+| Champion BPB | ~~2.2393~~ RETRACTED | < 1.85 | see `RETRACTION.md`; no champion, no gap |
 | Gate-2 Threshold | 1.85 | - | 🎯 TARGET |
-| Gate-1 Threshold | 2.22 | - | ⚠️ PASSED (2.2111 < 2.22) |
-| Seeds Validated | 1 (seed 43) | 3 (43, 44, 45) | 🔴 NEED 2 MORE |
+| Gate-1 Threshold | 2.22 | - | ~~PASSED (2.2111 < 2.22)~~ RETRACTED - the pass rested on 2.2111, which is not citable |
+| Seeds Validated | 0 | 3 (43, 44, 45) | seed 43 is retracted with its number, and is forbidden under Canon #93 |
 
-**Progress:** BPB improved by -0.028 (-1.25%) in last run.
-**Remaining Gap:** 0.3611 BPB to Gate-2 target.
+**Progress:** the "-0.028 (-1.25%) improvement" is retracted - both ends of the
+subtraction are withdrawn numbers.
+**Remaining Gap:** retracted; no citable BPB exists to measure a gap from.
 
 ---
 
@@ -31,7 +32,7 @@ P0 Audit  ->  P1 OptLab  ->  P2 muP  ->  P3 SF  ->  P4 Multi  ->  P5 Push
 
 | Phase | Status | Result | Evidence |
 |-------|--------|--------|----------|
-| **P0: Audit** | ✅ DONE | Replication: 2.2393 @ 27K | `.trinity/results/p0-1-seed43-replication.json` |
+| **P0: Audit** | WITHDRAWN | Replication target ~~2.2393~~ @ 27K is RETRACTED, see `RETRACTION.md` | `.trinity/results/p0-1-seed43-replication.json` |
 | **P1: Optimizer** | ✅ NULL | Muon +0.07 BPB worse than AdamW | `docs/audit/P1_null.md` |
 | **P2: muP Transfer** | ⚪ READY | Not started | Config: `configs/needle-v1-mup.toml` |
 | **P3: Schedule-Free** | ⚪ READY | Not started | Awaiting P1+P2 |
@@ -50,7 +51,8 @@ P0 Audit  ->  P1 OptLab  ->  P2 muP  ->  P3 SF  ->  P4 Multi  ->  P5 Push
 - ✅ `trios-dwagent-production`
 - ✅ `trios-mcp-public-production`
 - ✅ `trios-train-seed-44-production`
-- ✅ `railway-trios-train-81k` (NEW CHAMPION achieved here!)
+- ✅ `railway-trios-train-81k` (a run executed here; the "NEW CHAMPION" BPB it
+  reported is RETRACTED - what survives is that the service built and ran)
 
 **Required User Action:**
 1. Link to working Railway service via dashboard
@@ -189,8 +191,9 @@ Last Commit: 9a2203c2 feat(mcp): Add MCP server for tri/trios-igla CLI wrappers
 1. Document post-mortem of IGLA RACE #143
 2. Publish findings:
    - P1 null result (Muon vs AdamW)
-   - Best achieved BPB: 2.2111 (seed 43, 81K steps)
-   - Gap to target: 0.3611 BPB
+   - ~~Best achieved BPB: 2.2111 (seed 43, 81K steps)~~ RETRACTED - no ledger row,
+     no artifact, no reproducible recipe; see `RETRACTION.md`. Nothing to publish
+   - Gap to target: retracted with the number it was measured from
 3. Exit with dignity (no false claims)
 
 ---

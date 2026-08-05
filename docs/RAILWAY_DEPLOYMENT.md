@@ -11,7 +11,7 @@ rebuilds.
 
 | Wave | Seeds | Status | Notes |
 |---|---|---|---|
-| Champion | 43 | Reproduces BPB=2.2393 @ 27K | reference run, do not touch |
+| Champion | 43 | ~~Reproduces BPB=2.2393 @ 27K~~ **RETRACTED** | not citable: no artifact, unresolvable commit `2446855`, seed forbidden under Canon #93. There is no reference run. See [`RETRACTION.md`](../RETRACTION.md) |
 | Attempt-1 | 43, 44, 45 | 0 rows < BPB 1.85 | old fleet, tried previously |
 | **Attempt-2 (this deploy)** | **100, 101, 102** | **NEW** | new seeds — fresh seeds outside the 43-45 window |
 

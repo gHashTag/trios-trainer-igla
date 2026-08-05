@@ -7,7 +7,8 @@
 
 - **P0 (Audit)**: Champion reproduction tested
   - Best 27K-step result: BPB=2.3586 (seed 43, AdamW, d=384, 2L)
-  - Champion target: 2.2393 (original baseline)
+  - Champion target: ~~2.2393~~ **RETRACTED** (see `RETRACTION.md` at the repo
+    root); there is no champion baseline and no replacement number
 
 - **P1 (Optimizer Lab)**: Configs ready for Railway deployment
   - `configs/lab/p1-adamw.toml` - Control (AdamW, LR=0.004)

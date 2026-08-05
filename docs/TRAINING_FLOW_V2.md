@@ -1,12 +1,21 @@
 # Training Flow v2 — Gate-2 Decomposed Plan
 
-> Status: draft proposal. Issue: [#24](https://github.com/gHashTag/trios-trainer-igla/issues/24).
+> Status: draft proposal, **partially retracted 2026-08-03**. Issue: [#24](https://github.com/gHashTag/trios-trainer-igla/issues/24).
 > Anchor: `phi^2 + phi^-2 = 3` ([Zenodo 10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877)).
 > Companion CLI: [`tri railway`](https://github.com/gHashTag/t27/pull/544) ONE SHOT.
 
+> **RETRACTION NOTICE.** The plan below is written around two things that no
+> longer exist. Both are retracted: a champion at BPB=2.2393 (not citable), and
+> the ledger `assertions/seed_results.jsonl`. The ledger is preserved at
+> [`assertions/RETRACTED-seed_results.jsonl.txt`](../assertions/RETRACTED-seed_results.jsonl.txt);
+> the accounting is in [`RETRACTION.md`](../RETRACTION.md). Every mention of
+> 2.2393 below is a mention of a withdrawn number - kept so the plan still reads
+> as it was written, not because the number stands. P0 as specified is not
+> executable.
+
 ## TL;DR
 
-The champion sits at **BPB=2.2393** (sha `2446855`, seed 43, step 27000). Gate-2 demands **BPB<1.85 on 3 seeds (43, 44, 45) with step >= 4000** before deadline `2026-04-30 23:59 UTC`. The current single-config / single-optimizer flow has not closed the 0.39 BPB gap on any branch in this repo.
+The champion was said to sit at BPB=2.2393 (sha `2446855`, seed 43, step 27000). **That number is retracted** — `2446855` does not resolve in this repo, no artifact backs it, and seed 43 is forbidden by `src/seed_canon.rs`; see [`RETRACTION.md`](../RETRACTION.md). There is no champion. Gate-2 demands **BPB<1.85 on 3 seeds (43, 44, 45) with step >= 4000** before deadline `2026-04-30 23:59 UTC`. The current single-config / single-optimizer flow has not closed the 0.39 BPB gap on any branch in this repo.
 
 This plan decomposes the chase into **6 phases** (P0..P5), each with one falsifiable hypothesis, one exit criterion, and one owner. The plan combines four 2025 ablation-validated levers — **Muon optimizer**, **muP hyper-parameter transfer**, **Schedule-Free AdamW + WSD**, and **post-hoc EMA** — under one R5-honest ledger contract.
 
@@ -41,7 +50,7 @@ These levers are independent — additivity is the working hypothesis, falsified
 
 **Pre-conditions**: clean checkout of `main`, FineWeb mirrors at `/data/fineweb_{train,val}.bin`, `cargo test --release` green.
 
-**Hypothesis**: `configs/champion.toml --seed 43` reproduces `BPB = 2.2393 +/- 0.01 @ step 27000` on a fresh machine.
+**Hypothesis (RETRACTED)**: `configs/champion.toml --seed 43` reproduces `BPB = 2.2393 +/- 0.01 @ step 27000` on a fresh machine. This hypothesis is withdrawn: 2.2393 is not citable (see [`RETRACTION.md`](../RETRACTION.md)), and `configs/champion.toml` cannot produce the run this phase describes. The mechanism is a refusal, not an override: `--config configs/champion.toml` exits 1 without training, because `config_train_args` grades every declared field against what this build can execute and names the ten it cannot - starting with `model.d_model declares 256 but this build would run hidden=828`. The file's own header quotes the full refusal.
 
 **Tasks**
 
@@ -49,9 +58,9 @@ These levers are independent — additivity is the working hypothesis, falsified
 2. Capture wall-clock + memory profile in `assertions/baseline_profile.json`.
 3. Snapshot HEAD SHA into `docs/audit/P0_seed43.md` (full commit, full triplet).
 4. Diff `src/train_loop.rs` against `gHashTag/trios@2446855::trios-igla-trainer/src/train_loop.rs`. Document any drift in `docs/audit/P0_drift.md` -- drift is allowed only if accompanied by a passing diff-test.
-5. Lock the floor: append `champion@<sha>` to `assertions/champion_lock.txt`.
+5. ~~Lock the floor: append `champion@<sha>` to `assertions/champion_lock.txt`.~~ Withdrawn — `assertions/champion_lock.txt` no longer holds a number; it holds a pointer to [`RETRACTION.md`](../RETRACTION.md).
 
-**Exit criterion**: ledger emits `BPB=2.2393 +/- 0.01 @ step=27000 seed=43 sha=<HEAD7> jsonl_row=<L> gate_status=below_target_evidence` and the row passes R8 + R9.
+**Exit criterion (RETRACTED)**: the ledger this criterion writes to is withdrawn, and the 2.2393 it targets is not citable — see [`RETRACTION.md`](../RETRACTION.md). Reinstating P0 requires a checkpoint-backed reference with a corpus digest, a recorded eval cadence and a canon-legal seed.
 
 **Falsification**: BPB drift > 0.05 -> bisect against `gHashTag/trios@2446855` before any other phase.
 
@@ -170,12 +179,12 @@ These levers are independent — additivity is the working hypothesis, falsified
 2. Run the [`tri railway`](https://github.com/gHashTag/t27/pull/544) ONE SHOT (`up --confirm`) -- print the GraphQL bodies.
 3. Operator POSTs to Railway; three services come up: `trainer-seed-43/44/45`.
 4. Each service emits R7 triplets every 500 steps.
-5. `assertions/seed_results.jsonl` accumulates rows; `tri railway gate2` reports verdict.
+5. ~~`assertions/seed_results.jsonl` accumulates rows~~; that ledger is retracted ([`assertions/RETRACTED-seed_results.jsonl.txt`](../assertions/RETRACTED-seed_results.jsonl.txt)) and no live path replaces it yet.
 6. Stop condition: 3 distinct seeds with `BPB < 1.85 AND step >= 4000` OR deadline hit.
 
 **Exit criterion**: 3 ledger rows with `gate_status="victory_candidate"` AND merged `feat: Gate-2 victory` PR. R5 honesty gate.
 
-**Falsification**: deadline hit without quorum -> publish the post-mortem in `docs/audit/P5_postmortem.md`. Champion floor (2.2393) remains the public number; no DONE is claimed.
+**Falsification**: deadline hit without quorum -> publish the post-mortem in `docs/audit/P5_postmortem.md`. The clause that followed — "Champion floor (2.2393) remains the public number" — is retracted; there is no public number and no champion floor. No DONE is claimed.
 
 **Owner**: `gate2-pilot`.
 
@@ -187,7 +196,7 @@ This is the falsification table. Filled in only by future PRs after each phase c
 
 | Phase | Hypothesis margin | Outcome (BPB delta) | Decision | PR |
 |---|---|---|---|---|
-| P0 | reproduce 2.2393 +/- 0.01 | _pending_ | _pending_ | _pending_ |
+| P0 | ~~reproduce 2.2393 +/- 0.01~~ (retracted, not citable) | _n/a_ | **withdrawn** | see RETRACTION.md |
 | P1 | Muon - AdamW <= -0.05 | _pending_ | _pending_ | _pending_ |
 | P2 | muP transfer < 5% deg | _pending_ | _pending_ | _pending_ |
 | P3 | SF/WSD - cosine <= -0.04 | _pending_ | _pending_ | _pending_ |
@@ -197,14 +206,14 @@ This is the falsification table. Filled in only by future PRs after each phase c
 ## Lab vs Ledger discipline (R7/R8 hygiene)
 
 - **Lab rows** live under `assertions/lab/*.jsonl`. They are NOT R7-validated triplets and MAY have step < 4000. They are for local decisions only and never roll up to Gate-2.
-- **Ledger rows** live in `assertions/seed_results.jsonl`. They MUST satisfy R7 + R8 + R9. Only P0 and P5 are allowed to write here.
+- **Ledger rows** lived in `assertions/seed_results.jsonl`. They were supposed to satisfy R7 + R8 + R9; none of the eleven rows actually did, which is why the file is now [`assertions/RETRACTED-seed_results.jsonl.txt`](../assertions/RETRACTED-seed_results.jsonl.txt). There is no live ledger path. Re-creating the old one is caught by `falsify_live_ledger_resurrected` in `tests/preregistration_seed_lock.rs`.
 - A phase that wants to "promote" a lab row to a ledger row MUST run a full P5-style 3-seed verification.
 
 ## Concrete code touchpoints
 
 | Phase | New files | Modified |
 |---|---|---|
-| P0 | `docs/audit/P0_seed43.md`, `assertions/baseline_profile.json`, `assertions/champion_lock.txt` | `tests/champion_reproduction.rs` |
+| P0 (withdrawn) | `docs/audit/P0_seed43.md`, `assertions/baseline_profile.json`, ~~`assertions/champion_lock.txt`~~ (now a pointer to `RETRACTION.md`) | `tests/champion_reproduction.rs` (reproduction test deleted) |
 | P1 | `src/optimizer/muon.rs`, `configs/lab/p1-*.toml` | `src/optimizer.rs`, `src/config.rs` |
 | P2 | `src/mup.rs`, `configs/lab/p2-*.toml` | `src/model.rs` (per-group LR), `src/optimizer.rs` |
 | P3 | _none_ | `src/optimizer.rs::schedule_free`, `src/optimizer.rs::wsd_lr` |

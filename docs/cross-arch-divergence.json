@@ -1,0 +1,360 @@
+{
+  "a": {
+    "bytes": 852272,
+    "data_synthetic": 0,
+    "gf16_enabled": 1,
+    "path": "evidence/xarch-run-30767491098/12000.bin",
+    "seed": 47,
+    "sha256": "bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3",
+    "step": 12000
+  },
+  "b": {
+    "bytes": 852272,
+    "data_synthetic": 0,
+    "gf16_enabled": 1,
+    "path": "checkpoints/r5-adv-recheck/12000.bin",
+    "seed": 47,
+    "sha256": "8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c",
+    "step": 12000
+  },
+  "container": "TRIOSCKP",
+  "container_version": 1,
+  "directory_bytes_equal": true,
+  "files_identical": false,
+  "first_differing_byte": 2882,
+  "first_differing_byte_section": "payload",
+  "first_differing_param": 644,
+  "first_differing_param_tensor": "embed",
+  "frac_differing": 0.4369694636418269,
+  "grid_params_differing": 52110,
+  "grid_params_differing_on_step": 52110,
+  "grid_step": 0.0625,
+  "grid_step_histogram": {
+    "1": 40435,
+    "2": 9122,
+    "3": 1983,
+    "4": 437,
+    "5": 97,
+    "6": 28,
+    "7": 6,
+    "9": 2
+  },
+  "grid_tensors": [
+    "embed",
+    "ctx0",
+    "ctx1",
+    "ctx2",
+    "ctx3",
+    "ctx4",
+    "ctx5",
+    "proj",
+    "lm_head",
+    "wq2",
+    "wk2",
+    "wv2",
+    "wo2"
+  ],
+  "header_bytes_equal": true,
+  "l2_a": 61.5781052232243,
+  "l2_b": 61.046323702052426,
+  "l2_diff": 29.034775874248627,
+  "max_abs_diff": 0.6854054629802704,
+  "max_abs_diff_a": -0.3120293915271759,
+  "max_abs_diff_b": 0.3733760714530945,
+  "max_abs_diff_index": 185481,
+  "max_abs_diff_tensor": "wk",
+  "median_rel_diff": 0.5588088370023011,
+  "median_rel_diff_definition": "median over differing parameters of |a-b| / max(|a|,|b|)",
+  "median_rel_diff_n": 93071,
+  "params": 212992,
+  "params_differing": 93071,
+  "params_differing_bitwise": 95144,
+  "params_signed_zero_only": 2073,
+  "params_zero_in_both": 33503,
+  "payload_offset": 304,
+  "pct_differing": 43.69694636418269,
+  "quantization": {
+    "embed": {
+      "a": {
+        "count": 8192,
+        "distinct": 18,
+        "max": 0.5,
+        "min": -0.5625,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 1.0,
+        "on_grid": true,
+        "spacings": 17
+      },
+      "b": {
+        "count": 8192,
+        "distinct": 18,
+        "max": 0.4375,
+        "min": -0.625,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 1.0,
+        "on_grid": true,
+        "spacings": 17
+      }
+    },
+    "lm_head": {
+      "a": {
+        "count": 49152,
+        "distinct": 23,
+        "max": 0.25,
+        "min": -1.125,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 1.0,
+        "on_grid": true,
+        "spacings": 22
+      },
+      "b": {
+        "count": 49152,
+        "distinct": 23,
+        "max": 0.3125,
+        "min": -1.125,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 0.9545454545454546,
+        "on_grid": true,
+        "spacings": 22
+      }
+    },
+    "proj": {
+      "a": {
+        "count": 24576,
+        "distinct": 17,
+        "max": 0.4375,
+        "min": -0.5625,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 1.0,
+        "on_grid": true,
+        "spacings": 16
+      },
+      "b": {
+        "count": 24576,
+        "distinct": 17,
+        "max": 0.4375,
+        "min": -0.5625,
+        "modal_spacing": 0.0625,
+        "modal_spacing_share": 1.0,
+        "on_grid": true,
+        "spacings": 16
+      }
+    }
+  },
+  "rel_l2": 0.475618745134565,
+  "rel_l2_denominator": "l2 norm of b (checkpoints/r5-adv-recheck/12000.bin)",
+  "rel_l2_swapped": 0.4715113556839048,
+  "spec": "interop/SPEC-SNAPSHOT.txt",
+  "tensors": [
+    {
+      "count": 8192,
+      "differing": 1824,
+      "distinct_a": 18,
+      "distinct_b": 18,
+      "max_abs_diff": 0.1875,
+      "name": "embed",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 22.265625
+    },
+    {
+      "count": 8192,
+      "differing": 2050,
+      "distinct_a": 20,
+      "distinct_b": 21,
+      "max_abs_diff": 0.25,
+      "name": "ctx0",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 25.0244140625
+    },
+    {
+      "count": 8192,
+      "differing": 2338,
+      "distinct_a": 22,
+      "distinct_b": 21,
+      "max_abs_diff": 0.3125,
+      "name": "ctx1",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 28.5400390625
+    },
+    {
+      "count": 8192,
+      "differing": 2433,
+      "distinct_a": 20,
+      "distinct_b": 21,
+      "max_abs_diff": 0.25,
+      "name": "ctx2",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 29.69970703125
+    },
+    {
+      "count": 8192,
+      "differing": 2416,
+      "distinct_a": 19,
+      "distinct_b": 19,
+      "max_abs_diff": 0.3125,
+      "name": "ctx3",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 29.4921875
+    },
+    {
+      "count": 8192,
+      "differing": 2429,
+      "distinct_a": 19,
+      "distinct_b": 18,
+      "max_abs_diff": 0.3125,
+      "name": "ctx4",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 29.65087890625
+    },
+    {
+      "count": 8192,
+      "differing": 2544,
+      "distinct_a": 20,
+      "distinct_b": 19,
+      "max_abs_diff": 0.375,
+      "name": "ctx5",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 31.0546875
+    },
+    {
+      "count": 24576,
+      "differing": 14108,
+      "distinct_a": 17,
+      "distinct_b": 17,
+      "max_abs_diff": 0.375,
+      "name": "proj",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 57.405598958333336
+    },
+    {
+      "count": 24576,
+      "differing": 1,
+      "distinct_a": 24542,
+      "distinct_b": 24542,
+      "max_abs_diff": 1.862645149230957e-09,
+      "name": "attn_down",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 0.004069010416666667
+    },
+    {
+      "count": 24576,
+      "differing": 24576,
+      "distinct_a": 24569,
+      "distinct_b": 24572,
+      "max_abs_diff": 0.2948690354824066,
+      "name": "attn_up",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 100.0
+    },
+    {
+      "count": 49152,
+      "differing": 21968,
+      "distinct_a": 23,
+      "distinct_b": 23,
+      "max_abs_diff": 0.5625,
+      "name": "lm_head",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 44.694010416666664
+    },
+    {
+      "count": 4096,
+      "differing": 4096,
+      "distinct_a": 4096,
+      "distinct_b": 4096,
+      "max_abs_diff": 0.6322397887706757,
+      "name": "wq",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 100.0
+    },
+    {
+      "count": 4096,
+      "differing": 4096,
+      "distinct_a": 4096,
+      "distinct_b": 4095,
+      "max_abs_diff": 0.6854054629802704,
+      "name": "wk",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 100.0
+    },
+    {
+      "count": 4096,
+      "differing": 4096,
+      "distinct_a": 4096,
+      "distinct_b": 4096,
+      "max_abs_diff": 0.5806900560855865,
+      "name": "wv",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 100.0
+    },
+    {
+      "count": 4096,
+      "differing": 4096,
+      "distinct_a": 4094,
+      "distinct_b": 4096,
+      "max_abs_diff": 0.5189690366387367,
+      "name": "wo",
+      "on_grid_a": false,
+      "on_grid_b": false,
+      "pct_differing": 100.0
+    },
+    {
+      "count": 4096,
+      "differing": 0,
+      "distinct_a": 1,
+      "distinct_b": 1,
+      "max_abs_diff": 0.0,
+      "name": "wq2",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 0.0
+    },
+    {
+      "count": 4096,
+      "differing": 0,
+      "distinct_a": 1,
+      "distinct_b": 1,
+      "max_abs_diff": 0.0,
+      "name": "wk2",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 0.0
+    },
+    {
+      "count": 4096,
+      "differing": 0,
+      "distinct_a": 1,
+      "distinct_b": 1,
+      "max_abs_diff": 0.0,
+      "name": "wv2",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 0.0
+    },
+    {
+      "count": 4096,
+      "differing": 0,
+      "distinct_a": 1,
+      "distinct_b": 1,
+      "max_abs_diff": 0.0,
+      "name": "wo2",
+      "on_grid_a": true,
+      "on_grid_b": true,
+      "pct_differing": 0.0
+    }
+  ],
+  "tool": "scripts/compare_checkpoints.py"
+}

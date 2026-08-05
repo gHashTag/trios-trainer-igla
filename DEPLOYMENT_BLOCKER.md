@@ -5,12 +5,31 @@
 **Deadline:** 2026-04-30 23:59 UTC (~3 days remaining)
 **Status:** CRITICAL - BUT Railway IS working for other services
 
-## NEW CHAMPION (2026-04-27 20:20 UTC)
+## CHAMPION CLAIM (2026-04-27 20:20 UTC) - RETRACTED IN FULL 2026-08-03
 
-- **BPB = 2.2111** (seed 43, 81K steps)
-- Previous: 2.2393
-- **Improvement: -0.028 BPB (-1.25%)**
-- Gap to target (1.85): 0.3611 BPB
+> Every number in this section is **RETRACTED**. Nothing is deleted: deleting
+> evidence is worse than retracting it. See [`RETRACTION.md`](RETRACTION.md) and
+> [`docs/audit/HONEST_FINDINGS.md`](docs/audit/HONEST_FINDINGS.md).
+
+- ~~**BPB = 2.2111** (seed 43, 81K steps)~~ **RETRACTED - not citable: no ledger
+  row, no artifact, no reproducible recipe.** It belongs to the same withdrawn
+  family as 2.2393 (seed 43, forbidden under Canon #93; no corpus digest, no
+  recorded eval cadence, no checkpoint on disk). It is worse than that: the
+  number occurs in this file, `.trinity/dashboard.md`, `.trinity/STATUS.md` and
+  an experience log, and **nowhere else in the tree** - it has no row even in the
+  ledger that was itself retracted (a retracted-rows search - `grep -rn "2.2111" assertions/` - returns nothing).
+  The only row describing the
+  same withdrawn run family, seed 43 at step 81000, reads `bpb: 2.1919` with
+  `hidden: 828` (`assertions/RETRACTED-seed_results.jsonl.txt`), while this
+  retracted section reports the run as `hidden=384`. The two descriptions
+  disagree and neither can be checked.
+- Previous: ~~2.2393~~ **RETRACTED - not citable; see [`RETRACTION.md`](RETRACTION.md).**
+  No replacement number is asserted in its place.
+- **Improvement: -0.028 BPB (-1.25%)** - computed against the retracted 2.2393
+  from the retracted 2.2111, so this delta is retracted with them. No improvement
+  figure is claimed here.
+- Gap to target (1.85): 0.3611 BPB - retracted, it is a difference of a retracted
+  number from the target
 - Architecture: hidden=384, lr=0.003, adamw, 2 attn layers, tiny_shakespeare
 - Agent: `railway-trios-train-81k` (ALPHA)
 
@@ -32,7 +51,10 @@ The following services are working on Railway (from environment variables):
 - `trios-mcp-public-production`
 - `trios-train-seed-44-production`
 
-The champion results were achieved on `railway-trios-train-81k`, proving that Railway deployment IS possible with the correct configuration.
+A training run did execute on `railway-trios-train-81k`, which is what shows that
+Railway deployment IS possible with the correct configuration. The BPB it
+reported is retracted (see the section above); what survives is the deployment
+fact, not the measurement.
 
 ## Root Cause
 
@@ -83,10 +105,11 @@ RUN cargo build --release --bin trios-train -p trios-trainer
 - **gate2-final.toml:** ✅ Updated with AdamW
 - **Build:** ✅ Local build succeeds
 - **Deployment (igla-trainer-seed-101):** ❌ BLOCKED by cached config
-- **Deployment (other services):** ✅ WORKING (champion achieved)
-- **Best BPB:** 2.2111 (seed 43, 81K steps) - NEW CHAMPION!
+- **Deployment (other services):** ✅ WORKING (a run executed; its BPB is retracted)
+- **Best BPB:** ~~2.2111 (seed 43, 81K steps) - NEW CHAMPION!~~ **RETRACTED -
+  no ledger row, no artifact, no reproducible recipe; see [`RETRACTION.md`](RETRACTION.md)**
 - **Target BPB:** 1.85
-- **Gap:** 0.3611 BPB
+- **Gap:** 0.3611 BPB - retracted with the number it was measured from
 
 ## Immediate Action Required
 
@@ -99,7 +122,9 @@ RUN cargo build --release --bin trios-train -p trios-trainer
 
 If deployment cannot be resolved by 2026-04-28 12:00 UTC:
 1. Document post-mortem of IGLA RACE #143
-2. Publish findings (P1 null result, best achieved BPB: 2.2111)
+2. Publish findings (P1 null result). RETRACTED: the "best achieved BPB: 2.2111"
+   this step planned to publish has no ledger row, no artifact and no
+   reproducible recipe, and must not be published as a result
 3. Exit with dignity (no false claims)
 
 ## Configuration Ready
@@ -125,7 +150,9 @@ For deployment assistance or to provide credentials, coordinate via:
 - ✅ All changes committed and pushed to main
 
 ### Commits This Session
-- `e674bb1` - docs(igla): Update blocker with NEW CHAMPION (BPB=2.2111)
+- `e674bb1` - docs(igla): Update blocker with NEW CHAMPION (BPB=2.2111) - RETRACTED
+  claim; the commit subject is kept verbatim because it is the historical record,
+  but the number it announced is withdrawn
 - `65147f2` - log(igla): Add autonomous session summary to experience log
 - `06de218` - fix(igla): Fix LedgerRow construction in tests
 - `3713a58` - log(igla): Record compilation fix progress

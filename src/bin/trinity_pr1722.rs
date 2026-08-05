@@ -16,6 +16,26 @@ const EMA_DECAY: f32 = 0.997;
 /// `cpu_train` uses, so a sweep can tell a refused corpus from a crash.
 const EXIT_BAD_CORPUS: i32 = 6;
 
+/// Exit code for a run that reached the end without a measurable eval window.
+/// Same value `cpu_train` uses.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
+/// Comparison window, in tokens, for the train/val overlap guard. Mirrors
+/// `train_loop::OVERLAP_WINDOW`.
+const OVERLAP_WINDOW: usize = 256;
+
+/// Fail the run above this fraction of val windows found verbatim in train.
+/// Mirrors `train_loop::MAX_VAL_OVERLAP_FRACTION`.
+const MAX_VAL_OVERLAP_FRACTION: f64 = 0.01;
+
+/// A val stream shorter than this cannot support a BPB anyone should quote.
+/// Mirrors `train_loop::MIN_VAL_TOKENS`.
+const MIN_VAL_TOKENS: usize = 8192;
+
+/// `evaluate` must average over at least this many chunks for the mean to mean
+/// anything. Mirrors `train_loop::MIN_EVAL_CHUNKS`.
+const MIN_EVAL_CHUNKS: usize = 8;
+
 /// Default corpus. The shipped file is `data/tiny_shakespeare.txt`; the old
 /// default here spelled it without the underscore, and that file has never
 /// existed in this repo, so every argument-free run took the fallback path and
@@ -31,7 +51,7 @@ const SYNTHETIC_CORPUS: &[u8] = b"Hello world this is a tiny training dataset fo
 /// A results row that cannot name the bytes it measured is indistinguishable
 /// from a fabricated one, so path, size, digest and the synthetic flag travel
 /// with every number this binary reports.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct CorpusInfo {
     path: String,
     bytes: usize,
@@ -139,6 +159,98 @@ fn load_or_refuse(path: &str) -> (Vec<usize>, CorpusInfo) {
             std::process::exit(EXIT_BAD_CORPUS);
         }
     }
+}
+
+/// Number of windows `evaluate` will actually average over, for `len` tokens
+/// at `seq_len`. Must track the loop in `evaluate` exactly: a precondition
+/// computed from a different chunking than the one that runs is not a
+/// precondition.
+fn eval_chunk_count(len: usize, seq_len: usize) -> usize {
+    (0..len)
+        .step_by(seq_len + 1)
+        .filter(|&c| len.min(c + seq_len + 1) - c >= 4)
+        .count()
+}
+
+/// Local mirror of `trios_trainer::train_loop::assert_train_val_disjoint`.
+///
+/// The library function is `pub(crate)` and `src/bin/*.rs` compile as separate
+/// crates, so it cannot be linked from here; `src/bin/cpu_train.rs` mirrors the
+/// same checks inline for the same reason. Same constants, same thresholds,
+/// same full-coverage comparison - it returns the refusal instead of panicking
+/// so the caller can exit before any result file exists.
+///
+/// Three preconditions, each already violated in a live run:
+/// 1. Size: a val too short, or one yielding too few chunks, is not a held-out
+///    measurement.
+/// 2. Disjointness at full coverage on BOTH sides: every val window is looked
+///    up in the set of train windows, so the detection probability is 1.0.
+/// 3. Non-degeneracy: a periodic or heavily duplicated eval stream drives BPB
+///    toward zero honestly, which is the signature that got 179 ledger rows
+///    misfiled as leaks (#62).
+fn check_train_val_disjoint(train: &[usize], val: &[usize], seq_len: usize) -> Result<(), String> {
+    use std::collections::HashSet;
+
+    if val.len() < MIN_VAL_TOKENS {
+        return Err(format!(
+            "VAL STREAM TOO SHORT: {} tokens, minimum {}. A BPB averaged over a \
+             handful of windows is not a held-out measurement and must not be \
+             reported as one.",
+            val.len(),
+            MIN_VAL_TOKENS
+        ));
+    }
+    let chunks = eval_chunk_count(val.len(), seq_len);
+    if chunks < MIN_EVAL_CHUNKS {
+        return Err(format!(
+            "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S) at seq={}, minimum {}. \
+             `evaluate` would average over too few windows for the mean to be \
+             informative.",
+            chunks, seq_len, MIN_EVAL_CHUNKS
+        ));
+    }
+    if train.len() < OVERLAP_WINDOW {
+        return Ok(()); // no train window to compare against
+    }
+
+    // Tokens are `% VOCAB` (0..=127), so the windows compare as `u8` slices:
+    // exact, and 8x cheaper to hash than `usize` windows.
+    let train_b: Vec<u8> = train.iter().map(|&t| t as u8).collect();
+    let val_b: Vec<u8> = val.iter().map(|&t| t as u8).collect();
+    let train_windows: HashSet<&[u8]> = train_b.windows(OVERLAP_WINDOW).collect();
+    let val_total = val_b.len() - OVERLAP_WINDOW + 1;
+    let hits = val_b
+        .windows(OVERLAP_WINDOW)
+        .filter(|w| train_windows.contains(*w))
+        .count();
+    let fraction = hits as f64 / val_total as f64;
+    if fraction > MAX_VAL_OVERLAP_FRACTION {
+        return Err(format!(
+            "TRAIN/VAL OVERLAP DETECTED: {:.2}% of val windows ({} of {}, window \
+             {} tokens) appear verbatim in train; threshold is {:.2}%. This is the \
+             2026-04-30 ledger leak bug (trios-trainer-igla#60). Rebuild the split \
+             byte-disjoint: head -c $((SIZE-100000)) for train, tail -c 100000 for val.",
+            fraction * 100.0,
+            hits,
+            val_total,
+            OVERLAP_WINDOW,
+            MAX_VAL_OVERLAP_FRACTION * 100.0
+        ));
+    }
+
+    let distinct: HashSet<&[usize]> = val.windows(8).collect();
+    let total = val.len().saturating_sub(7).max(1);
+    let ratio = distinct.len() as f64 / total as f64;
+    if ratio < 0.05 {
+        return Err(format!(
+            "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
+             ({} of {}). BPB measured against this is not a model result.",
+            ratio * 100.0,
+            distinct.len(),
+            total
+        ));
+    }
+    Ok(())
 }
 
 fn softmax_cap(v: &mut [f32], softcap: f32) {
@@ -302,9 +414,20 @@ impl TrinityCpuModel {
         layer_norm(&repr, 1e-5)
     }
 
-    fn loss_on_seq(&self, tokens: &[usize]) -> f32 {
+    /// Mean cross-entropy in nats over the windows of `tokens`, or `None` when
+    /// no measurement exists.
+    ///
+    /// `None`, not a number, for a sequence too short to score: the old body
+    /// returned 0.0, which is a perfect prediction -- the best value this
+    /// function can produce -- for the case where it predicted nothing at all.
+    ///
+    /// `None`, not a clamp, for a NaN probability. `f32::max` returns the OTHER
+    /// operand when one side is NaN, so `logits[target].max(1e-10)` turned a
+    /// poisoned forward pass into exactly `-ln(1e-10)` = 23.0259 nats = 33.219
+    /// bpb, a finite reading indistinguishable from a measured one.
+    fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < 3 {
-            return 0.0;
+            return None;
         }
         let v = self.vocab;
         let total = self.ctx_dim + self.bigram_dim + self.ve_dim;
@@ -322,10 +445,14 @@ impl TrinityCpuModel {
                 .collect();
             softmax_cap(&mut logits, LOGIT_SOFTCAP);
 
-            let p = logits[target].max(1e-10);
+            let p = logits[target];
+            if p.is_nan() {
+                return None;
+            }
+            let p = p.max(1e-10);
             total_loss -= p.ln();
         }
-        total_loss / (tokens.len() - 2) as f32
+        Some(total_loss / (tokens.len() - 2) as f32)
     }
 
     fn train_step(
@@ -410,7 +537,24 @@ impl TrinityCpuModel {
     }
 }
 
-fn evaluate(model: &TrinityCpuModel, tokens: &[usize], seq_len: usize) -> (f32, f32) {
+/// Mean loss and BPB over the eval windows, or `None` when any window was
+/// unmeasurable.
+///
+/// The old body returned `(f32::MAX, f32::MAX)` for "zero finite windows".
+/// That sentinel passes `is_finite()`, so it was pushed into `results` and
+/// serialized into the published artifact as though someone had measured it.
+/// `Option` makes an absent measurement unrepresentable as a number;
+/// `src/bin/cpu_train.rs::eval_bpb` already reports it this way.
+///
+/// The loop no longer averages over "the windows that happened to come out
+/// finite". It took an `f32` from `loss_on_seq` and kept it only
+/// `if loss.is_finite()`, which did two wrong things at once: it averaged in
+/// the laundered 23.0259-nat reading that a NaN forward pass produced, and it
+/// dropped genuinely non-finite windows from `n` so the survivors reported a
+/// confident mean over a corpus that had partly failed to evaluate. One
+/// unmeasurable window now invalidates the whole eval, exactly as in
+/// `src/train_loop.rs`.
+fn evaluate(model: &TrinityCpuModel, tokens: &[usize], seq_len: usize) -> Option<(f32, f32)> {
     let mut total = 0.0f32;
     let mut n = 0usize;
     for c in (0..tokens.len()).step_by(seq_len + 1) {
@@ -418,17 +562,18 @@ fn evaluate(model: &TrinityCpuModel, tokens: &[usize], seq_len: usize) -> (f32, 
         if end - c < 4 {
             continue;
         }
-        let loss = model.loss_on_seq(&tokens[c..end]);
-        if loss.is_finite() {
-            total += loss / LN_2;
-            n += 1;
+        let loss = model.loss_on_seq(&tokens[c..end])?;
+        if !loss.is_finite() {
+            return None;
         }
+        total += loss / LN_2;
+        n += 1;
     }
     if n == 0 {
-        return (f32::MAX, f32::MAX);
+        return None;
     }
     let bpb = total / n as f32;
-    (bpb * LN_2, bpb)
+    Some((bpb * LN_2, bpb))
 }
 
 fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 {
@@ -467,9 +612,53 @@ fn main() {
     );
     println!();
 
-    let (tokens, corpus) = load_or_refuse(&arg_path("--train-data", DEFAULT_TRAIN_PATH));
-    println!("Corpus: {}", corpus.describe());
+    let train_path = arg_path("--train-data", DEFAULT_TRAIN_PATH);
+    let val_path = arg_path("--val-data", "");
+    let held_out = !val_path.is_empty();
+
+    let (tokens, corpus) = load_or_refuse(&train_path);
+    println!("Train corpus: {}", corpus.describe());
     println!("Dataset: {} tokens", tokens.len());
+
+    // The eval stream. Without `--val-data` this binary evaluated on `tokens` -
+    // the very array it trains on - and published the reading as `final_bpb`
+    // with a complete, correct corpus provenance block beside it, which made
+    // the record look more trustworthy than the number was. Single-corpus mode
+    // survives, but everything it reports now says `train_set` and carries
+    // `held_out: false`.
+    let (eval_tokens, eval_corpus) = if held_out {
+        if val_path == train_path {
+            eprintln!(
+                "CORPUS REFUSED: --train-data and --val-data are the same path ({}). \
+                 A val stream that is the train stream measures memorisation, not \
+                 generalisation.",
+                train_path
+            );
+            std::process::exit(EXIT_BAD_CORPUS);
+        }
+        let (val_tokens, val_corpus) = load_or_refuse(&val_path);
+        println!("Val corpus:   {}", val_corpus.describe());
+        if let Err(e) = check_train_val_disjoint(&tokens, &val_tokens, SEQ) {
+            eprintln!("SPLIT REFUSED: {e}");
+            std::process::exit(EXIT_BAD_CORPUS);
+        }
+        println!(
+            "Split: byte-disjoint, {} val tokens, {} eval chunks (minimum {})",
+            val_tokens.len(),
+            eval_chunk_count(val_tokens.len(), SEQ),
+            MIN_EVAL_CHUNKS
+        );
+        (val_tokens, val_corpus)
+    } else {
+        eprintln!(
+            "[eval] WARNING: no --val-data given. Every BPB below is measured on \
+             the TRAINING corpus. It is a memorisation reading, it is published \
+             as `train_set_bpb` with held_out=false, and it is not comparable \
+             with any held-out BPB."
+        );
+        (tokens.clone(), corpus.clone())
+    };
+    let label = if held_out { "val" } else { "train_set" };
 
     let total_dim = CTX_DIM + BIGRAM_DIM + 16;
     let mut model = TrinityCpuModel::new(VOCAB, DIM, CTX_DIM, BIGRAM_VOCAB, BIGRAM_DIM, 16, seed);
@@ -481,8 +670,21 @@ fn main() {
     let mut opt_b = AdamW::new(BIGRAM_VOCAB * BIGRAM_DIM, base_lr, 0.04);
     let mut opt_h = AdamW::new(VOCAB * total_dim, base_lr, 0.04);
 
-    let (init_loss, init_bpb) = evaluate(&model, &tokens, SEQ);
-    println!("Initial: loss={:.4} bpb={:.4}", init_loss, init_bpb);
+    let (init_loss, init_bpb) = match evaluate(&model, &eval_tokens, SEQ) {
+        Some(r) => r,
+        None => {
+            eprintln!(
+                "NO MEASUREMENT: the initial eval produced zero finite windows on \
+                 {}. Refusing to report an initial BPB nobody measured.",
+                eval_corpus.path
+            );
+            std::process::exit(EXIT_NO_MEASUREMENT);
+        }
+    };
+    println!(
+        "Initial: loss={:.4} {}_bpb={:.4}",
+        init_loss, label, init_bpb
+    );
     println!();
     println!(
         "{:>6} | {:>10} | {:>10} | {:>10} | {:>8}",
@@ -491,7 +693,15 @@ fn main() {
     println!("{}", "-".repeat(60));
 
     let t0 = Instant::now();
+    // `best_bpb` is the running MINIMUM over every eval; `final_bpb` is the
+    // single reading taken at `step == steps`. They are different numbers. This
+    // file used to keep only the minimum, initialise it to `init_bpb`, and
+    // print and publish it as `Final BPB ... (EMA)` - neither final (a running
+    // minimum) nor an EMA (the EMA is which weights were evaluated, not how the
+    // number was reduced). A run whose every eval was non-finite published its
+    // ~7.0 initial reading as its final measurement.
     let mut best_bpb = init_bpb;
+    let mut final_bpb: Option<f32> = None;
     let mut results: Vec<(usize, f32, f32)> = Vec::new();
     let data_len = tokens.len();
 
@@ -512,31 +722,73 @@ fn main() {
 
         if step % 500 == 0 || step == steps {
             let ms = t0.elapsed().as_millis();
-            let (eval_loss, eval_bpb) = evaluate(&ema_model, &tokens, SEQ);
-            if eval_bpb < best_bpb && eval_bpb.is_finite() {
-                best_bpb = eval_bpb;
+            match evaluate(&ema_model, &eval_tokens, SEQ) {
+                Some((eval_loss, eval_bpb)) => {
+                    if eval_bpb < best_bpb && eval_bpb.is_finite() {
+                        best_bpb = eval_bpb;
+                    }
+                    if step == steps {
+                        final_bpb = Some(eval_bpb);
+                    }
+                    println!(
+                        "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
+                        step, eval_loss, eval_bpb, best_bpb, ms
+                    );
+                    results.push((step, eval_loss, eval_bpb));
+                }
+                // No finite window: no row. Once serialized, a sentinel is
+                // indistinguishable from a measurement.
+                None => println!(
+                    "{:>6} | {:>10} | {:>10} | {:>10.4} | {:>6}ms",
+                    step, "unmeasured", "unmeasured", best_bpb, ms
+                ),
             }
-            println!(
-                "{:>6} | {:>10.4} | {:>10.4} | {:>10.4} | {:>6}ms",
-                step, eval_loss, eval_bpb, best_bpb, ms
-            );
-            results.push((step, eval_loss, eval_bpb));
         }
     }
 
     let total = t0.elapsed();
     println!();
     println!("=== Training Complete ===");
-    println!(
-        "Time: {:.1}s | Initial BPB: {:.4} | Final BPB: {:.4} (EMA) | Delta: {:.4}",
-        total.as_secs_f64(),
-        init_bpb,
-        best_bpb,
-        best_bpb - init_bpb
-    );
+    println!("Eval weights: EMA (decay {})", EMA_DECAY);
+    match final_bpb {
+        Some(f) => println!(
+            "Time: {:.1}s | Initial {} BPB: {:.4} | Best {} BPB: {:.4} | \
+             Final {} BPB: {:.4} | Delta(best): {:.4} | Delta(final): {:.4}",
+            total.as_secs_f64(),
+            label,
+            init_bpb,
+            label,
+            best_bpb,
+            label,
+            f,
+            best_bpb - init_bpb,
+            f - init_bpb
+        ),
+        None => println!(
+            "Time: {:.1}s | Initial {} BPB: {:.4} | Best {} BPB: {:.4} | \
+             Final {} BPB: unmeasured | Delta(best): {:.4}",
+            total.as_secs_f64(),
+            label,
+            init_bpb,
+            label,
+            best_bpb,
+            label,
+            best_bpb - init_bpb
+        ),
+    }
+    if held_out {
+        println!("held_out=true: measured on {}", eval_corpus.path);
+    } else {
+        println!(
+            "held_out=false: every BPB above is a train_set reading, measured on \
+             the corpus this model was trained on ({}). Not a held-out \
+             measurement and not citable as one.",
+            eval_corpus.path
+        );
+    }
 
     let _ = fs::create_dir_all(".trinity/results");
-    let result_json = serde_json::json!({
+    let mut result_json = serde_json::json!({
         "experiment": "trinity-pr1722-adapted",
         "source_pr": "openai/parameter-golf#1722",
         "techniques": ["BigramHash", "SmearGate", "LayerNorm", "LogitSoftcap", "EMA", "AdamW-phi", "CosineLR"],
@@ -550,14 +802,59 @@ fn main() {
         "corpus_bytes": corpus.bytes,
         "corpus_sha256": corpus.sha256,
         "data_synthetic": corpus.synthetic,
+        "eval_corpus_path": eval_corpus.path,
+        "eval_corpus_bytes": eval_corpus.bytes,
+        "eval_corpus_sha256": eval_corpus.sha256,
+        "held_out": held_out,
+        "eval_weights": "ema",
         "seed": seed, "steps": steps, "base_lr": base_lr,
-        "initial_bpb": init_bpb, "final_bpb": best_bpb,
-        "delta_bpb": best_bpb - init_bpb,
         "duration_seconds": total.as_secs_f64(),
         "results": results.iter().map(|(s, l, b)| serde_json::json!({
             "step": *s, "loss": *l, "bpb": *b
         })).collect::<Vec<_>>(),
     });
+
+    // The BPB keys are named for what they are. A train-set reading never
+    // occupies a key called `final_bpb`, and `final_bpb` is the reading at
+    // `step == steps` or nothing at all - never the best, never the initial.
+    {
+        let obj = result_json
+            .as_object_mut()
+            .expect("the json! literal above is an object");
+        let final_value = match final_bpb {
+            Some(f) => serde_json::json!(f),
+            None => serde_json::Value::Null,
+        };
+        let delta_final = match final_bpb {
+            Some(f) => serde_json::json!(f - init_bpb),
+            None => serde_json::Value::Null,
+        };
+        if held_out {
+            obj.insert("initial_bpb".to_string(), serde_json::json!(init_bpb));
+            obj.insert("best_bpb".to_string(), serde_json::json!(best_bpb));
+            obj.insert("final_bpb".to_string(), final_value);
+            obj.insert(
+                "delta_best_bpb".to_string(),
+                serde_json::json!(best_bpb - init_bpb),
+            );
+            obj.insert("delta_final_bpb".to_string(), delta_final);
+        } else {
+            obj.insert(
+                "train_set_initial_bpb".to_string(),
+                serde_json::json!(init_bpb),
+            );
+            obj.insert(
+                "train_set_best_bpb".to_string(),
+                serde_json::json!(best_bpb),
+            );
+            obj.insert("train_set_bpb".to_string(), final_value);
+            obj.insert(
+                "train_set_delta_best_bpb".to_string(),
+                serde_json::json!(best_bpb - init_bpb),
+            );
+            obj.insert("train_set_delta_bpb".to_string(), delta_final);
+        }
+    }
 
     let rpath = format!(".trinity/results/trinity_pr1722_seed{}.json", seed);
     fs::File::create(&rpath)
@@ -578,9 +875,24 @@ fn main() {
         edir,
         chrono::Utc::now().format("%Y%m%d")
     );
+    let final_text = match final_bpb {
+        Some(f) => format!("{f:.4}"),
+        None => "unmeasured".to_string(),
+    };
     let entry = format!(
-        "[{}] TASK: Trinity PR#1722 adapted training | seed={} | steps={} | bpb={:.4}->{:.4} | delta={:.4} | {:.1}s\n",
-        ts, seed, steps, init_bpb, best_bpb, best_bpb - init_bpb, total.as_secs_f64()
+        "[{}] TASK: Trinity PR#1722 adapted training | seed={} | steps={} | \
+         held_out={} | eval_corpus={} | eval_weights=ema | init_{}_bpb={:.4} \
+         best={:.4} final={} | {:.1}s\n",
+        ts,
+        seed,
+        steps,
+        held_out,
+        eval_corpus.path,
+        label,
+        init_bpb,
+        best_bpb,
+        final_text,
+        total.as_secs_f64()
     );
     let _ = fs::OpenOptions::new()
         .create(true)

@@ -1,14 +1,26 @@
 # P0 Audit — Champion Reproduction Snapshot
 
+> **RETRACTED 2026-08-03.** This audit is kept verbatim as a record of what was
+> claimed; it is not evidence of anything. Its reference number is withdrawn -
+> no artifact, unresolvable commit `2446855`, seed forbidden under Canon #93 -
+> and so is the "champion reproduced" verdict in the last section, which is
+> corrected in place below. See [`RETRACTION.md`](../../RETRACTION.md)
+> and [`HONEST_FINDINGS.md`](HONEST_FINDINGS.md).
+
 ## Reference
-- **Champion SHA**: `gHashTag/trios@2446855` → BPB=2.2393 @ 27K steps, seed=43
+- **Champion SHA**: `gHashTag/trios@2446855` -> BPB=2.2393 @ 27K steps, seed=43 - **RETRACTED**: `2446855` does not resolve in this repository and no checkpoint artifact backs the number
 - **Current HEAD**: `a12bf4f` (from PR #25 merge)
 - **Date**: 2026-04-27
 - **Issue**: [gHashTag/trios-trainer-igla#24](https://github.com/gHashTag/trios-trainer-igla/issues/24)
 - **PR**: [gHashTag/trios-trainer-igla#25](https://github.com/gHashTag/trios-trainer-igla/pull/25)
 
-## Hypothesis
-`configs/champion.toml --seed 43` reproduces `BPB = 2.2393 +/- 0.01 @ step 27000`
+## Hypothesis (RETRACTED)
+RETRACTED: ~~`configs/champion.toml --seed 43` reproduces `BPB = 2.2393 +/- 0.01 @ step 27000`~~
+
+This hypothesis is withdrawn: the target it names is not citable, and
+`train_loop::run()` overrides most of `configs/champion.toml` (it hardcodes
+`hidden: 828` and `eval_every: 1000`), so that command line cannot produce the
+run described here.
 
 ## Drift Analysis: `gHashTag/trios@2446855` → `trios-trainer-igla`
 
@@ -97,7 +109,7 @@ If BPB drift > 0.05 (i.e., BPB ∉ [2.214, 2.264]):
 
 | Metric | Champion (2446855) | Reproduction | Delta |
 |--------|-------------------|-------------|-------|
-| BPB (best) | 2.2393 | **2.1600** | -0.08 |
+| BPB (best) | ~~2.2393~~ RETRACTED | ~~**2.1600**~~ RETRACTED | -0.08, retracted with both ends |
 | Steps | 27000 | 27000 | 0 |
 | Seed | 43 | 43 | 0 |
 | LR | 0.003 | 0.003 | 0 |
@@ -110,12 +122,39 @@ If BPB drift > 0.05 (i.e., BPB ∉ [2.214, 2.264]):
 tjepa_train --no-jepa --no-nca --steps=27000 --seed=43 --encoder-lr=0.003 --ntp-lr=0.003
 ```
 
-## Verdict
+## Verdict - CORRECTED
 
-Champion reproduced. BPB=2.1600 is within tolerance of 2.2393 +/- 0.01.
-Reproduction is actually BETTER by 0.08 BPB - likely due to minor code differences
-in the migrated tjepa_train.rs vs original.
+**The champion was NOT reproduced.** The original verdict read:
 
-## Triplet
+> ~~Champion reproduced. BPB=2.1600 is within tolerance of 2.2393 +/- 0.01.~~ RETRACTED
+> ~~Reproduction is actually BETTER by 0.08 BPB - likely due to minor code differences~~
+> ~~in the migrated tjepa_train.rs vs original.~~
 
-BPB=2.1600 @ step=27000 seed=43 sha=HEAD jsonl_row=0 gate_status=below_target_evidence
+That verdict is wrong on its own terms and is retracted for three reasons:
+
+1. **It fails its own tolerance.** 2.1600 is 0.0793 below the (retracted) 2.2393
+   it was compared against. The stated tolerance was +/- 0.01. A run that misses
+   the band by eight times its width is a falsification, not a reproduction.
+2. **"BETTER" is not a reproduction.** A reproduction that beats its reference
+   has changed something. The drift this same document records above (beta1
+   `1.0/phi` vs 0.9, beta2 0.95 vs 0.999) was never resolved, and section
+   "Critical Drift Assessment" says in as many words that it MUST be resolved
+   before P0 can claim reproduction. It was not.
+3. **Neither number is citable.** 2.2393 is retracted (no artifact,
+   unresolvable commit). 2.1600 has no artifact either: on this audit's own date
+   the checkpoint writer in this repository was
+   `pub fn save(_run, _step, _bytes) -> anyhow::Result<()> { Ok(()) }`
+   (`git show ee7771f:src/checkpoint.rs`, line 116, 2026-04-27), so no weights
+   were written and the run cannot be re-measured. The audit's "Current HEAD"
+   `a12bf4f` does not resolve here either
+   (`git cat-file -t a12bf4f` -> `Not a valid object name`), so the row pins no
+   tree.
+
+No reproduction is claimed by this document.
+
+## Triplet (RETRACTED)
+
+~~BPB=2.1600 @ step=27000 seed=43 sha=HEAD jsonl_row=0 gate_status=below_target_evidence~~
+
+Withdrawn: `sha=HEAD` pins no binary, no toolchain and no corpus; no artifact
+exists; seed 43 is forbidden under Canon #93 (`src/seed_canon.rs`).

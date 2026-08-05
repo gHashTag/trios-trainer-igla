@@ -8,7 +8,17 @@ Deploy target: Railway (single service, persistent volume mounted at `/data`).
 > dropped Drizzle Studio (JS) in favour of rainfrog (Rust, 5k★, last push 2026-04-24).
 
 Anchor: `φ² + φ⁻² = 3` · DOI [10.5281/zenodo.19227877](https://doi.org/10.5281/zenodo.19227877).
-SOT: `gHashTag/trios-trainer-igla/assertions/seed_results.jsonl` · Race tracker: `gHashTag/trios#508`.
+Race tracker: `gHashTag/trios#508`.
+
+> **The SOT this dashboard was built around is retracted.** It used to read
+> `SOT: gHashTag/trios-trainer-igla/assertions/seed_results.jsonl`. That ledger
+> is now [`assertions/RETRACTED-seed_results.jsonl.txt`](../assertions/RETRACTED-seed_results.jsonl.txt);
+> the accounting is in [`RETRACTION.md`](../RETRACTION.md) at the repo root.
+> No row in it had an artifact, a corpus hash, a trainer hash or a canon-legal
+> seed, and none went through `ledger::emit_row`. This dashboard has **no
+> source of truth for historical BPB** until canon-legal, checkpoint-backed rows
+> are produced. Rows arriving through `/api/ingest` from here on stand or fall on
+> their own provenance.
 
 ---
 
@@ -97,5 +107,18 @@ curl -X POST $RAILWAY_URL/api/ingest \
 40 jobs queued 19327…19366, image
 `ghcr.io/ghashtag/trios-train@sha256:ecce23e9e72e61c662cfa7a149292087ccd3c1d7d5be24615bae0175700d5832`.
 Formats × algos × seeds: `{binary32, binary16, bfloat16, gf16} × {adamw, muon} × {1597, 2584, 4181, 6765, 10946}`.
-Champion baseline: `seed=43, format=binary32, algo=adamw, bpb=2.1919, sha=cd91c45, step=81000, hidden=828`.
+
+**Champion baseline: RETRACTED — there is no champion baseline.** This line used
+to read, and all of it is retracted and none of it citable:
+`seed=43, format=binary32, algo=adamw, bpb=2.1919, sha=cd91c45, step=81000, hidden=828` (retracted).
+It republished a ledger row that has no checkpoint
+artifact (`checkpoint::save` was a stub returning `Ok(())` at `cd91c45`), no
+corpus digest, no trainer hash, and a seed forbidden under Canon #93. Its
+`gate_status: "above_target"` was not a pass either: the Gate-2 target was
+`BPB < 1.85`, and the retracted 2.1919 is above it.
+See [`RETRACTION.md`](../RETRACTION.md) section 2, and
+[`assertions/RETRACTED-seed_results.jsonl.txt`](../assertions/RETRACTED-seed_results.jsonl.txt)
+for the row itself. `npm run db:seed` should not be read as seeding a verified
+champion; check `igla-dash/server/seed.ts` before trusting any row it inserts.
+
 Gate-2 target: `BPB < 1.85`.

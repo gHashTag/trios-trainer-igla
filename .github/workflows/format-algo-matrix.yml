@@ -25,9 +25,21 @@ on:
   workflow_dispatch:
     inputs:
       formats:
-        description: "Comma-separated TRIOS_FORMAT_TYPE values (real kernels only: fp32 fp16 bf16 fp8_e4m3 fp8_e5m2 gf16 int8 int4 nf4 posit16 fp80)"
+        # fp80 and posit16 REMOVED 2026-08-03. Neither was a distinct
+        # measurement: `fake_quantize_f32` returns fp80 UNCHANGED (it is
+        # `FormatKind::is_unsupported_in_f32`), so every fp80 row ever
+        # published is arithmetically an fp32 row -- and an fp80-vs-fp32 "tie"
+        # is an identity wearing the clothes of a result. posit16 is an IEEE
+        # 10-bit mantissa mask, not a posit encoder. Both now report
+        # `is_faithful() == false`, and `matrix_runner` refuses them outright
+        # unless TRIOS_ALLOW_UNFAITHFUL_FORMAT=1 (which stamps
+        # `format_faithful=false` on the row). They are NOT kept as negative
+        # controls here because the anti-fake-pass guard below requires every
+        # eligible non-baseline cell to DIVERGE from fp32 -- a correct fp80
+        # negative control would fail that guard by construction.
+        description: "Comma-separated TRIOS_FORMAT_TYPE values (faithful kernels only: fp32 fp16 bf16 fp8_e4m3 fp8_e5m2 gf16 int8 int4 nf4). fp80/posit16 are NOT distinct measurements and are refused unless TRIOS_ALLOW_UNFAITHFUL_FORMAT=1."
         required: false
-        default: "fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
+        default: "fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4"
       algos:
         description: "Comma-separated TRIOS_ALGO_TYPE values (whitelist: adamw, muon) - R5: trios-trainer-igla#140 ALGO_WHITELIST. NOTE: muon-cwd removed 2026-05-14 until cpu_train.rs implements it (#146)."
         required: false
@@ -93,11 +105,15 @@ jobs:
               LANE="${{ github.event.inputs.lane }}"
               ;;
             schedule)
-              # Nightly 3D sweep: 11 formats x 2 algos x 2 seeds x 2 hidden x 1 lr = 88 cells.
+              # Nightly 3D sweep: 9 formats x 2 algos x 2 seeds x 2 hidden x 1 lr = 72 cells.
               # R5 canonical: real kernels only (matches FormatKind::from_str + ALGO_WHITELIST).
               # Fibonacci/Lucas seeds only (forbidden: 42-45). 3D FormatxAlgoxHidden coverage.
               # muon-cwd dropped 2026-05-14 (cpu_train.rs lacks impl) - see #146.
-              FORMATS="fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
+              # posit16 + fp80 dropped 2026-08-03: NOT distinct measurements
+              # (fp80 is an identity passthrough == fp32; posit16 is a 10-bit
+              # mantissa mask). Every nightly fp80 row already in the ledger is
+              # an fp32 row. See the `formats` input comment above.
+              FORMATS="fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4"
               ALGOS="adamw,muon"
               SEEDS="1597,2584"
               HIDDEN="128,256"
@@ -319,6 +335,24 @@ jobs:
                   failures.append(
                       f"cell {r.get('canon_name','?')} carries no format_executed "
                       "(trainer too old to declare what it ran)")
+          # A row whose format is not a faithful kernel is not a measurement of
+          # that format at all (fp80 == fp32 identity, posit16 == 10-bit
+          # mantissa mask). matrix_runner refuses these unless the operator sets
+          # TRIOS_ALLOW_UNFAITHFUL_FORMAT=1; if one reaches the ledger anyway it
+          # must not be collected silently. Absence of the key is also a
+          # failure: the runner in this commit stamps it on EVERY row, so a row
+          # without it was produced by a binary that could not have checked.
+          for r in rows:
+              if "format_faithful" not in r:
+                  failures.append(
+                      f"cell {r.get('canon_name','?')} carries no format_faithful "
+                      "(runner too old to declare whether the format is a real kernel)")
+              elif r["format_faithful"] is False:
+                  failures.append(
+                      f"cell {r.get('canon_name','?')} has format_faithful=false: "
+                      f"format {r.get('format','?')} is an identity/stand-in, not a "
+                      "distinct measurement, and must not be published as a peer "
+                      "of the real kernels")
           # Build baseline index: (hidden, seed) -> bpb at f32+adamw.
           baseline = {}
           for r in rows:

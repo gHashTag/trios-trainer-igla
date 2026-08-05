@@ -427,6 +427,13 @@ fn compute_grads_for_positions(
 /// accepts, so a
 /// failed evaluation was indistinguishable from a reading everywhere downstream
 /// - including the printed headline and the ledger.
+///
+/// It then still dropped individual non-finite windows and published the mean
+/// of the survivors, which is biased DOWNWARD: the windows a partial poison
+/// kills are exactly the hard ones. `src/bin/trinity_pr1722.rs` takes the
+/// correct line and this now matches it -- ONE unmeasurable window invalidates
+/// the whole eval -- while the `dropped` counter keeps the skip from being
+/// silent about HOW MUCH of the corpus failed.
 fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
     let chunk_size = SEQ + 1;
     let num_chunks = 40usize;
@@ -441,18 +448,28 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
     };
     let mut total = 0.0f32;
     let mut n = 0usize;
+    let mut dropped = 0usize;
     for c in (0..max_start).step_by(step).take(num_chunks) {
         let end = (c + chunk_size).min(tokens.len());
         if end - c < NGRAM + 2 {
             continue;
         }
-        let Some(loss) = model.loss_on_seq(&tokens[c..end]) else {
-            continue;
-        };
-        if loss.is_finite() {
-            total += loss / LN_2;
-            n += 1;
+        match model.loss_on_seq(&tokens[c..end]) {
+            Some(loss) if loss.is_finite() => {
+                total += loss / LN_2;
+                n += 1;
+            }
+            _ => dropped += 1,
         }
+    }
+    if dropped > 0 {
+        eprintln!(
+            "EVAL ABORTED: {dropped} of {} windows produced no finite loss. A mean \
+             over the {n} survivors is biased DOWNWARD and is not a held-out \
+             measurement, so this eval reports nothing.",
+            dropped + n
+        );
+        return None;
     }
     if n == 0 {
         None

@@ -1,0 +1,77 @@
+{
+  "schema": "trios-checkpoint-record/8",
+  "canon_name": "r6-heldout-test",
+  "seed": 47,
+  "step": 12000,
+  "path": "/Users/playra/trios-trainer-igla/evidence/heldout/r6-heldout-test/12000.bin",
+  "sha256": "902cfb69a84bdcf4d6ab524576ff375d612fd8f485dcbc7e02f35f6379599146",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 12000,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 2.638519525527954,
+  "min_observed_val_bpb": 2.638519525527954,
+  "ema_bpb": 2.6724042892456055,
+  "git_sha": "3c1f751cf4376c13d26e247c2cd86357ab51dd20",
+  "git_provenance": "verified-local",
+  "git_dirty": true,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare_train_core.txt",
+      "bytes": 915394,
+      "sha256": "21f0788a3b5ef3d8138047559f393233f1282403887e1bda2de458af64877da6"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_test.txt",
+      "bytes": 100000,
+      "sha256": "00365e8aa883ffe50d954234fe810d9b2413450c944a67f0a621d433464e9603"
+    }
+  },
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-03T11:51:02.234295+00:00",
+  "lr": 0.003000000026077032,
+  "attn_scale": 0.10000000149011612,
+  "attn_seq": 8,
+  "platform": {
+    "os": "macos",
+    "arch": "aarch64",
+    "pointer_width": 64,
+    "libc": "undetermined",
+    "toolchain": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "toolchain_provenance": "runtime-path-query",
+    "source_digest_scope": "repository-root",
+    "rustflags_source": "cargo-config-toml",
+    "rustflags_sha256": "b18ac6a3a1eaa5f2126007da415a13b27913ec13f0412df94a9baaa7a8e8ac58",
+    "remap_applied": true,
+    "libc_version": "25.5.0",
+    "libc_provenance": "uname-release-runtime",
+    "features": "ci-strict=0,gf16=0,gpu=0,race=0,smoke=0,trios-integration=0"
+  },
+  "source_sha256": "aa80a56bfa619f7324d99305f0c9705e4666b65b67a3eb219813d57644c359db",
+  "trainer": {
+    "path": "evidence/heldout/trios-train.frozen",
+    "sha256": "a380ed4722e2fb4674ad1b5f3fe2e810362fef3284751006b9d521e0b87ad1ad",
+    "provenance": "self-hashed"
+  },
+  "vocab": 128,
+  "gf16_enabled": true,
+  "eval_chunks": 40,
+  "eval_tokens": 5160,
+  "eval_seq": 129,
+  "val_bpb_stderr": 0.04238646477460861,
+  "optimizer_params": {
+    "beta1": 0.8999999761581421,
+    "beta2": 0.9990000128746033,
+    "eps": 9.99999993922529e-9,
+    "weight_decay": 0.03999999910593033,
+    "source": "train_loop::AdamW"
+  },
+  "git_untracked": true
+}

@@ -7,6 +7,14 @@ use crate::fake_quant::{self, FormatKind};
 use crate::model_hybrid_attn::{AttentionCache, HybridAttn};
 use crate::objective::{nca_entropy_loss, NcaObjective};
 
+/// GATE-2's target. NOTE, and left deliberately unchanged: 1.85 is BELOW
+/// `invariants::PUBLISHED_BPB_FLOOR` (2.0), so no reading that would satisfy
+/// this gate can survive `guard_bpb` - a run good enough to "pass" is refused
+/// as unpublishable before it prints. That is not a bug in either number; it is
+/// the honest state of the evidence. The measured calibration on this
+/// architecture bottoms out around 2.6, and every historical sub-2.0 pass
+/// (1.5492, 1.038) has been retracted. Moving this target is a claim about
+/// results and needs new measurements, not an edit here.
 pub const DEFAULT_IGLA_TARGET_BPB: f64 = 1.85;
 /// Canon #93 sweep seeds - Lucas/Fibonacci aligned.
 /// Forbidden under Canon #93: `{42, 43, 44, 45}`.
@@ -34,6 +42,12 @@ fn attn_scale() -> f32 {
         .unwrap_or(0.1)
 }
 
+/// Legacy GF16 reading: the inverted `TRIOS_GF16_DISABLE` variable, default ON.
+///
+/// Call it through [`resolve_gf16_knob`] and nowhere else. Reading it directly
+/// is what made `GF16_ENABLED` inert: the gate and the four sidecar fields all
+/// consulted this function, so the documented knob could not move either the
+/// weights or the record of what produced them.
 fn gf16_enabled() -> bool {
     std::env::var("TRIOS_GF16_DISABLE")
         .map(|v| v != "1")
@@ -72,26 +86,48 @@ pub fn gf16_floor_every() -> u64 {
         .unwrap_or(GF16_FLOOR_EVERY_DEFAULT)
 }
 
-/// Wave 31 PR-B: resolve GF16 from `GF16_ENABLED` env knob (default false).
-/// If `GF16_ENABLED=true` but feature `gf16` is not compiled in, returns Err.
-/// Falls back to `gf16_enabled()` for legacy `TRIOS_GF16_DISABLE` path.
+/// Wave 31 PR-B: resolve the GF16 knob the run will actually execute.
+///
+/// `GF16_ENABLED`, WHEN SET, is authoritative. When it is unset the legacy
+/// `TRIOS_GF16_DISABLE` reading in [`gf16_enabled`] decides, and that reading
+/// is ON by default - which is what every published artifact in this
+/// repository was produced with.
+///
+/// The bug this shape removes: `parse_gf16_enabled` defaults to `"false"`, so
+/// an explicit `GF16_ENABLED=false` was indistinguishable from "unset" and the
+/// resolved value was discarded anyway; the live gate read `gf16_enabled()`
+/// directly. `GF16_ENABLED=false` therefore changed nothing - same checkpoint
+/// hash as unset - while the sidecar still recorded `gf16_enabled: true` and
+/// `entrypoint` printed the knob as consumed. Reading the raw variable here is
+/// what makes "set" and "unset" two different facts.
+///
+/// The default stays ON deliberately. Flipping it would silently invalidate
+/// every number already published from this crate, including the aarch64
+/// anchor in README.md; documenting it correctly costs nothing and breaks
+/// nothing. `GF16_ENABLED=false` is what turns the floor off.
+///
+/// `GF16_ENABLED=true` without the `gf16` feature compiled in is still an
+/// error, unchanged.
 /// Anchor: phi^2+phi^-2=3 - DOI 10.5281/zenodo.19227877
 fn resolve_gf16_knob() -> Result<bool> {
-    let knob = parse_gf16_enabled().map_err(|e| anyhow::anyhow!("GF16_ENABLED: {e}"))?;
-    if knob {
-        #[cfg(not(feature = "gf16"))]
-        {
-            return Err(anyhow::anyhow!(
-                "GF16_ENABLED=true but feature 'gf16' not compiled in; \
-                 rebuild with: cargo build --features gf16"
-            ));
+    if std::env::var("GF16_ENABLED").is_ok() {
+        let knob = parse_gf16_enabled().map_err(|e| anyhow::anyhow!("GF16_ENABLED: {e}"))?;
+        if knob {
+            #[cfg(not(feature = "gf16"))]
+            {
+                return Err(anyhow::anyhow!(
+                    "GF16_ENABLED=true but feature 'gf16' not compiled in; \
+                     rebuild with: cargo build --features gf16"
+                ));
+            }
+            #[cfg(feature = "gf16")]
+            {
+                return Ok(true);
+            }
         }
-        #[cfg(feature = "gf16")]
-        {
-            return Ok(true);
-        }
+        return Ok(false);
     }
-    Ok(false)
+    Ok(gf16_enabled())
 }
 
 fn attn_seq_override() -> usize {
@@ -99,6 +135,37 @@ fn attn_seq_override() -> usize {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(ATTN_SEQ)
+}
+
+/// How many windows `evaluate` averages over, unless told otherwise.
+///
+/// 40 windows of `SEQ + 1` = 129 tokens is 5,160 bytes: 5.16% of the
+/// 100,000-byte val corpus. That was a hardcoded literal in two places and
+/// appeared in no field of the checkpoint record, so every published BPB was a
+/// 5% sample presented as if it were the corpus.
+pub const EVAL_CHUNKS_DEFAULT: usize = 40;
+
+/// The declared eval coverage: how many windows to average, `0` = every window.
+///
+/// The default stays at `EVAL_CHUNKS_DEFAULT` ON PURPOSE. The defect is that
+/// the coverage was never STATED, not that 40 is the wrong number, and moving
+/// the default would silently make every existing BPB incomparable with every
+/// new one - the same mistake as gating `gf16_floor` on `eval_every`. This is
+/// an OBSERVATION parameter: it changes what is measured, never the weights,
+/// and (unlike `eval_every`, see `gf16_floor_every`) nothing in the training
+/// loop reads it.
+///
+/// `TRIOS_EVAL_CHUNKS=0` means full coverage: non-overlapping windows tiling
+/// the whole val stream, which is the only setting with no sampling error at
+/// all - and, since the finite-population correction landed in `evaluate`, the
+/// only setting whose recorded `val_bpb_stderr` is exactly `0.0`. A missing or
+/// unparseable value resolves to the default; `0` is a legal value and is NOT
+/// treated as junk.
+pub fn eval_chunks_target() -> usize {
+    std::env::var("TRIOS_EVAL_CHUNKS")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .unwrap_or(EVAL_CHUNKS_DEFAULT)
 }
 
 /// EPIC-446: checkpointing is ON by default. Off-by-default would reproduce the
@@ -115,22 +182,129 @@ fn checkpoint_enabled() -> bool {
 /// cadence read by `igla_train.rs` and `ngram_train_gf16.rs`, and silently
 /// reusing it would turn an 81k-step run into 405 files for callers who set it
 /// for an unrelated reason.
-fn checkpoint_every_hit(step: usize) -> bool {
-    let n: usize = std::env::var("TRIOS_CHECKPOINT_EVERY")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    n > 0 && step % n == 0
+///
+/// This cadence is INDEPENDENT of `--eval-every`. Both call sites used to sit
+/// inside the eval guard, so the requested cadence was intersected with the
+/// observation cadence and the difference was dropped in silence: measured,
+/// `TRIOS_CHECKPOINT_EVERY=50 --eval-every 100 --steps 200` wrote 100.bin and
+/// 200.bin only. A checkpoint step that is not an eval step now takes its own
+/// reading for the artifact record without touching the published trajectory.
+///
+/// Resolved ONCE per run, and a non-empty value that does not parse is a HARD
+/// ERROR. It used to be re-read from the environment on every single step
+/// through `.ok().and_then(|s| s.parse().ok()).unwrap_or(0)`, which turned
+/// `TRIOS_CHECKPOINT_EVERY=1_000` (a Rust integer literal, and the shape a
+/// reader of this codebase would naturally type) and `1000 ` with any trailing
+/// junk into 0: no artifacts, no warning, and nothing in the banner or the
+/// sidecar to say the request had been dropped. That is the same silent
+/// substitution as "1,851 experiments, zero artifacts", one layer up.
+///
+/// Absent or empty stays 0 = final step only; surrounding whitespace is
+/// trimmed, exactly as `gf16_floor_every` does. `0` remains a legal explicit
+/// value meaning the default. Everything else - `1_000`, `1k`, `-3`, `1000x` -
+/// stops the run naming the variable.
+fn resolve_checkpoint_every() -> Result<usize> {
+    let raw = match std::env::var("TRIOS_CHECKPOINT_EVERY") {
+        Err(std::env::VarError::NotPresent) => return Ok(0),
+        Err(std::env::VarError::NotUnicode(_)) => {
+            anyhow::bail!(
+                "TRIOS_CHECKPOINT_EVERY is set to a non-UTF-8 value. Unset it for \
+                 final-step-only checkpointing, or set a plain decimal number of steps."
+            )
+        }
+        Ok(raw) => raw,
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(0);
+    }
+    trimmed.parse::<usize>().map_err(|e| {
+        anyhow::anyhow!(
+            "TRIOS_CHECKPOINT_EVERY={raw:?} is not a step count ({e}). Use a plain \
+             decimal number - no underscores, no suffixes, no sign - or unset the \
+             variable for final-step-only checkpointing. Resolving this to 0 is what \
+             used to happen, and it wrote no artifacts and said nothing."
+        )
+    })
+}
+
+/// Whether `step` is on the resolved cadence. `every` comes from
+/// `resolve_checkpoint_every()` once per run; nothing here reads the
+/// environment, so an export mid-run cannot change what gets saved.
+fn checkpoint_every_hit(step: usize, every: usize) -> bool {
+    every > 0 && step.is_multiple_of(every)
+}
+
+/// Emit an artifact of the INITIAL weights, before the first optimizer step:
+/// `TRIOS_CHECKPOINT_INIT=1`.
+///
+/// The earliest artifact the trainer could produce was after one optimizer
+/// step (both loops are `for step in 1..=args.steps`), so the question "do the
+/// two architectures already disagree at initialisation, or only after
+/// arithmetic?" could not be asked of any file this program wrote. Those are
+/// different defects with different fixes - init/RNG versus floating-point
+/// contraction and reduction order - and a 12000-step artifact cannot tell them
+/// apart. See `docs/DIVERGENCE-LOCALIZATION.md`.
+///
+/// Off by default: `0.bin` is a new file in every existing run directory, and
+/// this is an evidence knob, not a recipe knob. It changes no weight and no
+/// number - it only saves bytes that already existed.
+fn checkpoint_init_enabled() -> bool {
+    std::env::var("TRIOS_CHECKPOINT_INIT").as_deref() == Ok("1")
 }
 
 /// Resolve the run identity ONCE per run. The same string names the checkpoint
 /// directory and the ledger row, so the artifact and the BPB cannot drift
 /// apart. R5: a missing canon_name must never cost a training run silently.
-fn resolve_canon_name(seed: u64) -> String {
+pub fn resolve_canon_name(seed: u64) -> String {
     std::env::var("TRIOS_CANON_NAME")
         .ok()
         .or_else(|| std::env::var("CANON_NAME").ok())
         .unwrap_or_else(|| format!("trios-train-rng{seed}"))
+}
+
+/// True while `run_sweep` is driving several seeds through `run_single` in one
+/// process.
+///
+/// `resolve_canon_name` returns `TRIOS_CANON_NAME` verbatim and cannot vary
+/// with the seed - that variable is exactly what the scarab and the Railway
+/// workers set - so a sweep resolved three runs to one checkpoint directory and
+/// one `{step}.bin`. Each save renamed over the previous one; three hashes and
+/// three `DONE:` lines were printed and one artifact survived. The ledger was
+/// worse: three rows claimed three different `sha256` values for one `path`.
+///
+/// The seed therefore scopes the DIRECTORY on the sweep path (see
+/// `checkpoint::run_dir`), while `canon_name` stays the ledger identity it has
+/// always been. The single-seed layout is untouched: it is where the README and
+/// `ckpt_replay` look.
+static SWEEP_SEED_SCOPE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Sets `SWEEP_SEED_SCOPE` for its lifetime, including across the `?` of a
+/// failed seed - a sweep that dies half-way must not leave later single-seed
+/// runs in this process writing into `seed{n}/` subdirectories.
+struct SweepSeedScope;
+
+impl SweepSeedScope {
+    fn enter() -> Self {
+        SWEEP_SEED_SCOPE.store(true, std::sync::atomic::Ordering::SeqCst);
+        Self
+    }
+}
+
+impl Drop for SweepSeedScope {
+    fn drop(&mut self) {
+        SWEEP_SEED_SCOPE.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// `Some(seed)` only inside `run_sweep`. See `SWEEP_SEED_SCOPE`.
+fn checkpoint_seed_scope(seed: u64) -> Option<u64> {
+    if SWEEP_SEED_SCOPE.load(std::sync::atomic::Ordering::SeqCst) {
+        Some(seed)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -320,7 +494,10 @@ pub(crate) fn assert_train_val_disjoint(train: &[usize], val: &[usize]) {
         val.len(),
         MIN_VAL_TOKENS
     );
-    let chunks = eval_chunk_count(val.len());
+    // The guard asks the question at the coverage the run will actually use:
+    // a stream that yields enough windows at full coverage can still yield too
+    // few at `--eval-chunks 4`.
+    let chunks = eval_chunk_count(val.len(), eval_chunks_target());
     assert!(
         chunks >= MIN_EVAL_CHUNKS,
         "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S), minimum {}. `evaluate` would \
@@ -413,6 +590,20 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
     1e-5 + (base_lr - 1e-5) * 0.5 * (1.0 + (std::f32::consts::PI * p).cos())
 }
 
+/// First-moment decay of the AdamW that `trios-train` actually steps with.
+///
+/// Named because the sidecar records it. It is 0.9, NOT the `1/phi = 0.618` of
+/// `optimizer::AdamWCpu`: the production trainer has always used its own
+/// `AdamW` below and never constructs `AdamWCpu`, so no published `trios-train`
+/// BPB was produced with the phi-branded constants. Reading the value from the
+/// same constant the update rule uses is what stops the record and the code
+/// drifting apart.
+const ADAMW_BETA1: f32 = 0.9;
+/// Second-moment decay. See `ADAMW_BETA1`.
+const ADAMW_BETA2: f32 = 0.999;
+/// Denominator epsilon. See `ADAMW_BETA1`.
+const ADAMW_EPS: f32 = 1e-8;
+
 struct AdamW {
     m: Vec<f32>,
     v: Vec<f32>,
@@ -428,8 +619,8 @@ impl AdamW {
             m: vec![0.0; size],
             v: vec![0.0; size],
             step: 0,
-            beta1: 0.9,
-            beta2: 0.999,
+            beta1: ADAMW_BETA1,
+            beta2: ADAMW_BETA2,
             wd,
         }
     }
@@ -441,8 +632,24 @@ impl AdamW {
             params[i] -= self.wd * lr * params[i];
             self.m[i] = self.beta1 * self.m[i] + (1.0 - self.beta1) * grads[i];
             self.v[i] = self.beta2 * self.v[i] + (1.0 - self.beta2) * grads[i] * grads[i];
-            params[i] -= lr * (self.m[i] / bc1) / ((self.v[i] / bc2).sqrt() + 1e-8);
+            params[i] -= lr * (self.m[i] / bc1) / ((self.v[i] / bc2).sqrt() + ADAMW_EPS);
         }
+    }
+}
+
+/// The hyperparameters behind the string `optimizer: "adamw"`, for the sidecar.
+///
+/// `wd` is a per-run local (0.04 on both the AdamW and the Muon path) rather
+/// than a constant, so it is passed in from the construction site instead of
+/// being restated here, where it could disagree with the optimizers that were
+/// actually built.
+fn adamw_record_params(wd: f32, source: &str) -> crate::checkpoint::OptimizerParams {
+    crate::checkpoint::OptimizerParams {
+        beta1: ADAMW_BETA1 as f64,
+        beta2: ADAMW_BETA2 as f64,
+        eps: ADAMW_EPS as f64,
+        weight_decay: wd as f64,
+        source: source.to_string(),
     }
 }
 
@@ -736,7 +943,11 @@ pub(crate) struct CheckpointMeta {
     pub attn_scale: f32,
     /// `attn_seq_override()`, default `ATTN_SEQ` = 8 (`TRIOS_ATTN_SEQ`).
     pub attn_seq: u32,
-    /// `gf16_enabled()` (`TRIOS_GF16_DISABLE`).
+    /// `resolve_gf16_knob()`: `GF16_ENABLED` when set, else the legacy
+    /// `TRIOS_GF16_DISABLE` reading. It must be the SAME value that gated
+    /// `gf16_floor()` in the loop that produced these weights - this field
+    /// used to be filled from `gf16_enabled()` independently, so a run started
+    /// with `GF16_ENABLED=false` recorded `true`.
     pub gf16_enabled: bool,
     /// True when `load_data` used the opt-in synthetic corpus.
     pub data_synthetic: bool,
@@ -1109,20 +1320,33 @@ struct RunKnobs {
 /// leaves an on-disk record naming the file and its hash; "pending" is itself
 /// honest information, and reconciliation later is a plain
 /// `INSERT ... ON CONFLICT DO NOTHING` replayed from the sidecars.
+///
+/// `seed_scope` is `Some(seed)` only on the sweep path, where it gives each
+/// seed its own directory; the artifact, its sidecar and the ledger row all
+/// carry the path that was actually written, so no two rows can claim
+/// different hashes for one file.
+#[allow(clippy::too_many_arguments)]
 fn emit_checkpoint(
     model: &HybridModel,
     canon: &str,
+    seed_scope: Option<u64>,
     meta: &CheckpointMeta,
     corpus: &crate::checkpoint::CorpusProvenance,
     run: &RunKnobs,
+    // `eval` is the grid `bpb` was measured on, so the record states its own
+    // sampling plan instead of leaving `num_chunks` a literal in the loop
+    // above; `val_len` is what that coverage is a fraction OF.
+    eval: &EvalStats,
+    val_len: usize,
+    opt_params: &crate::checkpoint::OptimizerParams,
     bpb: Option<f64>,
-    best_val_bpb: Option<f64>,
+    min_observed_val_bpb: Option<f64>,
     ema_bpb: Option<f64>,
 ) -> Result<()> {
     use crate::checkpoint::{CheckpointRecord, CHECKPOINT_FORMAT_VERSION, CHECKPOINT_RECORD_SCHEMA};
 
     let bytes = model.to_checkpoint_bytes(meta)?;
-    let saved = crate::checkpoint::save(canon, meta.step as usize, &bytes)?;
+    let saved = crate::checkpoint::save_scoped(canon, seed_scope, meta.step as usize, &bytes)?;
     let cfg = *model.attn.config();
     let path_str = saved.path.to_string_lossy().into_owned();
     let (git_sha, git_dirty, git_provenance) = crate::checkpoint::resolve_git_provenance();
@@ -1153,13 +1377,17 @@ fn emit_checkpoint(
         gf16_floor_every: run.gf16_floor_every,
         eval_every: run.eval_every,
         final_val_bpb: bpb,
-        best_val_bpb,
+        min_observed_val_bpb,
         ema_bpb,
         git_sha: git_sha.clone(),
         git_provenance: git_provenance.to_string(),
         git_dirty,
         corpus: corpus.clone(),
-        run_id: std::env::var("RAILWAY_DEPLOYMENT_ID").unwrap_or_default(),
+        // Schema 7. Absent when the variable is unset or blank, never `""`:
+        // the same `env_nonempty` rule `neon_writer` applies to the nullable
+        // ledger columns, finally applied to the evidence document those
+        // columns are derived from.
+        run_id: crate::checkpoint::resolve_run_id(),
         ledger: ledger.to_string(),
         ts: chrono::Utc::now().to_rfc3339(),
         // The f32 the optimizer actually stepped with, widened exactly: `--lr
@@ -1172,9 +1400,22 @@ fn emit_checkpoint(
         source_sha256: source_sha256.clone(),
         trainer: trainer_prov.clone(),
         vocab: VOCAB as u32,
+        // Schema 5. The same bool that was just hashed into byte 124 of the
+        // header, not a re-read of `TRIOS_GF16_DISABLE`: it gates the in-place
+        // `gf16_floor()` rewrite, so it decides the weights.
+        gf16_enabled: meta.gf16_enabled,
+        // Schema 6. The plan `bpb` was measured on, taken from the `EvalStats`
+        // that produced that number and NOT re-derived here from
+        // `eval_chunks_target()`, where an env change mid-run would make the
+        // sidecar describe a grid the reading never came from.
+        eval_chunks: Some(eval.plan.chunks as u32),
+        eval_tokens: Some(eval.tokens() as u64),
+        eval_seq: Some(eval.plan.seq as u32),
+        val_bpb_stderr: eval.stderr.map(|s| s as f64),
+        optimizer_params: Some(opt_params.clone()),
     };
 
-    crate::checkpoint::write_sidecar(&record("pending"))?;
+    crate::checkpoint::write_sidecar_scoped(&record("pending"), seed_scope)?;
     let outcome = crate::neon_writer::checkpoint_record(
         canon,
         meta.seed as i32,
@@ -1188,16 +1429,74 @@ fn emit_checkpoint(
         meta.data_synthetic,
         bpb,
     );
-    crate::checkpoint::write_sidecar(&record(outcome.as_str()))?;
+    crate::checkpoint::write_sidecar_scoped(&record(outcome.as_str()), seed_scope)?;
 
     eprintln!(
-        "[ckpt] {} sha256={} bytes={} ledger={}",
+        "[ckpt] {} sha256={} bytes={} ledger={} eval_chunks={} eval_tokens={} coverage={:.4}",
         path_str,
         saved.sha256,
         saved.bytes,
-        outcome.as_str()
+        outcome.as_str(),
+        eval.plan.chunks,
+        eval.tokens(),
+        eval.coverage(val_len)
     );
     Ok(())
+}
+
+/// Save the weights as initialised, before the first optimizer step.
+///
+/// A thin front door onto `emit_checkpoint` - it adds no hashing, no sidecar
+/// and no ledger logic of its own - whose whole job is to fix the three fields
+/// that a step-0 record must not guess:
+///
+///   * `step: 0` in `meta`, checked here rather than trusted, so the file is
+///     `0.bin` and the record says `"step": 0`;
+///   * `min_observed_val_bpb: None` and `ema_bpb: None`, because neither
+///     quantity exists before the run has taken a second reading. `init_bpb`
+///     is not a run minimum and is not an EMA, and putting it in either field
+///     would make the record claim a measurement that was never made;
+///   * `final_val_bpb: Some(init_bpb)`, which IS measured - `init_stats` is the
+///     evaluation of these exact bytes, taken by the caller a few lines above.
+#[allow(clippy::too_many_arguments)]
+fn emit_init_checkpoint(
+    model: &HybridModel,
+    args: &TrainArgs,
+    canon: &str,
+    seed_scope: Option<u64>,
+    meta: &CheckpointMeta,
+    corpus: &crate::checkpoint::CorpusProvenance,
+    gf16_every: usize,
+    init_stats: &EvalStats,
+    val_len: usize,
+    opt_params: &crate::checkpoint::OptimizerParams,
+    init_bpb: f32,
+) -> Result<()> {
+    anyhow::ensure!(
+        meta.step == 0,
+        "emit_init_checkpoint called with step={}; the initial-weights artifact \
+         is step 0 by definition",
+        meta.step
+    );
+    emit_checkpoint(
+        model,
+        canon,
+        seed_scope,
+        meta,
+        corpus,
+        &RunKnobs {
+            steps_total: args.steps as u64,
+            gf16_floor_every: gf16_every as u64,
+            eval_every: args.eval_every as u64,
+        },
+        init_stats,
+        val_len,
+        opt_params,
+        Some(init_bpb as f64),
+        None,
+        None,
+    )
+    .context("initial-weights checkpoint failed")
 }
 
 fn compute_grads(
@@ -1335,60 +1634,207 @@ fn compute_grads(
     }
 }
 
-/// How many chunks `evaluate` would average over for a stream of `len` tokens.
+/// The window grid `evaluate` will walk: the sampling plan, as a value.
 ///
-/// Extracted so `assert_train_val_disjoint` and `evaluate` cannot disagree
-/// about what "too few chunks to be a measurement" means. Mirrors the loop
-/// bounds below exactly; a change to one must change the other.
-pub(crate) fn eval_chunk_count(len: usize) -> usize {
+/// Extracted so the plan is a thing that can be recorded and printed instead of
+/// two hardcoded literals buried in a loop bound. `assert_train_val_disjoint`,
+/// `evaluate` and the checkpoint sidecar all read the same plan, so they cannot
+/// disagree about what was measured.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EvalPlan {
+    /// Window length in tokens, `SEQ + 1`.
+    pub seq: usize,
+    /// Stride between window starts. Equal to `seq` at full coverage.
+    pub stride: usize,
+    /// Number of windows the walk will visit.
+    pub chunks: usize,
+    /// The requested coverage this plan was resolved from; `0` = full.
+    pub target: usize,
+}
+
+/// Resolve the window grid for a stream of `len` tokens at `target` coverage.
+///
+/// `None` means the stream is too short for even one window - not a
+/// measurement, and never silently rounded up to one.
+///
+/// `target == 0` is full coverage: non-overlapping windows tiling the stream,
+/// every byte read exactly once, no sampling error. Any other `target` keeps
+/// the pre-existing grid EXACTLY (evenly spaced starts, `max_start / target`
+/// apart, capped at `target` windows) so that a run at the default 40 is
+/// bit-comparable with every run recorded before this parameter existed.
+pub(crate) fn eval_plan(len: usize, target: usize) -> Option<EvalPlan> {
     let seq = SEQ + 1;
-    let num_chunks = 40usize;
     let max_start = len.saturating_sub(seq);
     if max_start == 0 {
-        return 0;
+        return None;
     }
-    let step = if max_start >= num_chunks * seq {
-        max_start / num_chunks
+    let stride = if target == 0 {
+        seq
+    } else if max_start >= target * seq {
+        max_start / target
     } else {
         seq
     };
-    max_start.div_ceil(step.max(1)).min(num_chunks)
+    let stride = stride.max(1);
+    let mut chunks = max_start.div_ceil(stride);
+    if target > 0 {
+        chunks = chunks.min(target);
+    }
+    Some(EvalPlan {
+        seq,
+        stride,
+        chunks,
+        target,
+    })
 }
 
-/// Mean bits-per-byte over evenly spaced chunks of `tokens`.
+/// How many chunks `evaluate` would average over for a stream of `len` tokens.
+///
+/// Mirrors `eval_plan` because it IS `eval_plan`; kept as a name because the
+/// size guard in `assert_train_val_disjoint` asks exactly this question.
+pub(crate) fn eval_chunk_count(len: usize, target: usize) -> usize {
+    eval_plan(len, target).map(|p| p.chunks).unwrap_or(0)
+}
+
+/// One BPB reading and the spread of the per-window readings behind it.
+///
+/// A mean with no `n` and no dispersion is not a measurement result, which is
+/// what the record used to carry: seventeen digits of `val_bpb`, compared
+/// against a champion at the fourth decimal, over an unstated 5% sample.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EvalStats {
+    /// Mean bits-per-byte over the windows in `plan`.
+    pub mean: f32,
+    /// Sample standard deviation (n-1) of the per-window readings. `None` for
+    /// a single window, where the spread is undefined - NOT 0.0, which would
+    /// read as a perfectly repeatable measurement.
+    pub stdev: Option<f32>,
+    /// `(stdev / sqrt(n)) * sqrt(1 - n/N)`: the standard error of THIS mean,
+    /// finite-population corrected against the `N` windows full coverage of the
+    /// same stream would have walked.
+    ///
+    /// The correction is not cosmetic. Without it the field reported
+    /// `s / sqrt(n)`, which is the standard error of a mean drawn from an
+    /// INFINITE population; the val stream is finite and the grid samples it
+    /// WITHOUT replacement, so at full coverage (`n == N`, every byte read
+    /// exactly once) there is no sampling error left and the field must be
+    /// exactly `0.0`. Measured before this change, a `TRIOS_EVAL_CHUNKS=0` run
+    /// over 775 of 775 windows still wrote `val_bpb_stderr = 0.0117720` - the
+    /// spread BETWEEN windows, published as the uncertainty OF the mean, while
+    /// `eval_chunks_target`'s own doc comment called that setting "the only
+    /// setting with no sampling error at all". The doc and the artifact
+    /// disagreed and the artifact was the wrong one. `stdev` is untouched: the
+    /// between-window spread is a real quantity, it is simply not this one.
+    ///
+    /// Still WITHIN-GRID: it is the error of the mean over THIS fixed aliased
+    /// grid, and says nothing about the much larger spread between grids. See
+    /// `docs/EVAL-UNCERTAINTY.md`.
+    pub stderr: Option<f32>,
+    /// The grid actually walked. `plan.chunks` is `n`.
+    pub plan: EvalPlan,
+}
+
+impl EvalStats {
+    /// Tokens the eval actually looked at.
+    pub fn tokens(&self) -> usize {
+        self.plan.chunks * self.plan.seq
+    }
+    /// Fraction of `stream_len` the eval looked at, as a plain ratio.
+    pub fn coverage(&self, stream_len: usize) -> f64 {
+        if stream_len == 0 {
+            return 0.0;
+        }
+        self.tokens() as f64 / stream_len as f64
+    }
+}
+
+/// Mean bits-per-byte over the `target` window grid of `tokens`, with spread.
 ///
 /// `None` means the evaluation could not be performed. A chunk that cannot be
 /// measured invalidates the whole eval rather than being quietly dropped from
 /// the average: silently skipping chunks is how an eval over a degenerate
 /// corpus still produced a confident-looking number (#62).
-fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
-    let seq = SEQ + 1;
-    let num_chunks = 40usize;
-    let max_start = tokens.len().saturating_sub(seq);
-    if max_start == 0 {
-        return None;
-    }
-    let step = if max_start >= num_chunks * seq {
-        max_start / num_chunks
-    } else {
-        seq
-    };
-    let mut total = 0.0f32;
-    let mut n = 0usize;
-    for c in (0..max_start).step_by(step).take(num_chunks) {
-        let end = (c + seq).min(tokens.len());
+fn evaluate(model: &HybridModel, tokens: &[usize], target: usize) -> Option<EvalStats> {
+    let plan = eval_plan(tokens.len(), target)?;
+    let max_start = tokens.len() - plan.seq;
+    let mut readings: Vec<f32> = Vec::with_capacity(plan.chunks);
+    for c in (0..max_start).step_by(plan.stride).take(plan.chunks) {
+        let end = (c + plan.seq).min(tokens.len());
         let loss = model.loss_on_seq(&tokens[c..end])?;
         if !loss.is_finite() {
             return None;
         }
-        total += loss / LN_2;
-        n += 1;
+        readings.push(loss / LN_2);
     }
+    let n = readings.len();
     if n == 0 {
-        None
-    } else {
-        Some(total / n as f32)
+        return None;
     }
+    let mean = readings.iter().sum::<f32>() / n as f32;
+    // Two-pass, in f64: the one-pass sum-of-squares form loses the whole
+    // difference when the readings sit near 3.0 and differ in the third
+    // decimal, which is precisely the regime being measured.
+    let (stdev, stderr) = if n >= 2 {
+        let var = readings
+            .iter()
+            .map(|&r| {
+                let d = r as f64 - mean as f64;
+                d * d
+            })
+            .sum::<f64>()
+            / (n as f64 - 1.0);
+        let s = var.sqrt();
+        // Finite-population correction. `N` is the number of windows FULL
+        // coverage of this same stream would walk - the plan resolved at
+        // target 0 - so the ratio n/N is the fraction of the population this
+        // grid actually read. `eval_plan` can never return more chunks than
+        // that (any target > 0 has stride >= seq), so the factor is in [0, 1];
+        // it is clamped anyway rather than trusting that argument to survive a
+        // future change to the plan.
+        let population = eval_chunk_count(tokens.len(), 0).max(n);
+        let fpc = (1.0 - (n as f64) / (population as f64)).clamp(0.0, 1.0).sqrt();
+        (Some(s as f32), Some((s / (n as f64).sqrt() * fpc) as f32))
+    } else {
+        (None, None)
+    };
+    Some(EvalStats {
+        mean,
+        stdev,
+        stderr,
+        plan: EvalPlan { chunks: n, ..plan },
+    })
+}
+
+/// The eval plan and its uncertainty, as stdout tokens.
+///
+/// A NEW line with a new leading token. The `DONE:` line printed by
+/// `bin/trios-train` is deliberately untouched, format and all: parsers keyed
+/// on `DONE: ... bpb=<4dp>` must keep working, so this appends rather than
+/// widens.
+fn print_eval_uncertainty(seed: u64, step: usize, stats: &EvalStats, val_len: usize) {
+    let fmt = |v: Option<f32>| match v {
+        Some(x) => format!("{x:.6}"),
+        None => "unmeasured".to_string(),
+    };
+    println!(
+        "EVAL-PLAN: seed={} step={} val_bpb_mean={:.6} val_bpb_stdev={} val_bpb_stderr={} \
+         eval_chunks={} eval_chunks_target={} eval_seq={} eval_stride={} eval_tokens={} \
+         val_tokens={} coverage={:.4}",
+        seed,
+        step,
+        stats.mean,
+        fmt(stats.stdev),
+        fmt(stats.stderr),
+        stats.plan.chunks,
+        stats.plan.target,
+        stats.plan.seq,
+        stats.plan.stride,
+        stats.tokens(),
+        val_len,
+        stats.coverage(val_len)
+    );
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
 }
 
 /// Reject a BPB reading that cannot be a real measurement of held-out text.
@@ -1399,16 +1845,26 @@ fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
 /// ~7.00 at init, ~3.33 at step 1000, 2.75-2.83 at step 12000. Even a 100%
 /// verbatim train/val overlap only reaches 2.71 on this architecture, so a
 /// near-zero reading is never a good model - it is a degenerate eval corpus.
+///
+/// The bound below is `invariants::PUBLISHED_BPB_FLOOR` (2.0), derived from
+/// exactly that calibration, and NOT `race::victory::JEPA_PROXY_BPB_FLOOR`
+/// (0.1). Every value that reaches this function is printed, returned as the
+/// run's result and written to `ssot.bpb_samples`; guarding it with the
+/// proxy-artefact detector left the bound 26x below what the docstring three
+/// lines up already implied, which is how the retracted 1.5492 passed.
 fn guard_bpb(vbpb: f32, step: usize) -> Result<f32> {
     anyhow::ensure!(
         vbpb.is_finite(),
         "val_bpb is not finite at step {step}; refusing to emit"
     );
+    let floor = crate::invariants::PUBLISHED_BPB_FLOOR;
     anyhow::ensure!(
-        (vbpb as f64) > crate::race::victory::JEPA_PROXY_BPB_FLOOR,
-        "val_bpb={vbpb:.6} <= JEPA_PROXY_BPB_FLOOR at step {step}: the eval \
-         corpus is degenerate or duplicated, not the model perfect. This is \
-         the signature that mislabelled 179 ledger rows as data leaks (#62)."
+        vbpb > floor,
+        "val_bpb={vbpb:.6} <= PUBLISHED_BPB_FLOOR {floor} at step {step}: below \
+         anything this architecture can honestly reach (100% verbatim train/val \
+         overlap still only reaches ~2.71), so the eval corpus is degenerate or \
+         duplicated, not the model perfect. This is the signature that \
+         mislabelled 179 ledger rows as data leaks (#62)."
     );
     Ok(vbpb)
 }
@@ -1431,22 +1887,51 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     } else {
         args.attn_layers
     };
-    // Wave 31 PR-B: validate GF16_ENABLED knob (default false, feature-gated).
-    let _gf16_knob = resolve_gf16_knob()?;
-    if _gf16_knob {
-        eprintln!("[arch-knob] GF16_ENABLED=true (Wave-31 PR-B, feature=gf16)");
+    // Wave 31 PR-B: the ONE resolution of the GF16 knob. It gates the in-place
+    // `gf16_floor()` rewrite below and is what the sidecar records, so a run
+    // cannot execute one value and report the other.
+    let gf16_on = resolve_gf16_knob()?;
+    if std::env::var("GF16_ENABLED").is_ok() {
+        eprintln!("[arch-knob] GF16_ENABLED={gf16_on} (override, Wave-31 PR-B)");
     }
     // `gf16_floor_every` is part of the RECIPE, not of the observation, so it
     // is banner-visible next to seed/steps and recorded in the sidecar.
     let gf16_every = gf16_floor_every() as usize;
+    // Resolved ONCE, and banner-visible for the same reason `gf16_floor_every`
+    // is: a typo in the cadence must be readable at step 0, not inferred from
+    // an empty directory at step 12000.
+    let ckpt_every = resolve_checkpoint_every()?;
+    let ckpt_init = checkpoint_init_enabled();
     eprintln!(
         "=== trios-train seed={} steps={} hidden={} lr={:.4} attn_layers={} \
-         eval_every={} gf16_floor_every={} ===",
-        args.seed, args.steps, eff_hidden, args.lr, eff_attn_layers, args.eval_every, gf16_every
+         eval_every={} gf16_enabled={} gf16_floor_every={} checkpoint_every={} \
+         checkpoint_init={} ===",
+        args.seed,
+        args.steps,
+        eff_hidden,
+        args.lr,
+        eff_attn_layers,
+        args.eval_every,
+        gf16_on,
+        gf16_every,
+        ckpt_every,
+        ckpt_init
     );
     // EPIC-446: resolve run identity ONCE. The same string names the checkpoint
     // directory and the ledger row, so the artifact and the BPB cannot drift apart.
     let canon = resolve_canon_name(args.seed);
+    // Bind the optimizer that ACTUALLY executes, before step 1 and before any
+    // artifact or ledger row can be minted under it. `trios-train` never bound,
+    // so `neon_writer`'s anti-mislabelling guard had nothing to compare against
+    // and fell back to the algo parsed out of the canon suffix - a label, not a
+    // fact. An `Err` here is a canon name that names a different optimizer than
+    // the one about to run, which must stop the run rather than be discovered
+    // as a silent dropped row at the first checkpoint.
+    crate::neon_writer::bind_executed_optimizer(&canon, "adamw")
+        .map_err(|e| anyhow::anyhow!("[R5-honesty] {e}"))?;
+    // R5-4: `Some(seed)` only under `run_sweep`, where one canon name covers
+    // several runs. See `SWEEP_SEED_SCOPE`.
+    let seed_scope = checkpoint_seed_scope(args.seed);
 
     let (train, train_synthetic) = load_data(&args.train_path)?;
     let (val, val_synthetic) = load_data(&args.val_path)?;
@@ -1475,7 +1960,9 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let d = model.attn.config().d_model;
     let dd = d * d;
     let attn_total = 8 * dd;
-    let wd = 0.04f32;
+    // Named so `unhonoured_fields` grades `optimizer.weight_decay` against the
+    // value this loop actually applies, and cannot drift away from it.
+    let wd = TRAIN_LOOP_WEIGHT_DECAY as f32;
     let mut opt_embed = AdamW::new(VOCAB * DIM, wd);
     let mut opt_ctx: Vec<AdamW> = (0..NUM_CTX).map(|_| AdamW::new(VOCAB * DIM, wd)).collect();
     let mut opt_proj = AdamW::new(eff_hidden * DIM, wd);
@@ -1483,17 +1970,35 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let mut opt_attn_up = AdamW::new(eff_hidden * d, wd);
     let mut opt_head = AdamW::new(VOCAB * eff_hidden, wd);
     let mut opt_attn_w = AdamW::new(attn_total, wd);
+    let opt_params = adamw_record_params(wd, "train_loop::AdamW");
 
-    let init_bpb = evaluate(&model, &val)
+    // The declared sampling plan, resolved ONCE for the run: an eval whose
+    // coverage changed between step 0 and the final step would be comparing
+    // two different measurements.
+    let eval_chunks = eval_chunks_target();
+    let init_stats = evaluate(&model, &val, eval_chunks)
         .ok_or_else(|| anyhow::anyhow!("initial eval produced no measurable chunk"))?;
-    let init_bpb = guard_bpb(init_bpb, 0)?;
-    eprintln!("Initial val_bpb={:.4}", init_bpb);
+    let init_bpb = guard_bpb(init_stats.mean, 0)?;
+    eprintln!(
+        "Initial val_bpb={:.4} over {} windows of {} tokens ({:.2}% of {} val tokens)",
+        init_bpb,
+        init_stats.plan.chunks,
+        init_stats.plan.seq,
+        init_stats.coverage(val.len()) * 100.0,
+        val.len()
+    );
+    print_eval_uncertainty(args.seed, 0, &init_stats, val.len());
     let mut ema_bpb = init_bpb;
-    // Raw readings, tracked separately from the EMA. `best_val_bpb` is the
-    // minimum over the readings this run TOOK; `init_bpb` is excluded because
+    // Raw readings, tracked separately from the EMA. `min_observed_val_bpb` is
+    // the minimum over the readings this run TOOK - optimistic by construction,
+    // see the field doc on `CheckpointRecord`; `init_bpb` is excluded because
     // it describes the initialization, not the run.
     let mut best_val_bpb: Option<f32> = None;
     let mut final_val_bpb: Option<f32> = None;
+    // Proof that this run left something behind. A run that never enters the
+    // step loop (`--steps 0`) skipped every emission point silently and still
+    // exited 0 - the exact shape of "1,851 experiments, zero artifacts".
+    let mut artifact_emitted = false;
     let warmup = args.steps / 10;
     let accum = 4;
     let mut rng_s = args.seed.wrapping_add(7919);
@@ -1501,6 +2006,42 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let gf16_floor_step = (0.7 * args.steps as f32).floor() as usize;
     let nca = NcaObjective::default();
     let mut last_nca_entropy = 0.0f64;
+
+    // The step-0 artifact: the weights as initialised, before a single gradient
+    // has been applied. It goes through `emit_checkpoint` like every other
+    // artifact, so the hashing, the sidecar and the ledger row are the same
+    // code, not a second implementation.
+    //
+    // It deliberately does NOT set `artifact_emitted`: a run that saved nothing
+    // but its own initialisation still produced no TRAINED artifact, and the
+    // guard at the end of this function exists to catch exactly that.
+    if ckpt_init && checkpoint_enabled() {
+        emit_init_checkpoint(
+            &model,
+            args,
+            &canon,
+            seed_scope,
+            &CheckpointMeta {
+                seed: args.seed,
+                step: 0,
+                train_lr: args.lr,
+                attn_scale: attn_scale(),
+                attn_seq: attn_seq_override() as u32,
+                gf16_enabled: gf16_on,
+                data_synthetic,
+                optimizer: "adamw".into(),
+                fake_quant_format: fq_fmt
+                    .map(|f| f.name().to_string())
+                    .unwrap_or_else(|| "f32".into()),
+            },
+            &corpus,
+            gf16_every,
+            &init_stats,
+            val.len(),
+            &opt_params,
+            init_bpb,
+        )?;
+    }
 
     for step in 1..=args.steps {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
@@ -1641,7 +2182,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 
         // NOT `args.eval_every`: `gf16_floor` mutates the weights, so gating it
         // on the eval cadence made an observation parameter change the artifact.
-        if gf16_enabled() && step >= gf16_floor_step && step % gf16_every == 0 {
+        if gf16_on && step >= gf16_floor_step && step % gf16_every == 0 {
             gf16_floor(&mut model.embed);
             gf16_floor(&mut model.proj);
             gf16_floor(&mut model.lm_head);
@@ -1650,57 +2191,81 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             }
         }
 
-        if step % args.eval_every == 0 || step == args.steps {
-            let vbpb = evaluate(&model, &val)
+        // The two cadences are INDEPENDENT. `TRIOS_CHECKPOINT_EVERY` used to
+        // live inside the `step % args.eval_every == 0` guard, so the requested
+        // artifact cadence was silently intersected with the observation
+        // cadence: `TRIOS_CHECKPOINT_EVERY=50 --eval-every 100 --steps 200`
+        // wrote 100.bin and 200.bin and exited 0, half the requested artifacts
+        // never written and no warning. That is the same
+        // observation-parameter-decides-the-artifact coupling already removed
+        // from `gf16_floor` above, on the one function whose absence caused
+        // "1,851 experiments, zero artifacts".
+        let is_eval_step = step % args.eval_every == 0 || step == args.steps;
+        let is_ckpt_step =
+            checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step, ckpt_every));
+        if is_eval_step || is_ckpt_step {
+            let stats = evaluate(&model, &val, eval_chunks)
                 .ok_or_else(|| anyhow::anyhow!("eval produced no measurable chunk at step {step}"))?;
-            let vbpb = guard_bpb(vbpb, step)?;
-            ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
-            best_val_bpb = Some(match best_val_bpb {
-                Some(b) if b <= vbpb => b,
-                _ => vbpb,
-            });
-            if step == args.steps {
-                final_val_bpb = Some(vbpb);
-            }
-            println!(
-                "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best_val_bpb={:.4} nca_h={:.3} t={:.1}s",
-                args.seed,
-                step,
-                vbpb,
-                ema_bpb,
-                best_val_bpb.unwrap_or(vbpb),
-                last_nca_entropy,
-                t0.elapsed().as_secs_f64()
-            );
-            // R5/L8: flush stdout immediately so seed-agent reads the JSONL
-            // line. Without this the line stays in the BufWriter for the
-            // child stdout pipe and the parent reader times out before EOF.
-            // Refs: trios-railway#100, trios-trainer-igla#57.
-            use std::io::Write as _;
-            let _ = std::io::stdout().flush();
+            let vbpb = guard_bpb(stats.mean, step)?;
+            // A checkpoint-only step measures its own weights - the artifact
+            // must carry the reading these exact bytes produce - but it does
+            // NOT touch the published trajectory. Folding it into the EMA, the
+            // running best or the ledger would make the artifact cadence
+            // change the reported numbers, which is the coupling this block
+            // exists to break: two runs of the same recipe must stay
+            // comparable however often they were snapshotted.
+            if is_eval_step {
+                ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
+                best_val_bpb = Some(match best_val_bpb {
+                    Some(b) if b <= vbpb => b,
+                    _ => vbpb,
+                });
+                if step == args.steps {
+                    final_val_bpb = Some(vbpb);
+                }
+                println!(
+                    "seed={} step={} val_bpb={:.4} ema_bpb={:.4} best_val_bpb={:.4} nca_h={:.3} t={:.1}s",
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_val_bpb.unwrap_or(vbpb),
+                    last_nca_entropy,
+                    t0.elapsed().as_secs_f64()
+                );
+                // Appended, not merged into the line above: the existing line has
+                // downstream parsers and the uncertainty is new information.
+                print_eval_uncertainty(args.seed, step, &stats, val.len());
+                // R5/L8: flush stdout immediately so seed-agent reads the JSONL
+                // line. Without this the line stays in the BufWriter for the
+                // child stdout pipe and the parent reader times out before EOF.
+                // Refs: trios-railway#100, trios-trainer-igla#57.
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
 
-            // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
-            // is set (scarab sets this env var for the trainer subprocess).
-            // EPIC-446: `canon` is resolved once at the top of the run so the
-            // checkpoint directory and this row cannot name different runs.
-            crate::neon_writer::bpb_sample(
-                &canon,
-                args.seed as i32,
-                step as i32,
-                vbpb,
-                Some(ema_bpb as f32),
-            );
+                // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
+                // is set (scarab sets this env var for the trainer subprocess).
+                // EPIC-446: `canon` is resolved once at the top of the run so the
+                // checkpoint directory and this row cannot name different runs.
+                crate::neon_writer::bpb_sample(
+                    &canon,
+                    args.seed as i32,
+                    step as i32,
+                    vbpb,
+                    Some(ema_bpb as f32),
+                );
+            }
 
             // EPIC-446: emit the artifact AFTER bpb_sample so the checkpoint
             // row carries the BPB these exact weights produced.
-            if checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step)) {
+            if is_ckpt_step {
                 let meta = CheckpointMeta {
                     seed: args.seed,
                     step: step as u64,
                     train_lr: args.lr,
                     attn_scale: attn_scale(),
                     attn_seq: attn_seq_override() as u32,
-                    gf16_enabled: gf16_enabled(),
+                    gf16_enabled: gf16_on,
                     data_synthetic,
                     optimizer: "adamw".into(),
                     fake_quant_format: fq_fmt
@@ -1710,6 +2275,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 let res = emit_checkpoint(
                     &model,
                     &canon,
+                    seed_scope,
                     &meta,
                     &corpus,
                     &RunKnobs {
@@ -1717,16 +2283,26 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                         gf16_floor_every: gf16_every as u64,
                         eval_every: args.eval_every as u64,
                     },
+                    &stats,
+                    val.len(),
+                    &opt_params,
                     Some(vbpb as f64),
                     best_val_bpb.map(|v| v as f64),
-                    Some(ema_bpb as f64),
+                    // On a checkpoint-only step the EMA describes the last
+                    // EVAL step, not these weights. `None` says so; a stale
+                    // number would read as a measurement of this artifact.
+                    if is_eval_step {
+                        Some(ema_bpb as f64)
+                    } else {
+                        None
+                    },
                 );
                 // Asymmetric on purpose: a run that finishes with no artifact
                 // is the failure this exists to prevent and must not exit 0,
                 // but losing a whole run to a transient full disk mid-way
                 // would be worse than a missing intermediate file.
                 match res {
-                    Ok(()) => {}
+                    Ok(()) => artifact_emitted = true,
                     Err(e) if step == args.steps => {
                         return Err(e.context("final-step checkpoint failed"))
                     }
@@ -1737,6 +2313,19 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             }
         }
     }
+
+    // A run that was asked for artifacts and produced none is a failure, and
+    // must not be reported as a success. The in-loop guard above only fires on
+    // a checkpoint that was ATTEMPTED; `--steps 0` never enters the loop at
+    // all, so it printed a DONE line, wrote nothing and exited 0.
+    anyhow::ensure!(
+        !checkpoint_enabled() || artifact_emitted,
+        "run finished with no checkpoint artifact (steps={}, eval_every={}): \
+         checkpointing is enabled, so this run produced nothing to reproduce it \
+         from. Set TRIOS_CHECKPOINT_DISABLE=1 if that is genuinely intended.",
+        args.steps,
+        args.eval_every
+    );
 
     Ok(RunOutcome {
         final_val_bpb: final_val_bpb.map(|v| v as f64),
@@ -1766,16 +2355,40 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
     } else {
         args.attn_layers
     };
-    let _gf16_knob = resolve_gf16_knob()?;
+    // See `run_single`: the ONE resolution, gating the floor and recorded in
+    // every sidecar this path emits.
+    let gf16_on = resolve_gf16_knob()?;
+    if std::env::var("GF16_ENABLED").is_ok() {
+        eprintln!("[arch-knob] GF16_ENABLED={gf16_on} (override, Wave-31 PR-B)");
+    }
     let label = if use_cwd { "MuonCwd" } else { "Muon" };
     let gf16_every = gf16_floor_every() as usize;
+    // See `run_single`: resolved once, printed once, unparseable is fatal.
+    let ckpt_every = resolve_checkpoint_every()?;
+    let ckpt_init = checkpoint_init_enabled();
     eprintln!(
-        "=== P1 {} seed={} steps={} hidden={} eval_every={} gf16_floor_every={} ===",
-        label, args.seed, args.steps, eff_hidden, args.eval_every, gf16_every
+        "=== P1 {} seed={} steps={} hidden={} eval_every={} gf16_enabled={} \
+         gf16_floor_every={} checkpoint_every={} checkpoint_init={} ===",
+        label,
+        args.seed,
+        args.steps,
+        eff_hidden,
+        args.eval_every,
+        gf16_on,
+        gf16_every,
+        ckpt_every,
+        ckpt_init
     );
     // EPIC-446: see the note in `run_single` - one canon string for both the
     // checkpoint directory and the ledger row.
     let canon = resolve_canon_name(args.seed);
+    // See `run_single`: the executed optimizer is bound before step 1. The name
+    // is the one `run_with_optimizer` dispatched on, so a `muon-cwd` run cannot
+    // be recorded as `muon`.
+    crate::neon_writer::bind_executed_optimizer(&canon, if use_cwd { "muon-cwd" } else { "muon" })
+        .map_err(|e| anyhow::anyhow!("[R5-honesty] {e}"))?;
+    // R5-4: see the note in `run_single`.
+    let seed_scope = checkpoint_seed_scope(args.seed);
 
     let (train, train_synthetic) = load_data(&args.train_path)?;
     let (val, val_synthetic) = load_data(&args.val_path)?;
@@ -1824,15 +2437,35 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
     let mut opt_head = AdamW::new(VOCAB * eff_hidden, adamw_wd);
     let mut opt_attn_w_muon = AdamW::new(8 * dd, adamw_wd);
     let _cwd_lambda = cwd_lambda;
+    // The proj matrix is stepped by `MuonOptimizer`, everything else by the
+    // same `AdamW` as `run_single`; `source` says so rather than letting four
+    // AdamW numbers stand for a mixed recipe.
+    let opt_params = adamw_record_params(
+        adamw_wd,
+        "train_loop::AdamW (proj: optimizer::MuonOptimizer)",
+    );
 
-    let init_bpb = evaluate(&model, &val)
+    let eval_chunks = eval_chunks_target();
+    let init_stats = evaluate(&model, &val, eval_chunks)
         .ok_or_else(|| anyhow::anyhow!("initial eval produced no measurable chunk"))?;
-    let init_bpb = guard_bpb(init_bpb, 0)?;
-    eprintln!("Initial val_bpb={:.4}", init_bpb);
+    let init_bpb = guard_bpb(init_stats.mean, 0)?;
+    eprintln!(
+        "Initial val_bpb={:.4} over {} windows of {} tokens ({:.2}% of {} val tokens)",
+        init_bpb,
+        init_stats.plan.chunks,
+        init_stats.plan.seq,
+        init_stats.coverage(val.len()) * 100.0,
+        val.len()
+    );
+    print_eval_uncertainty(args.seed, 0, &init_stats, val.len());
     let mut ema_bpb = init_bpb;
     // See `run_single`: raw readings are tracked separately from the EMA.
     let mut best_val_bpb: Option<f32> = None;
     let mut final_val_bpb: Option<f32> = None;
+    // Proof that this run left something behind. A run that never enters the
+    // step loop (`--steps 0`) skipped every emission point silently and still
+    // exited 0 - the exact shape of "1,851 experiments, zero artifacts".
+    let mut artifact_emitted = false;
     let warmup = args.steps / 10;
     let accum = 4;
     let mut rng_s = args.seed.wrapping_add(7919);
@@ -1840,6 +2473,36 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
     let gf16_floor_step = (0.7 * args.steps as f32).floor() as usize;
     let nca = NcaObjective::default();
     let mut last_nca_entropy = 0.0f64;
+
+    // See `run_single`: the step-0 artifact, on the same emission path, and
+    // deliberately not counted as `artifact_emitted`.
+    if ckpt_init && checkpoint_enabled() {
+        emit_init_checkpoint(
+            &model,
+            args,
+            &canon,
+            seed_scope,
+            &CheckpointMeta {
+                seed: args.seed,
+                step: 0,
+                train_lr: args.lr,
+                attn_scale: attn_scale(),
+                attn_seq: attn_seq_override() as u32,
+                gf16_enabled: gf16_on,
+                data_synthetic,
+                optimizer: if use_cwd { "muon-cwd".into() } else { "muon".into() },
+                fake_quant_format: fq_fmt
+                    .map(|f| f.name().to_string())
+                    .unwrap_or_else(|| "f32".into()),
+            },
+            &corpus,
+            gf16_every,
+            &init_stats,
+            val.len(),
+            &opt_params,
+            init_bpb,
+        )?;
+    }
 
     for step in 1..=args.steps {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
@@ -1979,7 +2642,7 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         }
 
         // See `run_single`: the floor cadence is a recipe knob, not `eval_every`.
-        if gf16_enabled() && step >= gf16_floor_step && step % gf16_every == 0 {
+        if gf16_on && step >= gf16_floor_step && step % gf16_every == 0 {
             gf16_floor(&mut model.embed);
             gf16_floor(&mut model.proj);
             gf16_floor(&mut model.lm_head);
@@ -1988,57 +2651,67 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             }
         }
 
-        if step % args.eval_every == 0 || step == args.steps {
-            let vbpb = evaluate(&model, &val)
+        // See `run_single`: the artifact cadence is independent of the eval
+        // cadence, and a checkpoint-only step measures its own weights without
+        // disturbing the published trajectory.
+        let is_eval_step = step % args.eval_every == 0 || step == args.steps;
+        let is_ckpt_step =
+            checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step, ckpt_every));
+        if is_eval_step || is_ckpt_step {
+            let stats = evaluate(&model, &val, eval_chunks)
                 .ok_or_else(|| anyhow::anyhow!("eval produced no measurable chunk at step {step}"))?;
-            let vbpb = guard_bpb(vbpb, step)?;
-            ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
-            best_val_bpb = Some(match best_val_bpb {
-                Some(b) if b <= vbpb => b,
-                _ => vbpb,
-            });
-            if step == args.steps {
-                final_val_bpb = Some(vbpb);
-            }
-            println!(
-                "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best_val_bpb={:.4} nca_h={:.3} t={:.1}s",
-                label,
-                args.seed,
-                step,
-                vbpb,
-                ema_bpb,
-                best_val_bpb.unwrap_or(vbpb),
-                last_nca_entropy,
-                t0.elapsed().as_secs_f64()
-            );
-            // R5/L8: flush stdout immediately. See note in run_single().
-            use std::io::Write as _;
-            let _ = std::io::stdout().flush();
+            let vbpb = guard_bpb(stats.mean, step)?;
+            if is_eval_step {
+                ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
+                best_val_bpb = Some(match best_val_bpb {
+                    Some(b) if b <= vbpb => b,
+                    _ => vbpb,
+                });
+                if step == args.steps {
+                    final_val_bpb = Some(vbpb);
+                }
+                println!(
+                    "{} seed={} step={} val_bpb={:.4} ema_bpb={:.4} best_val_bpb={:.4} nca_h={:.3} t={:.1}s",
+                    label,
+                    args.seed,
+                    step,
+                    vbpb,
+                    ema_bpb,
+                    best_val_bpb.unwrap_or(vbpb),
+                    last_nca_entropy,
+                    t0.elapsed().as_secs_f64()
+                );
+                // See `run_single`: appended, never merged into the line above.
+                print_eval_uncertainty(args.seed, step, &stats, val.len());
+                // R5/L8: flush stdout immediately. See note in run_single().
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
 
-            // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
-            // is set (scarab sets this env var for the trainer subprocess).
-            // EPIC-446: `canon` is resolved once at the top of the run, from
-            // TRIOS_CANON_NAME -> CANON_NAME -> a deterministic seed fallback,
-            // so direct trios-train invocations still produce telemetry and the
-            // checkpoint directory cannot name a different run than this row.
-            crate::neon_writer::bpb_sample(
-                &canon,
-                args.seed as i32,
-                step as i32,
-                vbpb,
-                Some(ema_bpb as f32),
-            );
+                // Bug A fix: write eval to Neon bpb_samples if TRIOS_CANON_NAME
+                // is set (scarab sets this env var for the trainer subprocess).
+                // EPIC-446: `canon` is resolved once at the top of the run, from
+                // TRIOS_CANON_NAME -> CANON_NAME -> a deterministic seed fallback,
+                // so direct trios-train invocations still produce telemetry and the
+                // checkpoint directory cannot name a different run than this row.
+                crate::neon_writer::bpb_sample(
+                    &canon,
+                    args.seed as i32,
+                    step as i32,
+                    vbpb,
+                    Some(ema_bpb as f32),
+                );
+            }
 
             // EPIC-446: same emission point as `run_single`. The optimizer
             // label comes from which entry point ran, not from canon_name.
-            if checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step)) {
+            if is_ckpt_step {
                 let meta = CheckpointMeta {
                     seed: args.seed,
                     step: step as u64,
                     train_lr: args.lr,
                     attn_scale: attn_scale(),
                     attn_seq: attn_seq_override() as u32,
-                    gf16_enabled: gf16_enabled(),
+                    gf16_enabled: gf16_on,
                     data_synthetic,
                     optimizer: if use_cwd { "muon-cwd".into() } else { "muon".into() },
                     fake_quant_format: fq_fmt
@@ -2048,6 +2721,7 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 let res = emit_checkpoint(
                     &model,
                     &canon,
+                    seed_scope,
                     &meta,
                     &corpus,
                     &RunKnobs {
@@ -2055,12 +2729,22 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                         gf16_floor_every: gf16_every as u64,
                         eval_every: args.eval_every as u64,
                     },
+                    &stats,
+                    val.len(),
+                    &opt_params,
                     Some(vbpb as f64),
                     best_val_bpb.map(|v| v as f64),
-                    Some(ema_bpb as f64),
+                    // On a checkpoint-only step the EMA describes the last
+                    // EVAL step, not these weights. `None` says so; a stale
+                    // number would read as a measurement of this artifact.
+                    if is_eval_step {
+                        Some(ema_bpb as f64)
+                    } else {
+                        None
+                    },
                 );
                 match res {
-                    Ok(()) => {}
+                    Ok(()) => artifact_emitted = true,
                     Err(e) if step == args.steps => {
                         return Err(e.context("final-step checkpoint failed"))
                     }
@@ -2071,6 +2755,19 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
             }
         }
     }
+
+    // A run that was asked for artifacts and produced none is a failure, and
+    // must not be reported as a success. The in-loop guard above only fires on
+    // a checkpoint that was ATTEMPTED; `--steps 0` never enters the loop at
+    // all, so it printed a DONE line, wrote nothing and exited 0.
+    anyhow::ensure!(
+        !checkpoint_enabled() || artifact_emitted,
+        "run finished with no checkpoint artifact (steps={}, eval_every={}): \
+         checkpointing is enabled, so this run produced nothing to reproduce it \
+         from. Set TRIOS_CHECKPOINT_DISABLE=1 if that is genuinely intended.",
+        args.steps,
+        args.eval_every
+    );
 
     Ok(RunOutcome {
         final_val_bpb: final_val_bpb.map(|v| v as f64),
@@ -2084,6 +2781,158 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
     })
 }
 
+// -- CLI policy helpers -----------------------------------------------------
+//
+// These live in the library rather than in `src/bin/trios-train.rs` for one
+// reason: `cargo test --lib` is the gate every change runs, and a refusal that
+// exists only inside a binary crate is a refusal no lib test can prove. Each is
+// a pure function of its arguments - none of them reads the environment - so
+// the tests at the bottom of this file cannot race the process-wide env that
+// other tests mutate.
+
+/// Optimizers this crate can actually execute.
+///
+/// Deliberately the same list as `neon_writer::ALGO_WHITELIST` (asserted by
+/// `supported_optimizers_match_the_write_side_whitelist`): an optimizer whose
+/// results could never be published is not an optimizer worth starting a run
+/// with.
+pub const SUPPORTED_OPTIMIZERS: &[&str] = &["adamw", "muon", "muon-cwd"];
+
+/// The single refusal point for an unsupported `--optimizer`.
+///
+/// The R5-honest dispatch used to live only in `trios-train`'s single-seed
+/// arm, so `--sweep --optimizer soap` ran AdamW, printed three `DONE:` lines,
+/// printed the headline `GATE-2:` verdict and exited 0 - on the branch that
+/// produces the gate verdict, which is the branch whose output gets published.
+/// Both arms now go through this function before any seed trains.
+pub fn ensure_supported_optimizer(optimizer: &str) -> Result<()> {
+    if SUPPORTED_OPTIMIZERS.contains(&optimizer) {
+        return Ok(());
+    }
+    Err(anyhow::anyhow!(
+        "[R5-honesty] unsupported optimizer={optimizer:?}: only {SUPPORTED_OPTIMIZERS:?} \
+         are implemented. Refusing silent AdamW fallback. Fix env, redeploy, or \
+         implement the optimizer first."
+    ))
+}
+
+/// Run one seed under the named optimizer.
+///
+/// The one place that maps an optimizer name onto a training loop, so the
+/// sweep arm and the single-seed arm cannot dispatch differently.
+pub fn run_with_optimizer(optimizer: &str, args: &TrainArgs) -> Result<RunOutcome> {
+    ensure_supported_optimizer(optimizer)?;
+    match optimizer {
+        "adamw" => run_single(args),
+        "muon" => run_single_muon(args, false),
+        "muon-cwd" => run_single_muon(args, true),
+        // Unreachable while these arms and `SUPPORTED_OPTIMIZERS` list the same
+        // names. Kept as a hard error rather than a `_ => run_single(args)`
+        // fallback: if the two lists ever drift, the run must stop, not quietly
+        // become an AdamW run wearing another name.
+        other => Err(anyhow::anyhow!(
+            "[R5-honesty] optimizer={other:?} is listed in SUPPORTED_OPTIMIZERS but has \
+             no dispatch arm; refusing to substitute another optimizer for it."
+        )),
+    }
+}
+
+/// Format the `DONE:` line in ONE place, so the sweep arm and the single-seed
+/// arm cannot report different things about the same kind of run.
+///
+/// The sweep arm printed no `opt=` token at all, which is what let a run
+/// launched as `--optimizer soap` and executed as AdamW leave a stdout trail
+/// that named no optimizer. `bpb=unmeasured` is mirrored here too: `NaN` parses
+/// as a number in every downstream reader, so a run that took no final
+/// measurement has to say the word.
+pub fn format_done_line(outcome: &RunOutcome, optimizer: &str) -> String {
+    match outcome.final_val_bpb {
+        Some(bpb) => format!(
+            "DONE: seed={} bpb={:.4} steps={} opt={}",
+            outcome.seed, bpb, outcome.steps_done, optimizer
+        ),
+        None => format!(
+            "DONE: seed={} bpb=unmeasured steps={} opt={}",
+            outcome.seed, outcome.steps_done, optimizer
+        ),
+    }
+}
+
+/// What `trios-train` decided to do about schema DDL this run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AutomigrateDecision {
+    /// `TRINITY_AUTOMIGRATE=0`: an operator disabled it explicitly.
+    Disabled,
+    /// No DSN in the environment; there is nothing to migrate.
+    NoDsn,
+    /// A DSN is reachable but nobody consented to running DDL against it.
+    NoConsent,
+    /// Explicit consent plus a DSN: run `Migrator::up`.
+    Apply,
+}
+
+impl AutomigrateDecision {
+    /// One line naming the decision, for stdout/stderr.
+    pub fn reason(self) -> &'static str {
+        match self {
+            Self::Disabled => "TRINITY_AUTOMIGRATE=0 - schema DDL disabled by operator",
+            Self::NoDsn => "no DSN in environment - nothing to migrate",
+            Self::NoConsent => {
+                "refused: a DSN is set but TRIOS_ALLOW_AUTOMIGRATE=1 is not. \
+                 Having a DSN in the environment is not consent to alter that schema."
+            }
+            Self::Apply => "TRIOS_ALLOW_AUTOMIGRATE=1 - applying schema DDL to the configured DSN",
+        }
+    }
+}
+
+/// Decide whether this process may run `Migrator::up`.
+///
+/// Quoting `tests/ledger_seaorm.rs`, which gates the identical operation:
+/// "Having a DSN in the environment is not consent". That test refuses to touch
+/// an ambient database without an explicit opt-in, while the flagship binary
+/// defaulted `TRINITY_AUTOMIGRATE` to "1" and applied DDL to whatever DSN
+/// happened to be exported - no host check, no consent flag. A survey run on
+/// 2026-08-03 did in fact create tables and insert rows into a database nobody
+/// intended to touch. The asymmetry is closed here: writing rows may stay
+/// default-on, applying DDL must not be.
+///
+/// `TRINITY_AUTOMIGRATE=0` is kept as a veto so existing deployments that set
+/// it keep their meaning; it is no longer the only thing standing between an
+/// ambient DSN and a schema change.
+pub fn decide_automigrate(
+    automigrate: Option<&str>,
+    consent: Option<&str>,
+    dsn: Option<&str>,
+) -> AutomigrateDecision {
+    if automigrate.map(str::trim) == Some("0") {
+        return AutomigrateDecision::Disabled;
+    }
+    if dsn.map(str::trim).unwrap_or("").is_empty() {
+        return AutomigrateDecision::NoDsn;
+    }
+    if consent.map(str::trim) != Some("1") {
+        return AutomigrateDecision::NoConsent;
+    }
+    AutomigrateDecision::Apply
+}
+
+/// Run `GATE_FINAL_SEEDS` in sequence.
+///
+/// Every seed gets its own checkpoint directory for the duration of this call
+/// (`{canon}/seed{n}/{step}.bin`). Without that, `TRIOS_CANON_NAME` - which the
+/// scarab and the Railway workers set, and which does not vary with the seed -
+/// collapsed all three onto one path: three hashes were printed, three `DONE:`
+/// lines were printed, and one file survived. A GATE-2 verdict is a three-seed
+/// claim and must stand on three seeds' evidence.
+///
+/// `optimizer` is a REQUIRED parameter and not an `Option`. This function had
+/// no optimizer argument at all, so `--sweep --optimizer soap` ran AdamW three
+/// times, printed three `DONE:` lines that named no optimizer, printed
+/// `GATE-2:` and exited 0 - on the branch that produces the published gate
+/// verdict. Every seed is dispatched through `run_with_optimizer`, and the name
+/// is refused ONCE, before the first seed trains, rather than three times or
+/// not at all.
 pub fn run_sweep(
     steps: usize,
     hidden: usize,
@@ -2092,42 +2941,374 @@ pub fn run_sweep(
     eval_every: usize,
     train_path: &str,
     val_path: &str,
+    optimizer: &str,
 ) -> Result<Vec<RunOutcome>> {
+    // Before `SweepSeedScope::enter()`: a refused sweep must leave no process
+    // state behind at all.
+    ensure_supported_optimizer(optimizer)?;
+    let _seed_scope = SweepSeedScope::enter();
     let mut results = Vec::new();
     for &seed in GATE_FINAL_SEEDS {
-        results.push(run_single(&TrainArgs {
-            seed,
-            steps,
-            hidden,
-            lr,
-            attn_layers,
-            eval_every,
-            train_path: train_path.to_string(),
-            val_path: val_path.to_string(),
-        })?);
+        results.push(run_with_optimizer(
+            optimizer,
+            &TrainArgs {
+                seed,
+                steps,
+                hidden,
+                lr,
+                attn_layers,
+                eval_every,
+                train_path: train_path.to_string(),
+                val_path: val_path.to_string(),
+            },
+        )?);
     }
     Ok(results)
 }
 
-pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
-    let args = TrainArgs {
+// -- declaration truth: what a config says vs what this build can execute ----
+//
+// `run(cfg)` used to build its `TrainArgs` with `hidden: 828` and
+// `eval_every: 1000` written into the literal, derive `attn_layers` from
+// `hybrid_attn` alone, and drop every other declared field on the floor. So
+// `--config configs/gate2-attempt.toml` - a file declaring d_model=384,
+// n_layers=4, kind="muon+adamw" - minted a checkpoint sidecar recording
+// hidden=828 and optimizer=adamw under the run name "gate2-attempt". The
+// artifact and the declaration it is filed under described different runs.
+//
+// The rule now: honour the declaration or refuse it. A run that cannot execute
+// what the config declares must not produce an artifact labelled with that
+// declaration.
+
+/// The model width config mode runs, and the only width it can run.
+///
+/// `TrainConfig` has no field for `TrainArgs.hidden`; `model.d_model` is the
+/// declaration graded against it, because that is the width the sidecar records
+/// and the number a reader of the TOML would expect the artifact to carry. It
+/// is NOT the attention block's `d_model`, which is fixed separately by
+/// `HybridAttnConfig` and is checked here as `model.n_heads` / `model.seq_len`.
+pub const CONFIG_MODE_HIDDEN: usize = 828;
+
+/// The eval cadence config mode used to substitute in silence.
+pub const CONFIG_MODE_EVAL_EVERY: usize = 1000;
+
+/// Where a config-mode run must declare its eval cadence, since the TOML schema
+/// has no field for it.
+pub const CONFIG_EVAL_EVERY_ENV: &str = "TRIOS_EVAL_EVERY";
+
+/// The AdamW weight decay `run_single` applies to every tensor.
+pub const TRAIN_LOOP_WEIGHT_DECAY: f64 = 0.04;
+
+/// The LR schedule `run_single` applies. Fixed; there is no other one.
+pub const TRAIN_LOOP_SCHEDULE: &str = "cosine";
+
+/// The gradient-accumulation batch: `accum` (4) chunks x 8 sampled positions,
+/// which is literally the divisor `tp` the loop normalises gradients by.
+pub const TRAIN_LOOP_BATCH_SIZE: usize = 32;
+
+/// One declared field this build cannot execute, and the value it would
+/// otherwise have substituted behind the declaration's back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnhonouredField {
+    /// The field as it is spelled in the TOML, e.g. `model.d_model`.
+    pub field: String,
+    /// What the config declares.
+    pub declared: String,
+    /// What this build would run instead.
+    pub substitute: String,
+}
+
+impl std::fmt::Display for UnhonouredField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} declares {} but this build would run {}",
+            self.field, self.declared, self.substitute
+        )
+    }
+}
+
+fn unhonoured(
+    field: &str,
+    declared: impl std::fmt::Display,
+    substitute: impl std::fmt::Display,
+) -> UnhonouredField {
+    UnhonouredField {
+        field: field.to_string(),
+        declared: declared.to_string(),
+        substitute: substitute.to_string(),
+    }
+}
+
+/// Every declared field this build cannot execute, given `eval_every` as
+/// declared out-of-band (see `CONFIG_EVAL_EVERY_ENV`).
+///
+/// Pure: reads no environment, so a lib test cannot race the process-wide env
+/// other tests mutate. An empty result means the config is executable exactly
+/// as written.
+///
+/// # Why the eval cadence is graded here at all
+///
+/// `TrainConfig` has no `eval_every` field, so config mode substituted 1000.
+/// That is not a cosmetic default. The cadence used to gate `gf16_floor()`, the
+/// in-place rewrite of embed/proj/lm_head/ctx - two seed-47 runs differing only
+/// in `--eval-every` produced different weights and BPB 2.6141 vs 2.6169. That
+/// coupling has since been broken (the floor now runs on `gf16_floor_every()`,
+/// see the guard in `run_single`), but the cadence still decides which steps are
+/// measured, hence the EMA, `min_observed_val_bpb`, every `bpb_samples` row and
+/// the `eval_every` field of the sidecar. It is an observation parameter of a
+/// published measurement, and a measurement whose observation parameters were
+/// chosen for you by a default is not a declared measurement. So config mode
+/// requires it to be said out loud.
+///
+/// # What is deliberately NOT graded
+///
+/// `data.corpus` is a label for `train_path`/`val_path`, which ARE honoured and
+/// whose bytes are hashed into every artifact. `data.batch_tokens` has no
+/// counterpart to compare against: the token count a step touches depends on
+/// the sampled positions, so any number stated here would be invented. Both
+/// remain declared-and-ignored, and that is a real remaining mislabel risk -
+/// closing it means trimming the schema, which is a change to files this one
+/// does not own.
+pub fn unhonoured_fields(
+    cfg: &crate::TrainConfig,
+    eval_every: Option<usize>,
+) -> Vec<UnhonouredField> {
+    let mut out = Vec::new();
+    let attn = crate::model_hybrid_attn::HybridAttnConfig::default();
+
+    // -- [model] -------------------------------------------------------------
+    if cfg.model.d_model != CONFIG_MODE_HIDDEN {
+        out.push(unhonoured(
+            "model.d_model",
+            cfg.model.d_model,
+            format!("hidden={CONFIG_MODE_HIDDEN} (config mode has no width knob)"),
+        ));
+    }
+    let attn_layers = usize::from(if cfg.model.hybrid_attn { 2u8 } else { 1u8 });
+    if cfg.model.n_layers != attn_layers {
+        out.push(unhonoured(
+            "model.n_layers",
+            cfg.model.n_layers,
+            format!(
+                "attn_layers={attn_layers} (derived from model.hybrid_attn={})",
+                cfg.model.hybrid_attn
+            ),
+        ));
+    }
+    if cfg.model.n_heads != attn.num_heads {
+        out.push(unhonoured(
+            "model.n_heads",
+            cfg.model.n_heads,
+            format!("{} (fixed by HybridAttnConfig)", attn.num_heads),
+        ));
+    }
+    if cfg.model.vocab_size != VOCAB {
+        out.push(unhonoured(
+            "model.vocab_size",
+            cfg.model.vocab_size,
+            format!("{VOCAB} (byte-level, fixed by train_loop::VOCAB)"),
+        ));
+    }
+    if cfg.model.seq_len != attn.seq_len {
+        out.push(unhonoured(
+            "model.seq_len",
+            cfg.model.seq_len,
+            format!(
+                "{} attention positions (HybridAttnConfig; the n-gram context is \
+                 NUM_CTX={NUM_CTX} slots)",
+                attn.seq_len
+            ),
+        ));
+    }
+
+    // -- [optimizer] ---------------------------------------------------------
+    if !SUPPORTED_OPTIMIZERS.contains(&cfg.optimizer.kind.as_str()) {
+        out.push(unhonoured(
+            "optimizer.kind",
+            format!("{:?}", cfg.optimizer.kind),
+            format!("adamw (only {SUPPORTED_OPTIMIZERS:?} are implemented)"),
+        ));
+    }
+    // Compared in f32, the space `AdamW` actually holds them in. Widening
+    // ADAMW_BETA1 to f64 instead makes the declaration `0.9` fail against
+    // itself: `0.9f32 as f64` is 0.8999999761581421, which is 2.4e-8 away from
+    // the 0.9 the TOML parsed. The same trap `neon_writer::bpb_refusal` records
+    // for the publication floor.
+    if cfg.optimizer.beta1 as f32 != ADAMW_BETA1 {
+        out.push(unhonoured(
+            "optimizer.beta1",
+            cfg.optimizer.beta1,
+            ADAMW_BETA1,
+        ));
+    }
+    if cfg.optimizer.beta2 as f32 != ADAMW_BETA2 {
+        out.push(unhonoured(
+            "optimizer.beta2",
+            cfg.optimizer.beta2,
+            ADAMW_BETA2,
+        ));
+    }
+    if (cfg.optimizer.weight_decay - TRAIN_LOOP_WEIGHT_DECAY).abs() > 1e-9 {
+        out.push(unhonoured(
+            "optimizer.weight_decay",
+            cfg.optimizer.weight_decay,
+            TRAIN_LOOP_WEIGHT_DECAY,
+        ));
+    }
+    if cfg.optimizer.schedule != TRAIN_LOOP_SCHEDULE {
+        out.push(unhonoured(
+            "optimizer.schedule",
+            format!("{:?}", cfg.optimizer.schedule),
+            format!("{TRAIN_LOOP_SCHEDULE:?} (train_loop::cosine_lr, the only schedule)"),
+        ));
+    }
+    // `run_single` sets `warmup = args.steps / 10` and nothing can move it.
+    let warmup = cfg.steps / 10;
+    if cfg.optimizer.warmup_steps != warmup {
+        out.push(unhonoured(
+            "optimizer.warmup_steps",
+            cfg.optimizer.warmup_steps,
+            format!("{warmup} (steps/10, fixed)"),
+        ));
+    }
+
+    // -- [data] --------------------------------------------------------------
+    if cfg.data.batch_size != TRAIN_LOOP_BATCH_SIZE {
+        out.push(unhonoured(
+            "data.batch_size",
+            cfg.data.batch_size,
+            format!("{TRAIN_LOOP_BATCH_SIZE} (accum=4 chunks x 8 sampled positions)"),
+        ));
+    }
+
+    // -- [objective] ---------------------------------------------------------
+    // The loss is plain cross-entropy with an NCA entropy term that scales the
+    // proj gradient; there is no JEPA term at all, and the NCA weight comes
+    // from `NcaObjective::default()`, never from the config.
+    if (cfg.objective.w_ce - 1.0).abs() > 1e-9 {
+        out.push(unhonoured("objective.w_ce", cfg.objective.w_ce, 1.0));
+    }
+    if cfg.objective.w_jepa.abs() > 1e-9 {
+        out.push(unhonoured(
+            "objective.w_jepa",
+            cfg.objective.w_jepa,
+            "0 (no JEPA term exists in this loss)",
+        ));
+    }
+    let nca_weight = NcaObjective::default().weight;
+    if (cfg.objective.w_nca - nca_weight).abs() > 1e-9 {
+        out.push(unhonoured(
+            "objective.w_nca",
+            cfg.objective.w_nca,
+            format!("{nca_weight} (NcaObjective::default)"),
+        ));
+    }
+
+    // -- the eval cadence ----------------------------------------------------
+    if eval_every.is_none() {
+        out.push(unhonoured(
+            "eval cadence",
+            format!("nothing ({CONFIG_EVAL_EVERY_ENV} unset; TrainConfig has no field for it)"),
+            format!("eval_every={CONFIG_MODE_EVAL_EVERY}"),
+        ));
+    }
+
+    out
+}
+
+/// Parse the out-of-band eval cadence declaration.
+///
+/// Pure, for the same reason `unhonoured_fields` is. `None` means "not
+/// declared", which `unhonoured_fields` turns into a refusal; a declared value
+/// that cannot be a cadence is an error here rather than a silent fallback.
+pub fn parse_config_eval_every(raw: Option<&str>) -> Result<Option<usize>> {
+    let Some(raw) = raw else { return Ok(None) };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let parsed: usize = trimmed
+        .parse()
+        .with_context(|| format!("{CONFIG_EVAL_EVERY_ENV}={raw:?} is not a step count"))?;
+    anyhow::ensure!(
+        parsed > 0,
+        "{CONFIG_EVAL_EVERY_ENV}={raw:?}: an eval cadence of 0 measures nothing"
+    );
+    Ok(Some(parsed))
+}
+
+/// The `TrainArgs` a config declares, or the refusal that says why it cannot be
+/// built.
+///
+/// The error names every unhonoured field, what the config declared and what
+/// the run would otherwise have substituted - all of them, not the first one,
+/// so one run tells the whole truth about the gap.
+pub fn config_train_args(cfg: &crate::TrainConfig, eval_every: Option<usize>) -> Result<TrainArgs> {
+    let gaps = unhonoured_fields(cfg, eval_every);
+    if !gaps.is_empty() {
+        let listed = gaps
+            .iter()
+            .map(|g| format!("  - {g}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        return Err(anyhow::anyhow!(
+            "[declaration-truth] config {:?} declares {} parameter(s) this build cannot \
+             execute:\n{listed}\nRefusing to run: an artifact filed under this \
+             declaration would record what was substituted, not what was declared. \
+             Declare what this crate executes, or implement the declaration first.",
+            cfg.name,
+            gaps.len()
+        ));
+    }
+    Ok(TrainArgs {
         seed: cfg.seed,
         steps: cfg.steps,
-        hidden: 828,
+        // Checked equal to `cfg.model.d_model` above.
+        hidden: CONFIG_MODE_HIDDEN,
         lr: cfg.optimizer.lr as f32,
         attn_layers: if cfg.model.hybrid_attn { 2 } else { 1 },
-        eval_every: 1000,
+        // Checked present above.
+        eval_every: eval_every.unwrap_or(CONFIG_MODE_EVAL_EVERY),
         train_path: cfg.data.train_path.clone(),
         val_path: cfg.data.val_path.clone(),
-    };
-    let outcome = run_single(&args)?;
+    })
+}
+
+pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
+    let eval_every = parse_config_eval_every(std::env::var(CONFIG_EVAL_EVERY_ENV).ok().as_deref())?;
+    let args = config_train_args(cfg, eval_every)?;
+    // The declared optimizer, dispatched through the one function that maps a
+    // name onto a loop. `config_train_args` has already refused any name that
+    // is not in `SUPPORTED_OPTIMIZERS`, so config mode can no longer run AdamW
+    // under another optimizer's name.
+    let outcome = run_with_optimizer(&cfg.optimizer.kind, &args)?;
     // The ledger row carries the MEASURED final val_bpb. It used to carry
     // `best_bpb`, the running minimum of the EMA, which is not a measurement of
     // anything. A run with no final measurement emits no row rather than a
     // substituted one.
     if !cfg.ledger.jsonl_path.is_empty() {
         if let Some(bpb) = outcome.final_val_bpb {
-            let _ = crate::ledger::emit_row(cfg, bpb, outcome.steps_done);
+            // `let _ =` used to be here. `emit_row` refuses an embargoed SHA, a
+            // step below the R8 floor of 4000 and a non-finite BPB, and every
+            // one of those refusals was discarded without a character of
+            // output: `tests/embargo_block.rs` proves the refusal happens, and
+            // the production caller then made it indistinguishable from a
+            // successful write. A run whose ledger row was rejected must say so.
+            //
+            // INCOMPLETE (blocked on file ownership): this should also call
+            // `crate::neon_writer::note_dropped()` so `ledger_exit_code()`
+            // counts the loss and the process exits non-zero. That function is
+            // module-private (`src/neon_writer.rs:151`) and making it
+            // `pub(crate)` is a one-line change in a file this change does not
+            // own. Until then the failure is loud but not fatal.
+            if let Err(e) = crate::ledger::emit_row(cfg, bpb, outcome.steps_done) {
+                eprintln!(
+                    "[ledger] ERROR: the Gate-2 row for step {} was REFUSED and not \
+                     written to {}: {e:#}",
+                    outcome.steps_done, cfg.ledger.jsonl_path
+                );
+            }
         } else {
             eprintln!(
                 "[ledger] no final val_bpb was measured; refusing to emit a Gate-2 row"
@@ -2347,6 +3528,81 @@ mod checkpoint_codec_tests {
 
         // 4. The metadata survives too.
         assert_eq!(restored_meta, meta);
+
+        std::env::remove_var("TRIOS_CHECKPOINT_DIR");
+    }
+
+    /// The measured sweep defect: three seeds, one `TRIOS_CANON_NAME`, one
+    /// path. `fs::rename` is atomic, which also means it replaces silently, so
+    /// two artifacts were destroyed and all three were reported as landed.
+    #[test]
+    fn save_refuses_to_overwrite_a_different_checkpoint() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path());
+
+        let first = poisoned_model(16).to_checkpoint_bytes(&meta_for(60)).unwrap();
+        let mut second_model = poisoned_model(16);
+        second_model.embed[5] = 0.25; // a different model, same run, same step
+        let second = second_model.to_checkpoint_bytes(&meta_for(60)).unwrap();
+        assert_ne!(first, second, "the fixture must differ, or this proves nothing");
+
+        let landed = checkpoint::save("collide-run", 60, &first).unwrap();
+        let err = checkpoint::save("collide-run", 60, &second)
+            .map(|_| ())
+            .expect_err("a differing overwrite must be refused, not renamed over");
+        let msg = format!("{err:#}");
+        assert!(msg.contains("refusing to overwrite"), "{msg}");
+        // The refusal names both hashes and the path, so the operator can see
+        // which artifact is on disk and which one was rejected.
+        assert!(msg.contains(&landed.sha256), "existing hash not named: {msg}");
+        assert!(msg.contains(&sha256_hex(&second)), "incoming hash not named: {msg}");
+        assert!(msg.contains("60.bin"), "path not named: {msg}");
+
+        // Nothing was written and nothing was deleted.
+        assert_eq!(std::fs::read(&landed.path).unwrap(), first);
+        for e in std::fs::read_dir(landed.path.parent().unwrap()).unwrap() {
+            let name = e.unwrap().file_name().to_string_lossy().into_owned();
+            assert!(!name.contains(".tmp."), "leftover temp file {name}");
+        }
+
+        // Re-saving IDENTICAL bytes is not an overwrite: the file that would
+        // result is the file that is already there.
+        let again = checkpoint::save("collide-run", 60, &first).expect("idempotent re-save");
+        assert_eq!(again.sha256, landed.sha256);
+
+        std::env::remove_var("TRIOS_CHECKPOINT_DIR");
+    }
+
+    /// Two seeds of one sweep must not collide, and the single-seed layout
+    /// must not move: `ckpt_replay` and the README both point at the flat one.
+    #[test]
+    fn a_seed_scoped_save_lands_beside_its_siblings_not_on_top_of_them() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path());
+
+        let a = poisoned_model(16).to_checkpoint_bytes(&meta_for(60)).unwrap();
+        let mut model_b = poisoned_model(16);
+        model_b.embed[5] = 0.25;
+        let b = model_b.to_checkpoint_bytes(&meta_for(60)).unwrap();
+
+        let s47 = checkpoint::save_scoped("sweep-run", Some(47), 60, &a).unwrap();
+        let s89 = checkpoint::save_scoped("sweep-run", Some(89), 60, &b).unwrap();
+        assert_ne!(s47.path, s89.path, "two seeds resolved to one path");
+        assert_ne!(s47.sha256, s89.sha256);
+        assert_eq!(std::fs::read(&s47.path).unwrap(), a, "seed 47 was overwritten");
+        assert_eq!(std::fs::read(&s89.path).unwrap(), b);
+        assert_eq!(
+            s47.path,
+            dir.path().join("sweep-run").join("seed47").join("60.bin")
+        );
+
+        // The unscoped path is still the flat one.
+        assert_eq!(
+            checkpoint::checkpoint_path("sweep-run", 60),
+            dir.path().join("sweep-run").join("60.bin")
+        );
 
         std::env::remove_var("TRIOS_CHECKPOINT_DIR");
     }
@@ -2580,7 +3836,22 @@ mod checkpoint_codec_tests {
         let raw = std::fs::read(&bin).unwrap();
         let rec: checkpoint::CheckpointRecord =
             serde_json::from_slice(&std::fs::read(&json).unwrap()).unwrap();
-        assert_eq!(rec.schema, "trios-checkpoint-record/4");
+        // Named by the constant, not by a copy of the string: this assertion
+        // read "/7" while `CHECKPOINT_RECORD_SCHEMA` had moved to "/8", which
+        // fails here and - because it fires while holding `ENV_LOCK` - poisons
+        // the mutex and takes every other env-serialised test with it.
+        assert_eq!(rec.schema, checkpoint::CHECKPOINT_RECORD_SCHEMA);
+        // A single-seed run keeps the flat layout the README and `ckpt_replay`
+        // point at: no `seed{n}/` component.
+        assert!(
+            !run_dir.join(checkpoint::seed_scope_component(47)).exists(),
+            "a single-seed run must not move into a per-seed subdirectory"
+        );
+        // Schema 5: the flag that gates the in-place `gf16_floor()` rewrite is
+        // byte 124 of the hashed header and was in no sidecar at all.
+        // ... and the value recorded is the RESOLVED knob, not a second,
+        // independent reading of the legacy env var.
+        assert_eq!(rec.gf16_enabled, resolve_gf16_knob().expect("resolve gf16"));
         // Schema 2: what changed the artifact is now IN the artifact.
         assert_eq!(rec.steps_total, steps as u64);
         assert_eq!(rec.gf16_floor_every, gf16_floor_every());
@@ -2623,8 +3894,49 @@ mod checkpoint_codec_tests {
         assert_eq!(rec.vocab, VOCAB as u32, "the record must state its own alphabet");
         // The measured reading, not the EMA, is what the sidecar carries.
         assert_eq!(rec.final_val_bpb, outcome.final_val_bpb);
-        assert_eq!(rec.best_val_bpb, outcome.best_val_bpb);
+        assert_eq!(rec.min_observed_val_bpb, outcome.best_val_bpb);
+        // Schema 6: the record must state the plan the reading came from, not
+        // just the reading. 40 windows of 129 tokens is a 5% sample of a
+        // 100,000-byte val corpus, and until now no field said so.
+        assert_eq!(rec.eval_seq, Some((SEQ + 1) as u32));
+        let chunks = rec.eval_chunks.expect("schema 6 states its coverage");
+        assert!(chunks > 0);
+        assert_eq!(
+            rec.eval_tokens,
+            Some(chunks as u64 * (SEQ + 1) as u64),
+            "eval_tokens must be chunks * seq, not a re-derivation"
+        );
+        let stderr = rec.val_bpb_stderr.expect("more than one window was read");
+        assert!(
+            stderr.is_finite() && stderr > 0.0,
+            "a 40-window mean has a positive standard error, got {stderr}"
+        );
+        // `optimizer: "adamw"` was one string carrying four numbers.
+        let params = rec
+            .optimizer_params
+            .as_ref()
+            .expect("schema 6 names the hyperparameters");
+        // Compared after narrowing back to `f32`. The constants ARE `f32` - the
+        // update rule steps in `f32` - and the sidecar widens them, but this
+        // crate's `serde_json` is built without the `float_roundtrip` feature,
+        // so reading an `f64` back can land 1 ULP away (measured here:
+        // beta2 parsed as 0.9990000128746032, exactly 0.999f32 is
+        // 0.9990000128746033). Narrowing is the comparison that matches what
+        // the optimizer actually held; the JSON TEXT carries the exact widened
+        // decimal, which is what an outside reader parses.
+        assert_eq!(params.beta1 as f32, ADAMW_BETA1);
+        assert_eq!(params.beta2 as f32, ADAMW_BETA2);
+        assert_eq!(params.eps as f32, ADAMW_EPS);
+        assert_eq!(params.weight_decay as f32, 0.04_f32, "the wd that ran");
+        assert_eq!(params.source, "train_loop::AdamW");
+        // And they are NOT the phi-branded constants in `optimizer.rs`, which
+        // this trainer never constructs. Recording 0.618 here would describe a
+        // run that never happened.
+        assert_ne!(params.beta1, 1.0 / ((1.0 + 5.0_f64.sqrt()) / 2.0));
         assert_eq!(rec.canon_name, "IGLA-test/canon", "ledger identity unsanitized");
+        // The record names the file that was actually written - the same string
+        // the ledger row carries, so the two cannot describe different files.
+        assert_eq!(std::path::Path::new(&rec.path), bin.as_path());
         assert_eq!(rec.sha256, sha256_hex(&raw));
         assert_eq!(rec.bytes, raw.len() as u64);
         assert_eq!(rec.step, steps as i64);
@@ -2714,6 +4026,7 @@ mod measurement_truth_tests {
     //!   measurement, and not equal to it.
     use super::checkpoint_codec_tests::ENV_LOCK;
     use super::*;
+    use crate::checkpoint;
 
     /// Deterministic pseudo-text over an `alphabet`-symbol range. Hermetic, and
     /// non-periodic enough to satisfy the 8-gram entropy precondition.
@@ -2813,13 +4126,121 @@ mod measurement_truth_tests {
     /// The size floor is expressed in the same terms `evaluate` uses.
     #[test]
     fn a_160_token_val_yields_exactly_one_eval_chunk() {
-        assert_eq!(eval_chunk_count(160), 1);
-        assert!(eval_chunk_count(160) < MIN_EVAL_CHUNKS);
-        assert_eq!(eval_chunk_count(SEQ), 0, "too short for a single window");
+        let d = EVAL_CHUNKS_DEFAULT;
+        assert_eq!(eval_chunk_count(160, d), 1);
+        assert!(eval_chunk_count(160, d) < MIN_EVAL_CHUNKS);
+        assert_eq!(eval_chunk_count(SEQ, d), 0, "too short for a single window");
         assert!(
-            eval_chunk_count(MIN_VAL_TOKENS) >= MIN_EVAL_CHUNKS,
+            eval_chunk_count(MIN_VAL_TOKENS, d) >= MIN_EVAL_CHUNKS,
             "the token floor must imply the chunk floor"
         );
+    }
+
+    /// The default plan must be the grid that was there before it had a name.
+    ///
+    /// Every BPB in the ledger was measured on 40 windows of `SEQ + 1` starting
+    /// `max_start / 40` apart. Naming the parameter must not move that grid by
+    /// one token, or the new numbers stop being comparable with the old ones -
+    /// which is the whole reason the default is still 40.
+    #[test]
+    fn the_default_plan_is_the_grid_that_was_hardcoded() {
+        let plan = eval_plan(100_000, EVAL_CHUNKS_DEFAULT).expect("100k tokens is measurable");
+        assert_eq!(plan.seq, SEQ + 1);
+        assert_eq!(plan.seq, 129);
+        assert_eq!(plan.chunks, 40);
+        assert_eq!(plan.stride, (100_000 - 129) / 40);
+        // 40 * 129 = 5,160 of 100,000 tokens. The headline was a 5% sample.
+        assert_eq!(plan.chunks * plan.seq, 5_160);
+    }
+
+    /// `0` means every window, and is a value rather than junk.
+    #[test]
+    fn zero_chunks_means_full_coverage() {
+        let full = eval_plan(100_000, 0).expect("measurable");
+        assert_eq!(full.stride, full.seq, "non-overlapping tiling");
+        assert_eq!(full.chunks, (100_000usize - 129).div_ceil(129));
+        assert!(
+            full.chunks > EVAL_CHUNKS_DEFAULT * 19,
+            "full coverage must be far more than the 40-window sample: {}",
+            full.chunks
+        );
+        // A stream too short for one window is still not a measurement.
+        assert!(eval_plan(SEQ, 0).is_none());
+    }
+
+    /// The coverage knob is an OBSERVATION parameter with a declared default.
+    #[test]
+    fn eval_chunks_is_its_own_knob_and_defaults_to_forty() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_EVAL_CHUNKS");
+        assert_eq!(eval_chunks_target(), EVAL_CHUNKS_DEFAULT);
+        assert_eq!(eval_chunks_target(), 40, "the published grid, unmoved");
+        std::env::set_var("TRIOS_EVAL_CHUNKS", "128");
+        assert_eq!(eval_chunks_target(), 128);
+        // `0` is FULL COVERAGE, not junk: unlike `TRIOS_GF16_FLOOR_EVERY` it
+        // must not be swallowed by the default.
+        std::env::set_var("TRIOS_EVAL_CHUNKS", "0");
+        assert_eq!(eval_chunks_target(), 0);
+        for junk in ["", "nonsense", "-3", "4.5"] {
+            std::env::set_var("TRIOS_EVAL_CHUNKS", junk);
+            assert_eq!(eval_chunks_target(), EVAL_CHUNKS_DEFAULT, "junk={junk:?}");
+        }
+        std::env::remove_var("TRIOS_EVAL_CHUNKS");
+    }
+
+    /// A mean with no spread is not a measurement result.
+    ///
+    /// The estimator's own scatter across windows is the quantity the headline
+    /// BPB was missing; a single window has no spread and must say so rather
+    /// than report 0.0, which reads as perfect repeatability.
+    #[test]
+    fn evaluate_reports_the_spread_of_its_own_windows() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let model = HybridModel::new(16, 47, 1);
+        let val = lcg_tokens(0xB0BA, 20_000, 95);
+
+        let stats = evaluate(&model, &val, EVAL_CHUNKS_DEFAULT).expect("measurable");
+        assert_eq!(stats.plan.chunks, 40);
+        assert_eq!(stats.tokens(), 40 * 129);
+        let stdev = stats.stdev.expect("40 windows have a sample stdev");
+        let stderr = stats.stderr.expect("and therefore a standard error");
+        assert!(stdev > 0.0, "40 distinct windows cannot all read identically");
+        // `s / sqrt(n)` is the standard error of a mean drawn from an INFINITE
+        // population. The val stream is finite and the grid reads it WITHOUT
+        // replacement, so the finite-population correction applies: 40 of the
+        // `N` windows that tile this 20,000-token stream.
+        let population = eval_chunk_count(val.len(), 0);
+        assert!(population > 40, "the sample must be a strict subset: N={population}");
+        let expected = stdev / 40f32.sqrt() * (1.0 - 40.0 / population as f32).sqrt();
+        assert!(
+            (stderr - expected).abs() < 1e-6,
+            "stderr must be (s/sqrt(n))*sqrt(1-n/N) with N={population}: {stderr} vs {expected}"
+        );
+        assert!(
+            stderr < stdev / 40f32.sqrt(),
+            "the correction must shrink the band, not grow it"
+        );
+
+        // Full coverage reads every window exactly once. There is no sampling
+        // left to be uncertain about, so the standard error is exactly zero -
+        // the claim `eval_chunks_target`'s doc comment makes, now enforced.
+        let full = evaluate(&model, &val, 0).expect("measurable");
+        assert_eq!(full.plan.chunks, population, "target 0 walks the whole grid");
+        assert!(
+            full.stdev.expect("the windows still differ from each other") > 0.0,
+            "full coverage does not make the readings identical"
+        );
+        assert_eq!(
+            full.stderr,
+            Some(0.0),
+            "at n == N the mean IS the population mean: no sampling error"
+        );
+
+        // One window: the mean exists, the spread does not.
+        let one = evaluate(&model, &val[..129 + 1], EVAL_CHUNKS_DEFAULT).expect("one window");
+        assert_eq!(one.plan.chunks, 1);
+        assert_eq!(one.stdev, None, "a single draw has no sample stdev");
+        assert_eq!(one.stderr, None, "and no standard error - not 0.0");
     }
 
     /// The knob that decides whether the weights get floored is a recipe
@@ -2839,6 +4260,184 @@ mod measurement_truth_tests {
             assert_eq!(gf16_floor_every(), GF16_FLOOR_EVERY_DEFAULT, "junk={junk:?}");
         }
         std::env::remove_var("TRIOS_GF16_FLOOR_EVERY");
+    }
+
+    /// The documented GF16 knob must be able to turn GF16 off.
+    ///
+    /// `GF16_ENABLED=false` was indistinguishable from `GF16_ENABLED` unset:
+    /// `parse_gf16_enabled` defaults to `"false"`, so an explicit false fell
+    /// through to the legacy `TRIOS_GF16_DISABLE` reading, which is ON by
+    /// default. Measured: `GF16_ENABLED=false` produced the byte-identical
+    /// artifact `a645d688...` that unset produced, while `TRIOS_GF16_DISABLE=1`
+    /// produced `22684cc8...` at bpb 3.4327 against 3.5353 - a 0.1026 bpb
+    /// effect, larger than the declared expanded uncertainty. The sidecar
+    /// meanwhile recorded `gf16_enabled: true` on a run the operator had set to
+    /// false. That is the repository fabricating a recipe field, and it is
+    /// checkable by anyone who flips the knob and watches the hash not move.
+    ///
+    /// The default stays ON: it is what every published number was produced
+    /// with. What changes is that "set" and "unset" are now two facts.
+    #[test]
+    fn gf16_enabled_false_is_distinguishable_from_unset() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("GF16_ENABLED");
+        std::env::remove_var("TRIOS_GF16_DISABLE");
+        let unset = resolve_gf16_knob().expect("unset must resolve");
+        assert!(
+            unset,
+            "the executed default is GF16 ON; flipping it invalidates every \
+             published artifact, including the aarch64 anchor in README.md"
+        );
+
+        std::env::set_var("GF16_ENABLED", "false");
+        let explicit_off = resolve_gf16_knob().expect("GF16_ENABLED=false must resolve");
+        std::env::remove_var("GF16_ENABLED");
+        assert!(!explicit_off, "GF16_ENABLED=false must turn the floor off");
+        assert_ne!(
+            unset, explicit_off,
+            "a documented knob whose explicit value changes nothing is a \
+             fabricated recipe field"
+        );
+
+        // The legacy variable keeps working while GF16_ENABLED is unset.
+        std::env::set_var("TRIOS_GF16_DISABLE", "1");
+        let legacy_off = resolve_gf16_knob().expect("legacy path must resolve");
+        std::env::remove_var("TRIOS_GF16_DISABLE");
+        assert!(!legacy_off, "TRIOS_GF16_DISABLE=1 must still disable GF16");
+    }
+
+    /// A cadence that was asked for and cannot be honoured must stop the run,
+    /// not resolve to "no artifacts at all".
+    ///
+    /// `TRIOS_CHECKPOINT_EVERY=1_000` is the shape a reader of this codebase
+    /// types - it is a valid Rust integer literal - and `1000 ` is what a
+    /// trailing space in a YAML or shell assignment produces. Both used to hit
+    /// `.parse().ok().unwrap_or(0)`, which is the "final step only" default:
+    /// the caller asked for periodic artifacts, received none, and neither the
+    /// banner nor the sidecar nor stderr mentioned it.
+    #[test]
+    fn checkpoint_cadence_rejects_a_value_it_cannot_honour() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_CHECKPOINT_EVERY");
+        assert_eq!(
+            resolve_checkpoint_every().expect("absent is a legal state"),
+            0,
+            "absent must stay final-step-only"
+        );
+
+        // Junk is fatal and the message must name the variable, so the operator
+        // can fix it without reading this file.
+        for junk in ["1_000", "1k", "1000x", "-3", "nonsense", "1e3", "0x10"] {
+            std::env::set_var("TRIOS_CHECKPOINT_EVERY", junk);
+            let err = resolve_checkpoint_every()
+                .expect_err(&format!("{junk:?} must not silently resolve to 0"))
+                .to_string();
+            assert!(
+                err.contains("TRIOS_CHECKPOINT_EVERY"),
+                "error must name the variable: {err}"
+            );
+        }
+
+        // Legal values, including the whitespace a shell assignment leaves and
+        // the explicit 0 that means the documented default.
+        for (raw, want) in [("50", 50usize), (" 50 ", 50), ("1000", 1000), ("0", 0), ("", 0)] {
+            std::env::set_var("TRIOS_CHECKPOINT_EVERY", raw);
+            assert_eq!(
+                resolve_checkpoint_every().expect("legal"),
+                want,
+                "raw={raw:?}"
+            );
+        }
+        std::env::remove_var("TRIOS_CHECKPOINT_EVERY");
+
+        // The hit test is now a pure function of the resolved number: nothing
+        // re-reads the environment mid-run.
+        assert!(!checkpoint_every_hit(50, 0), "0 means final step only");
+        assert!(checkpoint_every_hit(50, 50));
+        assert!(!checkpoint_every_hit(51, 50));
+    }
+
+    /// `TRIOS_CHECKPOINT_INIT=1` must leave the weights as initialised on disk,
+    /// before the first optimizer step, and they must differ from the weights
+    /// one step later.
+    ///
+    /// Without `0.bin` the earliest artifact any run could produce was AFTER a
+    /// gradient had been applied, so "do the two architectures disagree at
+    /// initialisation, or only after arithmetic?" - the question that decides
+    /// whether the cross-architecture divergence is an RNG defect or a
+    /// floating-point one - could not be asked of any file this program wrote.
+    /// See `docs/DIVERGENCE-LOCALIZATION.md`.
+    #[test]
+    fn checkpoint_init_emits_the_weights_before_the_first_step() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let train_path = dir.path().join("train.txt");
+        let val_path = dir.path().join("val.txt");
+        std::fs::write(&train_path, lcg_bytes(0xA1CE, 40_000, 8)).unwrap();
+        std::fs::write(&val_path, lcg_bytes(0xB0BA, 9_000, 8)).unwrap();
+
+        for k in [
+            "DATABASE_URL",
+            "NEON_DATABASE_URL",
+            "TRIOS_NEON_DSN",
+            "TRIOS_DATABASE_URL",
+            "TRIOS_CHECKPOINT_DISABLE",
+            "TRIOS_CHECKPOINT_EVERY",
+            "TRIOS_GF16_FLOOR_EVERY",
+            "HIDDEN_DIM",
+            "NUM_ATTN_LAYERS",
+            "GF16_ENABLED",
+        ] {
+            std::env::remove_var(k);
+        }
+        std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path().join("ckpt"));
+        std::env::set_var("TRIOS_CANON_NAME", "IGLA-init");
+        std::env::set_var("TRIOS_CHECKPOINT_INIT", "1");
+
+        let outcome = run_single(&TrainArgs {
+            seed: 47,
+            steps: 1,
+            hidden: 16,
+            lr: 0.02,
+            attn_layers: 1,
+            eval_every: 1,
+            train_path: train_path.to_string_lossy().into_owned(),
+            val_path: val_path.to_string_lossy().into_owned(),
+        });
+        std::env::remove_var("TRIOS_CHECKPOINT_INIT");
+        std::env::remove_var("TRIOS_CANON_NAME");
+        let outcome = outcome.expect("run_single");
+        assert_eq!(outcome.steps_done, 1);
+
+        let run_dir = dir.path().join("ckpt").join("IGLA-init");
+        let zero = run_dir.join("0.bin");
+        let one = run_dir.join("1.bin");
+        assert!(zero.is_file(), "no initial-weights artifact at {zero:?}");
+        assert!(one.is_file(), "no step-1 artifact at {one:?}");
+
+        // A step-0 artifact identical to the step-1 artifact would mean the
+        // save happened after the optimizer, which is the one thing this file
+        // exists to rule out.
+        let a = std::fs::read(&zero).unwrap();
+        let b = std::fs::read(&one).unwrap();
+        assert_ne!(
+            a, b,
+            "0.bin equals 1.bin: the initial weights were saved after the first \
+             optimizer step, not before it"
+        );
+
+        // The record must say step 0 and must not present a run minimum or an
+        // EMA it never took.
+        let rec: checkpoint::CheckpointRecord =
+            serde_json::from_slice(&std::fs::read(run_dir.join("0.json")).unwrap()).unwrap();
+        assert_eq!(rec.step, 0, "the step-0 sidecar must say step 0");
+        assert_eq!(rec.min_observed_val_bpb, None, "no run minimum exists at step 0");
+        assert_eq!(rec.ema_bpb, None, "no EMA exists at step 0");
+        assert!(
+            rec.final_val_bpb.is_some_and(|v| v.is_finite() && v > 0.0),
+            "the init reading was measured on these exact bytes and must be recorded"
+        );
+        assert_eq!(rec.steps_total, 1);
     }
 
     /// `final_val_bpb` is the reading; `ema_bpb` is the lagging signal. They
@@ -2914,6 +4513,163 @@ mod measurement_truth_tests {
         );
         // The compatibility mirror carries the measurement, not the EMA.
         assert_eq!(outcome.final_bpb, final_val);
+    }
+
+    /// The requested artifact cadence must be delivered in full, not
+    /// intersected with the observation cadence.
+    ///
+    /// Measured before the fix: `TRIOS_CHECKPOINT_EVERY=50 --eval-every 100
+    /// --steps 200` wrote 100.bin and 200.bin, exit 0, no warning. Half the
+    /// requested artifacts were never written, because both emission points
+    /// sat inside `if step % args.eval_every == 0` - an observation parameter
+    /// deciding what got saved, on the one function whose absence produced
+    /// "1,851 experiments, zero artifacts".
+    #[test]
+    fn checkpoint_cadence_is_not_intersected_with_the_eval_cadence() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let train_path = dir.path().join("train.txt");
+        let val_path = dir.path().join("val.txt");
+        std::fs::write(&train_path, lcg_bytes(0xA1CE, 40_000, 8)).unwrap();
+        std::fs::write(&val_path, lcg_bytes(0xB0BA, 9_000, 8)).unwrap();
+
+        for k in [
+            "DATABASE_URL",
+            "NEON_DATABASE_URL",
+            "TRIOS_NEON_DSN",
+            "TRIOS_DATABASE_URL",
+            "TRIOS_CHECKPOINT_DISABLE",
+            "TRIOS_GF16_FLOOR_EVERY",
+            "HIDDEN_DIM",
+            "NUM_ATTN_LAYERS",
+            "GF16_ENABLED",
+        ] {
+            std::env::remove_var(k);
+        }
+        std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path().join("ckpt"));
+        std::env::set_var("TRIOS_CANON_NAME", "IGLA-cadence");
+        std::env::set_var("TRIOS_CHECKPOINT_EVERY", "50");
+
+        let outcome = run_single(&TrainArgs {
+            seed: 47,
+            steps: 200,
+            hidden: 16,
+            lr: 0.02,
+            attn_layers: 1,
+            eval_every: 100,
+            train_path: train_path.to_string_lossy().into_owned(),
+            val_path: val_path.to_string_lossy().into_owned(),
+        })
+        .expect("run_single");
+        std::env::remove_var("TRIOS_CHECKPOINT_EVERY");
+        std::env::remove_var("TRIOS_CANON_NAME");
+
+        let run_dir = dir.path().join("ckpt").join("IGLA-cadence");
+        for step in [50, 100, 150, 200] {
+            let bin = run_dir.join(format!("{step}.bin"));
+            let json = run_dir.join(format!("{step}.json"));
+            assert!(
+                bin.is_file(),
+                "checkpoint_every=50 was requested and {bin:?} is missing: the \
+                 cadence was intersected with eval_every=100 again"
+            );
+            assert!(json.is_file(), "no sidecar at {json:?}");
+        }
+
+        // Every artifact carries a reading of ITS OWN weights - that is why the
+        // checkpoint-only steps evaluate rather than skip.
+        for step in [50, 100, 150, 200] {
+            let rec: checkpoint::CheckpointRecord =
+                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
+                    .unwrap();
+            assert_eq!(rec.step, step as i64);
+            assert!(
+                rec.final_val_bpb.is_some(),
+                "artifact at step {step} carries no reading of its own weights"
+            );
+        }
+
+        // ...and the published trajectory is untouched by the artifact cadence.
+        // A checkpoint-only step folds nothing into the EMA, so its record says
+        // `null` rather than repeating the last eval step's lagging number.
+        for step in [50, 150] {
+            let rec: checkpoint::CheckpointRecord =
+                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
+                    .unwrap();
+            assert!(
+                rec.ema_bpb.is_none(),
+                "step {step} is not an eval step; a stale EMA there would read \
+                 as a measurement of these weights"
+            );
+        }
+        for step in [100, 200] {
+            let rec: checkpoint::CheckpointRecord =
+                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
+                    .unwrap();
+            assert!(rec.ema_bpb.is_some(), "step {step} IS an eval step");
+        }
+        assert_eq!(
+            outcome.final_val_bpb,
+            serde_json::from_slice::<checkpoint::CheckpointRecord>(
+                &std::fs::read(run_dir.join("200.json")).unwrap()
+            )
+            .unwrap()
+            .final_val_bpb
+        );
+    }
+
+    /// A run that emitted nothing must not exit 0.
+    ///
+    /// `--steps 0` never enters the step loop, so it reached no emission point,
+    /// wrote no artifact, printed a `DONE:` line and returned success. The
+    /// in-loop failure handling could not see it: it only fires on a checkpoint
+    /// that was attempted.
+    #[test]
+    fn a_run_that_emits_no_artifact_is_an_error() {
+        let _g = ENV_LOCK.lock().unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let train_path = dir.path().join("train.txt");
+        let val_path = dir.path().join("val.txt");
+        std::fs::write(&train_path, lcg_bytes(0xA1CE, 40_000, 8)).unwrap();
+        std::fs::write(&val_path, lcg_bytes(0xB0BA, 9_000, 8)).unwrap();
+
+        for k in [
+            "DATABASE_URL",
+            "NEON_DATABASE_URL",
+            "TRIOS_NEON_DSN",
+            "TRIOS_DATABASE_URL",
+            "TRIOS_CHECKPOINT_DISABLE",
+            "TRIOS_CHECKPOINT_EVERY",
+            "HIDDEN_DIM",
+            "NUM_ATTN_LAYERS",
+            "GF16_ENABLED",
+        ] {
+            std::env::remove_var(k);
+        }
+        std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path().join("ckpt"));
+        std::env::set_var("TRIOS_CANON_NAME", "IGLA-no-artifact");
+
+        let args = TrainArgs {
+            seed: 47,
+            steps: 0,
+            hidden: 16,
+            lr: 0.02,
+            attn_layers: 1,
+            eval_every: 100,
+            train_path: train_path.to_string_lossy().into_owned(),
+            val_path: val_path.to_string_lossy().into_owned(),
+        };
+        let err = run_single(&args).expect_err("a zero-artifact run must not succeed");
+        assert!(
+            err.to_string().contains("no checkpoint artifact"),
+            "unexpected error: {err:#}"
+        );
+
+        // The escape hatch is explicit, never silent.
+        std::env::set_var("TRIOS_CHECKPOINT_DISABLE", "1");
+        run_single(&args).expect("checkpointing off is a legal, DECLARED choice");
+        std::env::remove_var("TRIOS_CHECKPOINT_DISABLE");
+        std::env::remove_var("TRIOS_CANON_NAME");
     }
 }
 

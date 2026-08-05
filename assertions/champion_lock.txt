@@ -1,1 +1,14 @@
-champion@2446855 BPB=2.2393 seed=43 step=27000
+# RETRACTED - this file no longer locks a champion.
+#
+# It used to read:  champion@2446855 BPB=2.2393 seed=43 step=27000
+#
+# 2446855 does not resolve to an object in this repository
+# (`git cat-file -t 2446855` -> "Not a valid object name"); it is a reference
+# into gHashTag/trios. No artifact, no corpus digest and no trainer hash exist
+# behind 2.2393, and seed 43 is forbidden under Canon #93 (src/seed_canon.rs).
+#
+# See RETRACTION.md at the repository root, section 2, for the full accounting
+# of 2.2393 and of the three other BPB numbers that coexisted with it.
+#
+# No .rs file reads this path. The only in-tree references are
+# docs/TRAINING_FLOW_V2.md, which now points here and at RETRACTION.md.

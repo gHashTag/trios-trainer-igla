@@ -13,11 +13,23 @@
 //! compute; this harness only validates mechanics and the conversion-count
 //! signature, and ensures the phi arm no longer saturates (scale-aware fix).
 
+use std::process::ExitCode;
+
 use trios_trainer::multi_seed::{run_multi_seed, F2Verdict};
 
-fn main() {
-    // Default config: 8 seeds, 40 steps, 8-step full-precision warmup, dim 128.
-    let seeds: Vec<u64> = (43..51).collect();
+/// Canon #93 allowed seed set, mirrored from `src/seed_canon.rs`
+/// (forbidden: {42, 43, 44, 45}; allowed: {47, 89, 123, 144}).
+///
+/// This harness used to run the contiguous range starting at 43, i.e. three
+/// forbidden seeds published straight into its own config header.
+/// `seed_canon::parse_seed` could not catch it: it reads only the `SEED`
+/// environment variable, and this binary never consults it.
+const CANON_SEEDS: &[u64] = &[47, 89, 123, 144];
+
+fn main() -> ExitCode {
+    // Default config: the Canon #93 seed set, 40 steps, 8-step full-precision
+    // warmup, dim 128.
+    let seeds: Vec<u64> = CANON_SEEDS.to_vec();
     let steps = 40usize;
     let warmup = 8usize;
     let dim = 128usize;
@@ -33,7 +45,8 @@ fn main() {
     println!("         promote the moat. Accuracy verdict may be Tie/ZooWins.");
     println!("------------------------------------------------------------------");
     println!(
-        " config: seeds={:?} steps={steps} warmup_unquantized={warmup} dim={dim} alpha={alpha}",
+        " config: seeds={:?} (Canon #93 allowed set) steps={steps} \
+         warmup_unquantized={warmup} dim={dim} alpha={alpha}",
         seeds
     );
     println!("------------------------------------------------------------------");
@@ -46,9 +59,22 @@ fn main() {
         "   mean_diff (phi - zoo)      : {:.6}  (negative favours phi)",
         r.mean_diff
     );
-    println!("   Welch t                    : {:.6}", r.t_stat);
-    println!("   Welch-Satterthwaite df     : {:.4}", r.df);
-    println!("   two-sided p                : {:.3e}", r.p_two_sided);
+    // The Welch statistics exist only when the samples carry resolvable spread.
+    // When they do not there is no t, no df and no p to print: printing a
+    // placeholder number under these headings is the failure this harness is
+    // supposed to detect, not a formatting convenience.
+    match &r.welch {
+        Ok(w) => {
+            println!("   Welch t                    : {:.6}", w.t_stat);
+            println!("   Welch-Satterthwaite df     : {:.4}", w.df);
+            println!("   two-sided p                : {:.3e}", w.p_two_sided);
+        }
+        Err(e) => {
+            println!("   Welch t                    : undefined");
+            println!("   Welch-Satterthwaite df     : undefined");
+            println!("   two-sided p                : undefined ({e})");
+        }
+    }
     println!("------------------------------------------------------------------");
     println!(" BREADTH AXIS (lossy cross-format conversions -- THE actual moat)");
     println!("   phi-ladder lossy conversions : {}", r.phi.total_lossy);
@@ -57,14 +83,38 @@ fn main() {
     println!("   zoo        coherent widenings: {}", r.zoo.total_coherent);
     println!("------------------------------------------------------------------");
 
-    let verdict_str = match r.verdict {
-        F2Verdict::PhiWins => {
-            "PHI WINS (accuracy proxy) -- NOT a Verdict; moat stays [Open conjecture]"
+    // A verdict without a p-value is not a weaker verdict, it is not a verdict.
+    let verdict_ok = match r.verdict {
+        Some(F2Verdict::PhiWins) => {
+            println!(
+                " ACCURACY VERDICT: PHI WINS (accuracy proxy) -- NOT a Verdict; \
+                 moat stays [Open conjecture]"
+            );
+            true
         }
-        F2Verdict::Tie => "TIE (accuracy proxy) -- moat stays [Open conjecture]",
-        F2Verdict::ZooWins => "ZOO WINS (accuracy proxy) -- demote breadth-as-moat to [Risk] FIRST",
+        Some(F2Verdict::Tie) => {
+            println!(" ACCURACY VERDICT: TIE (accuracy proxy) -- moat stays [Open conjecture]");
+            true
+        }
+        Some(F2Verdict::ZooWins) => {
+            println!(
+                " ACCURACY VERDICT: ZOO WINS (accuracy proxy) -- demote breadth-as-moat \
+                 to [Risk] FIRST"
+            );
+            true
+        }
+        None => {
+            let reason = match &r.welch {
+                Err(e) => e.to_string(),
+                // Unreachable by construction: `run_multi_seed` derives the
+                // verdict from `welch`, so `None` implies `Err`. Printed rather
+                // than panicked so the breadth axis above still stands.
+                Ok(_) => "verdict absent despite computable Welch statistics".to_string(),
+            };
+            println!(" VERDICT: none ({reason})");
+            false
+        }
     };
-    println!(" ACCURACY VERDICT: {verdict_str}");
 
     // The breadth claim's mechanical signature, reported independently of the
     // accuracy verdict. This is the only thing this proxy can show cleanly.
@@ -80,4 +130,10 @@ fn main() {
         println!("   This WEAKENS the breadth claim; record in FL-002.");
     }
     println!("==================================================================");
+
+    if verdict_ok {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }

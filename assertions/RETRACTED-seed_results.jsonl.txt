@@ -1,0 +1,84 @@
+RETRACTED EVIDENCE - DO NOT CITE, DO NOT PARSE AS A LEDGER
+==========================================================
+
+This file was `assertions/seed_results.jsonl`, declared the source of truth for
+IGLA RACE BPB evidence by SOURCE_OF_TRUTH.md, MIGRATION.md,
+docs/TRAINING_FLOW_V2.md, docs/preregistration/asymlogit_ngram_v1.md and
+igla-dash/README.md. It is renamed and retracted. See RETRACTION.md at the repo
+root for the full accounting, including the three other BPB numbers that
+coexisted with these rows.
+
+Nothing below has been altered. The rows are preserved verbatim so the retraction
+can be checked against what was actually published.
+
+WHY EVERY ROW IS UNCITABLE (applies to all 11 rows)
+---------------------------------------------------
+- No artifact. Both referenced commits carry `checkpoint::save` as a stub:
+  `pub fn save(_run, _step, _bytes) -> anyhow::Result<()> { Ok(()) }`
+  (checkpoint.rs:116-119 at 4c0b04c and at cd91c45). No weights were written by
+  any run that produced these numbers, so no row can be re-measured.
+- No corpus hash. No row names a corpus file, a byte count or a digest. At both
+  commits `load_data` silently substituted a synthetic corpus when the path was
+  missing - `b"The quick brown fox jumps over the lazy dog. ".repeat(2500)`,
+  train_loop.rs:39-51 - printing only `Data file '...' not found, using
+  synthetic fallback` to stderr. Nothing in a row distinguishes a real corpus
+  from that 112 500-byte pangram, and in the fallback case train and val are the
+  same bytes.
+- No trainer hash. `sha` is a 7-character abbreviation of the repository HEAD.
+  It pins no binary, no toolchain, no config and no data. The row carries no
+  config digest, so which of the several TOMLs in `configs/` produced it is not
+  recorded.
+- No eval coverage. No row records how much of the validation set was scored:
+  no val token count, no eval window count, no eval cadence. At these commits
+  `--eval-every` was not an observation-only parameter (it gates an in-place
+  weight transform late in training), so two rows with different cadence are not
+  comparable - and the cadence is not in the rows.
+- Forbidden seeds. Every seed here is 42, 43 or 44. `src/seed_canon.rs` declares
+  {42, 43, 44, 45} FORBIDDEN under Canon #93 and the allowed canon set to be
+  {47, 89, 123, 144}. No row in this file uses a canon-allowed seed.
+
+FAMILY A - 9 rows, sha 4c0b04c, hidden=384, seeds 42/43/44
+-----------------------------------------------------------
+Additionally:
+- Not written by `ledger::emit_row`. The rows carry `steps` (plural), plus
+  `ema_bpb`/`val_bpb_24k`/`val_bpb_27k`/`time_s`, and carry no `agent`,
+  `jsonl_row` or `ts`. The in-repo `LedgerRow` at that commit is
+  {agent, bpb, step, seed, sha, jsonl_row, gate_status, ts} (ledger.rs:22-31).
+  These rows came from somewhere outside the validated emit path, so the R7
+  triplet validation that SOURCE_OF_TRUTH.md calls mandatory never ran on them.
+- Six of the nine declare `steps: 3000`, below the R8 floor of 4000. Today's
+  `emit_row` rejects them outright ("R8 violation").
+- 4c0b04c is the commit titled "fix: load_data fallback when data file missing
+  (no panic)" - i.e. these rows were produced by the very build in which a
+  missing corpus stopped being an error.
+
+FAMILY B - 2 rows, sha cd91c45, hidden=828, step=81000, seeds 43/44
+--------------------------------------------------------------------
+These are the rows that published `bpb 2.1919` and `bpb 2.2024` under
+`gate_status: "above_target"`, and that igla-dash/README.md and
+docs/audit/HONEST_FINDINGS.md then republished as the champion. Additionally:
+- Not written by `ledger::emit_row` either. They carry `optimizer`, `hidden`,
+  `attn_layers`, `lr`, `arch` and `corpus` and lack `agent`, `jsonl_row` and
+  `ts`; that is not the `LedgerRow` shape at cd91c45. The declared
+  `corpus: "tiny_shakespeare"` is a free-text label with no digest behind it,
+  written by a producer outside the emit path.
+- `gate_status: "above_target"` is not a pass. The Gate-2 target in force was
+  BPB < 1.85; 2.1919 is above it. The string was read as an achievement in the
+  documents that cited it.
+- 2.1919 is better than `src/invariants.rs::BPB_CHAMPION = 2.5193`, better than
+  the 2.2393 in `assertions/champion_lock.txt`, and not reproducible from this
+  tree at any cadence, because no artifact exists.
+
+RETRACTED ROWS FOLLOW, VERBATIM
+--------------------------------
+{"seed":42,"steps":27000,"bpb":2.3617,"val_bpb_24k":2.3938,"val_bpb_27k":2.3617,"ema_bpb":3.5398,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence","time_s":700}
+{"seed":43,"steps":27000,"bpb":2.3586,"val_bpb_24k":2.3607,"val_bpb_27k":2.3586,"ema_bpb":3.5293,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence","time_s":707}
+{"seed":44,"steps":27000,"bpb":2.3871,"val_bpb_24k":2.3944,"val_bpb_27k":2.3871,"ema_bpb":2.5059,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence","time_s":1039}
+{"seed":42,"steps":3000,"bpb":2.6840,"ema_bpb":3.7899,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed":43,"steps":3000,"bpb":2.6970,"ema_bpb":3.7972,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed":44,"steps":3000,"bpb":2.6998,"ema_bpb":3.7798,"optimizer":"adamw","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed":42,"steps":3000,"bpb":2.7473,"ema_bpb":3.8157,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed":43,"steps":3000,"bpb":2.7784,"ema_bpb":3.8360,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed":44,"steps":3000,"bpb":2.7551,"ema_bpb":3.8067,"optimizer":"muon","hidden":384,"lr":0.004,"attn_layers":2,"sha":"4c0b04c","gate_status":"below_target_evidence"}
+{"seed": 43, "bpb": 2.1919, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}
+{"seed": 44, "bpb": 2.2024, "step": 81000, "sha": "cd91c45", "gate_status": "above_target", "optimizer": "adamw", "hidden": 828, "attn_layers": 2, "lr": 0.003, "arch": "ngram+2L_hybrid_attn_relu2", "corpus": "tiny_shakespeare"}

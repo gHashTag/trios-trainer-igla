@@ -9,7 +9,18 @@
 # Two variables are deliberately held fixed so a mismatch is interpretable:
 #   - the compiler, by rust-toolchain.toml (1.96.0)
 #   - the dependency graph, by `--locked`
-# What differs is CPU architecture and OS, and only that.
+# What differs is CPU architecture and OS.
+#
+# "And only that" would be an overclaim without one more measurement. Until
+# 2026-08-03 this job trained EXACTLY ONCE on x86_64 and compared the result to
+# a hash measured on aarch64. Within-lab repeatability was proven many times on
+# aarch64 and zero times on x86_64, so a mismatch was equally consistent with
+# "the two architectures disagree" and with "the trainer is not repeatable on
+# x86_64 either and nobody looked" - and the second reading is by far the worse
+# one, because it would make determinism itself platform-contingent. The job now
+# trains TWICE on x86_64 with byte-identical flags and compares those two
+# artifacts to each other. That control is what licenses reading a cross-arch
+# mismatch as a cross-arch effect; without it the attribution is a hypothesis.
 #
 # A FAILING run is a legitimate and useful result: it locates the boundary of
 # the method. It must therefore fail loudly rather than warn, and it prints both
@@ -20,19 +31,37 @@
 
 name: Cross-arch reproducibility
 
+# NOTE ON TRIGGERS: this workflow still only runs on `workflow_dispatch` and on
+# pushes to `fix/509-qat-v2`. It does NOT run on the default branch, on pull
+# requests, or on any other branch. Nothing below is enforced on merge; a claim
+# that "CI checks reproducibility" is only true for this one branch.
 on:
   workflow_dispatch:
   push:
     branches: [fix/509-qat-v2]
 
 jobs:
-  repro:
+  repro:  # three 12000-step passes: the documented seed, its x86_64 repeat, the replay
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    # THREE full 12000-step passes now run here, not one: the documented seed,
+    # the within-x86_64 repeatability control (`r4-docs-repro-b`), and
+    # `ckpt_replay` re-deriving the first one. Raised from 90 so the auditor
+    # cannot be cut off mid-replay and reported as a timeout instead of a
+    # verdict. Historical calibration: run 30767491098 completed checkout,
+    # build and one full 12000-step pass in 7m04s on `ubuntu-latest`, so 150
+    # minutes is not tight even at three passes.
+    timeout-minutes: 150
 
     env:
       # From README.md, produced on aarch64 macOS with rustc 1.96.0.
       EXPECTED_CKPT_SHA: 8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+      # NOT a gate. The x86_64 checkpoint that run 30767491098 actually produced
+      # (evidence/xarch-run-30767491098/12000.bin). Printed alongside this run's
+      # x86_64 hash so the log shows whether the x86_64 arm reproduces itself
+      # ACROSS runs and across time as well as within this job. It is not
+      # asserted: that run used a different ephemeral runner, whose CPU model
+      # and glibc are not pinned by anything in this repository.
+      OBSERVED_X86_CKPT_SHA: bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3
       # From data/MANIFEST.sha256.
       EXPECTED_TRAIN_SHA: 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
       EXPECTED_VAL_SHA: 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
@@ -81,17 +110,109 @@ jobs:
           # The union hash is what proves the split is a partition, not a copy.
           [ "$got_union" = "$EXPECTED_UNION_SHA" ] || { echo "::error::train+val do not reconstruct the canonical corpus"; exit 1; }
 
-      - name: Build the trainer
-        run: cargo build --release --locked --bin trios-train
+      - name: Build the trainer and the auditor
+        run: cargo build --release --locked --bin trios-train --bin ckpt_replay
+
+      # An ALLOWLIST, not a denylist. This step used to read
+      # `env -u DATABASE_URL -u NEON_DATABASE_URL -u TRIOS_DATABASE_URL`, which
+      # enumerates the DSN aliases deliberately and gets three of the four: the
+      # resolution chain is DATABASE_URL -> NEON_DATABASE_URL -> TRIOS_NEON_DSN
+      # -> TRIOS_DATABASE_URL (src/neon_writer.rs:53-56,
+      # src/bin/trios-train.rs:145-148), and TRIOS_NEON_DSN was missing. A guard
+      # that looks exhaustive and is not is worse than no guard. Compounding it,
+      # `TRINITY_AUTOMIGRATE` defaults to "1" when unset
+      # (src/bin/trios-train.rs:139), so a DSN that reached this job would run
+      # `migration::Migrator::up` against the live SSOT before training started.
+      #
+      # `env -i` has nothing to enumerate and cannot fall behind a fifth alias.
+      # The step below proves the child environment is empty of all four rather
+      # than asserting it.
+      - name: Prove the training environment carries no DSN and no automigrate
+        run: |
+          set -euo pipefail
+          child=$(env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
+                    TRIOS_CANON_NAME=r4-docs-repro env | sort)
+          echo "$child"
+          for alias in DATABASE_URL NEON_DATABASE_URL TRIOS_NEON_DSN TRIOS_DATABASE_URL; do
+            if printf '%s\n' "$child" | grep -q "^${alias}="; then
+              echo "::error::${alias} survives into the training environment"
+              exit 1
+            fi
+          done
+          printf '%s\n' "$child" | grep -qx 'TRINITY_AUTOMIGRATE=0' || {
+            echo "::error::TRINITY_AUTOMIGRATE is not pinned to 0; automigrate defaults to ON"
+            exit 1
+          }
+          echo "no DSN alias reaches the trainer; automigrate is off"
 
       - name: Run the documented seed
         run: |
           set -euo pipefail
-          env -u DATABASE_URL -u NEON_DATABASE_URL -u TRIOS_DATABASE_URL \
+          env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
             TRIOS_CANON_NAME=r4-docs-repro ./target/release/trios-train \
             --seed 47 --steps 12000 --hidden 384 --attn-layers 2 --eval-every 1000 \
             --lr 0.003 --train-data data/tiny_shakespeare.txt \
             --val-data data/tiny_shakespeare_val.txt
+
+      # THE WITHIN-LAB REPEATABILITY CONTROL FOR THIS ARM.
+      #
+      # Byte-identical to the invocation above in every flag, every corpus path,
+      # the same `env -i` allowlist and the same TRINITY_AUTOMIGRATE=0. The ONLY
+      # difference is TRIOS_CANON_NAME, which redirects the output directory so
+      # the second run cannot overwrite the first. Any other difference would
+      # make this a different experiment and not a control.
+      #
+      # Why it has to exist: the cross-arch comparison below still pairs ONE
+      # artifact from each architecture. One observation per arm cannot separate
+      # a between-architecture effect from within-arm non-repeatability on an
+      # arm that was never repeated. This run is what supplies the second
+      # x86_64 observation; without it the comparison has no control condition.
+      - name: Run the documented seed a second time, same host, same flags
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
+            TRIOS_CANON_NAME=r4-docs-repro-b ./target/release/trios-train \
+            --seed 47 --steps 12000 --hidden 384 --attn-layers 2 --eval-every 1000 \
+            --lr 0.003 --train-data data/tiny_shakespeare.txt \
+            --val-data data/tiny_shakespeare_val.txt
+
+      # This step deliberately does NOT `exit 1` on a mismatch. It records the
+      # verdict and lets the cross-arch comparison run anyway, because both
+      # readings are worth collecting in a single job and an early exit would
+      # discard the second. The job is failed by the gate step at the end.
+      - name: Compare the two x86_64 checkpoints to EACH OTHER
+        run: |
+          set -euo pipefail
+          A=checkpoints/r4-docs-repro/12000.bin
+          B=checkpoints/r4-docs-repro-b/12000.bin
+          for f in "$A" "$B"; do
+            test -f "$f" || { echo "::error::no checkpoint at $f"; exit 1; }
+          done
+
+          sha_a=$(sha256sum "$A" | cut -d' ' -f1)
+          sha_b=$(sha256sum "$B" | cut -d' ' -f1)
+          echo "=============================================================="
+          echo " WITHIN-x86_64 REPEATABILITY CONTROL (n=2 on this arm)"
+          echo " run A : $sha_a"
+          echo " run B : $sha_b"
+          echo " bytes : $(wc -c < "$A") / $(wc -c < "$B")"
+          echo "=============================================================="
+
+          if [ "$sha_a" = "$sha_b" ]; then
+            echo "SELF-MATCH - two independent x86_64 runs produced identical bytes."
+            echo "SELF_REPEAT=match" >> "$GITHUB_ENV"
+          else
+            echo "::error::X86_64 IS NOT REPEATABLE WITH ITSELF - two runs of the same"
+            echo "::error::command on the SAME host produced different checkpoints."
+            echo "THIS IS A BIGGER FINDING THAN THE CROSS-ARCHITECTURE MISMATCH."
+            echo "It means the determinism property claimed in README.md is not a"
+            echo "property of the trainer but of the one machine it was measured on,"
+            echo "and every cross-architecture reading in this repository loses its"
+            echo "control condition. Do not attribute anything to architecture until"
+            echo "this is resolved. Record it; do not relax the comparison."
+            echo "differing bytes: $(cmp -l "$A" "$B" 2>/dev/null | wc -l | tr -d ' ') of $(wc -c < "$A")"
+            echo "SELF_REPEAT=mismatch" >> "$GITHUB_ENV"
+          fi
 
       - name: Compare the checkpoint against the aarch64 reference
         run: |
@@ -105,20 +226,79 @@ jobs:
           echo " bytes      : $(wc -c < "$CKPT")"
           echo " x86_64 linux : $got"
           echo " aarch64 macos: $EXPECTED_CKPT_SHA"
+          echo " x86_64 linux, run 30767491098 (recorded, not asserted): $OBSERVED_X86_CKPT_SHA"
+          echo " within-x86_64 repeatability control: ${SELF_REPEAT:-not run}"
           echo "=============================================================="
 
           if [ "$got" = "$EXPECTED_CKPT_SHA" ]; then
             echo "MATCH - the artifact is byte-identical across architecture and OS."
           else
-            echo "::error::MISMATCH - the checkpoint is NOT portable across architectures."
-            echo "This is a real finding, not a flake. Same source, same compiler"
-            echo "(rust-toolchain.toml), same locked dependencies, same verified corpus."
-            echo "The remaining difference is CPU architecture and OS, so that is where"
-            echo "the divergence comes from - most likely floating-point contraction or"
-            echo "reduction order in the training loop. Record it in README.md rather"
-            echo "than relaxing this check."
+            echo "::error::MISMATCH - the checkpoint produced here is not the aarch64 checkpoint."
+            echo "THE FACT: two different hashes, from the same source, the same compiler"
+            echo "(rust-toolchain.toml), the same locked dependencies and the same verified"
+            echo "corpus. Non-identity is measured and is not a flake."
+            echo ""
+            echo "THE ATTRIBUTION IS A HYPOTHESIS, NOT A MEASUREMENT. Two variables remain"
+            echo "uncontrolled between the two artifacts - CPU architecture and OS - and a"
+            echo "single run per architecture cannot separate a between-architecture effect"
+            echo "from within-arm non-repeatability on the arm that was never repeated. The"
+            echo "control for that is the within-x86_64 repeat above (TRIOS_CANON_NAME="
+            echo "r4-docs-repro-b). Attributing this mismatch to architecture is licensed"
+            echo "ONLY if that control reported SELF-MATCH; it reported: ${SELF_REPEAT:-not run}."
+            echo ""
+            echo "MOST LIKELY MECHANISM, UNCONFIRMED: floating-point contraction (FMA) or"
+            echo "reduction order in the training loop. Nothing in this job measures that;"
+            echo "the localize-divergence job is what would begin to."
+            echo "Record it in README.md rather than relaxing this check."
             exit 1
           fi
+
+      # `sha256sum ... | cut` against a literal is a comparison this workflow
+      # hand-rolled; it is not the repository's instrument. `ckpt_replay` is:
+      # it re-derives the artifact from the sidecar's OWN recorded parameters,
+      # re-hashes the trainer against `trainer.sha256` before executing
+      # anything, re-hashes the corpus from the paths the record names, and
+      # grades the result. The step above answers "are these bytes the aarch64
+      # bytes"; this step answers "does this record reproduce itself on THIS
+      # host at all" - and the two answers are independent. It runs on
+      # `always()` precisely because a failed sha comparison is when the second
+      # answer matters most: it separates "not portable across architectures"
+      # from "not reproducible even here".
+      #
+      # --max-steps 12000 authorises the cost explicitly. The default budget is
+      # 2000, under which this record would be REFUSED (exit 3) rather than
+      # replayed. Exit policy: 1 fails, 2 (INCOMPARABLE) and 3 (REFUSED) are
+      # verdicts and are reported, 4 (ERROR) means the check could not run.
+      - name: Grade the sidecar with the repository's own auditor
+        if: always()
+        run: |
+          set -uo pipefail
+          # The runner's default shell is `bash -e`. `errexit` has to be turned
+          # OFF here on purpose: exit 2 and exit 3 are verdicts this step is
+          # meant to read and report, not errors it should die on.
+          set +e
+          RECORD=checkpoints/r4-docs-repro/12000.json
+          if [ ! -f "$RECORD" ]; then
+            echo "::error::no sidecar at $RECORD; the training step produced nothing to grade"
+            exit 1
+          fi
+          ./target/release/ckpt_replay --record "$RECORD" \
+            --trainer ./target/release/trios-train --max-steps 12000 \
+            --workdir "$RUNNER_TEMP/ckpt-replay" 2>&1 | tee "$RUNNER_TEMP/replay.log"
+          code=${PIPESTATUS[0]}
+          echo "ckpt_replay exit: $code"
+          if grep -qE '^(TRAINER MISMATCH|ARTIFACT ALTERED)' "$RUNNER_TEMP/replay.log"; then
+            echo "::error::the evidence does not match its own record (tamper verdict)"
+            exit 1
+          fi
+          case "$code" in
+            0) echo "VERIFIED: the record re-derives its own bytes on $(uname -sm)" ;;
+            1) echo "::error::MISMATCH: the record does not reproduce itself on this host"; exit 1 ;;
+            2) echo "INCOMPARABLE: the record does not state its own recipe. Not a pass, not a fail." ;;
+            3) echo "REFUSED: the replay exceeded the authorised --max-steps budget." ;;
+            4) echo "::error::ERROR: ckpt_replay could not run, so there is no verdict"; exit 1 ;;
+            *) echo "::error::ckpt_replay returned an unknown exit code $code"; exit 1 ;;
+          esac
 
       - name: Publish the sidecar as evidence
         if: always()
@@ -128,4 +308,379 @@ jobs:
           path: |
             checkpoints/r4-docs-repro/12000.json
             checkpoints/r4-docs-repro/12000.bin
+            checkpoints/r4-docs-repro-b/12000.json
+            checkpoints/r4-docs-repro-b/12000.bin
+          if-no-files-found: warn
+
+      # The repeatability control is enforced here rather than where it is
+      # measured, so that a broken control does not suppress the cross-arch
+      # reading. `always()` because the step above it exits 1 on a cross-arch
+      # mismatch, which is exactly the case in which this verdict matters most.
+      - name: Gate on the within-x86_64 repeatability control
+        if: always()
+        run: |
+          set -euo pipefail
+          case "${SELF_REPEAT:-unset}" in
+            match)
+              echo "within-x86_64 repeatability: MATCH (n=2 on this arm)"
+              ;;
+            mismatch)
+              echo "::error::within-x86_64 repeatability: MISMATCH. The trainer is not"
+              echo "::error::repeatable on this host, so no cross-architecture attribution"
+              echo "::error::in this repository currently has a control condition."
+              exit 1
+              ;;
+            *)
+              echo "::error::the within-x86_64 repeatability control did not run, so this"
+              echo "::error::job produced no n=2 evidence on this arm. Any cross-arch"
+              echo "::error::reading above is uncontrolled."
+              exit 1
+              ;;
+          esac
+
+  # ---------------------------------------------------------------------------
+  # WHERE does the cross-architecture divergence begin?
+  #
+  # The `repro` job above measured THAT the 12000-step checkpoint differs
+  # between aarch64 macOS and x86_64 Linux (run 30767491098). It cannot say
+  # where, because the earliest artifact it produces is 12000 optimizer steps
+  # deep. It also cannot say that ARCHITECTURE is the cause: run 30767491098
+  # predates the within-x86_64 repeatability control now in `repro`, so at the
+  # time of that run the x86_64 arm had n=1 and non-repeatability on x86_64
+  # alone explains every byte it collected. Both readings below are conditional
+  # on that control reporting SELF-MATCH.
+  #
+  # Two very different defects fit that one observation, if it is a
+  # between-architecture observation at all:
+  #
+  #   * the INITIAL weights already differ  -> init/RNG. Outright fixable:
+  #     nothing about float arithmetic is involved in laying down seeded values.
+  #   * init is byte-identical and step 10 differs -> the arithmetic. Fixable
+  #     only by constraining it (forbidding FMA contraction, fixing reduction
+  #     order), at a cost in speed.
+  #
+  # `TRIOS_CHECKPOINT_INIT=1` writes `0.bin` before the first optimizer step, so
+  # the two questions can be asked separately. They are reported as two
+  # INDEPENDENT lines below - conflating them into one pass/fail would throw
+  # away the entire point of the job.
+  #
+  # PRECONDITION, NOT YET MET. TRIOS_CHECKPOINT_INIT is not yet committed to
+  # src/train_loop.rs; it exists only in an uncommitted working tree. Measured
+  # 2026-08-03:
+  #
+  #     git show HEAD:src/train_loop.rs | grep -c TRIOS_CHECKPOINT_INIT  ->  0
+  #     grep -c TRIOS_CHECKPOINT_INIT src/train_loop.rs                  ->  5
+  #
+  # On a fresh checkout this job therefore fails at
+  # `test -f checkpoints/loc-divergence/0.bin` (the "Localize the divergence"
+  # step below) for a reason that has NOTHING to do with architecture: the knob
+  # does not exist in the binary that was built, so no `0.bin` is ever written.
+  # Read that failure as "not yet wired", not as a finding. Committing the knob
+  # is the precondition for this job to mean anything at all.
+  #
+  # 10 steps, not 12000: this answers the localization question in ~4 minutes.
+  # It does NOT replace the `repro` job and is not evidence about the documented
+  # 12000-step artifact.
+  #
+  # The aarch64 reference hashes below were measured on Apple M1 Pro, macOS
+  # (Darwin arm64), rustc 1.96.0 (ac68faa20 2026-05-25), commit-clean-or-not as
+  # recorded in the sidecar. See docs/DIVERGENCE-LOCALIZATION.md. The x86_64
+  # side is NOT YET MEASURED; this job is what measures it.
+  localize-divergence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+
+    env:
+      # Measured on aarch64 macOS, 2026-08-03. Two independent runs of the same
+      # command produced these same two hashes, so same-machine determinism
+      # holds at init AND after 10 gradient steps.
+      EXPECTED_INIT_SHA: 4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457
+      EXPECTED_STEP10_SHA: efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac
+      # From data/MANIFEST.sha256, same three hashes the `repro` job checks.
+      EXPECTED_TRAIN_SHA: 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+      EXPECTED_VAL_SHA: 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+      EXPECTED_UNION_SHA: 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The declared platform triple in the sidecar has os, arch and pointer
+      # width and NO microarchitecture field. That is not enough to interpret a
+      # mismatch: glibc dispatches expf/logf to FMA and non-FMA implementations
+      # via IFUNC at load time, on the SAME glibc version, according to what the
+      # CPU reports. Two hosts agreeing on os+arch+rustc+glibc can therefore
+      # still take different code paths through libm. The CPU model is recorded
+      # here so that possibility is visible in the log rather than invisible.
+      - name: Record the environment, including the microarchitecture
+        run: |
+          echo "arch:   $(uname -sm)"
+          echo "rustc:  $(rustc --version)"
+          echo "libc:   $(ldd --version 2>&1 | head -1)"
+          echo "cpu:    $(lscpu | grep 'Model name' || echo 'Model name: unavailable')"
+          echo "reference: Apple M1 Pro, Darwin arm64, rustc 1.96.0 (see docs/DIVERGENCE-LOCALIZATION.md)"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Fetch and split the corpus, byte-disjoint
+        run: |
+          set -euo pipefail
+          mkdir -p data
+          curl -sL --retry 3 \
+            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+            > data/full.txt
+          SIZE=$(wc -c < data/full.txt)
+          echo "downloaded $SIZE bytes"
+          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+          rm data/full.txt
+
+      - name: Verify the corpus against data/MANIFEST.sha256
+        run: |
+          set -euo pipefail
+          got_train=$(sha256sum data/tiny_shakespeare.txt | cut -d' ' -f1)
+          got_val=$(sha256sum data/tiny_shakespeare_val.txt | cut -d' ' -f1)
+          got_union=$(cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | sha256sum | cut -d' ' -f1)
+
+          echo "train  expected=$EXPECTED_TRAIN_SHA got=$got_train"
+          echo "val    expected=$EXPECTED_VAL_SHA got=$got_val"
+          echo "union  expected=$EXPECTED_UNION_SHA got=$got_union"
+
+          [ "$got_train" = "$EXPECTED_TRAIN_SHA" ] || { echo "::error::train corpus differs from the manifest"; exit 1; }
+          [ "$got_val"   = "$EXPECTED_VAL_SHA" ]   || { echo "::error::val corpus differs from the manifest"; exit 1; }
+          [ "$got_union" = "$EXPECTED_UNION_SHA" ] || { echo "::error::train+val do not reconstruct the canonical corpus"; exit 1; }
+
+      - name: Build the trainer
+        run: cargo build --release --locked --bin trios-train
+
+      # Same `env -i` allowlist as the `repro` job: nothing to enumerate, so no
+      # fifth DSN alias can slip past, and automigrate cannot run against a live
+      # database from a reproducibility job.
+      - name: Run 10 steps with the initial-weights artifact enabled
+        run: |
+          set -euo pipefail
+          env -i PATH="$PATH" HOME="$HOME" TRINITY_AUTOMIGRATE=0 \
+            TRIOS_CANON_NAME=loc-divergence TRIOS_CHECKPOINT_INIT=1 \
+            ./target/release/trios-train \
+            --seed 47 --steps 10 --hidden 384 --attn-layers 2 --eval-every 1000 \
+            --lr 0.003 --optimizer adamw \
+            --train-data data/tiny_shakespeare.txt \
+            --val-data data/tiny_shakespeare_val.txt
+
+      # Two questions, two verdict lines. A single MATCH/MISMATCH here would be
+      # exactly as uninformative as the 12000-step job already is.
+      - name: Localize the divergence
+        run: |
+          set -euo pipefail
+          INIT=checkpoints/loc-divergence/0.bin
+          STEP10=checkpoints/loc-divergence/10.bin
+          test -f "$INIT"   || { echo "::error::no initial-weights artifact at $INIT (TRIOS_CHECKPOINT_INIT did not take effect)"; exit 1; }
+          test -f "$STEP10" || { echo "::error::no step-10 artifact at $STEP10"; exit 1; }
+
+          got_init=$(sha256sum "$INIT" | cut -d' ' -f1)
+          got_step10=$(sha256sum "$STEP10" | cut -d' ' -f1)
+
+          echo "=============================================================="
+          echo " init   x86_64 linux : $got_init"
+          echo " init   aarch64 macos: $EXPECTED_INIT_SHA"
+          echo " step10 x86_64 linux : $got_step10"
+          echo " step10 aarch64 macos: $EXPECTED_STEP10_SHA"
+          echo " bytes  : $(wc -c < "$INIT") / $(wc -c < "$STEP10")"
+          echo "=============================================================="
+
+          if [ "$got_init" = "$EXPECTED_INIT_SHA" ]; then
+            echo "INIT MATCH"
+            init_ok=1
+          else
+            echo "INIT MISMATCH"
+            init_ok=0
+          fi
+
+          if [ "$got_step10" = "$EXPECTED_STEP10_SHA" ]; then
+            echo "STEP10 MATCH"
+            step_ok=1
+          else
+            echo "STEP10 MISMATCH"
+            step_ok=0
+          fi
+
+          # The interpretation, printed with the evidence so the log is readable
+          # without this file. All four combinations are stated, including the
+          # one that would mean the experiment itself is broken.
+          if [ "$init_ok" = 1 ] && [ "$step_ok" = 1 ]; then
+            echo "READING: the artifact is portable across architecture and OS at both points."
+            exit 0
+          fi
+          # Both readings below are HYPOTHESES about cause, not measurements of
+          # it. This job, like `repro` before the control was added, trains
+          # exactly ONCE on x86_64: it has n=1 on this arm and cannot separate a
+          # between-architecture effect from non-repeatability here. The
+          # within-x86_64 repeatability control lives in the `repro` job; read
+          # its SELF-MATCH verdict before attributing anything below to
+          # architecture.
+          if [ "$init_ok" = 0 ]; then
+            echo "READING: the divergence is present BEFORE any gradient step."
+            echo "HYPOTHESIS (pending the n=2 within-x86_64 control in the repro job):"
+            echo "cause is initialisation / RNG, not floating-point arithmetic, and would be"
+            echo "fixable without constraining the training loop. Record it; do not relax."
+            echo "::error::INIT MISMATCH - initial weights differ between these two runs"
+            exit 1
+          fi
+          # init matched, step 10 did not.
+          echo "READING: initialisation is byte-identical between the two runs and the"
+          echo "divergence appears only after gradient steps."
+          echo "MOST LIKELY MECHANISM, UNCONFIRMED: floating-point contraction (FMA) or"
+          echo "reduction order in the training loop, fixable only by constraining the"
+          echo "arithmetic, at a cost in speed. This is a hypothesis pending the n=2"
+          echo "within-x86_64 control in the repro job. Record it; do not relax."
+          echo "::error::STEP10 MISMATCH - identical init, divergent weights after 10 steps"
+          exit 1
+
+      - name: Publish both artifacts as evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: localize-divergence-x86_64
+          path: |
+            checkpoints/loc-divergence/0.bin
+            checkpoints/loc-divergence/0.json
+            checkpoints/loc-divergence/10.bin
+            checkpoints/loc-divergence/10.json
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Inter-laboratory build reproducibility.
+  #
+  # The job above answers "is the CHECKPOINT portable across architectures".
+  # This one answers a question the pitch could not previously answer at all:
+  # can a SECOND LABORATORY rebuild the trainer and obtain the same binary?
+  #
+  # That question is load-bearing because `ckpt_replay` refuses to execute a
+  # trainer whose SHA-256 differs from the record's `trainer.sha256`. If only
+  # the original builder can reproduce the binary, then L3 as defined in
+  # docs/REPRODUCIBILITY-GRADING.md is reachable on exactly one machine, and
+  # "reproducible" means "repeatable by me".
+  #
+  # It was reachable on exactly one machine until 2026-08-03. Measured on the
+  # development host before the fix:
+  #
+  #     strings -a target/release/trios-train | grep -c '/Users/playra'   ->  588
+  #
+  # 588 absolute paths of the original builder, baked into .rodata (504 under
+  # .cargo/registry). scripts/repro_build.sh applies --remap-path-prefix and
+  # takes that to 0.
+  #
+  # WHAT THIS JOB DOES NOT DO: it does not vary the machine. Both builds run on
+  # the SAME runner, and only $HOME and $CARGO_HOME differ. That is deliberately
+  # the weakest interesting version of the experiment -- it isolates the builder
+  # path, which is the defect that was actually found -- and it must not be
+  # described as a cross-machine result. It is the difference between "no second
+  # laboratory can reproduce this" and "the builder's home directory is no
+  # longer what prevents them".
+  #
+  # HONEST PRIOR (macOS aarch64, committed tree 3c1f751, measured 2026-08-03):
+  # the same two-lab trial run locally did NOT reach sha256 equality. The two
+  # binaries were 11137968 bytes each and differed in exactly 48 bytes: the
+  # 16-byte Mach-O LC_UUID, plus the 32-byte ad-hoc code-signature hash that is
+  # computed over it. Every byte of code and data was identical, and the string
+  # tables were identical. Two runs in the SAME lab were byte-identical, so the
+  # build is deterministic; the UUID is a deterministic function of linker
+  # inputs whose paths still differ. Linking with -Wl,-no_uuid was tried and
+  # rejected: dyld refuses to run a Mach-O build script with no LC_UUID.
+  #
+  # ELF has no LC_UUID and its build-id is content-derived, so this job may well
+  # reach full equality on ubuntu-latest. THAT HAS NOT BEEN MEASURED. The job
+  # asserts equality, and if it fails it prints the differing byte count so the
+  # outcome is interpretable rather than merely red. A failure here is a real
+  # finding to be recorded, exactly as in the job above -- not a reason to relax
+  # the comparison to "close enough".
+  two-lab-repro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Record the environment
+        run: |
+          echo "arch:  $(uname -sm)"
+          echo "rustc: $(rustc --version)"
+
+      - name: Build as laboratory ALPHA
+        run: |
+          set -euo pipefail
+          # Resolve the REAL rustup home before HOME is overridden. If this were
+          # read after the override it would point at an empty directory and the
+          # pinned toolchain from rust-toolchain.toml would be unreachable.
+          REAL_RUSTUP="${RUSTUP_HOME:-$HOME/.rustup}"
+          mkdir -p "$RUNNER_TEMP/alpha-home/.cargo"
+          env HOME="$RUNNER_TEMP/alpha-home" \
+              CARGO_HOME="$RUNNER_TEMP/alpha-home/.cargo" \
+              RUSTUP_HOME="$REAL_RUSTUP" \
+              bash scripts/repro_build.sh --bin trios-train
+          cp target/release/trios-train "$RUNNER_TEMP/trios-train.alpha"
+          # The target directory is wiped between the two builds on purpose.
+          # Reusing it would let cargo skip work and hand back lab ALPHA's
+          # artifact unchanged, which would make this job pass without ever
+          # having built anything as lab BETA.
+          rm -rf target
+
+      - name: Build as laboratory BETA
+        run: |
+          set -euo pipefail
+          REAL_RUSTUP="${RUSTUP_HOME:-$HOME/.rustup}"
+          mkdir -p "$RUNNER_TEMP/beta-home/.cargo"
+          env HOME="$RUNNER_TEMP/beta-home" \
+              CARGO_HOME="$RUNNER_TEMP/beta-home/.cargo" \
+              RUSTUP_HOME="$REAL_RUSTUP" \
+              bash scripts/repro_build.sh --bin trios-train
+          cp target/release/trios-train "$RUNNER_TEMP/trios-train.beta"
+
+      - name: Assert the two laboratories produced the same binary
+        run: |
+          set -euo pipefail
+          A="$RUNNER_TEMP/trios-train.alpha"
+          B="$RUNNER_TEMP/trios-train.beta"
+
+          # Proven, not assumed: if the remap silently failed, the paths would
+          # still be here and the hashes could still match each other by both
+          # being wrong in the same way on one runner.
+          for f in "$A" "$B"; do
+            hits=$(strings -a "$f" | grep -c "$RUNNER_TEMP" || true)
+            echo "$f: $hits builder-path hits"
+            [ "$hits" = "0" ] || { echo "::error::builder path survives into $f"; exit 1; }
+          done
+
+          sha_a=$(sha256sum "$A" | cut -d' ' -f1)
+          sha_b=$(sha256sum "$B" | cut -d' ' -f1)
+          echo "=============================================================="
+          echo " lab ALPHA : $sha_a"
+          echo " lab BETA  : $sha_b"
+          echo " bytes     : $(wc -c < "$A") / $(wc -c < "$B")"
+          echo "=============================================================="
+
+          if [ "$sha_a" = "$sha_b" ]; then
+            echo "MATCH - two laboratories on this runner produced the same binary."
+            echo "Scope: same machine, same OS, same arch; only HOME and CARGO_HOME differed."
+            exit 0
+          fi
+
+          # Not a bare red X. Report HOW MUCH differs, because "48 bytes, all of
+          # them a linker-assigned build id" and "a different program" are
+          # opposite findings and a plain mismatch cannot tell them apart.
+          differing=$(cmp -l "$A" "$B" 2>/dev/null | wc -l | tr -d ' ')
+          echo "::error::MISMATCH - the two laboratories did not produce the same binary."
+          echo "differing bytes: $differing of $(wc -c < "$A")"
+          echo "first differing offsets:"
+          cmp -l "$A" "$B" 2>/dev/null | head -20 || true
+          echo "Record this in docs/REPRODUCIBILITY-GRADING.md rather than relaxing the check."
+          exit 1
+
+      - name: Publish both binaries as evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: two-lab-binaries
+          path: |
+            ${{ runner.temp }}/trios-train.alpha
+            ${{ runner.temp }}/trios-train.beta
           if-no-files-found: warn

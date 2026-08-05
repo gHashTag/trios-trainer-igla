@@ -17,6 +17,13 @@ seq_len     = 1024
 hybrid_attn = true
 
 [optimizer]
+# NOT IMPLEMENTED. "muon+adamw" is not in train_loop::SUPPORTED_OPTIMIZERS
+# {adamw, muon, muon-cwd}; there is no mixed Muon+AdamW loop in this crate.
+# `--config` used to run plain AdamW under this declaration and record the run
+# as `adamw` in the sidecar. It now REFUSES (train_loop::unhonoured_fields), as
+# do the [model] geometry and the objective weights below. The declaration is
+# left standing on purpose: rewriting it to "adamw" would make the file lie
+# about what this experiment was meant to be.
 kind         = "muon+adamw"
 lr           = 0.004
 beta1        = 0.9
@@ -38,6 +45,13 @@ w_jepa = 0.5
 w_nca  = 0.1
 
 [ledger]
-jsonl_path   = "assertions/seed_results.jsonl"
-push         = true
+# Was "assertions/seed_results.jsonl" with push = true, i.e. running this file
+# committed and pushed to origin as a side effect of measuring a BPB. That
+# ledger is retracted (renamed to assertions/RETRACTED-seed_results.jsonl.txt);
+# re-creating the path republishes retracted evidence, and
+# `falsify_live_ledger_resurrected` in tests/preregistration_seed_lock.rs fails
+# if it reappears. An empty path makes run() skip the emit entirely: this
+# config cannot mint a row, and it cannot touch git.
+jsonl_path   = ""
+push         = false
 embargo_path = ".embargo"
