@@ -33,6 +33,21 @@ Cargo.lock.bak
 # README.md is now a fallback. See data/README.md.
 !/data/tiny_shakespeare.txt
 !/data/tiny_shakespeare_val.txt
+# The THREE-WAY split (train_core ++ test ++ val), which reconstructs the same
+# canonical corpus as the two-way one:
+#   cat data/tiny_shakespeare_train_core.txt data/tiny_shakespeare_test.txt \
+#       data/tiny_shakespeare_val.txt | shasum -a 256
+#   -> 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed
+# data/README.md documents this split and tests/window_audit_resume.rs reads it,
+# so leaving it untracked made that test pass only on a machine that happened to
+# have the files. On a clean clone it failed -- correctly, because load_data now
+# refuses a missing corpus instead of substituting a synthetic one.
+!/data/tiny_shakespeare_train_core.txt
+!/data/tiny_shakespeare_test.txt
+# Kept deliberately: byte-identical to fineweb_train.bin, and data/README.md
+# cites it as the evidence for that collision. A file that documents its own
+# defect is more useful than a missing one, but only if a clone has it.
+!/data/fineweb_train_duplicate.bin
 *.jsonl.tmp
 
 # Training logs (thousands of files choke git)
