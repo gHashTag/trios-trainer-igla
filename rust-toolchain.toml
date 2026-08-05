@@ -20,3 +20,12 @@
 [toolchain]
 channel = "1.96.0"
 profile = "minimal"
+# `minimal` excludes rustfmt and clippy. On a developer machine that is
+# invisible, because the components are usually already installed for some
+# other toolchain; on a clean CI runner it is fatal, and it failed exactly that
+# way once this file started overriding the actions-installed stable toolchain:
+#   error: 'cargo-fmt' is not installed for the toolchain '1.96.0-x86_64-...'
+# The CI gate runs `cargo fmt --all -- --check` as its first step, so the pin
+# has to carry the components the gate needs rather than assume the host has
+# them.
+components = ["rustfmt", "clippy"]
