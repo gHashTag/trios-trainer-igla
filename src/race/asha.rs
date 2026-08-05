@@ -1,8 +1,22 @@
-//! ASHA (Asynchronous Successive Halving Algorithm) implementation (STUB for TASK-1)
+//! ASHA (Asynchronous Successive Halving Algorithm) rung bookkeeping.
 //!
-//! Trinity-optimized: rungs at 1k → 3k → 9k → 27k (3^k progression)
+//! Trinity-optimized: rungs at 1k -> 3k -> 9k -> 27k (3^k progression).
 //!
-//! For TASK-1, this is a stub that returns simple values without database queries.
+//! The pure parts (rung schedules, prune thresholds, config sampling) are real.
+//! The database-facing wrappers forward to `race::neon::NeonDb`, which refuses
+//! unconditionally -- so `run_worker` cannot reach its first subprocess.
+//!
+//! Three fabricators were removed from the worker loop while it was here:
+//!   * `--seed 42` as a subprocess literal. 42 is forbidden by Canon #93
+//!     (`seed_canon::parse_seed`) and slipped past the checker precisely
+//!     because it was a string handed to another process. Now routed through
+//!     `seed_canon`.
+//!   * `bpb = 999.0` written on a trainer CRASH. A crash has no
+//!     bits-per-byte; `neon_writer::reject_bpb` exists to catch that magic
+//!     float on the other writer. Now `NeonDb::mark_crashed`, which carries no
+//!     BPB at all.
+//!   * `./target/release/trios-igla-trainer`, which is not one of the bins in
+//!     Cargo.toml. The trainer bin is `trios-train`.
 
 use anyhow::Result;
 use rand::rngs::StdRng;
@@ -126,7 +140,7 @@ impl Default for AshaConfig {
     }
 }
 
-/// Record a checkpoint at a rung (STUB)
+/// Record a checkpoint at a rung. Propagates the backend refusal.
 pub async fn record_checkpoint(
     db: &NeonDb,
     trial_id: &Uuid,
@@ -142,7 +156,7 @@ pub async fn record_checkpoint(
     Ok(())
 }
 
-/// Determine if trial should be pruned at this rung (STUB)
+/// Determine if trial should be pruned at this rung (pure; touches no backend).
 pub async fn should_prune(
     _db: &NeonDb,
     _trial_id: &Uuid,
@@ -156,7 +170,7 @@ pub async fn should_prune(
     Ok(current_bpb > threshold)
 }
 
-/// Handle trial pruning (STUB)
+/// Handle trial pruning. Propagates the backend refusal.
 pub async fn handle_pruning(
     db: &NeonDb,
     trial_id: &Uuid,
@@ -191,7 +205,7 @@ pub async fn handle_pruning(
     Ok(())
 }
 
-/// Mark trial as completed (STUB)
+/// Mark trial as completed. Propagates the backend refusal.
 pub async fn mark_completed(
     db: &NeonDb,
     trial_id: &Uuid,
@@ -208,7 +222,7 @@ pub async fn mark_completed(
     Ok(())
 }
 
-/// Register a new trial (STUB)
+/// Register a new trial. Propagates the backend refusal.
 pub async fn register_trial(
     db: &NeonDb,
     machine_id: &str,
@@ -221,10 +235,17 @@ pub async fn register_trial(
     Ok(trial_id)
 }
 
-/// Check if config is already running (STUB)
+/// Check if config is already running. Propagates the backend refusal.
 pub async fn is_config_running(db: &NeonDb, machine_id: &str, config_json: &str) -> Result<bool> {
     db.is_config_running(machine_id, config_json).await
 }
+
+/// Path of the trainer this worker shells out to.
+///
+/// `trios-train` is the bin declared in Cargo.toml. The previous value,
+/// `./target/release/trios-igla-trainer`, matched no bin at all, so
+/// `tri race start` could not have worked even against a real ledger.
+const TRAINER_BIN: &str = "./target/release/trios-train";
 
 /// ASHA worker loop (TASK-3)
 pub async fn run_worker(
@@ -235,6 +256,11 @@ pub async fn run_worker(
 ) -> Result<f64> {
     use tokio::process::Command;
 
+    // Canon #93: the seed is an experiment parameter, not a literal. It used
+    // to be a forbidden seed hardcoded as a subprocess string argument, which
+    // is exactly how it stayed invisible to `seed_canon`.
+    let seed = crate::seed_canon::parse_seed().map_err(|e| anyhow::anyhow!(e))?;
+
     let db = NeonDb::connect(neon_url).await?;
     let mut rng = StdRng::from_entropy();
     let mut trial_counter = worker_id * 1_000_000;
@@ -242,6 +268,18 @@ pub async fn run_worker(
     // Parse architecture type
     let default_config = AshaConfig::default();
     let arch_kind = ArchKind::parse_arch(&default_config.arch).unwrap_or(ArchKind::Jepa);
+
+    // `trios-train` exposes no `--arch`: it trains the attention model in
+    // `train_loop::run_single`. Passing the flag anyway (as this worker did)
+    // is an unknown-argument abort; dropping it silently would record a trial
+    // config that does not describe the run. So say which one it is.
+    if arch_kind != ArchKind::Attention {
+        anyhow::bail!(
+            "ASHA worker cannot run arch={}: {TRAINER_BIN} has no --arch flag, \
+             so the recorded trial config would not describe the run",
+            arch_kind.as_str()
+        );
+    }
 
     // Get rung schedule based on architecture
     let rungs = arch_kind.rung_schedule();
@@ -272,6 +310,7 @@ pub async fn run_worker(
         );
 
         let mut pruned = false;
+        let mut crashed = false;
 
         // 3. For each rung in schedule (JEPA skips 1000)
         let min_rung = arch_kind.min_rung();
@@ -288,40 +327,59 @@ pub async fn run_worker(
 
             let rung_steps = rung as usize;
 
-            // a. Spawn subprocess: ./target/release/trios-igla-trainer with config args
-            let output = Command::new("./target/release/trios-igla-trainer")
-                .arg("--seed")
-                .arg("42") // Fixed seed for now
+            // a. Spawn the trainer. Only flags `trios-train` actually declares
+            //    are passed; an unknown one aborts its clap parse. There is no
+            //    flag for the trial id, so `trial_id` stays on this side of
+            //    the boundary and is correlated by the ledger row alone.
+            let output = Command::new(TRAINER_BIN)
+                .args(["--seed", &seed.to_string()])
                 .arg("--steps")
                 .arg(rung_steps.to_string())
                 .arg("--hidden")
                 .arg(config.hidden.unwrap_or(256).to_string())
-                .arg("--context")
-                .arg("6") // Fixed context for now
                 .arg("--lr")
                 .arg(format!("{:.8}", config.lr.unwrap_or(0.004)))
-                .arg("--arch")
-                .arg(&default_config.arch) // Use arch from config
-                .arg("--exp-id")
-                .arg(&trial_id)
+                .arg("--attn-layers")
+                .arg(config.n_layers.unwrap_or(2).to_string())
+                .arg("--optimizer")
+                .arg(config.optimizer.as_deref().unwrap_or("adamw"))
                 .output()
                 .await?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                warn!("[w{worker_id}] trainer failed at rung {rung_steps}: {stderr}");
-                let _ = db.mark_pruned(&trial_uuid, rung_steps as i32, 999.0).await;
-                pruned = true;
+                warn!("[w{worker_id}] trainer crashed at rung {rung_steps}: {stderr}");
+                // A crash has no BPB. The old code recorded 999.0 here, which
+                // is a fabricated measurement in a measurement column.
+                db.mark_crashed(&trial_uuid, rung_steps as i32, &stderr)
+                    .await?;
+                crashed = true;
                 break;
             }
 
-            // b. Parse BPB from stdout last line
+            // b. Parse the reading from the trainer's own DONE line, which is
+            //    `DONE: seed=N bpb=X.XXXX steps=N opt=Y` and says
+            //    `bpb=unmeasured` when no evaluation was produced.
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let last_line = stdout.lines().last().unwrap_or("");
-            let bpb_str = last_line
-                .strip_prefix("BPB=")
-                .ok_or_else(|| anyhow::anyhow!("last stdout line is not BPB=: {last_line}"))?;
-            let bpb: f64 = bpb_str.parse()?;
+            let done_line = stdout
+                .lines()
+                .rev()
+                .find(|l| l.starts_with("DONE:"))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("{TRAINER_BIN} printed no DONE line at rung {rung_steps}")
+                })?;
+            let bpb_field = done_line
+                .split_whitespace()
+                .find_map(|tok| tok.strip_prefix("bpb="))
+                .ok_or_else(|| anyhow::anyhow!("DONE line carries no bpb= field: {done_line}"))?;
+            if bpb_field == "unmeasured" {
+                warn!("[w{worker_id}] rung {rung_steps} finished without a measurement");
+                db.mark_crashed(&trial_uuid, rung_steps as i32, "bpb=unmeasured")
+                    .await?;
+                crashed = true;
+                break;
+            }
+            let bpb: f64 = bpb_field.parse()?;
 
             // c. update_rung in Neon - mock for now
             info!(
@@ -352,7 +410,7 @@ pub async fn run_worker(
             }
         }
 
-        if !pruned {
+        if !pruned && !crashed {
             info!("Mark trial completed: {}", trial_id);
         }
     }

@@ -86,8 +86,7 @@ pub const CHECKPOINT_HEADER_LEN: usize = 152;
 pub const CHECKPOINT_TENSOR_COUNT: usize = 19;
 
 /// Absolute byte offset at which the payload starts.
-pub const CHECKPOINT_PAYLOAD_OFFSET: usize =
-    CHECKPOINT_HEADER_LEN + CHECKPOINT_TENSOR_COUNT * 8;
+pub const CHECKPOINT_PAYLOAD_OFFSET: usize = CHECKPOINT_HEADER_LEN + CHECKPOINT_TENSOR_COUNT * 8;
 
 /// Where the artifact landed and what it hashes to.
 #[derive(Debug, Clone)]
@@ -1279,7 +1278,7 @@ pub fn resolve_trainer_provenance() -> TrainerProvenance {
             }
         }
     };
-    let path = scope_relative_exe(&exe, source_digest_root());
+    let path = scope_relative_path(&exe, source_digest_root());
     match std::fs::read(&exe) {
         Ok(raw) => TrainerProvenance {
             path,
@@ -1294,30 +1293,59 @@ pub fn resolve_trainer_provenance() -> TrainerProvenance {
     }
 }
 
-/// Recorded as `trainer.path` when the executable is not under the digest
-/// scope, followed by its file name. A name is not a location.
-pub const TRAINER_PATH_OUTSIDE_SCOPE_PREFIX: &str = "outside-scope:";
-
-/// `exe` expressed relative to `root`, or `outside-scope:<file name>`.
+/// Recorded in place of a path - as `trainer.path` or as
+/// `CheckpointRecord::path` - when the file is not under the digest scope,
+/// followed by its file name. A name is not a location.
 ///
-/// Split out and pure so the two branches are testable without moving the
+/// Named `TRAINER_...` until the checkpoint path was given the same treatment;
+/// one prefix, because a reader who learns the convention on one field should
+/// not have to learn a second spelling of it on the next.
+pub const PATH_OUTSIDE_SCOPE_PREFIX: &str = "outside-scope:";
+
+/// `path` expressed relative to `root`, or `outside-scope:<file name>`.
+///
+/// Split out and pure so the three branches are testable without moving the
 /// process working directory. Both the literal and the canonicalised form of
 /// `root` are tried, because `current_exe` returns a symlink-resolved path on
 /// macOS while `current_dir` need not.
-fn scope_relative_exe(exe: &Path, root: Option<&Path>) -> String {
+///
+/// An ALREADY-RELATIVE `path` is returned as it stands. Relative paths in this
+/// process are resolved against the working directory, which is exactly the
+/// directory `root` names (see `compute_source_digest`), so such a path is
+/// already scope-relative and re-deriving it would only risk changing it. The
+/// one exception is a path that climbs OUT of the scope with `..`, which is not
+/// under the scope and is classified like any other outsider.
+fn scope_relative_path(path: &Path, root: Option<&Path>) -> String {
+    let climbs_out = path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir));
+    if path.is_relative() && !climbs_out {
+        return path.to_string_lossy().replace('\\', "/");
+    }
     if let Some(root) = root {
         let candidates = [Some(root.to_path_buf()), std::fs::canonicalize(root).ok()];
         for base in candidates.into_iter().flatten() {
-            if let Ok(rel) = exe.strip_prefix(&base) {
+            if let Ok(rel) = path.strip_prefix(&base) {
                 return rel.to_string_lossy().replace('\\', "/");
             }
         }
     }
-    let name = exe
+    let name = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    format!("{TRAINER_PATH_OUTSIDE_SCOPE_PREFIX}{name}")
+    format!("{PATH_OUTSIDE_SCOPE_PREFIX}{name}")
+}
+
+/// The string `CheckpointRecord::path` carries for an artifact written to
+/// `path`: relative to the digest scope, or `outside-scope:<file name>`.
+///
+/// Public because the value belongs to the record, not to the caller: the one
+/// site that mints checkpoints (`train_loop::emit_checkpoint`) asks this
+/// function rather than deciding for itself, so the sidecar and the ledger row
+/// cannot spell one file two ways.
+pub fn scope_relative_artifact_path(path: &Path) -> String {
+    scope_relative_path(path, source_digest_root())
 }
 
 /// The four numbers the string `optimizer: "adamw"` was standing in for.
@@ -1359,16 +1387,35 @@ pub struct OptimizerParams {
 /// regardless of whether a database is reachable.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct CheckpointRecord {
-    /// Literal `CHECKPOINT_RECORD_SCHEMA` - currently
-    /// "trios-checkpoint-record/8". Named by the constant rather than repeated
-    /// as a literal in prose, because this comment has already outlived one
-    /// bump.
+    /// Literal `CHECKPOINT_RECORD_SCHEMA`. Named by the constant and NOT
+    /// repeated as a literal here: this comment claimed "/8" while the constant
+    /// said "/9", which is how a comment that jokes about having outlived one
+    /// bump goes on to outlive a second. The tag is one `grep` away; a stale
+    /// copy of it is worse than no copy.
     pub schema: String,
     /// Ledger identity, UNSANITIZED (may differ from the on-disk directory).
     pub canon_name: String,
     pub seed: i64,
     pub step: i64,
-    /// The path actually written, as resolved (sanitized run component).
+    /// The file that was written, RELATIVE to the digest scope, or
+    /// `outside-scope:<file name>` when it was written outside that tree. See
+    /// `scope_relative_artifact_path`, the one function that decides this.
+    ///
+    /// Same treatment, and the same reason, as `source_digest_scope` at schema
+    /// 7 and `trainer.path` before it: an absolute path here published the
+    /// BUILDER'S HOME DIRECTORY in every locally produced sidecar, and those
+    /// sidecars are committed as evidence and uploaded as CI artifacts. Two
+    /// tracked records still carry `/Users/<name>/...` in this field, in the
+    /// same artifact set whose provenance script proves that string no longer
+    /// appears in the binary.
+    ///
+    /// CONSEQUENCE, stated because it is a real one: this string is no longer a
+    /// location an outside reader can open. Nothing depended on that. The
+    /// artifact is found by `{step}.bin` beside the sidecar - which is what
+    /// `ckpt_replay::locate_artifact` already falls back to, because a recorded
+    /// absolute path from the training machine did not resolve on a copied
+    /// evidence directory either - and the file is then IDENTIFIED by `sha256`,
+    /// which is the field that was ever evidence.
     pub path: String,
     pub sha256: String,
     pub bytes: u64,
@@ -1509,8 +1556,12 @@ pub struct CheckpointRecord {
     /// on `resolve_source_digest` before citing it: it is a run-time read of
     /// the working directory, not the source the binary was compiled from.
     ///
-    /// Cite it together with `platform.source_digest_scope`, which names the
-    /// directory this walk was relative to. The digest alone does not.
+    /// Cite it together with `platform.source_digest_scope`, which CLASSIFIES
+    /// the directory this walk was relative to - the repository root, or an
+    /// opaque `other:<hash>` that still distinguishes two throwaway clones from
+    /// each other. It deliberately names no path (schema 7; see
+    /// `resolve_source_digest_scope`), so it bounds the digest without
+    /// publishing the builder's home directory. The digest alone says neither.
     #[serde(default)]
     pub source_sha256: String,
 
@@ -1588,6 +1639,59 @@ pub struct CheckpointRecord {
     /// `OptimizerParams`, and read its LIMIT before citing them.
     #[serde(default)]
     pub optimizer_params: Option<OptimizerParams>,
+
+    // ---- schema 9 addition: does the format LABEL name what ran? -------
+    /// Whether `fake_quant_format` names arithmetic that actually executed.
+    ///
+    /// SIDECAR-ONLY, like the schema 6 block: it enters no hash, because it is
+    /// a property of the label already in the header rather than a new input.
+    /// It is derived from `fake_quant_format` by `format_label_faithful`, so it
+    /// cannot disagree with the string it qualifies.
+    ///
+    /// `false` means the run was launched with `TRIOS_ALLOW_UNFAITHFUL_FORMAT=1`
+    /// over a format the crate itself declares it cannot simulate from `f32`
+    /// (`FormatKind::is_faithful()` returns false: identity passthrough,
+    /// mantissa-mask stand-in, or a deferred encoder). Measured on this crate:
+    /// three 20-step seed-47 runs under `TRIOS_FORMAT_TYPE=fp80` produced a
+    /// payload bit-identical to the `f32` control after the 256-byte header,
+    /// and the same `final_val_bpb` to all 16 digits - the `.bin` sha differed
+    /// ONLY because the false label sat inside the hashed header, so the
+    /// mislabel made an identity run look like a distinct artifact.
+    ///
+    /// `matrix_runner` has refused such a row since 2026-08-03 and stamps
+    /// `format_faithful=false` when overridden; the binary that mints
+    /// checkpoints did not, and the sidecar had no key for it at all.
+    ///
+    /// DEFAULT ON READ IS `true`, so every `/1`-`/8` document still
+    /// deserializes. That default is NOT a measurement: a `/1`-`/8` record is
+    /// SILENT about faithfulness, not asserting it - and those are exactly the
+    /// records that could carry an `fp80` label with no refusal anywhere in the
+    /// path. Decide by FIELD PRESENCE, as every schema block above says.
+    #[serde(default = "format_faithful_default")]
+    pub format_faithful: bool,
+}
+
+/// Forward-compatible default for [`CheckpointRecord::format_faithful`].
+///
+/// `#[serde(default)]` on a `bool` is `false`, which would read every schema
+/// 1-8 sidecar as an admission of mislabelling it never made. `true` is the
+/// non-accusing reading; the honest one is "this record does not say", and only
+/// field presence can express that.
+fn format_faithful_default() -> bool {
+    true
+}
+
+/// Whether a `fake_quant_format` label names arithmetic that actually ran.
+///
+/// The single resolution of the question, so the sidecar cannot disagree with
+/// the string in the hashed header: it takes the label itself, not the
+/// environment, and answers with `FormatKind::is_faithful()`.
+///
+/// An UNRESOLVABLE label is `false`. A string this crate cannot map onto a
+/// `FormatKind` cannot be claimed as a faithful measurement of anything - the
+/// answer "I do not know what that is" is not the answer "yes".
+pub fn format_label_faithful(label: &str) -> bool {
+    crate::fake_quant::FormatKind::from_env(label).is_some_and(|k| k.is_faithful())
 }
 
 /// Deserialize a string field so that BLANK reads as ABSENT.
@@ -1601,9 +1705,7 @@ where
 {
     use serde::Deserialize;
     let raw = Option::<String>::deserialize(de)?;
-    Ok(raw
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty()))
+    Ok(raw.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
 }
 
 /// The deployment that produced this artifact, or `None`.
@@ -1749,7 +1851,74 @@ pub fn resolve_run_id() -> Option<String> {
 /// rather than a failure. Nothing in `/8` renames or removes a `/7` field, so
 /// every `/7` code path keeps working on an `/8` document; the only correct
 /// reaction to the higher version tag is "there are fields here I do not read".
-pub const CHECKPOINT_RECORD_SCHEMA: &str = "trios-checkpoint-record/8";
+///
+/// Version 9 is purely additive over version 8: `format_faithful`. Same defect
+/// family as every block above - the record could not describe its own inputs -
+/// and this is the sharpest instance yet, because the undescribed input is a
+/// LABEL THAT IS ALREADY HASHED. `fake_quant_format` occupies bytes 136..152 of
+/// the `TRIOSCKP` header, so it decides the artifact's identity, and until now
+/// nothing anywhere in the checkpoint path asked whether the format named there
+/// had touched a single weight.
+///
+/// It had not. `TRIOS_FORMAT_TYPE=fp80` printed "QAT: FakeQuant enabled for
+/// format Fp80", wrote `fake_quant_format: "fp80"` into the sidecar AND into
+/// the hashed header, and executed nothing: `fake_quantize_model` returns
+/// immediately for a format in `is_unsupported_in_f32()`. Measured over three
+/// 20-step seed-47 runs, the `fp80` payload after the 256-byte header is
+/// bit-identical to the `f32` control and `final_val_bpb` agrees to all 16
+/// digits; the only difference in the `.bin` sha is the false label itself. The
+/// mislabel therefore did not merely decorate an identity run - it made one
+/// look like a distinct artifact.
+///
+/// The crate already knew this was fraud-shaped everywhere except here.
+/// `fake_quant`'s own `unsupported_in_f32_implies_not_faithful` test says "The
+/// arithmetic is defensible; the LABEL is not", and `matrix_runner` has refused
+/// such a row since 2026-08-03 unless `TRIOS_ALLOW_UNFAITHFUL_FORMAT=1`, in
+/// which case it stamps `format_faithful=false`. `trios-train` - the binary
+/// that mints checkpoints - refused nothing and had no key to stamp. It now
+/// refuses on the same predicate with the same wording, and when the operator
+/// overrides it the artifact carries its own retraction.
+///
+/// The field is SIDECAR-ONLY and derived from `fake_quant_format` (see
+/// `format_label_faithful`), so it enters no hash and cannot drift from the
+/// string it qualifies. The BINARY header format version is deliberately NOT
+/// bumped, for the same reason as in 8, 7, 6, 5, 4, 3 and 2.
+///
+/// Old sidecars still deserialize: the field defaults to `true` on read. Read
+/// the note on `format_faithful` before citing that default - a `/1`-`/8`
+/// record is SILENT, and those are precisely the records that could carry an
+/// `fp80` label with nothing in the path to stop them.
+///
+/// # Version 9 also narrows `path`, and that is a REDEFINITION of /9
+///
+/// `path` no longer carries an absolute location; it carries the artifact
+/// RELATIVE to the digest scope, or `outside-scope:<file name>`. See the field.
+/// That is not additive - the same key changes meaning - so folding it into an
+/// existing version number needs a reason, and the reason is that no `/9`
+/// record has ever existed outside this working tree. Measured 2026-08-05:
+///
+/// ```text
+/// $ git log --all -S'trios-checkpoint-record/9' --oneline   -> (no commits)
+/// $ census of every *.json under checkpoints/ and evidence/ (154 files)
+///       71  trios-checkpoint-record/8      22  trios-checkpoint-record/7
+///       22  trios-checkpoint-record/6      18  trios-checkpoint-record/3
+///        9  trios-checkpoint-record/1       5  trios-checkpoint-record/4
+///        5  trios-checkpoint-record/2       1  trios-checkpoint-record/5
+///        0  trios-checkpoint-record/9
+/// ```
+///
+/// The highest tag any artifact anywhere carries is `/8`, and every `/8` record
+/// has the absolute `path`. So no reader holds a `/9` document whose `path`
+/// this widening could silently reinterpret, and no reader is stranded: `/9`
+/// means BOTH `format_faithful` and the scope-relative `path`, always, in every
+/// record that will ever bear the tag. Minting a `/10` instead would have left
+/// `/9` permanently defined and permanently unemitted - a version number in the
+/// reader's table that describes no artifact - which is the state this note
+/// exists to record, not to institutionalise.
+///
+/// This is stated here rather than performed silently for the obvious reason: a
+/// schema that can be redefined without saying so is not a schema.
+pub const CHECKPOINT_RECORD_SCHEMA: &str = "trios-checkpoint-record/9";
 
 /// The sidecar AS WRITTEN: every `CheckpointRecord` field, flattened, plus the
 /// working-tree facts that only the writer is in a position to observe.
@@ -2165,6 +2334,807 @@ pub fn ema_sweep(
     results
 }
 
+// ===================================================================
+// Window audit - the resume record (format `TRIOSRSM`, version 1)
+//
+// WHY A SECOND FILE AND NOT A BIGGER CHECKPOINT. `TRIOSCKP` carries weights
+// only, and every digest this repository has published - the two
+// cross-architecture 12000-step hashes, the seals in `evidence/SEALS.txt` -
+// is a digest of those exact bytes. Adding optimizer moments to the container
+// would invalidate all of them at once. The resume record therefore lands
+// BESIDE the `.bin` as `{step}.resume`, with its own magic, its own version
+// and its own digest, and `to_checkpoint_bytes` is not touched.
+//
+// WHAT IT BUYS. `ckpt_replay` is described as a spot-check verifier but
+// re-executes from step 0, because a warm start was impossible: no moments,
+// no step counter, no batch-sampler state. An auditor therefore paid the
+// vendor's whole training budget to check one claim. With this record an
+// auditor re-executes ONE challenged window of N steps out of T, at cost
+// N/T. See `docs/WINDOW-AUDIT.md` for what that does and does not prove.
+//
+// LAYOUT. Little-endian throughout, floats as IEEE-754 bit patterns, exactly
+// as `TRIOSCKP`. Three sections plus a trailing digest:
+//
+// ```text
+//   header (344) | optimizer directory (32 * n) | payload | digest (32)
+// ```
+//
+// Header, at absolute byte offsets:
+//
+// ```text
+//    0   8  magic = b"TRIOSRSM"
+//    8   4  format_version: u32 = 1
+//   12   4  header_len: u32 = 344 (absolute offset of the directory)
+//   16   8  seed: u64             24   8  step: u64 (steps COMPLETED)
+//   32   8  rng_s: u64 (batch sampler, after the step above)
+//   40   8  steps_total: u64      48   8  eval_every: u64
+//   56   8  gf16_floor_every: u64
+//   64   4  hidden: u32           68   4  d_model: u32
+//   72   4  num_attn_layers: u32  76   4  vocab: u32
+//   80   4  dim: u32              84   4  num_ctx: u32
+//   88   4  base_lr: f32 bits     92   4  weight_decay: f32 bits
+//   96   1  gf16_enabled: u8      97   1  data_synthetic: u8
+//   98   1  ema_present: u8       99   1  best_present: u8
+//  100   4  optimizer_count: u32
+//  104   8  ema_bpb: f64 bits (meaningless unless ema_present)
+//  112   8  min_observed_val_bpb: f64 bits (unless best_present)
+//  120  64  weight_sha256: 64 lowercase hex ASCII
+//  184  64  train_sha256: 64 lowercase hex ASCII
+//  248  64  val_sha256: 64 lowercase hex ASCII
+//  312  16  fake_quant_format: ASCII, NUL-padded
+//  328   8  optimizer: ASCII, NUL-padded
+//  336   8  reserved (must be zero, rejected if nonzero)
+// ```
+//
+// Directory: `optimizer_count` entries of 32 bytes each, in the order the
+// training loop steps them:
+//
+// ```text
+//    0  16  name: ASCII, NUL-padded ("embed", "ctx0".."ctx5", "proj",
+//                                    "attn_down", "attn_up", "head", "attn_w")
+//   16   8  elements: u64 (length of m, and of v)
+//   24   8  step: u64 (this instance's own bias-correction counter)
+// ```
+//
+// Payload: for each directory entry in order, `elements` f32 of `m` followed
+// by `elements` f32 of `v`.
+//
+// Trailer: SHA-256 over every preceding byte of the file. The digest is
+// checked on load before a single moment is handed to an optimizer, so a
+// half-written or edited record is a refusal and never a warm start from
+// corrupted moments.
+//
+// `file_len = 344 + 32 * n + 8 * sum(elements) + 32`.
+// ===================================================================
+
+/// Magic prefix of every resume record.
+pub const RESUME_MAGIC: &[u8; 8] = b"TRIOSRSM";
+
+/// On-disk format version written by `save_resume`. Bump only together with a
+/// reader branch that keeps v1 files loadable.
+pub const RESUME_FORMAT_VERSION: u32 = 1;
+
+/// Absolute byte length of the fixed header (= offset of the directory).
+pub const RESUME_HEADER_LEN: usize = 344;
+
+/// Byte length of one optimizer directory entry.
+pub const RESUME_DIRECTORY_ENTRY_LEN: usize = 32;
+
+/// Byte length of the trailing SHA-256.
+pub const RESUME_DIGEST_LEN: usize = 32;
+
+/// File extension of a resume record: `{step}.bin` pairs with `{step}.resume`.
+pub const RESUME_EXTENSION: &str = "resume";
+
+/// Every refusal this format can raise starts with these two words, so an
+/// operator reading a failed audit can grep for one string and a test can
+/// assert the run stopped for the reason it was supposed to stop for.
+pub const RESUME_REFUSAL_PREFIX: &str = "RESUME REFUSED";
+
+/// The named reasons. A refusal quotes exactly one of these in parentheses
+/// immediately after `RESUME_REFUSAL_PREFIX`.
+pub const RESUME_REASON_MAGIC: &str = "bad-magic";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_VERSION: &str = "unsupported-version";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_TRUNCATED: &str = "truncated";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_TRAILING: &str = "trailing-bytes";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_DIGEST: &str = "digest-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_MALFORMED: &str = "malformed-field";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_WEIGHT_DIGEST: &str = "weight-digest-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_SHAPE: &str = "shape-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_CORPUS: &str = "corpus-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_CADENCE: &str = "cadence-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_RECIPE: &str = "recipe-mismatch";
+/// See `RESUME_REASON_MAGIC`.
+pub const RESUME_REASON_NOTHING_TO_DO: &str = "nothing-to-resume";
+/// See `RESUME_REASON_MAGIC`. Raised by `train_loop`, not by this module.
+pub const RESUME_REASON_MUON: &str = "muon-path";
+/// See `RESUME_REASON_MAGIC`. Raised when the `.bin` or the `.resume` half of
+/// the pair is missing.
+pub const RESUME_REASON_MISSING: &str = "missing-file";
+
+/// Build a refusal. Every rejection path in this module goes through here, so
+/// the prefix and the reason token cannot drift between messages.
+///
+/// A refusal is deliberately an `Err` and never a fallback: resuming with
+/// zeroed moments would run, would finish, and would produce different
+/// weights than the monolithic run it claims to segment - the failure mode
+/// this whole format exists to make impossible.
+pub fn resume_refusal(reason: &str, detail: impl std::fmt::Display) -> anyhow::Error {
+    anyhow::anyhow!("{RESUME_REFUSAL_PREFIX} ({reason}): {detail}")
+}
+
+/// One optimizer instance's whole mutable state.
+///
+/// `name` is the instance, not the algorithm: the AdamW path runs
+/// `7 + NUM_CTX` separate instances and each carries its own bias-correction
+/// counter, so a single `step` for the run would be wrong for `attn_w`, which
+/// is not stepped when the attention block is frozen.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResumeOptimizerState {
+    pub name: String,
+    pub step: u64,
+    pub m: Vec<f32>,
+    pub v: Vec<f32>,
+}
+
+/// Everything the trainer needs to continue a run at the byte level, other
+/// than the weights themselves (which stay in the paired `.bin`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResumeRecord {
+    pub seed: u64,
+    /// Steps COMPLETED. The resumed run executes `step + 1 ..= steps_total`.
+    pub step: u64,
+    /// The batch sampler's LCG state after the step above. Without it the
+    /// resumed run trains on different windows of the corpus and diverges
+    /// immediately, while still looking like a healthy run.
+    pub rng_s: u64,
+    /// The total the cosine schedule was planned against. The resumed run
+    /// must be given the SAME total: `cosine_lr` is a function of
+    /// `(step, steps_total)`, so a segment run to a different total applies
+    /// different learning rates to the same steps.
+    pub steps_total: u64,
+    pub eval_every: u64,
+    pub gf16_floor_every: u64,
+    pub hidden: u32,
+    pub d_model: u32,
+    pub num_attn_layers: u32,
+    pub vocab: u32,
+    pub dim: u32,
+    pub num_ctx: u32,
+    pub base_lr: f32,
+    pub weight_decay: f32,
+    pub gf16_enabled: bool,
+    pub data_synthetic: bool,
+    /// The run's running EMA and running minimum at the moment of capture.
+    /// These are TRAJECTORY state, not a measurement of the paired weights -
+    /// they are carried so a segmented run reports the same numbers a
+    /// monolithic one would, and they are `None` when the run had not yet
+    /// taken the reading in question.
+    pub ema_bpb: Option<f64>,
+    pub min_observed_val_bpb: Option<f64>,
+    /// SHA-256 of the `.bin` this record pairs with, as `shasum -a 256`
+    /// prints it. The binding is what stops moments from one run being
+    /// pasted onto weights from another.
+    pub weight_sha256: String,
+    pub train_sha256: String,
+    pub val_sha256: String,
+    pub fake_quant_format: String,
+    /// Always "adamw" in version 1. The Muon path is refused rather than
+    /// half-serialised; see `RESUME_REASON_MUON`.
+    pub optimizer: String,
+    pub optimizers: Vec<ResumeOptimizerState>,
+}
+
+/// Where a resume record landed and what it hashes to.
+#[derive(Debug, Clone)]
+pub struct SavedResume {
+    pub path: PathBuf,
+    /// Lowercase hex SHA-256 of the file on disk. Equal to `shasum -a 256`.
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+/// Copy `s` into a fixed-width NUL-padded ASCII field, refusing to truncate.
+///
+/// The twin of `train_loop::ascii_field`, which is private to that module. A
+/// silently shortened optimizer-instance name would make the directory name a
+/// tensor it does not name.
+fn resume_ascii_field<const N: usize>(s: &str, what: &str) -> Result<[u8; N]> {
+    if !s.is_ascii() || !s.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} {s:?} is not printable ASCII"),
+        ));
+    }
+    if s.len() > N {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} {s:?} is {} bytes, field is {N}", s.len()),
+        ));
+    }
+    let mut out = [0u8; N];
+    out[..s.len()].copy_from_slice(s.as_bytes());
+    Ok(out)
+}
+
+/// Inverse of `resume_ascii_field`.
+fn read_resume_ascii(field: &[u8], what: &str) -> Result<String> {
+    let end = field.iter().position(|&b| b == 0).unwrap_or(field.len());
+    if field[end..].iter().any(|&b| b != 0) {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} has bytes after its NUL terminator"),
+        ));
+    }
+    let text = std::str::from_utf8(&field[..end]).map_err(|e| {
+        resume_refusal(RESUME_REASON_MALFORMED, format!("{what} is not UTF-8: {e}"))
+    })?;
+    if !text.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} {text:?} is not printable ASCII"),
+        ));
+    }
+    Ok(text.to_string())
+}
+
+/// Write a 64-character lowercase-hex digest into a fixed field, refusing
+/// anything that is not one. An empty or upper-case digest recorded here
+/// would compare unequal to `shasum -a 256` output forever after.
+fn write_hex64(s: &str, what: &str) -> Result<[u8; 64]> {
+    if s.len() != 64
+        || !s
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} {s:?} is not 64 lowercase hex characters"),
+        ));
+    }
+    let mut out = [0u8; 64];
+    out.copy_from_slice(s.as_bytes());
+    Ok(out)
+}
+
+/// Inverse of `write_hex64`.
+fn read_hex64(field: &[u8], what: &str) -> Result<String> {
+    if field.len() != 64
+        || !field
+            .iter()
+            .all(|&b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("{what} is not 64 lowercase hex characters"),
+        ));
+    }
+    Ok(String::from_utf8_lossy(field).into_owned())
+}
+
+fn resume_rd_u32(bytes: &[u8], off: usize) -> u32 {
+    u32::from_le_bytes([bytes[off], bytes[off + 1], bytes[off + 2], bytes[off + 3]])
+}
+
+fn resume_rd_u64(bytes: &[u8], off: usize) -> u64 {
+    let mut b = [0u8; 8];
+    b.copy_from_slice(&bytes[off..off + 8]);
+    u64::from_le_bytes(b)
+}
+
+/// Serialize a resume record, digest included.
+pub fn resume_to_bytes(rec: &ResumeRecord) -> Result<Vec<u8>> {
+    if rec.optimizers.is_empty() {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            "a resume record with no optimizer instances would restore nothing",
+        ));
+    }
+    let mut elements: u64 = 0;
+    for o in &rec.optimizers {
+        if o.m.len() != o.v.len() {
+            return Err(resume_refusal(
+                RESUME_REASON_MALFORMED,
+                format!(
+                    "optimizer {:?} has {} first-moment and {} second-moment elements",
+                    o.name,
+                    o.m.len(),
+                    o.v.len()
+                ),
+            ));
+        }
+        elements += o.m.len() as u64;
+    }
+
+    let n = rec.optimizers.len();
+    let dir_len = n * RESUME_DIRECTORY_ENTRY_LEN;
+    let payload_len = 8 * elements as usize;
+    let mut out = vec![0u8; RESUME_HEADER_LEN + dir_len + payload_len + RESUME_DIGEST_LEN];
+
+    out[0..8].copy_from_slice(RESUME_MAGIC);
+    out[8..12].copy_from_slice(&RESUME_FORMAT_VERSION.to_le_bytes());
+    out[12..16].copy_from_slice(&(RESUME_HEADER_LEN as u32).to_le_bytes());
+    out[16..24].copy_from_slice(&rec.seed.to_le_bytes());
+    out[24..32].copy_from_slice(&rec.step.to_le_bytes());
+    out[32..40].copy_from_slice(&rec.rng_s.to_le_bytes());
+    out[40..48].copy_from_slice(&rec.steps_total.to_le_bytes());
+    out[48..56].copy_from_slice(&rec.eval_every.to_le_bytes());
+    out[56..64].copy_from_slice(&rec.gf16_floor_every.to_le_bytes());
+    out[64..68].copy_from_slice(&rec.hidden.to_le_bytes());
+    out[68..72].copy_from_slice(&rec.d_model.to_le_bytes());
+    out[72..76].copy_from_slice(&rec.num_attn_layers.to_le_bytes());
+    out[76..80].copy_from_slice(&rec.vocab.to_le_bytes());
+    out[80..84].copy_from_slice(&rec.dim.to_le_bytes());
+    out[84..88].copy_from_slice(&rec.num_ctx.to_le_bytes());
+    out[88..92].copy_from_slice(&rec.base_lr.to_le_bytes());
+    out[92..96].copy_from_slice(&rec.weight_decay.to_le_bytes());
+    out[96] = u8::from(rec.gf16_enabled);
+    out[97] = u8::from(rec.data_synthetic);
+    out[98] = u8::from(rec.ema_bpb.is_some());
+    out[99] = u8::from(rec.min_observed_val_bpb.is_some());
+    out[100..104].copy_from_slice(&(n as u32).to_le_bytes());
+    out[104..112].copy_from_slice(&rec.ema_bpb.unwrap_or(0.0).to_le_bytes());
+    out[112..120].copy_from_slice(&rec.min_observed_val_bpb.unwrap_or(0.0).to_le_bytes());
+    out[120..184].copy_from_slice(&write_hex64(&rec.weight_sha256, "weight_sha256")?);
+    out[184..248].copy_from_slice(&write_hex64(&rec.train_sha256, "train_sha256")?);
+    out[248..312].copy_from_slice(&write_hex64(&rec.val_sha256, "val_sha256")?);
+    out[312..328].copy_from_slice(&resume_ascii_field::<16>(
+        &rec.fake_quant_format,
+        "fake_quant_format",
+    )?);
+    out[328..336].copy_from_slice(&resume_ascii_field::<8>(&rec.optimizer, "optimizer")?);
+    // 336..344 stays zero: reserved, rejected on load if nonzero.
+
+    let mut off = RESUME_HEADER_LEN;
+    for o in &rec.optimizers {
+        out[off..off + 16].copy_from_slice(&resume_ascii_field::<16>(&o.name, "optimizer name")?);
+        out[off + 16..off + 24].copy_from_slice(&(o.m.len() as u64).to_le_bytes());
+        out[off + 24..off + 32].copy_from_slice(&o.step.to_le_bytes());
+        off += RESUME_DIRECTORY_ENTRY_LEN;
+    }
+    for o in &rec.optimizers {
+        for x in o.m.iter().chain(o.v.iter()) {
+            out[off..off + 4].copy_from_slice(&x.to_le_bytes());
+            off += 4;
+        }
+    }
+    if off + RESUME_DIGEST_LEN != out.len() {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!(
+                "serialiser wrote {off} bytes into a {} byte buffer",
+                out.len() - RESUME_DIGEST_LEN
+            ),
+        ));
+    }
+    let digest = Sha256::digest(&out[..off]);
+    out[off..].copy_from_slice(&digest);
+    Ok(out)
+}
+
+/// Inverse of `resume_to_bytes`. Every rejection in the load-validation list
+/// happens here, before any caller can see a moment.
+pub fn resume_from_bytes(bytes: &[u8]) -> Result<ResumeRecord> {
+    let floor = RESUME_HEADER_LEN + RESUME_DIGEST_LEN;
+    if bytes.len() < floor {
+        return Err(resume_refusal(
+            RESUME_REASON_TRUNCATED,
+            format!(
+                "{} bytes, need at least {floor} for a header and a digest",
+                bytes.len()
+            ),
+        ));
+    }
+    if &bytes[0..8] != RESUME_MAGIC {
+        return Err(resume_refusal(
+            RESUME_REASON_MAGIC,
+            "the first 8 bytes are not b\"TRIOSRSM\"; this is not a resume record",
+        ));
+    }
+    let version = resume_rd_u32(bytes, 8);
+    if version != RESUME_FORMAT_VERSION {
+        return Err(resume_refusal(
+            RESUME_REASON_VERSION,
+            format!("format_version {version} (this build reads {RESUME_FORMAT_VERSION})"),
+        ));
+    }
+    let header_len = resume_rd_u32(bytes, 12) as usize;
+    if header_len != RESUME_HEADER_LEN {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("header_len {header_len} != {RESUME_HEADER_LEN}"),
+        ));
+    }
+    if bytes[96] > 1 || bytes[97] > 1 || bytes[98] > 1 || bytes[99] > 1 {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            "boolean header bytes 96..100 must be 0 or 1",
+        ));
+    }
+    if bytes[336..344].iter().any(|&b| b != 0) {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            "reserved bytes 336..344 are nonzero",
+        ));
+    }
+
+    let n = resume_rd_u32(bytes, 100) as usize;
+    if n == 0 {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            "optimizer_count is 0; a record that restores nothing is not a warm start",
+        ));
+    }
+    let dir_end = RESUME_HEADER_LEN + n * RESUME_DIRECTORY_ENTRY_LEN;
+    if bytes.len() < dir_end + RESUME_DIGEST_LEN {
+        return Err(resume_refusal(
+            RESUME_REASON_TRUNCATED,
+            format!(
+                "{} bytes cannot hold a {n}-entry directory ({dir_end} bytes) and a digest",
+                bytes.len()
+            ),
+        ));
+    }
+
+    let mut names = Vec::with_capacity(n);
+    let mut counts = Vec::with_capacity(n);
+    let mut steps = Vec::with_capacity(n);
+    let mut elements: u64 = 0;
+    for i in 0..n {
+        let off = RESUME_HEADER_LEN + i * RESUME_DIRECTORY_ENTRY_LEN;
+        names.push(read_resume_ascii(
+            &bytes[off..off + 16],
+            &format!("optimizer name {i}"),
+        )?);
+        let count = resume_rd_u64(bytes, off + 16);
+        counts.push(count);
+        steps.push(resume_rd_u64(bytes, off + 24));
+        elements = elements.checked_add(count).ok_or_else(|| {
+            resume_refusal(
+                RESUME_REASON_MALFORMED,
+                "directory element counts overflow u64",
+            )
+        })?;
+    }
+
+    let want_len = dir_end as u64 + 8 * elements + RESUME_DIGEST_LEN as u64;
+    if (bytes.len() as u64) < want_len {
+        return Err(resume_refusal(
+            RESUME_REASON_TRUNCATED,
+            format!(
+                "file is {} bytes, the directory implies {want_len}",
+                bytes.len()
+            ),
+        ));
+    }
+    if (bytes.len() as u64) > want_len {
+        return Err(resume_refusal(
+            RESUME_REASON_TRAILING,
+            format!(
+                "file is {} bytes, the directory implies {want_len}",
+                bytes.len()
+            ),
+        ));
+    }
+
+    let split = bytes.len() - RESUME_DIGEST_LEN;
+    let computed = sha256_hex(&bytes[..split]);
+    let stored = bytes[split..].iter().fold(String::new(), |mut acc, b| {
+        use std::fmt::Write as _;
+        let _ = write!(acc, "{b:02x}");
+        acc
+    });
+    if computed != stored {
+        return Err(resume_refusal(
+            RESUME_REASON_DIGEST,
+            format!("stored {stored}, recomputed {computed} over {split} bytes"),
+        ));
+    }
+
+    let mut off = dir_end;
+    let mut optimizers = Vec::with_capacity(n);
+    for i in 0..n {
+        let count = counts[i] as usize;
+        let mut m = Vec::with_capacity(count);
+        let mut v = Vec::with_capacity(count);
+        for _ in 0..count {
+            m.push(f32::from_bits(resume_rd_u32(bytes, off)));
+            off += 4;
+        }
+        for _ in 0..count {
+            v.push(f32::from_bits(resume_rd_u32(bytes, off)));
+            off += 4;
+        }
+        optimizers.push(ResumeOptimizerState {
+            name: names[i].clone(),
+            step: steps[i],
+            m,
+            v,
+        });
+    }
+    if off != split {
+        return Err(resume_refusal(
+            RESUME_REASON_MALFORMED,
+            format!("reader consumed {off} of {split} payload bytes"),
+        ));
+    }
+
+    Ok(ResumeRecord {
+        seed: resume_rd_u64(bytes, 16),
+        step: resume_rd_u64(bytes, 24),
+        rng_s: resume_rd_u64(bytes, 32),
+        steps_total: resume_rd_u64(bytes, 40),
+        eval_every: resume_rd_u64(bytes, 48),
+        gf16_floor_every: resume_rd_u64(bytes, 56),
+        hidden: resume_rd_u32(bytes, 64),
+        d_model: resume_rd_u32(bytes, 68),
+        num_attn_layers: resume_rd_u32(bytes, 72),
+        vocab: resume_rd_u32(bytes, 76),
+        dim: resume_rd_u32(bytes, 80),
+        num_ctx: resume_rd_u32(bytes, 84),
+        base_lr: f32::from_bits(resume_rd_u32(bytes, 88)),
+        weight_decay: f32::from_bits(resume_rd_u32(bytes, 92)),
+        gf16_enabled: bytes[96] != 0,
+        data_synthetic: bytes[97] != 0,
+        ema_bpb: (bytes[98] != 0).then(|| f64::from_bits(resume_rd_u64(bytes, 104))),
+        min_observed_val_bpb: (bytes[99] != 0).then(|| f64::from_bits(resume_rd_u64(bytes, 112))),
+        weight_sha256: read_hex64(&bytes[120..184], "weight_sha256")?,
+        train_sha256: read_hex64(&bytes[184..248], "train_sha256")?,
+        val_sha256: read_hex64(&bytes[248..312], "val_sha256")?,
+        fake_quant_format: read_resume_ascii(&bytes[312..328], "fake_quant_format")?,
+        optimizer: read_resume_ascii(&bytes[328..336], "optimizer")?,
+        optimizers,
+    })
+}
+
+/// `{step}.resume` beside `{step}.bin`.
+pub fn resume_sidecar_path(checkpoint_path: &Path) -> PathBuf {
+    checkpoint_path.with_extension(RESUME_EXTENSION)
+}
+
+/// Resolve `--resume-from` into the `(weights, resume record)` pair.
+///
+/// Either half may be named: `100.bin` and `100.resume` resolve to the same
+/// pair. Both must exist, and the digest binding checked by `verify_resume`
+/// is what proves they belong together - a matching filename is a convention,
+/// not evidence.
+pub fn resolve_resume_pair(arg: &Path) -> Result<(PathBuf, PathBuf)> {
+    let ext = arg.extension().and_then(|e| e.to_str()).unwrap_or_default();
+    let (weights, resume) = match ext {
+        RESUME_EXTENSION => (arg.with_extension("bin"), arg.to_path_buf()),
+        "bin" => (arg.to_path_buf(), resume_sidecar_path(arg)),
+        other => {
+            return Err(resume_refusal(
+                RESUME_REASON_MISSING,
+                format!(
+                    "--resume-from {arg:?} has extension {other:?}; name the \
+                     `{{step}}.bin` weights or the `{{step}}.{RESUME_EXTENSION}` record"
+                ),
+            ))
+        }
+    };
+    if !weights.is_file() {
+        return Err(resume_refusal(
+            RESUME_REASON_MISSING,
+            format!("weights {weights:?} do not exist"),
+        ));
+    }
+    if !resume.is_file() {
+        return Err(resume_refusal(
+            RESUME_REASON_MISSING,
+            format!(
+                "resume record {resume:?} does not exist. Only checkpoints written by a \
+                 build that carries this format have one; a weights-only artifact cannot \
+                 be warm-started, and starting cold from it would silently zero the \
+                 optimizer moments."
+            ),
+        ));
+    }
+    Ok((weights, resume))
+}
+
+/// Read and validate a resume record from disk.
+pub fn load_resume_file(path: &Path) -> Result<ResumeRecord> {
+    let raw = std::fs::read(path)
+        .map_err(|e| resume_refusal(RESUME_REASON_MISSING, format!("{path:?}: {e}")))?;
+    resume_from_bytes(&raw).with_context(|| format!("resume record {path:?}"))
+}
+
+/// Write a resume record beside the checkpoint it pairs with, atomically.
+///
+/// Same sequence as `save_scoped`: tmp in the same directory, `sync_all`
+/// before close, rename, best-effort directory fsync, then hash the file as
+/// it exists on disk. Unlike `save_scoped` this DOES overwrite: the record is
+/// derived state that a re-run can legitimately regenerate, while the `.bin`
+/// is the published evidence whose overwrite guard is unchanged. Nothing is
+/// silent about it - the caller prints the path and the digest.
+pub fn save_resume(checkpoint_path: &Path, rec: &ResumeRecord) -> Result<SavedResume> {
+    let bytes = resume_to_bytes(rec)?;
+    let final_path = resume_sidecar_path(checkpoint_path);
+    let dir = final_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("resume path {final_path:?} has no parent"))?
+        .to_path_buf();
+    std::fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create resume dir {dir:?}"))?;
+
+    let tmp_name = format!(
+        "{}.tmp.{}",
+        final_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("resume"),
+        std::process::id()
+    );
+    let tmp_path = dir.join(tmp_name);
+    {
+        let mut f = std::fs::File::create(&tmp_path)
+            .with_context(|| format!("failed to create {tmp_path:?}"))?;
+        f.write_all(&bytes)
+            .with_context(|| format!("failed to write {tmp_path:?}"))?;
+        f.sync_all()
+            .with_context(|| format!("failed to fsync {tmp_path:?}"))?;
+    }
+    std::fs::rename(&tmp_path, &final_path)
+        .with_context(|| format!("failed to rename {tmp_path:?} -> {final_path:?}"))?;
+    if let Ok(dir_handle) = std::fs::File::open(&dir) {
+        let _ = dir_handle.sync_all();
+    }
+
+    let on_disk = std::fs::read(&final_path)
+        .with_context(|| format!("failed to re-read resume record {final_path:?}"))?;
+    Ok(SavedResume {
+        sha256: sha256_hex(&on_disk),
+        bytes: on_disk.len() as u64,
+        path: final_path,
+    })
+}
+
+/// What the run about to start declares about itself, for `verify_resume`.
+///
+/// Every field here is something that, if it differed, would make the
+/// resumed run compute different weights than the monolithic run it claims to
+/// be a segment of. Nothing in it is read from the environment by this
+/// module: the caller passes what it is actually about to execute.
+#[derive(Debug, Clone)]
+pub struct ResumeExpectation {
+    pub seed: u64,
+    pub steps_total: u64,
+    pub eval_every: u64,
+    pub gf16_floor_every: u64,
+    pub gf16_enabled: bool,
+    pub hidden: u32,
+    pub d_model: u32,
+    pub num_attn_layers: u32,
+    pub vocab: u32,
+    pub dim: u32,
+    pub num_ctx: u32,
+    pub base_lr: f32,
+    pub weight_decay: f32,
+    pub fake_quant_format: String,
+    /// SHA-256 of the weights file the caller just read.
+    pub weight_sha256: String,
+    pub train_sha256: String,
+    pub val_sha256: String,
+}
+
+/// Refuse a resume that would not continue the run it claims to continue.
+///
+/// The checks are grouped by the reason they carry, so a failed audit says
+/// which KIND of mismatch stopped it: wrong weights, wrong corpus, wrong
+/// shape, wrong cadence, wrong recipe. There is no permissive mode.
+pub fn verify_resume(rec: &ResumeRecord, want: &ResumeExpectation) -> Result<()> {
+    if rec.weight_sha256 != want.weight_sha256 {
+        return Err(resume_refusal(
+            RESUME_REASON_WEIGHT_DIGEST,
+            format!(
+                "the record pairs with weights sha256={} but the file read is sha256={}. \
+                 Optimizer moments from one run pasted onto weights from another produce a \
+                 run that is a segment of neither.",
+                rec.weight_sha256, want.weight_sha256
+            ),
+        ));
+    }
+    if rec.train_sha256 != want.train_sha256 || rec.val_sha256 != want.val_sha256 {
+        return Err(resume_refusal(
+            RESUME_REASON_CORPUS,
+            format!(
+                "the record was captured on train sha256={} val sha256={}; this run reads \
+                 train sha256={} val sha256={}",
+                rec.train_sha256, rec.val_sha256, want.train_sha256, want.val_sha256
+            ),
+        ));
+    }
+    if rec.hidden != want.hidden
+        || rec.d_model != want.d_model
+        || rec.num_attn_layers != want.num_attn_layers
+        || rec.vocab != want.vocab
+        || rec.dim != want.dim
+        || rec.num_ctx != want.num_ctx
+    {
+        return Err(resume_refusal(
+            RESUME_REASON_SHAPE,
+            format!(
+                "record hidden={} d_model={} layers={} vocab={} dim={} num_ctx={}; this run \
+                 hidden={} d_model={} layers={} vocab={} dim={} num_ctx={}",
+                rec.hidden,
+                rec.d_model,
+                rec.num_attn_layers,
+                rec.vocab,
+                rec.dim,
+                rec.num_ctx,
+                want.hidden,
+                want.d_model,
+                want.num_attn_layers,
+                want.vocab,
+                want.dim,
+                want.num_ctx
+            ),
+        ));
+    }
+    if rec.eval_every != want.eval_every || rec.gf16_floor_every != want.gf16_floor_every {
+        return Err(resume_refusal(
+            RESUME_REASON_CADENCE,
+            format!(
+                "record eval_every={} gf16_floor_every={}; this run eval_every={} \
+                 gf16_floor_every={}. Both cadences decide when the weights are rewritten \
+                 or measured, so a segment run under a different one is not a segment of \
+                 the same run.",
+                rec.eval_every, rec.gf16_floor_every, want.eval_every, want.gf16_floor_every
+            ),
+        ));
+    }
+    if rec.seed != want.seed
+        || rec.steps_total != want.steps_total
+        || rec.base_lr.to_bits() != want.base_lr.to_bits()
+        || rec.weight_decay.to_bits() != want.weight_decay.to_bits()
+        || rec.gf16_enabled != want.gf16_enabled
+        || rec.fake_quant_format != want.fake_quant_format
+    {
+        return Err(resume_refusal(
+            RESUME_REASON_RECIPE,
+            format!(
+                "record seed={} steps_total={} lr={} wd={} gf16={} format={}; this run \
+                 seed={} steps_total={} lr={} wd={} gf16={} format={}. The cosine schedule \
+                 is a function of (step, steps_total, base_lr), so a segment run to a \
+                 different total applies different learning rates to the same steps.",
+                rec.seed,
+                rec.steps_total,
+                rec.base_lr,
+                rec.weight_decay,
+                rec.gf16_enabled,
+                rec.fake_quant_format,
+                want.seed,
+                want.steps_total,
+                want.base_lr,
+                want.weight_decay,
+                want.gf16_enabled,
+                want.fake_quant_format
+            ),
+        ));
+    }
+    if rec.step >= rec.steps_total {
+        return Err(resume_refusal(
+            RESUME_REASON_NOTHING_TO_DO,
+            format!(
+                "the record is at step {} of {} - the run it describes is already finished",
+                rec.step, rec.steps_total
+            ),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2285,14 +3255,77 @@ mod tests {
                 weight_decay: 0.04,
                 source: "train_loop::AdamW".to_string(),
             }),
+            // Schema 9. `fp32` is faithful, so this fixture asserts the
+            // ordinary case; the mislabelled one is covered below and in
+            // `tests/format_label_truth.rs`.
+            format_faithful: format_label_faithful("f32"),
         }
     }
 
+    /// `/9` now means TWO things - `format_faithful` and the scope-relative
+    /// `path` - because no `/9` record was ever persisted and the widening
+    /// therefore reinterprets nothing. See the constant's own note for the
+    /// census that licenses it. This test pins the tag; the one below pins the
+    /// second half of what it now promises, so the pair cannot drift apart.
     #[test]
-    fn schema_is_version_eight() {
-        assert_eq!(CHECKPOINT_RECORD_SCHEMA, "trios-checkpoint-record/8");
+    fn schema_is_version_nine() {
+        assert_eq!(CHECKPOINT_RECORD_SCHEMA, "trios-checkpoint-record/9");
         // The .bin layout did not change, so the artifact hashes did not.
         assert_eq!(CHECKPOINT_FORMAT_VERSION, 1);
+    }
+
+    /// The predicate the sidecar's `format_faithful` is derived from. It must
+    /// answer for the STRING that was hashed into the header, and it must say
+    /// "no" both for a format the crate cannot simulate from `f32` and for a
+    /// label it cannot resolve at all.
+    #[test]
+    fn format_label_faithful_answers_for_the_hashed_label() {
+        // No QAT: both spellings of the identity format.
+        assert!(format_label_faithful("f32"));
+        assert!(format_label_faithful("fp32"));
+        // A kernel that really runs.
+        assert!(format_label_faithful("fp16"));
+        assert!(format_label_faithful("gf16"));
+        // Wider than f32 - `fake_quantize_f32` is the identity, so a row
+        // labelled `fp80` is an f32 row.
+        assert!(!format_label_faithful("fp80"));
+        assert!(!format_label_faithful("f64"));
+        // Explicit identities inside the kernel, already refused by
+        // `matrix_runner`.
+        assert!(!format_label_faithful("int32"));
+        assert!(!format_label_faithful("mxfp4"));
+        // Unresolvable is not "yes".
+        assert!(!format_label_faithful("int_8"));
+        assert!(!format_label_faithful(""));
+    }
+
+    /// A schema 1-8 sidecar has no `format_faithful` key. It must still load,
+    /// and it must load as `true` - the non-accusing reading - while the key's
+    /// ABSENCE stays visible to any reader that looks at the JSON.
+    #[test]
+    fn a_pre_schema_nine_record_loads_without_format_faithful() {
+        let rec = schema4_record();
+        let mut v = serde_json::to_value(&rec).expect("as value");
+        assert_eq!(v["format_faithful"], serde_json::json!(true));
+        v.as_object_mut()
+            .expect("object")
+            .remove("format_faithful")
+            .expect("the key must have been written");
+        let back: CheckpointRecord = serde_json::from_value(v).expect("an /8 record must load");
+        assert!(back.format_faithful);
+    }
+
+    /// The retraction must survive the write: an overridden unfaithful run has
+    /// to be readable as such from the document alone.
+    #[test]
+    fn an_unfaithful_label_serializes_as_format_faithful_false() {
+        let mut rec = schema4_record();
+        rec.fake_quant_format = "fp80".to_string();
+        rec.format_faithful = format_label_faithful(&rec.fake_quant_format);
+        let json = serde_json::to_string(&SidecarDocument::of(&rec)).expect("serialize");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("as value");
+        assert_eq!(v["fake_quant_format"], serde_json::json!("fp80"));
+        assert_eq!(v["format_faithful"], serde_json::json!(false));
     }
 
     // ---- schema 8: the tree, the libc version and the feature set -------
@@ -2611,29 +3644,63 @@ mod tests {
         assert_eq!(prov.sha256, sha256_hex(&raw));
     }
 
-    /// The two branches of `scope_relative_exe`, without touching the process
+    /// The branches of `scope_relative_path`, without touching the process
     /// working directory.
     #[test]
     fn the_trainer_path_is_scope_relative_and_never_absolute() {
         let root = Path::new("/lab/checkout");
         assert_eq!(
-            scope_relative_exe(Path::new("/lab/checkout/target/release/trios-train"), Some(root)),
+            scope_relative_path(
+                Path::new("/lab/checkout/target/release/trios-train"),
+                Some(root)
+            ),
             "target/release/trios-train"
         );
         // An executable outside the walked tree is named, not located: a
         // sidecar must not publish `/Users/<someone>/...` just because the
         // binary was moved.
-        let outside = scope_relative_exe(Path::new("/elsewhere/bin/trios-train"), Some(root));
-        assert_eq!(
-            outside,
-            format!("{TRAINER_PATH_OUTSIDE_SCOPE_PREFIX}trios-train")
-        );
+        let outside = scope_relative_path(Path::new("/elsewhere/bin/trios-train"), Some(root));
+        assert_eq!(outside, format!("{PATH_OUTSIDE_SCOPE_PREFIX}trios-train"));
         assert!(!outside.contains("/elsewhere"));
         // No scope at all is the same case: still no path.
         assert_eq!(
-            scope_relative_exe(Path::new("/elsewhere/bin/trios-train"), None),
-            format!("{TRAINER_PATH_OUTSIDE_SCOPE_PREFIX}trios-train")
+            scope_relative_path(Path::new("/elsewhere/bin/trios-train"), None),
+            format!("{PATH_OUTSIDE_SCOPE_PREFIX}trios-train")
         );
+    }
+
+    /// The same function now decides `CheckpointRecord::path`, so the two
+    /// branches it adds are the ones a checkpoint actually takes: a path under
+    /// the scope, and an ABSOLUTE `TRIOS_CHECKPOINT_DIR` outside it - which is
+    /// how the two tracked evidence sidecars came to publish a home directory.
+    #[test]
+    fn the_checkpoint_path_is_scope_relative_and_never_absolute() {
+        let root = Path::new("/lab/checkout");
+        assert_eq!(
+            scope_relative_path(
+                Path::new("/lab/checkout/checkpoints/IGLA-run/12000.bin"),
+                Some(root)
+            ),
+            "checkpoints/IGLA-run/12000.bin"
+        );
+        // An already-relative path is already scope-relative: it resolves
+        // against the working directory, which is what `root` names.
+        assert_eq!(
+            scope_relative_path(Path::new("checkpoints/IGLA-run/12000.bin"), Some(root)),
+            "checkpoints/IGLA-run/12000.bin"
+        );
+        // The defect, as it was measured: an absolute checkpoint dir under a
+        // home directory. The name survives; the location does not.
+        let leaked = scope_relative_path(
+            Path::new("/Users/somebody/trios-trainer-igla/evidence/heldout/12000.bin"),
+            Some(root),
+        );
+        assert_eq!(leaked, format!("{PATH_OUTSIDE_SCOPE_PREFIX}12000.bin"));
+        assert!(!leaked.contains("/Users"));
+        // A relative path that climbs OUT of the scope is not under it, and is
+        // classified like any other outsider rather than passed through.
+        let climbing = scope_relative_path(Path::new("../elsewhere/12000.bin"), Some(root));
+        assert_eq!(climbing, format!("{PATH_OUTSIDE_SCOPE_PREFIX}12000.bin"));
     }
 
     /// The scope is a CLASSIFICATION. It must answer "which tree" and publish
@@ -2660,7 +3727,10 @@ mod tests {
             );
         }
         assert_ne!(a, b, "two different trees must classify differently");
-        assert_eq!(a, classify_source_digest_scope(Path::new("/lab/alpha-clone")));
+        assert_eq!(
+            a,
+            classify_source_digest_scope(Path::new("/lab/alpha-clone"))
+        );
     }
 
     /// The flags file decides `trainer.sha256`, so the record must say whether
@@ -2673,13 +3743,17 @@ mod tests {
         assert_eq!(sha, None);
         assert!(!remap);
 
-        let body = "[build]\nrustflags = [\n    \"--remap-path-prefix=/Users/somebody=/build\",\n]\n";
+        let body =
+            "[build]\nrustflags = [\n    \"--remap-path-prefix=/Users/somebody=/build\",\n]\n";
         std::fs::create_dir_all(dir.path().join(".cargo")).expect("mkdir .cargo");
         std::fs::write(dir.path().join(BUILD_FLAGS_PATH), body).expect("write flags");
         let (source, sha, remap) = resolve_build_flags_provenance(Some(dir.path()));
         assert_eq!(source.as_deref(), Some(BUILD_FLAGS_SOURCE_CARGO_CONFIG));
         assert_eq!(sha.as_deref(), Some(sha256_hex(body.as_bytes()).as_str()));
-        assert!(remap, "the flags ask for remapping and the record must say so");
+        assert!(
+            remap,
+            "the flags ask for remapping and the record must say so"
+        );
         // The builder's home is IN the file and must not be in the record: the
         // flags are hashed, never copied.
         let recorded = format!("{source:?}{sha:?}");
@@ -2790,7 +3864,14 @@ mod tests {
     #[test]
     fn the_feature_set_names_every_declared_feature_with_its_state() {
         let set = compiled_feature_set();
-        for name in ["ci-strict", "gf16", "gpu", "race", "smoke", "trios-integration"] {
+        for name in [
+            "ci-strict",
+            "gf16",
+            "gpu",
+            "race",
+            "smoke",
+            "trios-integration",
+        ] {
             assert!(
                 set.contains(&format!("{name}=")),
                 "feature {name} missing from {set:?}"
@@ -2807,7 +3888,10 @@ mod tests {
         let base: Vec<SourceDigestInput> = vec![
             ("Cargo.lock".to_string(), Some(b"lock-a".to_vec())),
             ("src/lib.rs".to_string(), Some(b"fn main() {}".to_vec())),
-            (SOURCE_DIGEST_FEATURES_KEY.to_string(), Some(b"gf16=0".to_vec())),
+            (
+                SOURCE_DIGEST_FEATURES_KEY.to_string(),
+                Some(b"gf16=0".to_vec()),
+            ),
         ];
         let d0 = digest_source_inputs(&base);
         assert_eq!(d0.len(), 64);
@@ -2901,7 +3985,10 @@ mod tests {
         let state = compute_source_digest_in(None);
         assert_eq!(state.digest, SOURCE_DIGEST_NOT_COMPUTED);
         assert_eq!(state.scope, SOURCE_DIGEST_SCOPE_NONE);
-        assert_eq!(state.root, None, "no walk, so no directory to relativize to");
+        assert_eq!(
+            state.root, None,
+            "no walk, so no directory to relativize to"
+        );
     }
 
     #[test]

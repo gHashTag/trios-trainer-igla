@@ -60,7 +60,7 @@
 # transform - that coupling is removed, the floor cadence is now
 # train_loop::gf16_floor_every(), default 1, overridable with
 # TRIOS_GF16_FLOOR_EVERY, and recorded as `gf16_floor_every` in the sidecar (a
-# schema-/2 addition; the current record tag is trios-checkpoint-record/8, see
+# schema-2 addition; the current record tag is trios-checkpoint-record/8, see
 # CHECKPOINT_RECORD_SCHEMA in src/checkpoint.rs).
 #
 # WHICH FIELDS THE TRAINER CONSUMES WHEN A CONFIG IS EXECUTABLE

@@ -154,9 +154,15 @@ these are the only interlaboratory agreement this directory has ever produced:
 | `vocab` | header u32 at offset 16 (schema `/4`) |
 | `gf16_enabled` | header u8 at byte 124 (schema `/5`) |
 
+Plus one statement that is on the VERIFIED side of the line without being a
+sidecar field at all - the **derived architecture reading** of section 2b. It is
+measured in the payload, so no sidecar can make it agree, and it is deliberately
+kept out of the 16 above, because that count is a count of record KEYS.
+
 **Echoed, never checked** - read out of the sidecar and reported, with nothing in
 the container able to confirm or refute a single one. On a `/7` record this is 31
-fields, roughly twice the checked set:
+fields, roughly twice the checked set; on a `/8` record 35 and on a `/9` record
+36, against the same 16:
 
 - The entire provenance block: `platform` (`os`, `arch`, `pointer_width`,
   `libc`, `toolchain`, `toolchain_provenance`, and the schema `/7` additions
@@ -187,11 +193,121 @@ addition without a word. It could not disagree about them, which is precisely wh
 it agreed. An unrecognised key is now a NOTE and never a silent pass - the
 correct behaviour when another agent is adding fields to the record in parallel.
 
-Two further limits, unchanged: no tensor value is decoded, so nothing here
-compares weights; and there is no digest inside the container (ambiguity A7), so
-a flipped payload bit is caught only by the externally recorded SHA-256.
+Two further limits: there is no digest inside the container (ambiguity A7), so a
+flipped payload bit is caught only by the externally recorded SHA-256; and no
+tensor value is compared against any other tensor value, so nothing here compares
+weights between two artifacts. The payload is no longer entirely unread, though -
+see the next section.
+
+## 2b. The derived architecture check: one fact moved out of prose
+
+Every record in this tree declares `num_attn_layers: 2`, and the trainer's own
+README says the second attention layer is allocated, carried through every
+forward pass, and provably inert. Until this round a consumer of the evidence had
+to take that sentence on faith: `num_attn_layers` was cross-checked against header
+offset 44, which only confirms that the sidecar and the header tell the same
+story, and the payload was never opened.
+
+The reader now decodes the tensor directory, walks the four layer-2 projections
+`wq2`, `wk2`, `wv2`, `wo2`, and counts how many of their f32 elements are exactly
+zero. On every one of the 170 pairs currently on disk the answer is all of them:
+
+```
+derived  num_attn_layers declared 2, effective 1 (derived from the payload bytes,
+         not read from the sidecar)
+derived  layer-2 zero census 16,384/16,384 elements exactly zero
+         (wq2 4,096/4,096, wk2 4,096/4,096, wv2 4,096/4,096, wo2 4,096/4,096)
+derived  serialized parameters 212,992 total, 16,384 in the layer-2 block,
+         196,608 outside it; the block contributes nothing to a forward pass, so
+         196,608 is the count the artifact can be said to carry
+derived  this is a statement about these bytes only: it shows the container
+         carries an inert second layer, NOT that the training recipe intended one
+```
+
+**What it proves.** That these bytes carry an inert second attention layer. If
+all four layer-2 projections are zero then that layer's contribution to any
+forward pass is zero whatever the arithmetic around it, so `196,608` - not the
+`212,992` elements the directory serializes - is the parameter count the artifact
+can be said to carry. Anyone holding only the `.bin` can check it, in any
+language, with no access to this repository, the trainer, or its tests.
+
+**What it does not prove.** Nothing about intent. It cannot distinguish a design
+that deliberately allocates a second layer and freezes it from a loop that meant
+to train one and did not, and it is not evidence of a defect. The trainer states
+the block is inert by construction and pins that with a test
+(`run_single_emits_a_loadable_artifact_and_freezes_layer_two`); this check moves
+the same fact from prose into a measurement of the container, and claims exactly
+that much.
+
+Three properties of the check, because each of them is a way it could have been
+weaker:
+
+- **It is a byte test, not a float comparison.** "Exactly zero" means the four
+  bytes `00 00 00 00`. There is no tolerance and no rounding. Negative zero
+  (`00 00 00 80` little-endian) is numerically inert in the same way and a
+  different encoding, so it is counted and reported separately rather than folded
+  in.
+- **It is generic, not a special case for these artifacts.** A record whose
+  layer-2 tensors hold any non-zero element prints `effective 2` and "the block
+  is not inert in this artifact". Verified on a fixture built in this session
+  from `checkpoints/isa-probe/20260805T150755Z/isa-probe-arm64/0.bin` with two
+  layer-2 elements set to 0.25 and -0.5 and one to negative zero: the reader
+  printed `declared 2, effective 2`, `layer-2 zero census 16,382/16,384`, "of
+  those, 1 carry the NEGATIVE zero bit pattern", and exited 0. A record declaring
+  fewer than two layers says so and examines nothing.
+- **It never fails a record.** An inert block is not a defect and this instrument
+  does not get to decide that it is. The reading is printed, in the VERIFIED
+  column, and the exit code is untouched.
+
+The serialized total also has no counterpart: no field in any record on disk
+states a parameter count, so the reader says so explicitly rather than letting
+`212,992` be read as something the sidecar agreed with. Should a record ever
+carry `params`, `param_count`, `parameters`, `n_params` or `num_params`, the
+reader reports the advertised value beside both derived totals and does NOT
+compare them, because nothing tells it which of the two such a field would mean.
 
 ## 3. Measured result
+
+**Re-run of 2026-08-05, schema `/9` reader, with the derived architecture check.**
+The tree has grown again; every number below was observed in this session, not
+carried forward. The reader was not otherwise changed, and no check was relaxed to
+produce these.
+
+```
+$ python3 interop/triosckp_reader.py --verify-all checkpoints
+summary: 157 pair(s), 157 passed, 0 failed
+no key in any record was left uninterpreted by this reader
+$ echo $?
+0
+$ python3 interop/triosckp_reader.py --verify-all evidence
+summary: 13 pair(s), 13 passed, 0 failed
+no key in any record was left uninterpreted by this reader
+$ echo $?
+0
+```
+
+Every one of those 170 pairs reports `attention layers declared 2 / effective 1,
+layer-2 zeros 16,384/16,384, 212,992 parameters serialized (196,608 outside the
+layer-2 block)`. Schema tags present across the two trees at the moment of the
+run: `/1` 9, `/2` 5, `/3` 18, `/4` 6, `/5` 1, `/6` 22, `/7` 22, `/8` 71, `/9` 16.
+The `/9` records are 2026-08-05 ISA-probe artifacts under
+`checkpoints/isa-probe/`; they are the first `/9` documents to exist anywhere, and
+the reader reads them fully rather than through the unknown-schema branch.
+
+The four cross-architecture headline records read as follows, all exit 0:
+
+| record | schema | verified / echoed / uninterpreted | derived |
+| --- | --- | --- | --- |
+| `evidence/heldout/r6-heldout-test/12000.json` | `/8` | 16 / 35 / 0 | declared 2, effective 1 |
+| `evidence/xarch-aarch64-reference/12000.json` | `/4` | 15 / 23 / 0 | declared 2, effective 1 |
+| `evidence/xarch-run-30767491098/12000.json` | `/4` | 15 / 23 / 0 | declared 2, effective 1 |
+| `evidence/xarch-local-isa/isa-probe-arm64-0.json` | `/8` | 16 / 35 / 0 | declared 2, effective 1 |
+
+The two `xarch` rows are the two arms of the cross-architecture experiment -
+`bb14ab18...` on x86_64 Linux and `8a86fe69...` on aarch64 macOS. They disagree
+byte for byte and this reader agrees with both of them about everything it can
+see, which is the correct outcome: the divergence is in the weights, and the
+container, the geometry and the derived layer census are identical across it.
 
 **Re-run of 2026-08-03, schema `/7` reader, at the HEAD and dirty tree stamped at
 the top of this file.** The tree has grown since the round recorded below; every
@@ -390,41 +506,72 @@ provenance claim to a third party, and it is the undocumented half of the
 format.
 
 The record has since been versioned. The tag lives in the record's own `schema`
-field, and the WRITER's current tag is `trios-checkpoint-record/8`
+field, and the WRITER's current tag is `trios-checkpoint-record/9`
 (`CHECKPOINT_RECORD_SCHEMA`, `src/checkpoint.rs`). The container's
 `format_version` is still 1 and is deliberately NOT bumped in step, because the
 sidecar is unhashed evidence and rewriting the container spec for a JSON field
 would invalidate every archived artifact hash for nothing.
 
-**Separately, and deliberately: this reader's marker table stops at `/7`, so its
-derived `MAX_KNOWN_SCHEMA` is 7.** That is not the same statement as the one
-above and must not be collapsed into it. The writer emits `/8`; the reader knows
-`/7`. The two numbers are allowed to differ, because the reader's job is to be an
-independent second opinion, and an instrument that silently absorbs every new
-field the writer invents has stopped being one. What the gap requires is that a
-`/8` record be handled CORRECTLY, not that it be handled fully - and it is.
-Measured on `checkpoints/untracked-probe/10.bin`, exit 0:
+**The reader's marker table now reaches `/9`, so its derived `MAX_KNOWN_SCHEMA`
+is 9 - level with the writer, as of 2026-08-05.** The previous edition of this
+file recorded the table stopping at `/7` while the writer emitted `/8`, and
+argued that the gap was survivable because a higher tag is a NOTE rather than a
+failure. That argument was correct and it was also the third time this table had
+gone stale (`/4` produced a FAIL, `/6` and `/7` produced the quieter and worse
+failure of passing everything the instrument could not see). By 2026-08-05 the
+gap was two versions wide: `MAX_KNOWN_SCHEMA` derived to 7, HEAD emitted `/8`, and
+the working tree emitted `/9`, so every record the current trainer wrote degraded
+through the unknown-schema branch - the instrument was losing resolution on
+exactly the newest evidence.
+
+`MAX_KNOWN_SCHEMA` is still not a hand-set constant. It is
+`max(version for version, _ in SCHEMA_MARKERS)`, so it cannot drift from the
+table it summarises; extending the reader means adding marker rows, and the
+version follows.
+
+The forward-compatibility path is unchanged and was re-verified against a
+hypothetical `/10`. A copy of
+`checkpoints/isa-probe/20260805T150755Z/isa-probe-arm64/0.json` in a temporary
+directory with its `schema` string hand-edited to `trios-checkpoint-record/10`,
+paired with the unmodified `.bin`, exits 0 and prints:
 
 ```
-sidecar         schema tag 'trios-checkpoint-record/8', fields present up to schema 7
-sidecar         NOTE: record declares schema/8, this reader knows up to schema/7; all schema/7 fields present and checked
-scope           VERIFIED against the container (16): ...
-scope           ECHOED from the sidecar, NOT verified against the container (31): ...
-scope           present but NOT INTERPRETED by this reader (4): git_untracked, platform.features, platform.libc_provenance, platform.libc_version
-RESULT PASS
+sidecar  schema tag 'trios-checkpoint-record/10', fields present up to schema 9
+sidecar  NOTE: record declares schema/10, this reader knows up to schema/9;
+         all schema/9 fields present and checked
 ```
 
-That is the interoperability rule stated at the top of this file, applied: a
-record tagged above this reader's table is a NOTE and not a failure, PROVIDED
-every field of the highest schema the reader does know is present and
-cross-checked - and the four fields it cannot interpret are named rather than
-passed over in silence. A `/8` record missing a `/7` field would still FAIL.
-Extending the table to `/8` is the correct next step; until it happens, the
-honest reading of a PASS here is "nothing this instrument can see disagrees",
-which is weaker than "the record is correct" and is printed as such. Section 4
-records what happened the last two times this table went stale - at `/4`, where
-it produced a FAIL, and at `/6`/`/7`, where it produced the quieter and worse
-failure of passing everything it could not see.
+The over-promise check is equally unchanged and now applies at `/9`. The same
+record with `format_faithful` deleted and the `/9` tag left in place exits 1:
+
+```
+RESULT FAIL  SIDECAR_MISMATCH: schema tag claims version 9 but the record
+             carries only the schema 8 field set (missing: format_faithful)
+```
+
+**Where the `/8` and `/9` rows came from, which is a weaker provenance than the
+rows above them.** Schemas 3 through 7 were derived by diffing the records on
+disk. The `/8` and `/9` rows were read from the version notes above
+`CHECKPOINT_RECORD_SCHEMA` in `src/checkpoint.rs` - the ENCODER's own prose - and
+then confirmed against the artifacts: all 87 records tagged `/8` or `/9` carry
+`git_untracked`, `platform.libc_provenance` and `platform.features`, and all 16
+`/9` records carry `format_faithful`. The confirmation is genuine; the derivation
+is not independent, and a citation that leans on this reader's schema bookkeeping
+has to say so. Nothing about the container decode changed: `save` / `load` and
+`to_checkpoint_bytes` / `from_checkpoint_bytes` are still unread.
+
+Reading the encoder bought one thing that no amount of diffing could have found.
+`platform.libc_version` is present in every `/8` and `/9` record on disk and is
+deliberately **not** a marker, because the writer serializes it only when a
+version query for the target succeeded. A `/8` record from a target with no such
+query would be well-formed and would infer as `/7`, and a marker would have made
+this reader FAIL it for over-promising - a false accusation manufactured entirely
+by its own bookkeeping, which is the `/4` defect over again. The same latent
+fragility applies to `platform.rustflags_sha256` and `platform.rustflags_source`,
+which are `/7` markers and are also conditionally serialized; they are left as
+markers because every record on disk carries them and moving an established
+version boundary is a separate decision, but the hazard is now written down in
+the reader instead of waiting to be rediscovered.
 
 | schema | what it added |
 | --- | --- |
@@ -435,13 +582,33 @@ failure of passing everything it could not see.
 | `/5` | `gf16_enabled` |
 | `/6` | `eval_chunks`, `eval_tokens`, `eval_seq` (the grid the metric was read on), `val_bpb_stderr`, `optimizer_params` (`beta1`, `beta2`, `eps`, `weight_decay`, `source`); replaced `best_val_bpb` with `min_observed_val_bpb` |
 | `/7` | inside `platform`: `rustflags_sha256`, `rustflags_source`, `source_digest_scope`, `remap_applied`; dropped `run_id` |
-| `/8` | `git_untracked`; inside `platform`: `features`, `libc_provenance`, `libc_version` |
+| `/8` | `git_untracked`; inside `platform`: `features`, `libc_provenance`, `libc_version` (the last of these is known but not a marker - see above) |
+| `/9` | `format_faithful`; and REDEFINED `path`, which now carries the artifact relative to `platform.source_digest_scope`, or `outside-scope:<file name>`, instead of an absolute location |
 
-The `/6`, `/7` and `/8` rows were derived here by diffing the records on disk,
-since they postdate the addendum's first draft. The `/8` row is additionally
-outside this reader's marker table, so its four fields are reported as "present
-but NOT INTERPRETED" rather than checked - see the note above the table. Two
-things that diff shows and no prose had recorded:
+The `/6` and `/7` rows were derived here by diffing the records on disk, since
+they postdate the addendum's first draft; the `/8` and `/9` rows came from the
+encoder's version notes and were confirmed against the artifacts, with the
+provenance difference stated above the table. Nothing is retired at `/8` or `/9`:
+both are field-for-field supersets of the version below them on every record on
+disk.
+
+`/9` is the first version to change what a key MEANS while keeping its name, and
+that is a third kind of schema change this reader had no category for. An
+addition can be detected by presence and a retirement by lingering presence, but a
+redefinition passes every check: `path` has no counterpart in the container, so it
+is ECHOED at `/8` and ECHOED at `/9`, and a consumer that opened the `/8` value as
+a filesystem path worked for eight versions and stops working at the ninth without
+a single failure anywhere. The reader now carries a `SCHEMA_REDEFINED` table and
+prints, on any record that reaches `/9`:
+
+```
+sidecar  field(s) REDEFINED at schema 9 and present here, same name and a
+         different meaning than in an earlier record: path
+```
+
+Naming it is the entire remedy available; there is nothing here to fail.
+
+Two things the `/6`-`/7` diff showed and no prose had recorded:
 
 - **`/6` and `/7` are not purely additive.** `/6` stops writing `best_val_bpb`
   and `/7` stops writing `run_id`. The spec's own reading rule (SPEC-SNAPSHOT
@@ -495,7 +662,7 @@ those artifacts, that costs, precisely:
   it.
 
 `interop/triosckp_reader.py` therefore dispatches on FIELD PRESENCE rather than
-on matching the `schema` string, accepts `/1` through `/7` alike, and prints for
+on matching the `schema` string, accepts `/1` through `/9` alike, and prints for
 every record which of the post-`/2` fields are absent. On the nine archived
 pairs it prints all of them as absent, which is the correct and unflattering
 answer.
@@ -534,9 +701,10 @@ file contained no occurrence of `eval_chunks`, `eval_tokens`, `eval_seq`,
 about any of them, and reported agreement on the 16 fields it could see. An
 instrument that passes everything it cannot see is not a second opinion.
 
-Two changes close it. The marker table now reaches `/7`, including nested markers
-of the form `platform.<key>` because every `/7` addition lives inside the
-`platform` object and a table of top-level names is blind to them. And an
+Two changes close it. The marker table reached `/7` in that round and `/9` in the
+round of 2026-08-05, including nested markers of the form `platform.<key>`
+because every `/7` and most `/8` additions live inside the `platform` object and a
+table of top-level names is blind to them. And an
 unrecognised key - top level, or inside `platform`, `trainer`, `optimizer_params`
 or `corpus` - is now reported by name as "present but NOT INTERPRETED", never
 passed over. With another agent adding fields to the record in parallel, a NOTE
@@ -637,8 +805,27 @@ Cross-checks against the container grow with the schema, so the compared-field
 count is itself a schema readout: 11 fields for a `/1` or `/2` record, 14 for a
 `/3` record (`lr`, `attn_scale`, `attn_seq` at header offsets 72, 76, 80), 15
 for `/4` (`vocab` at offset 16) and 16 for `/5` and above (`gf16_enabled` at byte
-124). It stops at 16: `/6` added five fields and `/7` four, and not one of the
-nine has a counterpart in the container. The record has grown from 22 keys to 39
-while the checked set has grown from 11 to 16, and the fraction this instrument
-can actually confirm has been falling with every schema bump. That trend, not the
-pass rate, is the honest headline of this directory.
+124). It stops at 16: `/6` added five fields, `/7` four, `/8` four and `/9` one,
+and not one of those fourteen has a counterpart in the container. The record has
+grown from 22 keys to 53 while the checked set has grown from 11 to 16, and the
+fraction this instrument can actually confirm has been falling with every schema
+bump. That trend, not the pass rate, is the honest headline of this directory.
+
+The derived architecture reading of section 2b is the first thing in four rounds
+to move in the other direction. It adds nothing to the 16 - it is not a record key
+and is not counted as one - but it is a statement on the VERIFIED side of the line
+that grew without the schema growing, extracted from bytes that were already in
+every artifact and had simply never been read.
+
+Whenever a sidecar is read the reader also prints, beside the three scope sets,
+the derived line:
+
+```
+scope  VERIFIED, derived from the payload rather than compared to a key:
+       attention layers declared 2 / effective 1, layer-2 zeros 16,384/16,384,
+       212,992 parameters serialized (196,608 outside the layer-2 block)
+```
+
+and the same summary appears on the `RESULT` line and on every `--verify-all`
+row, so a quoted verdict carries the effective layer count with it. `--no-sidecar`
+prints it too: it needs no record, only the container.

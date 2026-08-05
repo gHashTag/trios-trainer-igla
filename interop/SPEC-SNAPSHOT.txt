@@ -229,9 +229,9 @@ list; if the two ever disagree, the binary is right and this file is stale.
   exit 0  VERIFIED. The bytes re-derived from the record's own parameters, and
           the metric was confirmed too when the record states one. Scoped to ONE
           platform triple, which is printed with the verdict.
-  exit 1  MISMATCH, ARTIFACT ALTERED, ARTIFACT MISSING, CORPUS MISMATCH,
-          TRAINER MISMATCH. The evidence and the re-derivation disagree; for the
-          last three, nothing was executed at all.
+  exit 1  MISMATCH, ARTIFACT ALTERED, ARTIFACT MISSING, PUBLISHED ARTIFACT
+          MISSING, CORPUS MISMATCH, TRAINER MISMATCH. The evidence and the
+          re-derivation disagree; for the last four, nothing was executed at all.
   exit 2  INCOMPARABLE. The record cannot state its own recipe, or it
           contradicts the header inside the artifact it describes. This is a
           verdict, not a failure: the run may have been perfectly reproducible
@@ -250,6 +250,48 @@ list; if the two ever disagree, the binary is right and this file is stale.
           second laboratory takes on another platform, and it is deliberately
           NOT exit 1: an instrument whose only outcomes are "bit-identical" and
           "indistinguishable from fraud" has no false-positive control.
+  exit 7  SKIPPED. `--integrity-only` was pointed at a JSON that is not a
+          `trios-checkpoint-record/*` document at all - it states another schema,
+          or none. Such a file publishes no artifact of its own, so there is no
+          digest to re-check. A skip is COUNTED and printed, never silent, and it
+          is deliberately not exit 0: it is not a pass. Reached only under
+          `--integrity-only`; the full replay grades the same file INCOMPARABLE
+          (exit 2), because there it is a record that cannot state its recipe.
+
+--------------------------------------------------------------------------------
+How `--integrity-only` resolves the artifact it hashes
+--------------------------------------------------------------------------------
+
+In integrity mode the ONLY candidates are files beside the record:
+
+  1. `<record stem>.bin`  (`isa-probe-arm64-0.json` -> `isa-probe-arm64-0.bin`)
+  2. `{step}.bin`         (the `step` field of the record)
+
+and nothing else. The `path` the record states is NOT followed, and the verdict
+says so by name when neither candidate exists: `PUBLISHED ARTIFACT MISSING`,
+exit 1. The rule that DID find the file is printed on the passing path too, as
+`resolved: published beside the record (...)`, so the verdict always names both
+the file it hashed and how it chose it.
+
+Two independent reasons, both measured on this repository:
+
+  - A recorded `path` is a path on the TRAINING machine. Absolute ones do not
+    exist for anyone else; relative ones resolve against whatever directory the
+    auditor is standing in. `evidence/xarch-run-30767491098/12000.json` records
+    `path: checkpoints/r4-docs-repro/12000.bin`, and a local checkout has a file
+    there - the aarch64 macOS artifact, while the record is the x86_64 Linux one.
+    Grading through the recorded path reports ARTIFACT ALTERED about a published
+    file nobody touched.
+
+  - A fallback makes the mode blind to the rot it exists to catch. A published
+    `.bin` deleted from the evidence tree, under a record left behind, still
+    names a path where an intact copy sits; hashing that copy reports INTEGRITY
+    OK, exit 0, about a file that is gone. Since audits key on the exit code,
+    the deleted artifact would pass.
+
+The FULL replay resolves differently and on purpose: there the recorded `path`
+is preferred, because there the question is about the file the record is about,
+not about the state of a published tree.
 
 A BPB verdict is scoped to the EVAL GRID the record declares. `final_val_bpb` is
 a reading taken over `eval_chunks` windows of `eval_seq` tokens (schema 6, and

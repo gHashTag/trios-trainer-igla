@@ -25,6 +25,31 @@
 > bar than the pitch quotes; the correction is in
 > [section 3b](#3b-the-budget-proper) and the decision rule that follows from it
 > is in [section 3c](#3c-the-decision-rule-draft-clause).
+>
+> ## TWO BUDGETS, AND WHICH ONE APPLIES `[REVISED 2026-08-06]`
+>
+> `u_c = 0.0657`, `U = 0.13` answers exactly one question: **how far may a
+> second laboratory's reading of the SAME hashed corpus fall from ours before
+> the difference is real?** It does **not** answer *how far is this model's BPB
+> from the number we quote?*, because it excluded corpus choice as "not
+> quantified". **Corpus choice is now quantified, and it is the largest
+> component in the budget by a factor of five.** The same weights -- both
+> `12000.bin` hashing to `902cfb69a84b...` -- read against two 100,000-byte
+> slices of the same book give **2.638520** and **2.919297**
+> ([HELD-OUT-PROTOCOL.md](HELD-OUT-PROTOCOL.md) section (iii), lines 315-321, in
+> this same directory), a difference of **0.280777 bpb**: **4.3x** the `u_c`
+> above and **2.1x** the expanded `U`.
+>
+> | budget | scope | `u_c` (k = 1) | `U` (k = 2) |
+> |---|---|---:|---:|
+> | **I -- declared corpus** | reproducing a stated reading on the SAME corpus hash | **0.0657** | **0.13** |
+> | **II -- corpus choice included** | comparing BPBs measured on DIFFERENT corpora, or reading a BPB as a property of the MODEL | **0.2883** | **0.58** |
+>
+> The conformity clause of [section 3c](#3c-the-decision-rule-draft-clause)
+> keeps `U = 0.13`, and it is entitled to only because clause L2-1 already
+> requires the corpus `sha256`: **when the eval corpus is declared and hashed,
+> corpus choice contributes nothing to reproducing the number.** Quote `0.13`
+> with that condition attached, or quote `0.58`.
 
 **What this document is.** A measured error bar for the number this trainer
 publishes as its result, plus -- in [section 3b](#3b-the-budget-proper) -- the
@@ -61,9 +86,13 @@ sections 2 and 2a is a property of the 1,200-step model as read by this
 estimator, and applies to the headline only by assumption -- an assumption
 section 2b measures and rejects.
 
-* Seed 47, 1,200 steps, `hidden = 384`, 2 attention layers, `lr = 0.003`,
-  `optimizer = adamw`, `gf16_enabled = true`, `gf16_floor_every = 1`,
-  `vocab = 128`, `attn_scale = 0.1`, `attn_seq = 8`. 196,608 parameters.
+* Seed 47, 1,200 steps, `hidden = 384`, two allocated attention blocks, one
+  effective, `lr = 0.003`, `optimizer = adamw`, `gf16_enabled = true`,
+  `gf16_floor_every = 1`, `vocab = 128`, `attn_scale = 0.1`, `attn_seq = 8`.
+  196,608 effective parameters of 212,992 serialized -- the layer-2 block is
+  allocated and provably frozen; see the test
+  `run_single_emits_a_loadable_artifact_and_freezes_layer_two` in
+  `src/train_loop.rs`.
 * Train corpus `data/tiny_shakespeare.txt`, 1,015,394 bytes, sha256
   `1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d`.
 * Val corpus `data/tiny_shakespeare_val.txt`, 100,000 bytes, sha256
@@ -227,13 +256,22 @@ claims survive at ~3.2 sigma, but every fourth-decimal comparison in this crate
 does not.**
 
 **`[SCOPE, ADDED 2026-08-03]` That sigma is the 1,200-step checkpoint's.**
-Against the headline artifact's own combined `u_c = 0.0657` (section 3b) the
-same three "yes" rows fall to **1.77, 1.76 and 1.83 sigma** -- below the
-`2 sigma` bar this section itself sets two paragraphs down. **On the headline
-artifact, NONE of the claimed differences in the table below is resolvable.**
-The table is retained as written because it is the correct arithmetic for the
-checkpoint it was measured on, and because seeing both scalings side by side is
-the point.
+Against the headline artifact's own combined `u_c = 0.0657` (section 3b,
+Budget I) the same three "yes" rows fall to **1.77, 1.76 and 1.83 sigma** --
+below the `2 sigma` bar this section itself sets two paragraphs down. **On the
+headline artifact, NONE of the claimed differences in the table below is
+resolvable.** The table is retained as written because it is the correct
+arithmetic for the checkpoint it was measured on, and because seeing both
+scalings side by side is the point.
+
+**`[REVISED 2026-08-06]` Budget I is the right scale for this table, and saying
+why is the point of publishing two budgets.** Every row below compares two
+readings taken on the **same** hashed eval corpus, so the corpus-choice term of
+`0.2807` (section 3b, row 2) is common-mode and drops out. Applied where it does
+not belong -- against Budget II's `u_c = 0.2883` -- all three "yes" rows would
+fall to about **0.40 sigma**, which would be the wrong arithmetic, not a
+stricter one. The rule is the same one this whole document keeps arriving at:
+name the corpus, then pick the budget.
 
 The arithmetic, so the sentence can be checked:
 
@@ -272,8 +310,12 @@ And the headline itself: `2.6347548961639404` supports, at most,
               assumption runs the WRONG WAY
     a LOWER BOUND: the seven grids are nested prefixes, hence correlated,
       and a correlated sample understates spread (section 4)
-    excludes corpus choice, seed, platform and step count -- none of which
-      is quantified anywhere in this document
+    excludes corpus choice [REVISED 2026-08-06: now QUANTIFIED at 0.2807 --
+      add it and this k = 1 band becomes +/- 0.29, section 3b Budget II],
+      and excludes seed, platform and step count, none of which is
+      quantified anywhere in this document
+    scope: this band applies ONLY on the declared corpus 2088af36...;
+      it is not the uncertainty of the model's BPB
     sampling plan: 40 windows x 129 tokens = 5,160 of 100,000 bytes (5.16%)
 ```
 
@@ -310,20 +352,22 @@ in section 3 cannot be quoted without the scope that section 4 attaches to it.
 **Type A** = evaluated by statistical analysis of repeated observations.
 **Type B** = evaluated by any other means: judgement, a single observation, a
 specification, prior knowledge. The distinction is load-bearing here because
-only two rows are Type A, and the Type B rows are not merely small -- they are
-**not quantified at all**.
+`[REVISED 2026-08-06]` only **three** rows are Type A, and the four remaining
+Type B rows are not merely small -- they are **not quantified at all**.
 
 **The measurand.** `final_val_bpb` of the artifact identified by
 `sha256 = 8a86fe69...`, evaluated on the corpus identified by
 `sha256 = 2088af36...`, under the sampling plan `eval_chunks = 40`,
 `eval_seq = 129`, `eval_tokens = 5160`. Change any of those four hashes or
-numbers and this budget does not apply.
+numbers and this budget does not apply. `[REVISED 2026-08-06]` **Change the
+corpus hash specifically, and the budget that applies is Budget II below**, not
+Budget I: the corpus is part of the measurand, not part of the apparatus.
 
 | # | Component | Type | Quantified? | u_i (bpb) |
 |---|-----------|------|-------------|-----------|
 | 0 | **Window sampling on the headline artifact** -- the record's own `val_bpb_stderr` at `n = 40` | A | **yes** | **0.0551** |
 | 1 | **Corpus truncation + grid**, upper bound -- the seven-prefix study, TRANSFERRED from a 1,200-step checkpoint | A | **yes, but not on this artifact** | **0.0358** |
-| 2 | **Corpus choice** -- which held-out text the metric is computed on | B | **no** | not quantified |
+| 2 | **Corpus choice** -- which held-out text the metric is computed on `[REVISED 2026-08-06]` | A | **yes**, on identical weights | **0.2807** |
 | 3 | **Seed / initialisation** | B | **no** | not quantified |
 | 4 | **Platform** -- `(os, arch, libc, toolchain)` | B | **no** | not quantified |
 | 5 | **Step count** -- where in training the reading is taken | B | **no** | not quantified |
@@ -358,10 +402,47 @@ Row by row, with the reason each lands where it does:
    correlated sample understates spread. Both statements are true at once, which
    is why the row is retained and relabelled rather than deleted -- and why it is
    **kept in the combination**, as the conservative choice.
-2. **Corpus choice.** All seven runs come from one 100,000-byte tinyshakespeare
-   tail. Section 4 states the between-corpus spread is "certainly larger". That
-   is a judgement and it is entered here as a judgement -- **no number**,
-   because none was measured.
+2. **Corpus choice `[REVISED 2026-08-06 -- was Type B, "not quantified"]`.** The
+   sentence that stood here -- that the between-corpus spread "is a judgement
+   and it is entered here as a judgement, no number, because none was measured"
+   -- was **false on the day it was written**. It had been measured, in this
+   same directory:
+   [HELD-OUT-PROTOCOL.md](HELD-OUT-PROTOCOL.md) sections (ii) and (iii), lines
+   315-321. Two runs of the frozen binary `a380ed47...`, same seed, same
+   training bytes, same step count, same sampling plan, differing **only** in
+   `--val-data`, produced **byte-identical weights**: both `12000.bin` hash to
+   `902cfb69a84bdcf4d6ab524576ff375d612fd8f485dcbc7e02f35f6379599146`, 852,272
+   bytes, `cmp` exit 0. Read against the two corpora, those identical weights
+   give
+
+   | corpus | sha256 | BPB | stderr |
+   |---|---|---:|---:|
+   | `data/tiny_shakespeare_test.txt` | `00365e8a...` | 2.638520 | 0.042386 |
+   | `data/tiny_shakespeare_val.txt` | `2088af36...` | 2.919297 | 0.046898 |
+
+   **difference 0.280777 bpb** against a combined stderr of 0.063214 -- a ratio
+   of 4.44, so it is not sampling noise. **The identical `.bin` hash is what
+   makes this a measurement of the corpus and of nothing else:** the model's
+   contribution to the difference is not estimated to be small, it is exactly
+   zero, because it was the same model. The row is **Type A** -- evaluated from
+   observations, not from judgement. Two riders travel with it, and both make it
+   a coarse figure rather than a wrong one:
+   * **One specimen, two corpora.** Those weights were trained on
+     `data/tiny_shakespeare_train_core.txt` (915,394 bytes), not on the
+     headline's `data/tiny_shakespeare.txt`, so `0.2807` is **transferred** onto
+     `8a86fe69...` exactly as row 1 is, and `HELD-OUT-PROTOCOL.md` section 3
+     forbids comparing the two artifacts' BPB values directly. What is
+     transferred is the *sensitivity to corpus*, not either reading.
+   * **`n = 2` corpora, and the full difference is entered, not the two-point
+     standard deviation.** The sample standard deviation of two readings
+     differing by `d` is `d/sqrt(2) = 0.198539`; this budget enters the full
+     `0.280777`. That is a **declared policy choice in the conservative
+     direction**, of the same kind as the quadrature choice below -- not an
+     arithmetic result. With one degree of freedom it is an observed magnitude,
+     not a dispersion over the population of possible eval corpora, which is
+     certainly wider still: these two slices were cut from the same book on the
+     same day, and a genuinely different text would not be expected to sit
+     closer.
 3. **Seed.** One seed (47), one initialisation, no replicate. Seed-to-seed
    spread of the trained model is a separate quantity that this document did not
    measure.
@@ -381,34 +462,80 @@ Row by row, with the reason each lands where it does:
    converted checkpoint **understates**. Still not quantified as a `u_i` -- the
    seven-grid experiment has not been repeated at 12,000 steps -- but it may no
    longer be described as probably negligible.
-6. **Selection / multiplicity `[ADDED 2026-08-03]`.** There is no test split.
-   See section 3d, which states this as a scoping limit and as the second draft
-   clause a conformity scheme needs.
+6. **Selection / multiplicity `[REVISED 2026-08-06]`.** The sentence that stood
+   here flatly denied that a test split existed. **It is withdrawn as false**:
+   `data/tiny_shakespeare_test.txt` exists, is hashed in `data/MANIFEST.sha256`
+   and in `data/README.md` as `00365e8a...`, and has been read once under the
+   pre-registered one-look rule of
+   [HELD-OUT-PROTOCOL.md](HELD-OUT-PROTOCOL.md). What remains true, and is all
+   that may now be claimed, is that **the trainer has no `--test-data` flag**
+   and that **every figure in THIS document, including the headline
+   `8a86fe69...`, is still reported on the corpus it was selected on**. The
+   component stays unquantified for the reason in section 3d: a multiplicity
+   correction needs `N`, the number of runs compared, and `N` is unknown.
 
 One quantity that deliberately does **not** appear as a row:
 * **Full-coverage stderr** (0.009055). With respect to *this* corpus the
   sampling error at full coverage is exactly zero. The 0.009055 is a standard
   error with respect to the wider population the corpus is a sample OF, which is
-  row 2 restated -- and row 2 is not quantified.
+  row 2 restated -- and it restates it **thirty times too small**
+  `[REVISED 2026-08-06]`: row 2 is now measured at `0.2807`, directly, on two
+  real corpora and identical weights. Entering 0.009055 for row 2 would have
+  been the worst available option, which is why the empty cell was preferable to
+  it until a measurement existed.
 
-**Combination `[RECOMPUTED 2026-08-03]`.** Only quantified components may be
-combined. The five Type B rows contribute nothing to the arithmetic and
-everything to the reading of it, so the root-sum-square runs over rows 0 and 1:
+**Combination `[RECOMPUTED 2026-08-06]`.** Only quantified components may be
+combined -- and **which** components are in scope depends on the question being
+asked, so this section now publishes **two** budgets rather than one. The four
+remaining Type B rows (3 to 6) contribute nothing to either arithmetic and
+everything to the reading of both. Publishing two labelled budgets is the honest
+resolution and it is stronger than either alternative: quoting only the small
+one hides the dominant term, and quoting only the large one would inflate the
+uncertainty of the one thing this repository can actually demonstrate.
+
+**Budget I -- DECLARED CORPUS.** Rows 0 and 1. *Scope: reproducing a stated
+reading of a stated artifact on the SAME hashed eval corpus under the SAME
+sampling plan.* Row 2 is **correctly excluded here**, and the reason must be
+written down rather than assumed: **when the eval corpus is declared and hashed,
+corpus choice contributes nothing to reproducing the number**, because the
+reproducer reads the same bytes we did. `0.2807` is a real uncertainty of the
+BPB *as a statement about the model* and exactly zero uncertainty of the BPB *as
+a statement about a named (model, corpus) pair*.
 
 ```
-u_c = sqrt( 0.0551^2 + 0.0358^2 )  =  0.065725 -> 0.066 bpb
-                                      combined standard uncertainty, k = 1
-k                                  =  2        coverage factor
-U   = k * u_c = 0.131450           -> 0.13 bpb expanded uncertainty
+u_c = sqrt( 0.0551^2 + 0.0358^2 )       =  0.065709 -> 0.0657 bpb
+                                           combined standard uncertainty, k = 1
+k                                       =  2        coverage factor
+U   = k * u_c = 0.131418                -> 0.13 bpb expanded uncertainty
 
-    val_bpb = 2.63 +/- 0.13 bpb   (k = 2, quantified components only)
-    val_bpb = 2.63 +/- 0.07 bpb   (k = 1, quantified components only)
+    val_bpb = 2.63 +/- 0.13 bpb   (k = 2, DECLARED CORPUS, quantified only)
+    val_bpb = 2.63 +/- 0.07 bpb   (k = 1, DECLARED CORPUS, quantified only)
 ```
 
-**This is 1.83x the `U = 0.0716` this document previously published, and the
-`k = 1` figure is 1.64x the `+/- 0.04` still quoted elsewhere in this
-repository.** The number moved against us and it moved because the headline
-record was finally read instead of a smaller one being substituted for it.
+**Budget II -- CORPUS CHOICE INCLUDED.** Rows 0, 1 and 2. *Scope: comparing a
+BPB against one measured on a DIFFERENT eval corpus, or reading a BPB as a
+statement about the MODEL rather than about a (model, corpus) pair.*
+
+```
+u_c = sqrt( 0.0551^2 + 0.0358^2 + 0.2807^2 ) =  0.288288 -> 0.2883 bpb
+U   = k * u_c = 0.576577                     -> 0.58 bpb  (k = 2)
+
+    val_bpb = 2.6 +/- 0.58 bpb    (k = 2, CORPUS CHOICE INCLUDED)
+    val_bpb = 2.6 +/- 0.29 bpb    (k = 1, CORPUS CHOICE INCLUDED)
+```
+
+The value is quoted to two significant figures in Budget II deliberately:
+against `U = 0.58` the second decimal of `2.63` is not supported, and writing
+`2.63 +/- 0.58` would be quoting a digit the budget has just withdrawn.
+
+**Budget II is 4.39x Budget I**, and that ratio is the most useful single number
+in this document: **a BPB is a property of a (model, corpus) pair, and stripping
+the corpus off it costs more than four times the entire rest of the budget
+combined.** Budget I is in turn 1.83x the `U = 0.0716` this document published
+before 2026-08-03, and its `k = 1` figure is 1.64x the `+/- 0.04` still quoted
+elsewhere in this repository. Both numbers moved against us, twice, for the same
+reason: a record that was already on disk was finally read instead of a smaller
+figure being substituted for it.
 
 **A rider on the combination itself, because rows 0 and 1 are not independent.**
 Both estimate window-sampling scatter, by different routes: row 0 is the scatter
@@ -418,8 +545,10 @@ the larger **under-counts** whatever of row 1 is genuinely separate. The two
 bracketing treatments are:
 
 ```
-envelope (treat as fully redundant, take the larger) : u_c = 0.0551, U = 0.110
-quadrature (treat as independent)                    : u_c = 0.0657, U = 0.131
+Budget I,  envelope (rows 0,1 fully redundant, take larger) : u_c = 0.0551, U = 0.110
+Budget I,  quadrature (rows 0,1 independent)                : u_c = 0.0657, U = 0.131
+Budget II, envelope base + row 2                            : u_c = 0.2861, U = 0.572
+Budget II, quadrature base + row 2                          : u_c = 0.2883, U = 0.577
 ```
 
 **This document adopts the quadrature figure**, and that is a **declared policy
@@ -429,12 +558,24 @@ guard band of section 3c and silently raises the consumer's risk. The
 correlation coefficient between the two routes has not been measured and would
 be needed to do better than bracket it.
 
+`[ADDED 2026-08-06]` **Row 2 raises no such correlation question and dominates
+either way.** Rows 0 and 1 overlap because both estimate window-sampling
+scatter; row 2 was measured with the sampling plan and the weights both held
+fixed, so it is a different quantity by construction rather than by assumption,
+and combining it in quadrature is uncontroversial. Note also that the whole
+envelope-vs-quadrature debate moves `U` by 0.021 bpb in Budget I and by 0.005 in
+Budget II, while row 2 moves it by 0.445. **The component this document argued
+about hardest for three days is an order of magnitude smaller than the one it
+left in an empty cell.**
+
 Four riders travel with that number and are not optional:
 
-1. **`U` is a lower bound on the expanded uncertainty, twice over.** Row 1 is
-   itself a lower bound with respect to nesting, and rows 2 to 6 are *excluded*,
-   not estimated. `U` is not "the" uncertainty of `val_bpb`; it is the part of it
-   that has been measured.
+1. **Both `U` figures are lower bounds on the expanded uncertainty, twice over
+   `[REVISED 2026-08-06]`.** Row 1 is itself a lower bound with respect to
+   nesting; rows 3 to 6 are *excluded*, not estimated, from both budgets; and
+   row 2, now present in Budget II, rests on two corpora cut from one book. `U`
+   is not "the" uncertainty of `val_bpb`; it is the part of it that has been
+   measured, under the scope its budget declares.
 2. **Row 1 is transferred, not measured on this artifact.** The seven-grid study
    ran on `e55d91d8` at 1,200 steps. Only row 0 was measured on `8a86fe69`. If
    the seven-grid experiment were repeated at 12,000 steps, section 2b's
@@ -450,10 +591,15 @@ Four riders travel with that number and are not optional:
    because the samples are nested and correlated. The effective degrees of
    freedom are **not quantified**: computing them (Welch-Satterthwaite) needs a
    correlation structure this experiment did not measure.
-4. **Several bands are in circulation and they are different quantities.**
-   `+/- 0.13` (k = 2, two components), `+/- 0.07` (k = 1, two components), the
-   superseded `+/- 0.04` (k = 1, one transferred component), and the paired
-   `0.003` of section 4a.
+4. **Several bands are in circulation and they are different quantities
+   `[REVISED 2026-08-06]`.** `+/- 0.58` (k = 2, Budget II, corpus choice
+   included), `+/- 0.29` (k = 1, Budget II), `+/- 0.13` (k = 2, Budget I,
+   declared corpus), `+/- 0.07` (k = 1, Budget I), the superseded `+/- 0.04`
+   (k = 1, one transferred component), and the paired `0.003` of section 4a.
+   **A band without its scope is not a band**, and the two most likely misuses
+   are opposite errors: quoting `0.13` while comparing across corpora
+   understates by 4.4x, and quoting `0.58` for a same-corpus reproduction
+   inflates an uncertainty that is genuinely absent there.
    [REPRODUCIBILITY-GRADING.md](REPRODUCIBILITY-GRADING.md) adopts `+/- 0.04` as
    an unpaired cross-laboratory *acceptance tolerance*. **That adoption now needs
    re-examination and this document does not own that file:** `+/- 0.04` was
@@ -462,25 +608,35 @@ Four riders travel with that number and are not optional:
    `U = 0.13` yields an **empty** guarded acceptance interval -- it is not tight,
    it is undecidable. Whichever band is meant must be named at the point of use.
 
-**What would move a row out of "not quantified".** Nothing in this document.
-Each needs a new experiment, and putting an invented figure in an empty cell
-would be strictly worse than leaving it empty:
+**What would move a row out of "not quantified".** Each needs a new experiment,
+and putting an invented figure in an empty cell would be strictly worse than
+leaving it empty:
 
-* Row 2 -- the same weights evaluated on an independent held-out corpus.
+* Row 2 -- **DONE `[2026-08-06]`.** The prescription written here was "the same
+  weights evaluated on an independent held-out corpus". That experiment had
+  already been run: `docs/HELD-OUT-PROTOCOL.md` sections (ii) and (iii). Row 2
+  is quantified at `0.2807` and Budget II exists because of it. The lesson is
+  recorded rather than tidied away -- **the missing measurement was not missing,
+  it was in the next file in the same directory**, and an empty cell survived
+  three days of revision because nobody re-read the neighbours.
 * Row 3 -- k seeds trained to the same step budget, sigma taken across them.
 * Row 4 -- the *unpaired* cross-platform comparison, each arm free to choose its
   own grid, rather than the paired one already run.
 * Row 5 -- the seven-grid experiment repeated at 12,000 steps rather than 1,200.
   This is now the highest-value one: section 2b makes a falsifiable prediction
   about its outcome.
-* Row 6 -- a split that never entered any selection decision. Section 3d.
+* Row 6 -- `[REVISED 2026-08-06]` a split that never entered any selection
+  decision now **exists** (`data/tiny_shakespeare_test.txt`, `00365e8a...`), but
+  quantifying the row additionally needs `N`, the number of runs compared, and
+  `N` is unknown. Section 3d.
 
 ---
 
 ## 3c. THE DECISION RULE (draft clause)
 
 **Status: DRAFT CLAUSE. Provisional. Not a measurement.** Every figure in this
-section is either arithmetic on the `u_c` of section 3b or a **declared policy
+section is either arithmetic on the `u_c` of section 3b -- **Budget I, the
+declared-corpus budget** `[REVISED 2026-08-06]` -- or a **declared policy
 choice**, and each is labelled. Nothing here was measured; what was measured is
 in sections 1 to 3b.
 
@@ -518,8 +674,24 @@ The role of measurement uncertainty in conformity assessment*.
 > separates a 1,200-step model from a 12,000-step one, so a tolerance of 0.20
 > still refuses an artifact that is a materially different model.
 >
-> **L2-3. Guard band (ARITHMETIC).** `w = U = k * u_c = 2 x 0.0657 = 0.13 bpb`,
-> from section 3b. This follows from the budget; it is not chosen.
+> **L2-3. Guard band (ARITHMETIC), AND THE SCOPE IT DEPENDS ON
+> `[REVISED 2026-08-06]`.** `w = U = k * u_c = 2 x 0.0657 = 0.13 bpb`, from
+> **Budget I** of section 3b. This follows from the budget; it is not chosen.
+> **It holds only because L2-1 requires the eval corpus `sha256`.** Both
+> laboratories therefore read the identical bytes, the corpus-choice component
+> of `0.2807` (row 2) is common-mode, and it cancels exactly -- it is not
+> neglected, it is absent. **Withdraw the corpus hash from L2-1 and this clause
+> collapses**: Budget II applies instead, `w = U = 0.58`, and `A = T - w =
+> 0.20 - 0.58 = -0.38`, an empty acceptance interval under which no artifact
+> whatsoever could be graded. That is the arithmetic reason a submission without
+> a corpus hash is REFUSED rather than graded loosely, and it is a stronger
+> reason than the one L2-1 originally gave.
+>
+> This clause does **not** grade a submission whose eval corpus differs from the
+> declared one. Such a comparison is out of scope of the L2 tier entirely, not
+> merely wider-banded: at `T = 0.20` against `U = 0.58` the scheme has nothing
+> to say, and the honest response is to refuse the comparison rather than widen
+> `T` until it passes.
 >
 > **L2-4. Acceptance interval (ARITHMETIC).** `A = T - w = 0.20 - 0.13 =
 > 0.07 bpb` either side of the declared value. This is **guarded acceptance** in
@@ -586,26 +758,45 @@ Three ways out, in order of honesty:
 
 ---
 
-## 3d. What the budget still does NOT contain: there is no test split
+## 3d. What the budget still does NOT contain: the trainer has no `--test-data` flag
 
-**Scoping limit, and it is the sharpest one remaining.** Every number in this
-document is computed on `data/tiny_shakespeare_val.txt`. Measured 2026-08-03:
+**`[REVISED 2026-08-06 -- this section used to be headed with a flat denial that
+a test split existed, and that denial is withdrawn as false.]`** A third corpus
+now exists and is hashed:
+`data/tiny_shakespeare_test.txt`, 100,000 bytes,
+`00365e8aa883ffe50d954234fe810d9b2413450c944a67f0a621d433464e9603`, listed in
+`data/MANIFEST.sha256` and in `data/README.md`, carved from
+`tiny_shakespeare.txt[915394, 1015394)` and read exactly once under the
+pre-registered one-look rule of
+[HELD-OUT-PROTOCOL.md](HELD-OUT-PROTOCOL.md). Deleting the false half of the old
+sentence leaves the true half, which is still a real scoping limit:
 
-* `data/README.md` marks **exactly one** file `Fit for eval? YES` -- that same
-  `tiny_shakespeare_val.txt`. Of the other five, one is the training corpus, one
-  is a byte-identical duplicate of the training corpus, one is a 160-byte
-  degenerate pangram fixture, and one is the train split.
-* **`--test-data` does not exist.** `grep -n 'test-data\|test_data'
-  src/bin/trios-train.rs src/train_loop.rs` returns nothing. There is a train
-  flag and a val flag and no third one.
+* **`--test-data` does not exist.** Confirmed again 2026-08-06:
+  `grep -n 'test-data\|test_data' src/bin/trios-train.rs src/train_loop.rs`
+  returns nothing. There is a train flag and a val flag and no third one; the
+  held-out run reached the third corpus by passing it to `--val-data`, which
+  works but records nothing that distinguishes a held-out stream from a
+  selection stream. **The corpus is the part that was missing; the flag, and
+  with it the machine-checkable declaration L2-8 demands, still is.**
+* **Every number in THIS document is still computed on
+  `data/tiny_shakespeare_val.txt`,** including the headline `8a86fe69...`. The
+  held-out figure lives in `HELD-OUT-PROTOCOL.md` and belongs to a different
+  specimen, trained on the 915,394-byte `train_core`; that document's section 3
+  forbids comparing the two.
+* `data/README.md` now marks **two** files `Fit for eval? YES` -- `..._val.txt`,
+  and `..._test.txt` with the qualifier "and only once". Of the other five, two
+  are training corpora (`fineweb_train.bin`, `tiny_shakespeare_train_core.txt`),
+  one is `tiny_shakespeare.txt` (the two-way train split), one is a
+  byte-identical duplicate of `fineweb_train.bin`, and one is a 160-byte
+  degenerate pangram fixture.
 
-So the split the metric is **reported** on is the split every design decision
-was **selected** on: architecture, learning rate, `gf16` on or off, the floor
-cadence, and every historical champion figure. A minimum or a best-of taken over
-many runs scored on one split is a **maximum-of-N order statistic**, biased
-optimistic by construction and biased further the more runs were compared. This
-is the same defect that made `best_val_bpb` unfit to quote (section 5), scaled
-from one run to the whole programme.
+So the split every figure in this document is **reported** on is still the split
+every design decision was **selected** on: architecture, learning rate, `gf16`
+on or off, the floor cadence, and every historical champion figure. A minimum or
+a best-of taken over many runs scored on one split is a **maximum-of-N order
+statistic**, biased optimistic by construction and biased further the more runs
+were compared. This is the same defect that made `best_val_bpb` unfit to quote
+(section 5), scaled from one run to the whole programme.
 
 **The multiplicity component cannot be entered as a number, for a reason worth
 recording: N is unknown.** The repository's own
@@ -628,10 +819,16 @@ presented as an unbiased estimate of anything.
 > graded as a **selected** figure and carries no conformity verdict at all --
 > it is a training diagnostic, not a result.
 >
-> **Status: DRAFT, and this repository currently FAILS it.** Stating a clause we
-> do not yet pass is the point: it is a specification, not a certificate. Passing
-> it requires a third corpus and a `--test-data` flag, neither of which exists
-> today.
+> **Status: DRAFT, and this repository currently FAILS it -- but by less than it
+> did `[REVISED 2026-08-06]`.** Stating a clause we do not yet pass is the point:
+> it is a specification, not a certificate. The old status line said passing it
+> "requires a third corpus and a `--test-data` flag, neither of which exists
+> today". **The third corpus now exists and is hashed** (`00365e8a...`), and one
+> run has been graded against it under a pre-registration. What is still missing
+> is the **flag**: without `--test-data` the record cannot declare the selection
+> corpus and the held-out corpus as separate fields, so the separation rests on
+> a prose protocol rather than on a machine-checkable record -- which is exactly
+> the class of claim this document exists to distrust.
 
 ---
 
@@ -644,9 +841,14 @@ Covered:
 
 **Not** covered:
 
-* **Corpus choice.** All seven grids are drawn from one 100,000-byte
-  tinyshakespeare tail. The between-corpus spread is not measured here and is
-  certainly larger.
+* **Corpus choice `[REVISED 2026-08-06]`.** Still not covered *by this sigma*:
+  all seven grids are drawn from one 100,000-byte tinyshakespeare tail. But it
+  is **no longer unmeasured**, and the guess written here -- "certainly larger"
+  -- was right by a factor this document should have known: the same weights
+  (`902cfb69a84b...`) read against two 100,000-byte slices differ by
+  **0.280777 bpb**, `HELD-OUT-PROTOCOL.md` (iii). It enters section 3b as row 2
+  and produces Budget II. Anything below quoting `0.0358` or `0.0657` is
+  therefore a **same-corpus** statement, by construction.
 * **Nesting.** The seven prefixes are nested, so the rows are correlated
   samples, not independent draws. A correlated sample understates spread, so
   0.0358 is a **lower bound** on the true between-grid sigma.
@@ -704,20 +906,25 @@ grid, the sampling term stops cancelling and the applicable band is the
 unpaired one:
 
 ```
-2.63 +/- 0.07 bpb     (k = 1, TWO components, a LOWER BOUND; sampling plan
-                       stated with the number -- see section 3b)
-2.63 +/- 0.13 bpb     (k = 2, the band the decision rule of section 3c uses)
+2.63 +/- 0.07 bpb     (k = 1, Budget I, TWO components, a LOWER BOUND; SAME
+                       hashed corpus, sampling plan stated -- see section 3b)
+2.63 +/- 0.13 bpb     (k = 2, Budget I, the band the decision rule of 3c uses)
+2.6  +/- 0.58 bpb     (k = 2, Budget II, DIFFERENT eval corpora -- section 3b)
 ```
 
 **`[CORRECTED 2026-08-03 -- this block used to read `+/- 0.04`, one component.]`**
 It omitted the headline record's own `val_bpb_stderr = 0.0551`, which is larger
 than the band it quoted.
 
-That covers a second laboratory choosing its own `eval_chunks`, a different
-stride, a different prefix of the corpus, or simply not recording which windows
-it read. It does **not** cover a different corpus, a different seed or a
-different step budget - see section 4 for what this budget leaves out, and
-section 3d for the split that does not exist.
+The first two bands cover a second laboratory choosing its own `eval_chunks`, a
+different stride, a different prefix of the corpus, or simply not recording
+which windows it read -- **all on the corpus whose hash the record declares.**
+`[REVISED 2026-08-06]` They do **not** cover a different eval corpus: that is
+the third band, `+/- 0.58`, and the reason it is four times wider is a
+measurement, not a precaution -- `HELD-OUT-PROTOCOL.md` (iii), 0.280777 bpb
+between two slices of one book at fixed weights. None of the three covers a
+different seed or a different step budget; see section 4 for what the budgets
+leave out, and section 3d for the flag that does not exist.
 
 Two consequences worth stating plainly:
 
@@ -731,14 +938,22 @@ Two consequences worth stating plainly:
   `0.084 sigma` and is therefore **not a difference**: the honest statement is
   that the experiment could not resolve one, not that the platforms agree to
   three decimals. The same run's checkpoints differ in 43.70% of their
-  parameters (`docs/CROSS-ARCH-DIVERGENCE.md`), which is the reminder that
+  parameters (`docs/CROSS-ARCH-DIVERGENCE.md`) -- 93,071 of 212,992 differ in
+  value, and a further 2,073 differ bitwise only in the sign of zero and are
+  numerically equal, so two definitions of "differ" are in circulation and
+  `43.70%` is the conservative one, which is why it is the figure quoted; the
+  reconciliation and the census are in
+  [`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md). That divergence
+  is the reminder that
   agreement in this metric is agreement in this metric and nothing else.
 
-The one-line rule `[REWRITTEN 2026-08-03]`: **quote 0.003 only with the pairing
-condition attached; quote +/- 0.07 (k = 1) whenever the sampling plans are not
-identical -- and quote it as a lower bound on two components, never as the
-uncertainty of `val_bpb`, which is at least +/- 0.13 at `k = 2` and has five
-unquantified components on top of that (section 3b). The superseded `+/- 0.04`
+The one-line rule `[REWRITTEN 2026-08-06]`: **name the corpus first, then pick
+the band. Quote 0.003 only with the pairing condition attached; quote +/- 0.07
+(k = 1) or +/- 0.13 (k = 2) when the eval corpus hash is the same and only the
+sampling plan differs, as a lower bound on two components; quote +/- 0.58
+(k = 2) the moment the corpora differ, or whenever a BPB is being read as a
+property of the MODEL rather than of a (model, corpus) pair. Four unquantified
+components sit on top of all of these (section 3b). The superseded `+/- 0.04`
 must not be quoted at all: it is smaller than the headline record's own
 `val_bpb_stderr`.**
 

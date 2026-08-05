@@ -54,57 +54,32 @@ fn load_data(path: &str) -> Result<Vec<usize>, String> {
 /// Refuse to measure against a val stream that is not held out.
 ///
 /// Returns the reason the eval would be meaningless, or `None` when the split
-/// can carry a measurement. Mirrors `train_loop::assert_train_val_disjoint`,
-/// which is `pub(crate)` and so not reachable from a binary target.
+/// can carry a measurement.
+///
+/// The body used to be a LOCAL COPY of `train_loop::assert_train_val_disjoint`,
+/// written because that function was `pub(crate)` and `src/bin/*.rs` compile as
+/// separate crates. The copy had already drifted: it probed only the first 1024
+/// val tokens, so a leak starting one token later was invisible, and it had no
+/// size precondition at all. The library function is now `pub` and this is a
+/// thin adapter over it.
 fn val_not_held_out(train: &[usize], val: &[usize]) -> Option<String> {
-    if val.is_empty() {
-        return Some("val corpus is empty".to_string());
-    }
-    if train.is_empty() {
-        return Some("train corpus is empty".to_string());
-    }
-    if train.as_ptr() == val.as_ptr() {
-        return Some("train and val are the same allocation".to_string());
-    }
-    if train == val {
-        return Some("train and val are byte-identical".to_string());
-    }
+    trios_trainer::train_loop::check_train_val_disjoint(
+        train,
+        val,
+        eval_chunk_count(val.len(), SEQ),
+    )
+    .err()
+}
 
-    use std::collections::HashSet;
-
-    // Full-coverage overlap probe. Every train window of the probe length is
-    // hashed once and the val probe is looked up in that set; a `step_by`
-    // sampled scan detects a uniformly placed overlap with probability
-    // 1/step, and a guard that is blind most of the time is worse than none
-    // because it gets cited as evidence.
-    let probe_len = 1024.min(val.len()).min(train.len());
-    let val_probe = &val[..probe_len];
-    let train_windows: HashSet<&[usize]> = train.windows(probe_len).collect();
-    if train_windows.contains(val_probe) {
-        return Some(format!(
-            "TRAIN/VAL OVERLAP: first {probe_len} val tokens occur in train \
-             (trios-trainer-igla#60)"
-        ));
-    }
-
-    // A disjoint corpus is not yet an informative one. A periodic or heavily
-    // duplicated eval stream drives BPB toward zero honestly, which is exactly
-    // the signature that got ledger rows misfiled as leaks.
-    if val.len() >= 8 {
-        let distinct: HashSet<&[usize]> = val.windows(8).collect();
-        let total = val.len() - 7;
-        let ratio = distinct.len() as f64 / total as f64;
-        if ratio < 0.05 {
-            return Some(format!(
-                "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
-                 ({} of {})",
-                ratio * 100.0,
-                distinct.len(),
-                total
-            ));
-        }
-    }
-    None
+/// Windows `evaluate` will actually average over, for `len` tokens at
+/// `seq_len`. Must track the loop in `evaluate` exactly: a precondition
+/// computed from a different chunking than the one that runs is not a
+/// precondition.
+fn eval_chunk_count(len: usize, seq_len: usize) -> usize {
+    (0..len)
+        .step_by(seq_len + 1)
+        .filter(|&c| len.min(c + seq_len + 1) - c >= 7)
+        .count()
 }
 
 fn softmax(v: &mut [f32]) {
@@ -400,12 +375,13 @@ impl NgramModelGF16 {
     ///
     /// A short sequence used to return `0.0`, a loss no model achieves, masked
     /// only by `evaluate`'s incidental `loss > 0.0` test. `f32::max` also
-    /// ignores NaN, so clamping `logits[target]` with `.max(1e-10)` turned a
+    /// ignores NaN, so clamping `logits[target]` to a 1e-10 floor turned a
     /// poisoned forward pass into a finite 23.03-nat measurement - which becomes a 33.2 bpb
-    /// reading that passes every downstream guard and reaches the ledger. NaN
-    /// is now an absence. The 1e-10 clamp is kept for a genuinely underflowed
-    /// probability - capping it is a documented floor on surprisal, and
-    /// dropping those chunks instead would bias the reported BPB downward.
+    /// reading that passes every downstream guard and reaches the ledger. The
+    /// same floor did the same to a merely UNDERFLOWED probability: a finite
+    /// `0.0` out of the f32 softmax, which `is_nan` and `is_finite` both
+    /// accept, became the identical 23.02585 nats. A probability that is not
+    /// finite and strictly positive is now an absence.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let start = if self.use_ctx5 {
             5
@@ -450,10 +426,10 @@ impl NgramModelGF16 {
             }
             softmax(&mut logits);
             let p = logits[target];
-            if p.is_nan() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            total -= p.max(1e-10).ln();
+            total -= p.ln();
         }
         Some(total / (tokens.len() - start - 1) as f32)
     }
@@ -795,7 +771,47 @@ fn arg_or_env(flags: &[&str], env_keys: &[&str]) -> Option<String> {
     env_keys.iter().find_map(|k| std::env::var(k).ok())
 }
 
+/// Every argument this binary reads, in the spellings its own parser reads.
+///
+/// Every value flag here is `=`-only: the scalars are matched with
+/// `starts_with("--name=")` and the corpus/optimizer flags go through
+/// `arg_or_env`, which builds the prefix `"{flag}="`. `--ctx3` / `--ctx4` /
+/// `--ctx5` are compared as whole tokens and take no value. `--train` /
+/// `--val` / `--opt` are the aliases `arg_or_env` already declares. See
+/// `trios_trainer::reject_unknown_args`.
+const KNOWN_ARGS: [&str; 20] = [
+    "seed=",
+    "steps=",
+    "lr=",
+    "hidden=",
+    "dim=",
+    "activation=",
+    "wd=",
+    "warmup=",
+    "dropout=",
+    "label-smoothing=",
+    "patience=",
+    "optimizer=",
+    "opt=",
+    "train-data=",
+    "train=",
+    "val-data=",
+    "val=",
+    "ctx3",
+    "ctx4",
+    "ctx5",
+];
+
 fn main() {
+    // Before `run()` opens a corpus: an argument this binary does not read used
+    // to be discarded in silence, and this binary publishes its BPB to the
+    // ledger. See `trios_trainer::reject_unknown_args`.
+    let args: Vec<String> = std::env::args().collect();
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        let _ = std::io::stderr().flush();
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
     let code = match run() {
         Ok(()) => nw::ledger_exit_code(),
         Err(e) => {
@@ -912,15 +928,14 @@ fn run() -> Result<(), String> {
     // after loading that buffer from a path that did not exist.
     // `--train-data` / `--val-data` are the spellings `entrypoint.rs` already
     // passes; `--train` / `--val` are accepted as aliases.
-    let train_path = arg_or_env(&["--train-data", "--train"], &["TRIOS_TRAIN_PATH"]).ok_or_else(
-        || {
+    let train_path =
+        arg_or_env(&["--train-data", "--train"], &["TRIOS_TRAIN_PATH"]).ok_or_else(|| {
             "no training corpus given. Pass --train-data=PATH (or --train=PATH, or set \
              TRIOS_TRAIN_PATH). There is no default: the previous hardcoded default \
              misspelled the corpus in data/, so it never existed and every run silently \
              trained on a 52-byte placeholder."
                 .to_string()
-        },
-    )?;
+        })?;
     let val_path = arg_or_env(&["--val-data", "--val"], &["TRIOS_VAL_PATH"]).ok_or_else(|| {
         "no validation corpus given. Pass --val-data=PATH (or --val=PATH, or set \
          TRIOS_VAL_PATH). There is no default: a val stream sliced out of the train \
@@ -971,8 +986,9 @@ fn run() -> Result<(), String> {
         h: AdamW::new(VOCAB * hidden, wd),
     };
 
-    let init_bpb = evaluate(&model, val, SEQ)
-        .ok_or_else(|| format!("initial evaluation over '{val_path}' produced no measurable chunk"))?;
+    let init_bpb = evaluate(&model, val, SEQ).ok_or_else(|| {
+        format!("initial evaluation over '{val_path}' produced no measurable chunk")
+    })?;
     println!(
         "Initial val: loss={:.4} bpb={:.4}",
         init_bpb * LN_2,
@@ -1133,6 +1149,12 @@ fn run() -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The probability floor that was doing the laundering, named so that a
+    /// search for a clamp in a measurement path finds nothing outside this
+    /// regression test. The value is the point of the test: `-ln(1e-10)` is
+    /// 23.02585 nats and 33.21928 bpb, the crate's fake-measurement signature.
+    const LAUNDER_FLOOR: f32 = 1e-10;
     use super::*;
 
     /// A model whose `lm_head` holds a NaN weight, so every softmax output on
@@ -1155,13 +1177,13 @@ mod tests {
     }
 
     /// The exact laundering this guard removes: `f32::max` returns the
-    /// non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose negative log is
+    /// non-NaN operand, so clamping `NaN` to a 1e-10 floor yields `1e-10`, whose negative log is
     /// 23.026 nats and whose BPB is 33.2 - greater than 0.0, finite, and below
     /// `BPB_SENTINEL_CEILING`, so nothing downstream could reject it.
     #[test]
     fn f32_max_launders_nan_into_a_publishable_bpb() {
-        let laundered = f32::NAN.max(1e-10);
-        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let laundered = f32::NAN.max(LAUNDER_FLOOR);
+        assert_eq!(laundered, LAUNDER_FLOOR, "f32::max ignores NaN");
         let bpb = -laundered.ln() / LN_2;
         assert!(
             (bpb - 33.2).abs() < 0.05,
@@ -1201,7 +1223,7 @@ mod tests {
         );
 
         // Explicitly: the old expression's output must not come back.
-        let laundered_bpb = -f32::NAN.max(1e-10).ln() / LN_2;
+        let laundered_bpb = -f32::NAN.max(LAUNDER_FLOOR).ln() / LN_2;
         assert_ne!(evaluate(&model, &tokens, 8), Some(laundered_bpb));
         if let Some(v) = evaluate(&model, &tokens, 8) {
             assert!(

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use std::io::Read;
+use std::path::Path;
 use std::time::Instant;
 
 use crate::arch_config::{parse_gf16_enabled, parse_hidden_dim, parse_num_attn_layers};
@@ -277,8 +278,7 @@ pub fn resolve_canon_name(seed: u64) -> String {
 /// `checkpoint::run_dir`), while `canon_name` stays the ledger identity it has
 /// always been. The single-seed layout is untouched: it is where the README and
 /// `ckpt_replay` look.
-static SWEEP_SEED_SCOPE: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static SWEEP_SEED_SCOPE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Sets `SWEEP_SEED_SCOPE` for its lifetime, including across the `?` of a
 /// failed seed - a sweep that dies half-way must not leave later single-seed
@@ -317,6 +317,62 @@ pub struct TrainArgs {
     pub eval_every: usize,
     pub train_path: String,
     pub val_path: String,
+}
+
+/// Exit code for a refused `--eval-every`, matching clap's usage-error code.
+///
+/// The refusal belongs on the `--eval-every` argument declaration, next to
+/// `default_value_t = 1000`, as a `value_parser` range. It is here instead
+/// because `src/bin/trios-train.rs` is outside this change's ownership, and a
+/// guard at the library boundary catches every caller rather than one CLI -
+/// `format_champion_sweep`, `tri` and `run_sweep` all build `TrainArgs`
+/// themselves. When the `value_parser` lands, this stays: a library that
+/// panics on a legal-looking argument is a library defect, not a CLI one.
+pub const EVAL_EVERY_USAGE_EXIT: i32 = 2;
+
+/// Refuse `eval_every == 0` with the message clap would have printed.
+///
+/// `0` is a natural operator guess: it means "full coverage" for the
+/// neighbouring `TRIOS_EVAL_CHUNKS` (`eval_chunks_target`) and "final step
+/// only" for `TRIOS_CHECKPOINT_EVERY` (`resolve_checkpoint_every`). On this
+/// knob it meant `step % 0`, which panicked with "attempt to calculate the
+/// remainder with a divisor of zero" at the first step - AFTER the initial
+/// evaluation had run and BEFORE any artifact could be written, so the run cost
+/// its startup, produced nothing, and exited 101 naming an arithmetic operation
+/// instead of an argument.
+///
+/// Pure and `Result`-returning so it is testable without ending the process;
+/// see `refuse_eval_every_or_exit` for the caller-facing side.
+pub fn validate_eval_every(eval_every: usize) -> Result<()> {
+    if eval_every > 0 {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "invalid value '0' for '--eval-every <EVAL_EVERY>': a cadence of 0 is not \
+         \"never\" - it is `step % 0`, which panics at the first training step, \
+         after the initial evaluation and before any artifact is written. To \
+         evaluate only at the end, pass --eval-every equal to --steps: the final \
+         step is always evaluated. (0 does mean full coverage for --eval-chunks \
+         and final-step-only for TRIOS_CHECKPOINT_EVERY; it does not mean either \
+         here.)"
+    )
+}
+
+/// `validate_eval_every`, terminating the process with clap's usage-error code
+/// instead of returning.
+///
+/// `std::process::exit` from a library is deliberate and bounded: it is called
+/// on the first line of the entry points, before any file, model or ledger
+/// handle exists, so there is nothing to unwind and nothing half-written. The
+/// alternative - an `anyhow::Error` - reaches `main` and exits 1, which is the
+/// code this crate uses for "the run failed", not "the invocation was wrong".
+fn refuse_eval_every_or_exit(eval_every: usize) {
+    if let Err(e) = validate_eval_every(eval_every) {
+        eprintln!("error: {e}");
+        eprintln!();
+        eprintln!("For more information, try '--help'.");
+        std::process::exit(EVAL_EVERY_USAGE_EXIT);
+    }
 }
 
 /// What a run actually measured, with each number named for what it is.
@@ -369,10 +425,12 @@ pub struct RunOutcome {
 /// synthetic run is now permanently and cryptographically self-identifying.
 fn load_data(path: &str) -> Result<(Vec<usize>, bool)> {
     if std::path::Path::new(path).exists() {
-        let raw = std::fs::read(path)
-            .with_context(|| format!("failed to read corpus '{path}'"))?;
+        let raw = std::fs::read(path).with_context(|| format!("failed to read corpus '{path}'"))?;
         assert_alphabet_fold_injective(path, &raw)?;
-        return Ok((raw.into_iter().map(|b| (b as usize) % VOCAB).collect(), false));
+        return Ok((
+            raw.into_iter().map(|b| (b as usize) % VOCAB).collect(),
+            false,
+        ));
     }
     if std::env::var("TRIOS_ALLOW_SYNTHETIC_DATA").as_deref() != Ok("1") {
         anyhow::bail!(
@@ -441,7 +499,7 @@ pub(crate) fn assert_alphabet_fold_injective(path: &str, raw: &[u8]) -> Result<(
 /// 256 verbatim bytes of natural text is decisive evidence of a copy, and a
 /// shorter window than the previous 1024 is strictly MORE sensitive: it also
 /// catches partial copies whose shared span is under 1 KB.
-pub(crate) const OVERLAP_WINDOW: usize = 256;
+pub const OVERLAP_WINDOW: usize = 256;
 
 /// Fail the run above this fraction of val windows found verbatim in train.
 ///
@@ -450,16 +508,16 @@ pub(crate) const OVERLAP_WINDOW: usize = 256;
 /// the 2026-04-30 Dockerfile split put 90-100% of val inside train, and the
 /// 99%-copy case this threshold exists for lands two orders of magnitude above
 /// it.
-pub(crate) const MAX_VAL_OVERLAP_FRACTION: f64 = 0.01;
+pub const MAX_VAL_OVERLAP_FRACTION: f64 = 0.01;
 
 /// A val stream shorter than this cannot support a BPB anyone should quote.
 /// `data/pangram_fixture_160b.bin` is 160 bytes and yields exactly ONE 129-token
 /// window, which `evaluate` used to report, unqualified, as `val_bpb`.
-pub(crate) const MIN_VAL_TOKENS: usize = 8192;
+pub const MIN_VAL_TOKENS: usize = 8192;
 
 /// `evaluate` must average over at least this many chunks for the mean to mean
 /// anything.
-pub(crate) const MIN_EVAL_CHUNKS: usize = 8;
+pub const MIN_EVAL_CHUNKS: usize = 8;
 
 /// Assert the val stream is large enough to measure and byte-disjoint from
 /// train. Called by `run_single` and `run_single_muon` right after load, before
@@ -482,32 +540,62 @@ pub(crate) const MIN_EVAL_CHUNKS: usize = 8;
 ///
 /// Tokens are `% VOCAB` (0..=127), so the windows are compared as `u8` slices:
 /// exact, and 8x cheaper to hash than the `usize` windows this replaces.
-pub(crate) fn assert_train_val_disjoint(train: &[usize], val: &[usize]) {
-    use std::collections::HashSet;
-
-    assert!(
-        val.len() >= MIN_VAL_TOKENS,
-        "VAL STREAM TOO SHORT: {} tokens, minimum {}. A BPB averaged over a \
-         handful of windows is not a held-out measurement and must not be \
-         reported as one (data/pangram_fixture_160b.bin is 160 bytes and \
-         yielded exactly one 129-token window).",
-        val.len(),
-        MIN_VAL_TOKENS
-    );
+pub fn assert_train_val_disjoint(train: &[usize], val: &[usize]) {
     // The guard asks the question at the coverage the run will actually use:
     // a stream that yields enough windows at full coverage can still yield too
     // few at `--eval-chunks 4`.
     let chunks = eval_chunk_count(val.len(), eval_chunks_target());
-    assert!(
-        chunks >= MIN_EVAL_CHUNKS,
-        "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S), minimum {}. `evaluate` would \
-         average over too few windows for the mean to be informative.",
-        chunks,
-        MIN_EVAL_CHUNKS
-    );
+    if let Err(reason) = check_train_val_disjoint(train, val, chunks) {
+        panic!("{reason}");
+    }
+}
+
+/// The body of `assert_train_val_disjoint`, as a value instead of a panic.
+///
+/// THE single implementation of this guard. It used to be copied into
+/// `trinity_pr1722`, `ngram_train_gf16`, `igla_trigram` and `cpu_train`,
+/// because it was `pub(crate)` and `src/bin/*.rs` compile as separate crates -
+/// and a guard living in five copies is a guard that will drift. It already
+/// had: the `step_by(256)` sampled scan that detected an overlap with
+/// probability 1/256 lived in exactly such a copy, and `ngram_train_gf16`'s
+/// copy still probed only `val[..1024]`, which cannot see a leak that starts
+/// one token later.
+///
+/// `eval_chunks` is the number of windows the CALLER's own `evaluate` will
+/// average over. It is a parameter rather than a constant because the binaries
+/// chunk differently (`SEQ` is 128 here, 64 in `trinity_pr1722` and
+/// `ngram_train_gf16`), and a precondition computed from a different chunking
+/// than the one that runs is not a precondition.
+///
+/// Returns `Err(reason)` so a caller with results already on disk can exit with
+/// its own code instead of unwinding.
+pub fn check_train_val_disjoint(
+    train: &[usize],
+    val: &[usize],
+    eval_chunks: usize,
+) -> Result<(), String> {
+    use std::collections::HashSet;
+
+    if val.len() < MIN_VAL_TOKENS {
+        return Err(format!(
+            "VAL STREAM TOO SHORT: {} tokens, minimum {}. A BPB averaged over a \
+             handful of windows is not a held-out measurement and must not be \
+             reported as one (data/pangram_fixture_160b.bin is 160 bytes and \
+             yielded exactly one 129-token window).",
+            val.len(),
+            MIN_VAL_TOKENS
+        ));
+    }
+    if eval_chunks < MIN_EVAL_CHUNKS {
+        return Err(format!(
+            "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S), minimum {}. `evaluate` would \
+             average over too few windows for the mean to be informative.",
+            eval_chunks, MIN_EVAL_CHUNKS
+        ));
+    }
 
     if train.len() < OVERLAP_WINDOW {
-        return; // no train window to compare against
+        return Ok(()); // no train window to compare against
     }
 
     // Full coverage on both sides. Every train window is hashed once
@@ -523,30 +611,33 @@ pub(crate) fn assert_train_val_disjoint(train: &[usize], val: &[usize]) {
         .filter(|w| train_windows.contains(*w))
         .count();
     let fraction = hits as f64 / val_total as f64;
-    assert!(
-        fraction <= MAX_VAL_OVERLAP_FRACTION,
-        "TRAIN/VAL OVERLAP DETECTED: {:.2}% of val windows ({} of {}, window \
-         {} tokens) appear verbatim in train; threshold is {:.2}%. This is the \
-         2026-04-30 ledger leak bug (trios-trainer-igla#60). Rebuild the split \
-         byte-disjoint: head -c $((SIZE-100000)) for train, tail -c 100000 for val.",
-        fraction * 100.0,
-        hits,
-        val_total,
-        OVERLAP_WINDOW,
-        MAX_VAL_OVERLAP_FRACTION * 100.0
-    );
+    if fraction > MAX_VAL_OVERLAP_FRACTION {
+        return Err(format!(
+            "TRAIN/VAL OVERLAP DETECTED: {:.2}% of val windows ({} of {}, window \
+             {} tokens) appear verbatim in train; threshold is {:.2}%. This is the \
+             2026-04-30 ledger leak bug (trios-trainer-igla#60). Rebuild the split \
+             byte-disjoint: head -c $((SIZE-100000)) for train, tail -c 100000 for val.",
+            fraction * 100.0,
+            hits,
+            val_total,
+            OVERLAP_WINDOW,
+            MAX_VAL_OVERLAP_FRACTION * 100.0
+        ));
+    }
 
     let distinct: HashSet<&[usize]> = val.windows(8).collect();
     let total = val.len().saturating_sub(7).max(1);
     let ratio = distinct.len() as f64 / total as f64;
-    assert!(
-        ratio >= 0.05,
-        "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
-         ({} of {}). BPB measured against this is not a model result.",
-        ratio * 100.0,
-        distinct.len(),
-        total
-    );
+    if ratio < 0.05 {
+        return Err(format!(
+            "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
+             ({} of {}). BPB measured against this is not a model result.",
+            ratio * 100.0,
+            distinct.len(),
+            total
+        ));
+    }
+    Ok(())
 }
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -653,6 +744,126 @@ fn adamw_record_params(wd: f32, source: &str) -> crate::checkpoint::OptimizerPar
     }
 }
 
+/// The AdamW instances `run_single` steps, in the order it steps them.
+///
+/// The order is the format's canonical order (see `crate::checkpoint`'s
+/// resume-record section) and the names are the instance names, not tensor
+/// names: they exist so that a record restored into a differently built loop
+/// fails on the name rather than silently pouring `attn_up`'s moments into
+/// `attn_down`, which has the identical element count.
+fn adamw_instance_names(num_ctx: usize) -> Vec<String> {
+    let mut names = Vec::with_capacity(7 + num_ctx);
+    names.push("embed".to_string());
+    for i in 0..num_ctx {
+        names.push(format!("ctx{i}"));
+    }
+    for n in ["proj", "attn_down", "attn_up", "head", "attn_w"] {
+        names.push(n.to_string());
+    }
+    names
+}
+
+/// Snapshot every AdamW instance's whole mutable state.
+///
+/// `m`, `v` and `step` are the entirety of it: `beta1`, `beta2` and `wd` are
+/// constants of the recipe and are checked, not restored (see
+/// `checkpoint::verify_resume`).
+#[allow(clippy::too_many_arguments)]
+fn capture_adamw_state(
+    opt_embed: &AdamW,
+    opt_ctx: &[AdamW],
+    opt_proj: &AdamW,
+    opt_attn_down: &AdamW,
+    opt_attn_up: &AdamW,
+    opt_head: &AdamW,
+    opt_attn_w: &AdamW,
+) -> Vec<crate::checkpoint::ResumeOptimizerState> {
+    let names = adamw_instance_names(opt_ctx.len());
+    let mut refs: Vec<&AdamW> = Vec::with_capacity(names.len());
+    refs.push(opt_embed);
+    refs.extend(opt_ctx.iter());
+    refs.push(opt_proj);
+    refs.push(opt_attn_down);
+    refs.push(opt_attn_up);
+    refs.push(opt_head);
+    refs.push(opt_attn_w);
+    names
+        .into_iter()
+        .zip(refs)
+        .map(|(name, o)| crate::checkpoint::ResumeOptimizerState {
+            name,
+            step: o.step as u64,
+            m: o.m.clone(),
+            v: o.v.clone(),
+        })
+        .collect()
+}
+
+/// Pour a validated record back into freshly constructed optimizers.
+///
+/// Refuses on instance count, instance name or element count. There is no
+/// partial restore: a loop that got some moments and zeroed the rest would
+/// run to completion and produce weights that are a segment of nothing.
+#[allow(clippy::too_many_arguments)]
+fn restore_adamw_state(
+    rec: &crate::checkpoint::ResumeRecord,
+    opt_embed: &mut AdamW,
+    opt_ctx: &mut [AdamW],
+    opt_proj: &mut AdamW,
+    opt_attn_down: &mut AdamW,
+    opt_attn_up: &mut AdamW,
+    opt_head: &mut AdamW,
+    opt_attn_w: &mut AdamW,
+) -> Result<()> {
+    use crate::checkpoint::{resume_refusal, RESUME_REASON_SHAPE};
+    let names = adamw_instance_names(opt_ctx.len());
+    let mut slots: Vec<&mut AdamW> = Vec::with_capacity(names.len());
+    slots.push(opt_embed);
+    slots.extend(opt_ctx.iter_mut());
+    slots.push(opt_proj);
+    slots.push(opt_attn_down);
+    slots.push(opt_attn_up);
+    slots.push(opt_head);
+    slots.push(opt_attn_w);
+
+    if rec.optimizers.len() != slots.len() {
+        return Err(resume_refusal(
+            RESUME_REASON_SHAPE,
+            format!(
+                "the record carries {} optimizer instances, this loop runs {}",
+                rec.optimizers.len(),
+                slots.len()
+            ),
+        ));
+    }
+    for (i, (slot, name)) in slots.iter_mut().zip(names.iter()).enumerate() {
+        let src = &rec.optimizers[i];
+        if &src.name != name {
+            return Err(resume_refusal(
+                RESUME_REASON_SHAPE,
+                format!(
+                    "optimizer instance {i} is {:?}, this loop runs {name:?}",
+                    src.name
+                ),
+            ));
+        }
+        if src.m.len() != slot.m.len() {
+            return Err(resume_refusal(
+                RESUME_REASON_SHAPE,
+                format!(
+                    "optimizer instance {name:?} carries {} elements, this loop allocated {}",
+                    src.m.len(),
+                    slot.m.len()
+                ),
+            ));
+        }
+        slot.m.copy_from_slice(&src.m);
+        slot.v.copy_from_slice(&src.v);
+        slot.step = src.step as usize;
+    }
+    Ok(())
+}
+
 fn gf16_floor(weights: &mut [f32]) {
     let scale = 16.0_f32;
     for w in weights.iter_mut() {
@@ -660,19 +871,113 @@ fn gf16_floor(weights: &mut [f32]) {
     }
 }
 
+/// The override that lets an operator run a format the crate declares it
+/// cannot faithfully simulate. Same variable `matrix_runner` reads, so one
+/// export covers both paths and neither can be relaxed without the other.
+pub const UNFAITHFUL_FORMAT_OVERRIDE_ENV: &str = "TRIOS_ALLOW_UNFAITHFUL_FORMAT";
+
+/// Every spelling `FormatKind::from_env` accepts, for the refusal message.
+///
+/// Built from `FormatKind::all()` rather than typed out, so a format added to
+/// the enum cannot go missing from the list of things the operator is told to
+/// choose between. These are the CANONICAL names; `from_env` also accepts the
+/// aliases documented on it (`fp32`/`binary32`/`float32` for `f32`, and so on).
+fn accepted_format_spellings() -> String {
+    let mut names: Vec<&'static str> = FormatKind::all().iter().map(|f| f.name()).collect();
+    names.sort_unstable();
+    names.dedup();
+    names.join(", ")
+}
+
+/// The refusal `matrix_runner::resolve_format_faithful` raises, word for word.
+///
+/// DUPLICATED ON PURPOSE, and the duplication is the point of this comment:
+/// `resolve_format_faithful` lives in a binary and cannot be imported, so the
+/// two refusals are kept textually identical rather than paraphrased. This one
+/// is `pub` so that the binary can adopt it and the copy can be deleted; until
+/// then, an edit to either must be made to both.
+pub fn unfaithful_format_refusal(format: &str, kind: FormatKind) -> String {
+    format!(
+        "NON-FAITHFUL FORMAT {format:?} ({kind:?}): FormatKind::is_faithful() is \
+         false, i.e. the crate itself declares the f32 round trip through this \
+         format is not really this format (identity passthrough, mantissa-mask \
+         stand-in, or a deferred encoder). Publishing it alongside real kernels \
+         makes an identity look like a result. Set \
+         TRIOS_ALLOW_UNFAITHFUL_FORMAT=1 to run it anyway; the row is then \
+         stamped format_faithful=false."
+    )
+}
+
 /// Resolve the QAT format from `TRIOS_FORMAT_TYPE` (or alias `TRIOS_FAKE_QUANT_FORMAT`).
-/// Returns `None` if the env var is unset or maps to F32 (no quantization).
+/// `Ok(None)` means no quantization: the variable is unset, or it names F32.
 /// Closes scarab->trios-train gap from #509: previously only `cpu_train` honoured the
 /// env var, so `TRIOS_FORMAT_TYPE=fp16` produced identical BPB to F32 in production.
-fn resolve_fake_quant_format() -> Option<FormatKind> {
-    let raw = std::env::var("TRIOS_FORMAT_TYPE")
+///
+/// Two things that used to be silent are now refusals.
+///
+/// AN UNRECOGNISED SPELLING. `FormatKind::from_env` answers `None` for anything
+/// it does not know, and this function propagated that `None` as "QAT off":
+/// `TRIOS_FORMAT_TYPE=int_8` printed nothing mentioning a format, trained f32,
+/// and recorded `fake_quant_format: "f32"`. That is the same silent
+/// substitution as "1,851 experiments, zero artifacts", one knob over from
+/// `resolve_checkpoint_every` - which was hardened against exactly it - and it
+/// is worse here, because the operator asked for a MEASUREMENT of int8 and got
+/// a measurement of f32 wearing no label at all.
+///
+/// A FORMAT THE CRATE CANNOT SIMULATE. `fake_quantize_model` returns
+/// immediately for a format in `is_unsupported_in_f32()`, so the weights are
+/// untouched - measured: an `fp80` payload bit-identical to the `f32` control
+/// after the 256-byte header, same `final_val_bpb` to all 16 digits - while the
+/// label `fp80` went into the sidecar AND into the hashed header, which is what
+/// made an identity run mint a distinct-looking artifact. `matrix_runner` has
+/// refused this since 2026-08-03; the binary that mints checkpoints did not.
+/// The predicate is `FormatKind::is_faithful()`, which is strictly wider than
+/// `is_unsupported_in_f32()` (the latter implies the former is false - see
+/// `fake_quant::unsupported_in_f32_implies_not_faithful`) and therefore also
+/// catches `int32` and the `mxfp*` element-only stand-ins.
+///
+/// `TRIOS_ALLOW_UNFAITHFUL_FORMAT=1` lets the second refusal through, and the
+/// artifact then carries its own retraction: `format_faithful: false` in the
+/// sidecar, derived from the same label by `checkpoint::format_label_faithful`.
+/// There is no override for the first: an unrecognised spelling names no
+/// format, so there is nothing to stamp and nothing to retract.
+pub fn resolve_fake_quant_format() -> Result<Option<FormatKind>> {
+    let raw = match std::env::var("TRIOS_FORMAT_TYPE")
         .ok()
-        .or_else(|| std::env::var("TRIOS_FAKE_QUANT_FORMAT").ok())?;
-    let fmt = FormatKind::from_env(&raw)?;
+        .or_else(|| std::env::var("TRIOS_FAKE_QUANT_FORMAT").ok())
+    {
+        Some(raw) => raw,
+        None => return Ok(None),
+    };
+    let fmt = match FormatKind::from_env(&raw) {
+        Some(fmt) => fmt,
+        None => anyhow::bail!(
+            "TRIOS_FORMAT_TYPE={raw:?} is not a format this build knows. Resolving \
+             it to \"no quantization\" is what used to happen: the run trained f32, \
+             recorded fake_quant_format=\"f32\", and said nothing about the format \
+             that was asked for. Accepted spellings (aliases also accepted, see \
+             FormatKind::from_env): {}",
+            accepted_format_spellings()
+        ),
+    };
     if fmt == FormatKind::F32 {
-        return None;
+        return Ok(None);
     }
-    Some(fmt)
+    if !fmt.is_faithful() {
+        let allowed = std::env::var(UNFAITHFUL_FORMAT_OVERRIDE_ENV)
+            .map(|v| v == "1")
+            .unwrap_or(false);
+        if !allowed {
+            anyhow::bail!("[R5-honesty] {}", unfaithful_format_refusal(&raw, fmt));
+        }
+        eprintln!(
+            "[trios-train] WARNING: format={raw} is NOT faithful and is running \
+             only because TRIOS_ALLOW_UNFAITHFUL_FORMAT=1. The checkpoint sidecar \
+             will carry format_faithful=false. Do not read it as a measurement of \
+             {raw}."
+        );
+    }
+    Ok(Some(fmt))
 }
 
 /// Apply Phase-1 fake-quantization to every weight tensor in the hybrid model.
@@ -909,14 +1214,17 @@ impl HybridModel {
             let fc = self.forward_cached(tokens, i);
             let mut logits = fc.logits;
             softmax(&mut logits);
-            // `f32::max` IGNORES NaN, so `NaN.max(1e-10)` is 1e-10: a poisoned
-            // forward pass would be laundered into a finite 23.03-nat reading
-            // that sails through every `is_finite` check downstream.
+            // A clamp here is a fabricated measurement. `f32::max` IGNORES
+            // NaN, so clamping to a 1e-10 floor turned a poisoned forward pass
+            // into a finite 23.03-nat reading; the same floor also turned a
+            // merely UNDERFLOWED probability - a finite 0.0 out of the f32
+            // softmax, which every `is_nan`/`is_finite` guard accepts - into
+            // that same 23.02585 nats / 33.21928 bpb. Both are absences.
             let p = logits[target];
-            if !p.is_finite() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            total -= p.max(1e-10).ln();
+            total -= p.ln();
         }
         Some(total / count as f32)
     }
@@ -1130,7 +1438,16 @@ impl HybridModel {
                 off += 4;
             }
         }
-        debug_assert_eq!(off, out.len());
+        // Once per checkpoint, so the cost is unmeasurable - and as a
+        // `debug_assert_eq!` it never executed in ANY run that produced
+        // evidence, because every artifact this repository has ever minted came
+        // out of a `--release` build. A serialiser that wrote fewer bytes than
+        // it allocated ships the tail of the buffer as weights.
+        anyhow::ensure!(
+            off == out.len(),
+            "checkpoint serialiser wrote {off} bytes into a {} byte buffer",
+            out.len()
+        );
         Ok(out)
     }
 
@@ -1242,8 +1559,9 @@ impl HybridModel {
             num_attn_layers: num_attn_layers as u8,
         };
         // Re-checks qk_gain in {phi^2, phi^3} and lr in [0.002, 0.007].
-        let mut attn = HybridAttn::with_config(cfg)
-            .map_err(|e| anyhow::anyhow!("checkpoint header failed HybridAttnConfig::validate: {e:?}"))?;
+        let mut attn = HybridAttn::with_config(cfg).map_err(|e| {
+            anyhow::anyhow!("checkpoint header failed HybridAttnConfig::validate: {e:?}")
+        })?;
 
         let mut off = CHECKPOINT_PAYLOAD_OFFSET;
         let mut take = |n: u64, off: &mut usize| -> Vec<f32> {
@@ -1269,7 +1587,16 @@ impl HybridModel {
         attn.wk2 = take(counts[16], &mut off);
         attn.wv2 = take(counts[17], &mut off);
         attn.wo2 = take(counts[18], &mut off);
-        debug_assert_eq!(off, bytes.len());
+        // Same promotion, same reason as in `to_checkpoint_bytes`: once per
+        // load, and a `debug_assert_eq!` here has never run in release. The
+        // total length is already checked against the tensor directory above,
+        // so this is the reader's own post-condition - that it consumed exactly
+        // what it validated - and a failure means the two disagree.
+        anyhow::ensure!(
+            off == bytes.len(),
+            "checkpoint reader consumed {off} of {} bytes",
+            bytes.len()
+        );
 
         let meta = CheckpointMeta {
             seed: rd_u64(bytes, 108),
@@ -1342,13 +1669,23 @@ fn emit_checkpoint(
     bpb: Option<f64>,
     min_observed_val_bpb: Option<f64>,
     ema_bpb: Option<f64>,
-) -> Result<()> {
-    use crate::checkpoint::{CheckpointRecord, CHECKPOINT_FORMAT_VERSION, CHECKPOINT_RECORD_SCHEMA};
+) -> Result<crate::checkpoint::SavedCheckpoint> {
+    use crate::checkpoint::{
+        CheckpointRecord, CHECKPOINT_FORMAT_VERSION, CHECKPOINT_RECORD_SCHEMA,
+    };
 
     let bytes = model.to_checkpoint_bytes(meta)?;
     let saved = crate::checkpoint::save_scoped(canon, seed_scope, meta.step as usize, &bytes)?;
     let cfg = *model.attn.config();
     let path_str = saved.path.to_string_lossy().into_owned();
+    // Schema 9. What the RECORD carries - the sidecar and the ledger row alike -
+    // is the artifact relative to the digest scope, never an absolute path: an
+    // absolute one published the builder's home directory in every locally
+    // produced sidecar, and those sidecars are committed as evidence. The
+    // ABSOLUTE `path_str` survives for exactly one purpose below, the `[ckpt]`
+    // line on this operator's own stderr, which is a console message and not an
+    // artifact anybody else reads.
+    let record_path = crate::checkpoint::scope_relative_artifact_path(&saved.path);
     let (git_sha, git_dirty, git_provenance) = crate::checkpoint::resolve_git_provenance();
     // Schema 3. `lr`, `attn_scale` and `attn_seq` come from `meta` - the same
     // struct that was just hashed into the header - and NOT from re-reading
@@ -1363,7 +1700,7 @@ fn emit_checkpoint(
         canon_name: canon.to_string(),
         seed: meta.seed as i64,
         step: meta.step as i64,
-        path: path_str.clone(),
+        path: record_path.clone(),
         sha256: saved.sha256.clone(),
         bytes: saved.bytes,
         format_version: CHECKPOINT_FORMAT_VERSION,
@@ -1413,6 +1750,16 @@ fn emit_checkpoint(
         eval_seq: Some(eval.plan.seq as u32),
         val_bpb_stderr: eval.stderr.map(|s| s as f64),
         optimizer_params: Some(opt_params.clone()),
+        // Schema 9. Derived from the SAME string that was just hashed into
+        // bytes 136..152 of the header, not from a second read of
+        // `TRIOS_FORMAT_TYPE`: the sidecar has to qualify the label the
+        // artifact actually carries, and an env change mid-run would otherwise
+        // let the two disagree. `resolve_fake_quant_format` refuses an
+        // unfaithful format outright, so this is `false` only when the operator
+        // set `TRIOS_ALLOW_UNFAITHFUL_FORMAT=1` - in which case the artifact
+        // states its own retraction instead of leaving the reader to notice
+        // that an `fp80` payload is bit-identical to the `f32` control.
+        format_faithful: crate::checkpoint::format_label_faithful(&meta.fake_quant_format),
     };
 
     crate::checkpoint::write_sidecar_scoped(&record("pending"), seed_scope)?;
@@ -1420,7 +1767,9 @@ fn emit_checkpoint(
         canon,
         meta.seed as i32,
         meta.step as i64,
-        &path_str,
+        // The SAME string the sidecar carries. A ledger row and the sidecar
+        // beside the file must not spell one artifact two ways.
+        &record_path,
         &saved.sha256,
         saved.bytes as i64,
         &meta.optimizer,
@@ -1440,6 +1789,85 @@ fn emit_checkpoint(
         eval.plan.chunks,
         eval.tokens(),
         eval.coverage(val_len)
+    );
+    // Returned, not dropped: the resume record beside this file has to carry
+    // the digest of THESE bytes, and re-hashing the path afterwards would
+    // reopen the gap this function exists to close.
+    Ok(saved)
+}
+
+/// Assemble the resume record for the artifact just written.
+///
+/// Every field comes from the values this run is EXECUTING with - `args`, the
+/// resolved knobs, the corpus hashes taken at startup, the digest
+/// `emit_checkpoint` computed by re-reading the file - and none of it is
+/// re-read from the environment here, where an export mid-run would let the
+/// record describe a recipe the moments were never produced under.
+#[allow(clippy::too_many_arguments)]
+fn build_resume_record(
+    args: &TrainArgs,
+    step: u64,
+    rng_s: u64,
+    hidden: usize,
+    d_model: usize,
+    attn_layers: u8,
+    gf16_enabled: bool,
+    gf16_floor_every: usize,
+    data_synthetic: bool,
+    fake_quant_format: &str,
+    corpus: &crate::checkpoint::CorpusProvenance,
+    weight_sha256: &str,
+    ema_bpb: Option<f64>,
+    min_observed_val_bpb: Option<f64>,
+    optimizers: Vec<crate::checkpoint::ResumeOptimizerState>,
+) -> crate::checkpoint::ResumeRecord {
+    crate::checkpoint::ResumeRecord {
+        seed: args.seed,
+        step,
+        rng_s,
+        steps_total: args.steps as u64,
+        eval_every: args.eval_every as u64,
+        gf16_floor_every: gf16_floor_every as u64,
+        hidden: hidden as u32,
+        d_model: d_model as u32,
+        num_attn_layers: attn_layers as u32,
+        vocab: VOCAB as u32,
+        dim: DIM as u32,
+        num_ctx: NUM_CTX as u32,
+        base_lr: args.lr,
+        weight_decay: TRAIN_LOOP_WEIGHT_DECAY as f32,
+        gf16_enabled,
+        data_synthetic,
+        ema_bpb,
+        min_observed_val_bpb,
+        weight_sha256: weight_sha256.to_string(),
+        train_sha256: corpus.train.sha256.clone(),
+        val_sha256: corpus.val.sha256.clone(),
+        fake_quant_format: fake_quant_format.to_string(),
+        optimizer: "adamw".to_string(),
+        optimizers,
+    }
+}
+
+/// Write the resume record beside the artifact and say so on stderr.
+///
+/// The `[resume]` line mirrors the `[ckpt]` line above it, digest included, so
+/// an operator watching a run can see that the audit surface exists rather
+/// than discovering at audit time that it does not.
+fn emit_resume_record(
+    saved: &crate::checkpoint::SavedCheckpoint,
+    rec: &crate::checkpoint::ResumeRecord,
+) -> Result<()> {
+    let out = crate::checkpoint::save_resume(&saved.path, rec)?;
+    eprintln!(
+        "[resume] {} sha256={} bytes={} step={} of {} instances={} pairs_with={}",
+        out.path.to_string_lossy(),
+        out.sha256,
+        out.bytes,
+        rec.step,
+        rec.steps_total,
+        rec.optimizers.len(),
+        rec.weight_sha256
     );
     Ok(())
 }
@@ -1471,7 +1899,7 @@ fn emit_init_checkpoint(
     val_len: usize,
     opt_params: &crate::checkpoint::OptimizerParams,
     init_bpb: f32,
-) -> Result<()> {
+) -> Result<crate::checkpoint::SavedCheckpoint> {
     anyhow::ensure!(
         meta.step == 0,
         "emit_init_checkpoint called with step={}; the initial-weights artifact \
@@ -1692,7 +2120,7 @@ pub(crate) fn eval_plan(len: usize, target: usize) -> Option<EvalPlan> {
 ///
 /// Mirrors `eval_plan` because it IS `eval_plan`; kept as a name because the
 /// size guard in `assert_train_val_disjoint` asks exactly this question.
-pub(crate) fn eval_chunk_count(len: usize, target: usize) -> usize {
+pub fn eval_chunk_count(len: usize, target: usize) -> usize {
     eval_plan(len, target).map(|p| p.chunks).unwrap_or(0)
 }
 
@@ -1792,7 +2220,9 @@ fn evaluate(model: &HybridModel, tokens: &[usize], target: usize) -> Option<Eval
         // it is clamped anyway rather than trusting that argument to survive a
         // future change to the plan.
         let population = eval_chunk_count(tokens.len(), 0).max(n);
-        let fpc = (1.0 - (n as f64) / (population as f64)).clamp(0.0, 1.0).sqrt();
+        let fpc = (1.0 - (n as f64) / (population as f64))
+            .clamp(0.0, 1.0)
+            .sqrt();
         (Some(s as f32), Some((s / (n as f64).sqrt() * fpc) as f32))
     } else {
         (None, None)
@@ -1870,6 +2300,29 @@ fn guard_bpb(vbpb: f32, step: usize) -> Result<f32> {
 }
 
 pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
+    run_single_resumed(args, None)
+}
+
+/// `run_single`, optionally warm-started from a `{step}.bin` + `{step}.resume`
+/// pair written by an earlier run of the SAME recipe.
+///
+/// This is the window-audit entry point. `ckpt_replay` re-executes from step 0
+/// because the `TRIOSCKP` container carries weights only, so verifying one
+/// claim cost an auditor the vendor's entire training budget; with a resume
+/// record an auditor re-executes one challenged window of N steps out of T.
+/// See `docs/WINDOW-AUDIT.md` for what that does and does not establish - in
+/// particular it is a SAME-MACHINE claim, and the cross-architecture boundary
+/// documented in `docs/CROSS-ARCH-DIVERGENCE.md` is unchanged by it.
+///
+/// `resume_from` may name either half of the pair. Everything that decides the
+/// weights is checked before the first gradient - weight digest, corpus
+/// digests, shape, both cadences, seed, total steps, lr, weight decay, GF16
+/// and the QAT format - and a mismatch is an `Err`, never a fresh optimizer.
+pub fn run_single_resumed(args: &TrainArgs, resume_from: Option<&Path>) -> Result<RunOutcome> {
+    // Before anything is opened, allocated or measured: `--eval-every 0` used
+    // to reach `step % 0` and abort with exit 101 naming an arithmetic
+    // operation. See `refuse_eval_every_or_exit`.
+    refuse_eval_every_or_exit(args.eval_every);
     // Wave 31 PR-B: apply env-gated arch knobs (HIDDEN_DIM, NUM_ATTN_LAYERS).
     // Defaults preserve Wave-30 baseline (h=384, 1L).
     // Anchor: phi^2+phi^-2=3 - DOI 10.5281/zenodo.19227877
@@ -1917,6 +2370,27 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         ckpt_every,
         ckpt_init
     );
+    // #509 Phase-1b: wire QAT into the production `trios-train` path.
+    // `scarab` spawns this binary and sets `TRIOS_FORMAT_TYPE`; previously
+    // only `cpu_train` honoured it, so production traffic was F32 regardless.
+    //
+    // Resolved HERE, before the corpus is read and before the optimizer is
+    // bound, for the reason `matrix_runner` states at its own guard: a run that
+    // is going to be refused for its label should cost no compute at all. The
+    // refusals it can raise are an unrecognised spelling and an unfaithful
+    // format; see `resolve_fake_quant_format`.
+    let fq_fmt = resolve_fake_quant_format()?;
+    if let Some(fmt) = fq_fmt {
+        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
+    }
+    // The label the header, the sidecar and the resume record all carry,
+    // resolved once from `fq_fmt` rather than spelled out at each of the three
+    // sites: a resume record whose format string disagreed with the artifact
+    // beside it would be refused for a mismatch that never happened.
+    let fq_label = fq_fmt
+        .map(|f| f.name().to_string())
+        .unwrap_or_else(|| "f32".to_string());
+
     // EPIC-446: resolve run identity ONCE. The same string names the checkpoint
     // directory and the ledger row, so the artifact and the BPB cannot drift apart.
     let canon = resolve_canon_name(args.seed);
@@ -1945,18 +2419,91 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         val: crate::checkpoint::CorpusStream::describe(&args.val_path),
     };
 
-    // #509 Phase-1b: wire QAT into the production `trios-train` path.
-    // `scarab` spawns this binary and sets `TRIOS_FORMAT_TYPE`; previously
-    // only `cpu_train` honoured it, so production traffic was F32 regardless.
-    let fq_fmt = resolve_fake_quant_format();
-    if let Some(fmt) = fq_fmt {
-        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
-    }
-
-    let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
-    if let Some(fmt) = fq_fmt {
-        fake_quantize_model(&mut model, fmt);
-    }
+    // Either a cold start from the seed, or a warm start from a validated
+    // pair. The two are kept in one expression so no later code has to ask
+    // which happened: after this, `model` holds the weights the next step acts
+    // on, and `resume` is `Some` only if every binding check passed.
+    let (mut model, resume) = match resume_from {
+        None => {
+            let mut m = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
+            if let Some(fmt) = fq_fmt {
+                fake_quantize_model(&mut m, fmt);
+            }
+            (m, None)
+        }
+        Some(path) => {
+            let (weights_path, resume_path) = crate::checkpoint::resolve_resume_pair(path)?;
+            let rec = crate::checkpoint::load_resume_file(&resume_path)?;
+            let raw = std::fs::read(&weights_path)
+                .with_context(|| format!("failed to read resume weights {weights_path:?}"))?;
+            let weight_sha256 = crate::checkpoint::sha256_hex(&raw);
+            crate::checkpoint::verify_resume(
+                &rec,
+                &crate::checkpoint::ResumeExpectation {
+                    seed: args.seed,
+                    steps_total: args.steps as u64,
+                    eval_every: args.eval_every as u64,
+                    gf16_floor_every: gf16_every as u64,
+                    gf16_enabled: gf16_on,
+                    hidden: eff_hidden as u32,
+                    d_model: DIM as u32,
+                    num_attn_layers: eff_attn_layers as u32,
+                    vocab: VOCAB as u32,
+                    dim: DIM as u32,
+                    num_ctx: NUM_CTX as u32,
+                    base_lr: args.lr,
+                    weight_decay: TRAIN_LOOP_WEIGHT_DECAY as f32,
+                    fake_quant_format: fq_label.clone(),
+                    weight_sha256: weight_sha256.clone(),
+                    train_sha256: corpus.train.sha256.clone(),
+                    val_sha256: corpus.val.sha256.clone(),
+                },
+            )?;
+            let (m, meta) = HybridModel::from_checkpoint_bytes(&raw)
+                .with_context(|| format!("resume weights {weights_path:?}"))?;
+            // The header is a SECOND statement of the same facts, written by
+            // the run that produced the weights rather than by the record
+            // beside them. Checking the two against each other costs nothing.
+            if meta.step != rec.step
+                || meta.seed != rec.seed
+                || meta.gf16_enabled != rec.gf16_enabled
+                || meta.optimizer != rec.optimizer
+                || m.hidden != eff_hidden
+                || m.attn.config().num_attn_layers != eff_attn_layers
+            {
+                return Err(crate::checkpoint::resume_refusal(
+                    crate::checkpoint::RESUME_REASON_SHAPE,
+                    format!(
+                        "the checkpoint header says step={} seed={} gf16={} optimizer={:?} \
+                         hidden={} layers={}; the resume record says step={} seed={} gf16={} \
+                         optimizer={:?} and this run wants hidden={} layers={}",
+                        meta.step,
+                        meta.seed,
+                        meta.gf16_enabled,
+                        meta.optimizer,
+                        m.hidden,
+                        m.attn.config().num_attn_layers,
+                        rec.step,
+                        rec.seed,
+                        rec.gf16_enabled,
+                        rec.optimizer,
+                        eff_hidden,
+                        eff_attn_layers
+                    ),
+                ));
+            }
+            eprintln!(
+                "[resume] warm start from {weights_path:?} sha256={weight_sha256} step={} of {} \
+                 (record {resume_path:?})",
+                rec.step, rec.steps_total
+            );
+            // NOT re-quantized: these weights came out of a loop that already
+            // applied the STE at the end of the step that wrote them, so a
+            // second pass would be a rounding this run performed and the
+            // monolithic run did not.
+            (m, Some(rec))
+        }
+    };
     let d = model.attn.config().d_model;
     let dd = d * d;
     let attn_total = 8 * dd;
@@ -1970,6 +2517,23 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let mut opt_attn_up = AdamW::new(eff_hidden * d, wd);
     let mut opt_head = AdamW::new(VOCAB * eff_hidden, wd);
     let mut opt_attn_w = AdamW::new(attn_total, wd);
+    if let Some(rec) = &resume {
+        restore_adamw_state(
+            rec,
+            &mut opt_embed,
+            &mut opt_ctx,
+            &mut opt_proj,
+            &mut opt_attn_down,
+            &mut opt_attn_up,
+            &mut opt_head,
+            &mut opt_attn_w,
+        )?;
+        eprintln!(
+            "[resume] restored {} optimizer instances ({} moment elements)",
+            rec.optimizers.len(),
+            rec.optimizers.iter().map(|o| 2 * o.m.len()).sum::<usize>()
+        );
+    }
     let opt_params = adamw_record_params(wd, "train_loop::AdamW");
 
     // The declared sampling plan, resolved ONCE for the run: an eval whose
@@ -1988,12 +2552,24 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         val.len()
     );
     print_eval_uncertainty(args.seed, 0, &init_stats, val.len());
-    let mut ema_bpb = init_bpb;
+    // On a warm start the EMA and the running minimum continue the trajectory
+    // the record captured. They are the run's reported numbers, not its
+    // weights: restoring them is what makes a segmented run REPORT what the
+    // monolithic run reports, and `init_bpb` here is a reading of the RESUMED
+    // weights, which is not where that trajectory was.
+    let mut ema_bpb = resume
+        .as_ref()
+        .and_then(|r| r.ema_bpb)
+        .map(|v| v as f32)
+        .unwrap_or(init_bpb);
     // Raw readings, tracked separately from the EMA. `min_observed_val_bpb` is
     // the minimum over the readings this run TOOK - optimistic by construction,
     // see the field doc on `CheckpointRecord`; `init_bpb` is excluded because
     // it describes the initialization, not the run.
-    let mut best_val_bpb: Option<f32> = None;
+    let mut best_val_bpb: Option<f32> = resume
+        .as_ref()
+        .and_then(|r| r.min_observed_val_bpb)
+        .map(|v| v as f32);
     let mut final_val_bpb: Option<f32> = None;
     // Proof that this run left something behind. A run that never enters the
     // step loop (`--steps 0`) skipped every emission point silently and still
@@ -2001,7 +2577,20 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     let mut artifact_emitted = false;
     let warmup = args.steps / 10;
     let accum = 4;
-    let mut rng_s = args.seed.wrapping_add(7919);
+    // The batch sampler. On a warm start it comes from the record: this single
+    // u64 decides which windows of the corpus every remaining step trains on,
+    // so a resumed run that re-derived it from the seed would train on the
+    // FIRST window sequence again and diverge immediately while still printing
+    // a healthy-looking BPB curve.
+    let mut rng_s = match &resume {
+        Some(r) => r.rng_s,
+        None => args.seed.wrapping_add(7919),
+    };
+    // Steps already executed. The loop below runs `start_step + 1 ..= steps`,
+    // and `cosine_lr` is a function of `(step, args.steps)`, so the resumed
+    // segment sits on the same schedule the monolithic run would have applied
+    // to the same step numbers.
+    let start_step = resume.as_ref().map(|r| r.step as usize).unwrap_or(0);
     let t0 = Instant::now();
     let gf16_floor_step = (0.7 * args.steps as f32).floor() as usize;
     let nca = NcaObjective::default();
@@ -2015,8 +2604,19 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
     // It deliberately does NOT set `artifact_emitted`: a run that saved nothing
     // but its own initialisation still produced no TRAINED artifact, and the
     // guard at the end of this function exists to catch exactly that.
-    if ckpt_init && checkpoint_enabled() {
-        emit_init_checkpoint(
+    //
+    // Never on a warm start: these weights are step `start_step`, not an
+    // initialisation, and writing them as `0.bin` would mint an artifact whose
+    // header states a step it was not taken at.
+    if ckpt_init && checkpoint_enabled() && resume.is_some() {
+        eprintln!(
+            "[resume] TRIOS_CHECKPOINT_INIT is set but this is a warm start at step \
+             {start_step}; no 0.bin will be written, because these weights are not an \
+             initialisation."
+        );
+    }
+    if ckpt_init && checkpoint_enabled() && resume.is_none() {
+        let saved = emit_init_checkpoint(
             &model,
             args,
             &canon,
@@ -2030,9 +2630,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 gf16_enabled: gf16_on,
                 data_synthetic,
                 optimizer: "adamw".into(),
-                fake_quant_format: fq_fmt
-                    .map(|f| f.name().to_string())
-                    .unwrap_or_else(|| "f32".into()),
+                fake_quant_format: fq_label.clone(),
             },
             &corpus,
             gf16_every,
@@ -2041,9 +2639,41 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
             &opt_params,
             init_bpb,
         )?;
+        // The step-0 warm start: zeroed moments, zeroed instance counters and
+        // the sampler state before the first draw. It is genuine state, not a
+        // placeholder, so an auditor challenging the FIRST window starts from
+        // the same kind of artifact as one challenging any later window.
+        emit_resume_record(
+            &saved,
+            &build_resume_record(
+                args,
+                0,
+                rng_s,
+                eff_hidden,
+                d,
+                eff_attn_layers,
+                gf16_on,
+                gf16_every,
+                data_synthetic,
+                &fq_label,
+                &corpus,
+                &saved.sha256,
+                None,
+                None,
+                capture_adamw_state(
+                    &opt_embed,
+                    &opt_ctx,
+                    &opt_proj,
+                    &opt_attn_down,
+                    &opt_attn_up,
+                    &opt_head,
+                    &opt_attn_w,
+                ),
+            ),
+        )?;
     }
 
-    for step in 1..=args.steps {
+    for step in start_step + 1..=args.steps {
         let lr = cosine_lr(step, args.steps, args.lr, warmup);
         let mut ge = vec![0.0f32; VOCAB * DIM];
         let mut gc: Vec<Vec<f32>> = (0..NUM_CTX).map(|_| vec![0.0f32; VOCAB * DIM]).collect();
@@ -2204,8 +2834,9 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
         let is_ckpt_step =
             checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step, ckpt_every));
         if is_eval_step || is_ckpt_step {
-            let stats = evaluate(&model, &val, eval_chunks)
-                .ok_or_else(|| anyhow::anyhow!("eval produced no measurable chunk at step {step}"))?;
+            let stats = evaluate(&model, &val, eval_chunks).ok_or_else(|| {
+                anyhow::anyhow!("eval produced no measurable chunk at step {step}")
+            })?;
             let vbpb = guard_bpb(stats.mean, step)?;
             // A checkpoint-only step measures its own weights - the artifact
             // must carry the reading these exact bytes produce - but it does
@@ -2268,9 +2899,7 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                     gf16_enabled: gf16_on,
                     data_synthetic,
                     optimizer: "adamw".into(),
-                    fake_quant_format: fq_fmt
-                        .map(|f| f.name().to_string())
-                        .unwrap_or_else(|| "f32".into()),
+                    fake_quant_format: fq_label.clone(),
                 };
                 let res = emit_checkpoint(
                     &model,
@@ -2302,7 +2931,56 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
                 // but losing a whole run to a transient full disk mid-way
                 // would be worse than a missing intermediate file.
                 match res {
-                    Ok(()) => artifact_emitted = true,
+                    Ok(saved) => {
+                        artifact_emitted = true;
+                        // The resume record beside the artifact, carrying the
+                        // digest of the bytes just written. Without it this
+                        // `.bin` can only be checked by re-executing from step
+                        // 0, which is the cost that makes nobody check.
+                        //
+                        // `ema_bpb` and `best_val_bpb` are recorded LIVE here,
+                        // unlike the artifact record above which reports
+                        // `None` for the EMA on a checkpoint-only step: this is
+                        // trajectory STATE to be restored, not a measurement of
+                        // these weights.
+                        let rec = build_resume_record(
+                            args,
+                            step as u64,
+                            rng_s,
+                            eff_hidden,
+                            d,
+                            eff_attn_layers,
+                            gf16_on,
+                            gf16_every,
+                            data_synthetic,
+                            &fq_label,
+                            &corpus,
+                            &saved.sha256,
+                            Some(ema_bpb as f64),
+                            best_val_bpb.map(|v| v as f64),
+                            capture_adamw_state(
+                                &opt_embed,
+                                &opt_ctx,
+                                &opt_proj,
+                                &opt_attn_down,
+                                &opt_attn_up,
+                                &opt_head,
+                                &opt_attn_w,
+                            ),
+                        );
+                        // Same asymmetry as the artifact itself, for the same
+                        // reason: the final step must not ship an artifact
+                        // nobody can warm-start from without saying so.
+                        match emit_resume_record(&saved, &rec) {
+                            Ok(()) => {}
+                            Err(e) if step == args.steps => {
+                                return Err(e.context("final-step resume record failed"))
+                            }
+                            Err(e) => eprintln!(
+                                "[resume] WARNING: resume record at step {step} failed: {e:#}"
+                            ),
+                        }
+                    }
                     Err(e) if step == args.steps => {
                         return Err(e.context("final-step checkpoint failed"))
                     }
@@ -2340,6 +3018,8 @@ pub fn run_single(args: &TrainArgs) -> Result<RunOutcome> {
 }
 
 pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
+    // See `run_single`: the same refusal, on the same knob, before any work.
+    refuse_eval_every_or_exit(args.eval_every);
     // Wave 31 PR-B: apply env-gated arch knobs.
     let eff_hidden = if std::env::var("HIDDEN_DIM").is_ok() {
         let h = parse_hidden_dim().map_err(|e| anyhow::anyhow!("HIDDEN_DIM: {e}"))?;
@@ -2379,6 +3059,13 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         ckpt_every,
         ckpt_init
     );
+    // #509 Phase-1b: same QAT wiring for the Muon path, resolved at the same
+    // point and for the same reason - see `run_single`.
+    let fq_fmt = resolve_fake_quant_format()?;
+    if let Some(fmt) = fq_fmt {
+        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
+    }
+
     // EPIC-446: see the note in `run_single` - one canon string for both the
     // checkpoint directory and the ledger row.
     let canon = resolve_canon_name(args.seed);
@@ -2400,12 +3087,6 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         train: crate::checkpoint::CorpusStream::describe(&args.train_path),
         val: crate::checkpoint::CorpusStream::describe(&args.val_path),
     };
-
-    // #509 Phase-1b: same QAT wiring for the Muon path.
-    let fq_fmt = resolve_fake_quant_format();
-    if let Some(fmt) = fq_fmt {
-        eprintln!("QAT: FakeQuant enabled for format {:?}", fmt);
-    }
 
     let mut model = HybridModel::new(eff_hidden, args.seed, eff_attn_layers);
     if let Some(fmt) = fq_fmt {
@@ -2490,7 +3171,11 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                 attn_seq: attn_seq_override() as u32,
                 gf16_enabled: gf16_on,
                 data_synthetic,
-                optimizer: if use_cwd { "muon-cwd".into() } else { "muon".into() },
+                optimizer: if use_cwd {
+                    "muon-cwd".into()
+                } else {
+                    "muon".into()
+                },
                 fake_quant_format: fq_fmt
                     .map(|f| f.name().to_string())
                     .unwrap_or_else(|| "f32".into()),
@@ -2658,8 +3343,9 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
         let is_ckpt_step =
             checkpoint_enabled() && (step == args.steps || checkpoint_every_hit(step, ckpt_every));
         if is_eval_step || is_ckpt_step {
-            let stats = evaluate(&model, &val, eval_chunks)
-                .ok_or_else(|| anyhow::anyhow!("eval produced no measurable chunk at step {step}"))?;
+            let stats = evaluate(&model, &val, eval_chunks).ok_or_else(|| {
+                anyhow::anyhow!("eval produced no measurable chunk at step {step}")
+            })?;
             let vbpb = guard_bpb(stats.mean, step)?;
             if is_eval_step {
                 ema_bpb = PHI_INV * ema_bpb + (1.0 - PHI_INV) * vbpb;
@@ -2713,7 +3399,11 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                     attn_seq: attn_seq_override() as u32,
                     gf16_enabled: gf16_on,
                     data_synthetic,
-                    optimizer: if use_cwd { "muon-cwd".into() } else { "muon".into() },
+                    optimizer: if use_cwd {
+                        "muon-cwd".into()
+                    } else {
+                        "muon".into()
+                    },
                     fake_quant_format: fq_fmt
                         .map(|f| f.name().to_string())
                         .unwrap_or_else(|| "f32".into()),
@@ -2743,8 +3433,15 @@ pub fn run_single_muon(args: &TrainArgs, use_cwd: bool) -> Result<RunOutcome> {
                         None
                     },
                 );
+                // `Ok(_)`, not `Ok(())`: `emit_checkpoint` now hands back the
+                // `SavedCheckpoint` so the AdamW path can write a resume
+                // record beside the artifact. This path deliberately does NOT
+                // write one - `MuonOptimizer` carries a momentum buffer and a
+                // step counter that the format does not serialise - and
+                // `--resume-from` is refused for it in
+                // `run_with_optimizer_resumed` before any work starts.
                 match res {
-                    Ok(()) => artifact_emitted = true,
+                    Ok(_) => artifact_emitted = true,
                     Err(e) if step == args.steps => {
                         return Err(e.context("final-step checkpoint failed"))
                     }
@@ -2821,9 +3518,39 @@ pub fn ensure_supported_optimizer(optimizer: &str) -> Result<()> {
 /// The one place that maps an optimizer name onto a training loop, so the
 /// sweep arm and the single-seed arm cannot dispatch differently.
 pub fn run_with_optimizer(optimizer: &str, args: &TrainArgs) -> Result<RunOutcome> {
+    run_with_optimizer_resumed(optimizer, args, None)
+}
+
+/// `run_with_optimizer`, with the window-audit warm start.
+///
+/// The Muon arms REFUSE a warm start rather than accept it and start from
+/// zeroed state. `MuonOptimizer` carries a momentum buffer and its own step
+/// counter (`src/optimizer.rs`), and the `TRIOSRSM` format version 1
+/// serialises neither; a run that quietly restarted them at zero would finish,
+/// would print a BPB, and would not be a segment of the run it claims to
+/// continue. The refusal is raised BEFORE `ensure_supported_optimizer` has
+/// spawned any work, so a mistaken audit command costs nothing.
+pub fn run_with_optimizer_resumed(
+    optimizer: &str,
+    args: &TrainArgs,
+    resume_from: Option<&Path>,
+) -> Result<RunOutcome> {
     ensure_supported_optimizer(optimizer)?;
+    if resume_from.is_some() && optimizer != "adamw" {
+        return Err(crate::checkpoint::resume_refusal(
+            crate::checkpoint::RESUME_REASON_MUON,
+            format!(
+                "--resume-from was given with optimizer={optimizer:?}, but the Muon path \
+                 carries state this format does not serialise: MuonOptimizer's momentum \
+                 buffer and its own step counter. Version 1 of TRIOSRSM covers the AdamW \
+                 path only. Re-run the window on --optimizer adamw, or extend the format \
+                 first - resuming from zeroed momentum would produce weights that are a \
+                 segment of no run at all."
+            ),
+        ));
+    }
     match optimizer {
-        "adamw" => run_single(args),
+        "adamw" => run_single_resumed(args, resume_from),
         "muon" => run_single_muon(args, false),
         "muon-cwd" => run_single_muon(args, true),
         // Unreachable while these arms and `SUPPORTED_OPTIMIZERS` list the same
@@ -3310,9 +4037,7 @@ pub fn run(cfg: &crate::TrainConfig) -> Result<RunOutcome> {
                 );
             }
         } else {
-            eprintln!(
-                "[ledger] no final val_bpb was measured; refusing to emit a Gate-2 row"
-            );
+            eprintln!("[ledger] no final val_bpb was measured; refusing to emit a Gate-2 row");
         }
     }
     Ok(outcome)
@@ -3335,7 +4060,7 @@ mod fake_quant_wiring_tests {
         std::env::set_var("TRIOS_FORMAT_TYPE", "fp16");
         let fmt = resolve_fake_quant_format();
         std::env::remove_var("TRIOS_FORMAT_TYPE");
-        assert_eq!(fmt, Some(FormatKind::Fp16));
+        assert_eq!(fmt.unwrap(), Some(FormatKind::Fp16));
     }
 
     #[test]
@@ -3345,7 +4070,7 @@ mod fake_quant_wiring_tests {
         std::env::set_var("TRIOS_FAKE_QUANT_FORMAT", "gf16");
         let fmt = resolve_fake_quant_format();
         std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
-        assert_eq!(fmt, Some(FormatKind::Gf16));
+        assert_eq!(fmt.unwrap(), Some(FormatKind::Gf16));
     }
 
     #[test]
@@ -3355,7 +4080,7 @@ mod fake_quant_wiring_tests {
         std::env::set_var("TRIOS_FORMAT_TYPE", "f32");
         let fmt = resolve_fake_quant_format();
         std::env::remove_var("TRIOS_FORMAT_TYPE");
-        assert_eq!(fmt, None);
+        assert_eq!(fmt.unwrap(), None);
     }
 
     #[test]
@@ -3363,17 +4088,52 @@ mod fake_quant_wiring_tests {
         let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("TRIOS_FORMAT_TYPE");
         std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
-        assert_eq!(resolve_fake_quant_format(), None);
+        assert_eq!(resolve_fake_quant_format().unwrap(), None);
     }
 
+    /// An unrecognised spelling used to resolve to "QAT off". It now stops the
+    /// run, and the message has to name the variable and quote the rejected
+    /// text - otherwise the operator is back to guessing which of the two
+    /// aliases they typo'd.
     #[test]
-    fn unknown_format_resolves_to_none() {
+    fn unknown_format_is_refused_not_silently_dropped() {
         let _g = ENV_LOCK.lock().unwrap();
         std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
         std::env::set_var("TRIOS_FORMAT_TYPE", "imaginary_float");
-        let fmt = resolve_fake_quant_format();
+        let err = resolve_fake_quant_format().expect_err("must refuse");
         std::env::remove_var("TRIOS_FORMAT_TYPE");
-        assert_eq!(fmt, None);
+        let msg = err.to_string();
+        assert!(msg.contains("TRIOS_FORMAT_TYPE"), "{msg}");
+        assert!(msg.contains("imaginary_float"), "{msg}");
+        // The accepted spellings must actually be listed.
+        assert!(msg.contains("fp16"), "{msg}");
+    }
+
+    /// The near-miss that motivated the refusal: `int_8` is one underscore away
+    /// from a format this build implements, and it used to train f32 and record
+    /// `fake_quant_format: "f32"` without printing the word "format" once.
+    #[test]
+    fn a_near_miss_spelling_is_refused_too() {
+        let _g = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("TRIOS_FAKE_QUANT_FORMAT");
+        std::env::set_var("TRIOS_FORMAT_TYPE", "int_8");
+        let err = resolve_fake_quant_format().expect_err("must refuse");
+        std::env::remove_var("TRIOS_FORMAT_TYPE");
+        assert!(err.to_string().contains("int_8"), "{err}");
+    }
+
+    /// `--eval-every 0` used to reach `step % 0`. The refusal must name the
+    /// argument and point at the knob that does mean "only at the end".
+    #[test]
+    fn eval_every_zero_is_refused_naming_steps() {
+        assert!(validate_eval_every(1).is_ok());
+        assert!(validate_eval_every(1000).is_ok());
+        let err = validate_eval_every(0).expect_err("0 must be refused");
+        let msg = err.to_string();
+        assert!(msg.contains("--eval-every"), "{msg}");
+        assert!(msg.contains("--steps"), "{msg}");
+        // clap's usage-error code, not this crate's "the run failed" code.
+        assert_eq!(EVAL_EVERY_USAGE_EXIT, 2);
     }
 
     #[test]
@@ -3421,9 +4181,7 @@ mod checkpoint_codec_tests {
     //! visibility to allow an integration test would be a strictly larger diff
     //! for the same evidence.
     use super::*;
-    use crate::checkpoint::{
-        self, sha256_hex, CHECKPOINT_HEADER_LEN, CHECKPOINT_PAYLOAD_OFFSET,
-    };
+    use crate::checkpoint::{self, sha256_hex, CHECKPOINT_HEADER_LEN, CHECKPOINT_PAYLOAD_OFFSET};
     use std::sync::Mutex;
 
     // `TRIOS_CHECKPOINT_DIR` is process-global, so every test that touches it
@@ -3519,8 +4277,10 @@ mod checkpoint_codec_tests {
         let on_disk_len = std::fs::metadata(&saved.path).unwrap().len();
         assert_eq!(saved.bytes, on_disk_len);
         assert_eq!(saved.sha256.len(), 64);
-        assert!(saved.sha256.bytes().all(|b| b.is_ascii_hexdigit()
-            && !b.is_ascii_uppercase()));
+        assert!(saved
+            .sha256
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()));
 
         // 3. Every tensor survives bit-identically.
         let (restored, restored_meta) = HybridModel::from_checkpoint_bytes(&loaded).unwrap();
@@ -3541,11 +4301,16 @@ mod checkpoint_codec_tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path());
 
-        let first = poisoned_model(16).to_checkpoint_bytes(&meta_for(60)).unwrap();
+        let first = poisoned_model(16)
+            .to_checkpoint_bytes(&meta_for(60))
+            .unwrap();
         let mut second_model = poisoned_model(16);
         second_model.embed[5] = 0.25; // a different model, same run, same step
         let second = second_model.to_checkpoint_bytes(&meta_for(60)).unwrap();
-        assert_ne!(first, second, "the fixture must differ, or this proves nothing");
+        assert_ne!(
+            first, second,
+            "the fixture must differ, or this proves nothing"
+        );
 
         let landed = checkpoint::save("collide-run", 60, &first).unwrap();
         let err = checkpoint::save("collide-run", 60, &second)
@@ -3555,8 +4320,14 @@ mod checkpoint_codec_tests {
         assert!(msg.contains("refusing to overwrite"), "{msg}");
         // The refusal names both hashes and the path, so the operator can see
         // which artifact is on disk and which one was rejected.
-        assert!(msg.contains(&landed.sha256), "existing hash not named: {msg}");
-        assert!(msg.contains(&sha256_hex(&second)), "incoming hash not named: {msg}");
+        assert!(
+            msg.contains(&landed.sha256),
+            "existing hash not named: {msg}"
+        );
+        assert!(
+            msg.contains(&sha256_hex(&second)),
+            "incoming hash not named: {msg}"
+        );
         assert!(msg.contains("60.bin"), "path not named: {msg}");
 
         // Nothing was written and nothing was deleted.
@@ -3582,7 +4353,9 @@ mod checkpoint_codec_tests {
         let dir = tempfile::tempdir().unwrap();
         std::env::set_var("TRIOS_CHECKPOINT_DIR", dir.path());
 
-        let a = poisoned_model(16).to_checkpoint_bytes(&meta_for(60)).unwrap();
+        let a = poisoned_model(16)
+            .to_checkpoint_bytes(&meta_for(60))
+            .unwrap();
         let mut model_b = poisoned_model(16);
         model_b.embed[5] = 0.25;
         let b = model_b.to_checkpoint_bytes(&meta_for(60)).unwrap();
@@ -3591,7 +4364,11 @@ mod checkpoint_codec_tests {
         let s89 = checkpoint::save_scoped("sweep-run", Some(89), 60, &b).unwrap();
         assert_ne!(s47.path, s89.path, "two seeds resolved to one path");
         assert_ne!(s47.sha256, s89.sha256);
-        assert_eq!(std::fs::read(&s47.path).unwrap(), a, "seed 47 was overwritten");
+        assert_eq!(
+            std::fs::read(&s47.path).unwrap(),
+            a,
+            "seed 47 was overwritten"
+        );
         assert_eq!(std::fs::read(&s89.path).unwrap(), b);
         assert_eq!(
             s47.path,
@@ -3777,7 +4554,9 @@ mod checkpoint_codec_tests {
             let mut s = seed;
             (0..len)
                 .map(|_| {
-                    s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    s = s
+                        .wrapping_mul(6364136223846793005)
+                        .wrapping_add(1442695040888963407);
                     b' ' + ((s >> 33) % 95) as u8
                 })
                 .collect()
@@ -3856,24 +4635,39 @@ mod checkpoint_codec_tests {
         assert_eq!(rec.steps_total, steps as u64);
         assert_eq!(rec.gf16_floor_every, gf16_floor_every());
         assert_eq!(rec.eval_every, steps as u64);
-        assert!(!rec.git_provenance.is_empty(), "provenance strength unrecorded");
+        assert!(
+            !rec.git_provenance.is_empty(),
+            "provenance strength unrecorded"
+        );
         // Schema 3: the first-order inputs the record used to omit. `lr` must
         // be the value that ran, never a defaulted 0.0 - which is itself a
         // legal learning rate and so unusable as a sentinel.
-        assert_eq!(rec.lr, Some(0.003f32 as f64), "lr not recorded as the f32 that ran");
+        assert_eq!(
+            rec.lr,
+            Some(0.003f32 as f64),
+            "lr not recorded as the f32 that ran"
+        );
         assert_eq!(rec.attn_scale, attn_scale() as f64);
         assert_eq!(rec.attn_seq, attn_seq_override() as u64);
         assert_eq!(rec.platform.os, std::env::consts::OS);
         assert_eq!(rec.platform.arch, std::env::consts::ARCH);
         assert_eq!(rec.platform.pointer_width, usize::BITS);
-        assert!(!rec.platform.libc.is_empty(), "libc field left blank, not 'undetermined'");
+        assert!(
+            !rec.platform.libc.is_empty(),
+            "libc field left blank, not 'undetermined'"
+        );
         assert!(
             !rec.platform.toolchain_provenance.is_empty(),
             "toolchain strength unrecorded"
         );
         // The tests run from the crate root, so the tree IS reachable and the
         // sentinel must not appear.
-        assert_eq!(rec.source_sha256.len(), 64, "source digest is {}", rec.source_sha256);
+        assert_eq!(
+            rec.source_sha256.len(),
+            64,
+            "source digest is {}",
+            rec.source_sha256
+        );
         assert!(rec.source_sha256.chars().all(|c| c.is_ascii_hexdigit()));
         // Schema 4: the record names the EXECUTOR and the ALPHABET. Without the
         // first, `ckpt_replay` had no hash to check the binary it was about to
@@ -3885,13 +4679,25 @@ mod checkpoint_codec_tests {
             "the trainer did not hash itself: {}",
             rec.trainer.provenance
         );
-        assert_eq!(rec.trainer.sha256.len(), 64, "trainer digest is {}", rec.trainer.sha256);
+        assert_eq!(
+            rec.trainer.sha256.len(),
+            64,
+            "trainer digest is {}",
+            rec.trainer.sha256
+        );
         assert!(rec.trainer.sha256.chars().all(|c| c.is_ascii_hexdigit()));
         // Re-derivable by an outside party with `shasum -a 256`, which is the
         // whole point: the digest is over the bytes on disk, not an image.
         let exe = std::fs::read(&rec.trainer.path).expect("recorded trainer path is readable");
-        assert_eq!(rec.trainer.sha256, sha256_hex(&exe), "trainer hash is not the file's");
-        assert_eq!(rec.vocab, VOCAB as u32, "the record must state its own alphabet");
+        assert_eq!(
+            rec.trainer.sha256,
+            sha256_hex(&exe),
+            "trainer hash is not the file's"
+        );
+        assert_eq!(
+            rec.vocab, VOCAB as u32,
+            "the record must state its own alphabet"
+        );
         // The measured reading, not the EMA, is what the sidecar carries.
         assert_eq!(rec.final_val_bpb, outcome.final_val_bpb);
         assert_eq!(rec.min_observed_val_bpb, outcome.best_val_bpb);
@@ -3933,10 +4739,26 @@ mod checkpoint_codec_tests {
         // this trainer never constructs. Recording 0.618 here would describe a
         // run that never happened.
         assert_ne!(params.beta1, 1.0 / ((1.0 + 5.0_f64.sqrt()) / 2.0));
-        assert_eq!(rec.canon_name, "IGLA-test/canon", "ledger identity unsanitized");
-        // The record names the file that was actually written - the same string
-        // the ledger row carries, so the two cannot describe different files.
-        assert_eq!(std::path::Path::new(&rec.path), bin.as_path());
+        assert_eq!(
+            rec.canon_name, "IGLA-test/canon",
+            "ledger identity unsanitized"
+        );
+        // Schema 9. The record names the file that was actually written - the
+        // same string the ledger row carries, so the two cannot describe
+        // different files - but it names it RELATIVE to the digest scope, and
+        // this checkpoint dir is a tempdir outside that scope. The assertion is
+        // therefore the derivation the product performs, plus the property that
+        // derivation exists for: no absolute path reaches the record.
+        assert_eq!(
+            rec.path,
+            crate::checkpoint::scope_relative_artifact_path(&bin)
+        );
+        assert!(
+            !rec.path.starts_with('/'),
+            "the record published an absolute path: {}",
+            rec.path
+        );
+        assert!(rec.path.ends_with(&format!("{steps}.bin")), "{}", rec.path);
         assert_eq!(rec.sha256, sha256_hex(&raw));
         assert_eq!(rec.bytes, raw.len() as u64);
         assert_eq!(rec.step, steps as i64);
@@ -3991,8 +4813,7 @@ mod checkpoint_codec_tests {
         assert!(msg.contains("Refusing the synthetic fallback"), "{msg}");
 
         std::env::set_var("TRIOS_ALLOW_SYNTHETIC_DATA", "1");
-        let (tokens, synthetic) =
-            load_data("/nonexistent/corpus-that-does-not-exist.bin").unwrap();
+        let (tokens, synthetic) = load_data("/nonexistent/corpus-that-does-not-exist.bin").unwrap();
         std::env::remove_var("TRIOS_ALLOW_SYNTHETIC_DATA");
         assert!(synthetic, "the opt-in path must report itself as synthetic");
         assert!(!tokens.is_empty());
@@ -4066,6 +4887,57 @@ mod measurement_truth_tests {
                     .unwrap_or_else(|| "<non-string panic>".to_string()),
             ),
         }
+    }
+
+    /// An UNDERFLOWED target probability is an absence, not 33.21928 bpb.
+    ///
+    /// The NaN door was closed last round; this is the door standing open
+    /// beside it. An f32 softmax returns a finite, exact `0.0` for a target the
+    /// model finds impossible - no NaN, no infinity, so `is_nan()` and
+    /// `is_finite()` both accept it - and clamping `p` to a 1e-10 floor then
+    /// contributed exactly 23.02585 nats, which is 33.21928 bpb: the constant
+    /// this crate documents as the fake-measurement signature. `final_val_bpb`
+    /// is a SEALED field, so the fabricated number shipped inside an
+    /// authenticated declaration.
+    #[test]
+    fn an_underflowed_target_probability_is_an_absence_not_33_bpb() {
+        let mut model = HybridModel::new(64, 47, 2);
+        // Exactly one scoring position, so one forward pass fixes the reading.
+        let tokens: Vec<usize> = vec![1; NGRAM + 1];
+        let target = tokens[NGRAM].min(VOCAB - 1);
+        let h = model.hidden;
+        let hidden = model.forward_cached(&tokens, 0).hidden;
+        let norm2: f32 = hidden.iter().map(|x| x * x).sum();
+        assert!(norm2 > 0.0, "fixture needs a non-zero hidden state");
+
+        // Put the target's logit 400 nats under the maximum. f32 `exp`
+        // underflows to exactly 0.0 below about -104, so the target
+        // probability is an honest zero and NOT a NaN: every pre-existing
+        // guard in this function accepts it.
+        let big = if target == 0 { 1 } else { 0 };
+        model.lm_head.iter_mut().for_each(|w| *w = 0.0);
+        let scale = 400.0 / norm2;
+        for hi in 0..h {
+            model.lm_head[big * h + hi] = hidden[hi] * scale;
+        }
+        let mut logits = model.forward_cached(&tokens, 0).logits;
+        softmax(&mut logits);
+        let p = logits[target];
+        assert_eq!(p, 0.0, "fixture must UNDERFLOW, not poison");
+        assert!(!p.is_nan() && p.is_finite(), "and it must look measurable");
+
+        assert_eq!(
+            model.loss_on_seq(&tokens),
+            None,
+            "an underflowed probability is an absence, not a number"
+        );
+
+        // The reading the clamp used to manufacture, computed rather than
+        // quoted, so this test fails loudly if the floor is reintroduced.
+        let laundered_nats = -(1e-10f32).ln();
+        let laundered_bpb = laundered_nats / LN_2;
+        assert!((laundered_nats - 23.02585).abs() < 1e-3, "{laundered_nats}");
+        assert!((laundered_bpb - 33.21928).abs() < 1e-3, "{laundered_bpb}");
     }
 
     /// The exact scenario the guard's own comment named and could not see.
@@ -4204,13 +5076,19 @@ mod measurement_truth_tests {
         assert_eq!(stats.tokens(), 40 * 129);
         let stdev = stats.stdev.expect("40 windows have a sample stdev");
         let stderr = stats.stderr.expect("and therefore a standard error");
-        assert!(stdev > 0.0, "40 distinct windows cannot all read identically");
+        assert!(
+            stdev > 0.0,
+            "40 distinct windows cannot all read identically"
+        );
         // `s / sqrt(n)` is the standard error of a mean drawn from an INFINITE
         // population. The val stream is finite and the grid reads it WITHOUT
         // replacement, so the finite-population correction applies: 40 of the
         // `N` windows that tile this 20,000-token stream.
         let population = eval_chunk_count(val.len(), 0);
-        assert!(population > 40, "the sample must be a strict subset: N={population}");
+        assert!(
+            population > 40,
+            "the sample must be a strict subset: N={population}"
+        );
         let expected = stdev / 40f32.sqrt() * (1.0 - 40.0 / population as f32).sqrt();
         assert!(
             (stderr - expected).abs() < 1e-6,
@@ -4225,9 +5103,14 @@ mod measurement_truth_tests {
         // left to be uncertain about, so the standard error is exactly zero -
         // the claim `eval_chunks_target`'s doc comment makes, now enforced.
         let full = evaluate(&model, &val, 0).expect("measurable");
-        assert_eq!(full.plan.chunks, population, "target 0 walks the whole grid");
+        assert_eq!(
+            full.plan.chunks, population,
+            "target 0 walks the whole grid"
+        );
         assert!(
-            full.stdev.expect("the windows still differ from each other") > 0.0,
+            full.stdev
+                .expect("the windows still differ from each other")
+                > 0.0,
             "full coverage does not make the readings identical"
         );
         assert_eq!(
@@ -4257,7 +5140,11 @@ mod measurement_truth_tests {
         // silently or dividing by zero.
         for junk in ["0", "", "nonsense", "-3"] {
             std::env::set_var("TRIOS_GF16_FLOOR_EVERY", junk);
-            assert_eq!(gf16_floor_every(), GF16_FLOOR_EVERY_DEFAULT, "junk={junk:?}");
+            assert_eq!(
+                gf16_floor_every(),
+                GF16_FLOOR_EVERY_DEFAULT,
+                "junk={junk:?}"
+            );
         }
         std::env::remove_var("TRIOS_GF16_FLOOR_EVERY");
     }
@@ -4340,7 +5227,13 @@ mod measurement_truth_tests {
 
         // Legal values, including the whitespace a shell assignment leaves and
         // the explicit 0 that means the documented default.
-        for (raw, want) in [("50", 50usize), (" 50 ", 50), ("1000", 1000), ("0", 0), ("", 0)] {
+        for (raw, want) in [
+            ("50", 50usize),
+            (" 50 ", 50),
+            ("1000", 1000),
+            ("0", 0),
+            ("", 0),
+        ] {
             std::env::set_var("TRIOS_CHECKPOINT_EVERY", raw);
             assert_eq!(
                 resolve_checkpoint_every().expect("legal"),
@@ -4431,7 +5324,10 @@ mod measurement_truth_tests {
         let rec: checkpoint::CheckpointRecord =
             serde_json::from_slice(&std::fs::read(run_dir.join("0.json")).unwrap()).unwrap();
         assert_eq!(rec.step, 0, "the step-0 sidecar must say step 0");
-        assert_eq!(rec.min_observed_val_bpb, None, "no run minimum exists at step 0");
+        assert_eq!(
+            rec.min_observed_val_bpb, None,
+            "no run minimum exists at step 0"
+        );
         assert_eq!(rec.ema_bpb, None, "no EMA exists at step 0");
         assert!(
             rec.final_val_bpb.is_some_and(|v| v.is_finite() && v > 0.0),
@@ -4494,7 +5390,9 @@ mod measurement_truth_tests {
 
         let final_val = outcome.final_val_bpb.expect("the last step was an eval");
         let ema = outcome.ema_bpb.expect("the EMA is always defined");
-        let best = outcome.best_val_bpb.expect("at least one reading was taken");
+        let best = outcome
+            .best_val_bpb
+            .expect("at least one reading was taken");
 
         assert!(
             (final_val - ema).abs() > 0.1,
@@ -4579,9 +5477,10 @@ mod measurement_truth_tests {
         // Every artifact carries a reading of ITS OWN weights - that is why the
         // checkpoint-only steps evaluate rather than skip.
         for step in [50, 100, 150, 200] {
-            let rec: checkpoint::CheckpointRecord =
-                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
-                    .unwrap();
+            let rec: checkpoint::CheckpointRecord = serde_json::from_slice(
+                &std::fs::read(run_dir.join(format!("{step}.json"))).unwrap(),
+            )
+            .unwrap();
             assert_eq!(rec.step, step as i64);
             assert!(
                 rec.final_val_bpb.is_some(),
@@ -4593,9 +5492,10 @@ mod measurement_truth_tests {
         // A checkpoint-only step folds nothing into the EMA, so its record says
         // `null` rather than repeating the last eval step's lagging number.
         for step in [50, 150] {
-            let rec: checkpoint::CheckpointRecord =
-                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
-                    .unwrap();
+            let rec: checkpoint::CheckpointRecord = serde_json::from_slice(
+                &std::fs::read(run_dir.join(format!("{step}.json"))).unwrap(),
+            )
+            .unwrap();
             assert!(
                 rec.ema_bpb.is_none(),
                 "step {step} is not an eval step; a stale EMA there would read \
@@ -4603,9 +5503,10 @@ mod measurement_truth_tests {
             );
         }
         for step in [100, 200] {
-            let rec: checkpoint::CheckpointRecord =
-                serde_json::from_slice(&std::fs::read(run_dir.join(format!("{step}.json"))).unwrap())
-                    .unwrap();
+            let rec: checkpoint::CheckpointRecord = serde_json::from_slice(
+                &std::fs::read(run_dir.join(format!("{step}.json"))).unwrap(),
+            )
+            .unwrap();
             assert!(rec.ema_bpb.is_some(), "step {step} IS an eval step");
         }
         assert_eq!(
@@ -4692,8 +5593,14 @@ mod alphabet_fold_tests {
         let err = assert_alphabet_fold_injective("/tmp/cyr.txt", CYRILLIC)
             .expect_err("a Cyrillic corpus must not be folded mod 128 in silence");
         let msg = err.to_string();
-        assert!(msg.starts_with("ALPHABET FOLD REFUSED:"), "message was {msg:?}");
-        assert!(msg.contains("/tmp/cyr.txt"), "message must name the file: {msg:?}");
+        assert!(
+            msg.starts_with("ALPHABET FOLD REFUSED:"),
+            "message was {msg:?}"
+        );
+        assert!(
+            msg.contains("/tmp/cyr.txt"),
+            "message must name the file: {msg:?}"
+        );
         assert!(
             msg.contains("bits-per-byte"),
             "message must say what the number is not: {msg:?}"
@@ -4704,8 +5611,14 @@ mod alphabet_fold_tests {
     fn the_two_bytes_that_collide_are_really_in_the_fixture() {
         // Not an assumption about UTF-8: the collision is measured here, so the
         // guard's justification is checked rather than asserted.
-        assert!(CYRILLIC.contains(&0xD0), "fixture lost its Cyrillic lead byte");
-        assert!(CYRILLIC.contains(&0xA0), "fixture lost the 0xA0 continuation byte");
+        assert!(
+            CYRILLIC.contains(&0xD0),
+            "fixture lost its Cyrillic lead byte"
+        );
+        assert!(
+            CYRILLIC.contains(&0xA0),
+            "fixture lost the 0xA0 continuation byte"
+        );
         assert_eq!(0xD0usize % VOCAB, b'P' as usize);
         assert_eq!(0xA0usize % VOCAB, b' ' as usize);
         assert_eq!(0xD1usize % VOCAB, b'Q' as usize);
@@ -4740,11 +5653,8 @@ mod alphabet_fold_tests {
     /// not merely present.
     #[test]
     fn load_data_refuses_a_cyrillic_file() {
-        let dir = std::env::temp_dir().join(format!(
-            "trios-alphabet-{}-{}",
-            std::process::id(),
-            line!()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("trios-alphabet-{}-{}", std::process::id(), line!()));
         std::fs::create_dir_all(&dir).expect("create temp dir");
         let path = dir.join("cyr.txt");
         std::fs::write(&path, CYRILLIC).expect("write fixture");
@@ -4755,5 +5665,162 @@ mod alphabet_fold_tests {
             "load_data returned {err:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod dispatch_and_consent_tests {
+    //! Three ways `trios-train` used to exit 0 while its own guards stood by.
+    //!
+    //! 1. The optimizer dispatch lived only in the non-sweep arm, so
+    //!    `--sweep --optimizer soap` ran AdamW three times, printed three
+    //!    `DONE:` lines naming no optimizer, printed `GATE-2:` and exited 0 -
+    //!    on the branch that produces the published gate verdict.
+    //! 2. The `DONE:` line the sweep printed carried no `opt=` token at all, so
+    //!    no stdout parser could see which optimizer had actually run.
+    //! 3. `TRINITY_AUTOMIGRATE` defaulted to "1", so an ambient DSN was treated
+    //!    as permission to run schema DDL against it.
+    use super::*;
+
+    /// The refusal must happen for the sweep too, and BEFORE the first seed
+    /// trains: an unsupported optimizer is not a run to be salvaged three
+    /// times over. The corpus paths below do not exist, which is the point -
+    /// if this returns `Ok`, or fails with an I/O error instead, then the
+    /// dispatch is being reached after the guard rather than before it.
+    #[test]
+    fn sweep_refuses_an_unsupported_optimizer_before_it_trains() {
+        let err = run_sweep(
+            1,
+            8,
+            0.003,
+            1,
+            1,
+            "/nonexistent/train-that-must-never-be-opened.txt",
+            "/nonexistent/val-that-must-never-be-opened.txt",
+            "soap",
+        )
+        .expect_err("--sweep --optimizer soap must refuse, not run AdamW");
+        let msg = err.to_string();
+        assert!(
+            msg.contains("unsupported optimizer"),
+            "the refusal must name the defect, got {msg:?}"
+        );
+        assert!(
+            msg.contains("soap"),
+            "the refusal must name the optimizer asked for, got {msg:?}"
+        );
+        assert!(
+            !msg.contains("nonexistent"),
+            "the guard must fire before any corpus is opened, got {msg:?}"
+        );
+    }
+
+    /// Every supported name reaches a dispatch arm; the two lists cannot drift
+    /// apart without this failing.
+    #[test]
+    fn every_supported_optimizer_is_accepted_by_the_sweep_guard() {
+        for name in SUPPORTED_OPTIMIZERS {
+            ensure_supported_optimizer(name)
+                .unwrap_or_else(|e| panic!("{name} is listed as supported but refused: {e}"));
+        }
+    }
+
+    /// The sweep and the single-seed arm share one formatter, so both carry
+    /// `opt=`.
+    #[test]
+    fn a_done_line_always_names_the_optimizer() {
+        let measured = RunOutcome {
+            final_val_bpb: Some(2.6141),
+            best_val_bpb: Some(2.6141),
+            ema_bpb: Some(2.7),
+            final_bpb: 2.6141,
+            steps_done: 12000,
+            seed: 47,
+        };
+        let line = format_done_line(&measured, "muon-cwd");
+        assert!(line.starts_with("DONE: "), "line was {line:?}");
+        assert!(line.contains("opt=muon-cwd"), "line was {line:?}");
+        assert!(line.contains("bpb=2.6141"), "line was {line:?}");
+    }
+
+    /// A run that took no final measurement says the word rather than printing
+    /// a `NaN` that `f64::from_str` hands back to a parser as a number.
+    #[test]
+    fn an_unmeasured_done_line_says_unmeasured_and_still_names_the_optimizer() {
+        let unmeasured = RunOutcome {
+            final_val_bpb: None,
+            best_val_bpb: None,
+            ema_bpb: None,
+            final_bpb: f64::NAN,
+            steps_done: 0,
+            seed: 89,
+        };
+        let line = format_done_line(&unmeasured, "adamw");
+        assert!(line.contains("bpb=unmeasured"), "line was {line:?}");
+        assert!(line.contains("opt=adamw"), "line was {line:?}");
+        assert!(
+            !line.to_ascii_lowercase().contains("nan"),
+            "line was {line:?}"
+        );
+    }
+
+    /// "Having a DSN in the environment is not consent" - tests/ledger_seaorm.rs.
+    #[test]
+    fn automigrate_is_refused_without_the_consent_flag() {
+        let dsn = Some("postgres://u:p@127.0.0.1:5432/whatever");
+        assert_eq!(
+            decide_automigrate(None, None, dsn),
+            AutomigrateDecision::NoConsent,
+            "an ambient DSN alone must not authorise DDL"
+        );
+        assert_eq!(
+            decide_automigrate(Some("1"), None, dsn),
+            AutomigrateDecision::NoConsent,
+            "TRINITY_AUTOMIGRATE=1 alone must not authorise DDL"
+        );
+        assert_eq!(
+            decide_automigrate(None, Some("0"), dsn),
+            AutomigrateDecision::NoConsent
+        );
+        assert_eq!(
+            decide_automigrate(None, Some("true"), dsn),
+            AutomigrateDecision::NoConsent,
+            "only the exact string \"1\" is consent"
+        );
+        assert!(
+            AutomigrateDecision::NoConsent
+                .reason()
+                .contains("not consent"),
+            "the refusal must say why: {}",
+            AutomigrateDecision::NoConsent.reason()
+        );
+    }
+
+    /// The consent flag alone still needs a DSN, and the old veto still vetoes.
+    #[test]
+    fn automigrate_applies_only_on_consent_plus_a_dsn() {
+        let dsn = Some("postgres://u:p@127.0.0.1:5432/whatever");
+        assert_eq!(
+            decide_automigrate(None, Some("1"), dsn),
+            AutomigrateDecision::Apply
+        );
+        assert_eq!(
+            decide_automigrate(Some("1"), Some("1"), dsn),
+            AutomigrateDecision::Apply
+        );
+        assert_eq!(
+            decide_automigrate(Some("0"), Some("1"), dsn),
+            AutomigrateDecision::Disabled,
+            "TRINITY_AUTOMIGRATE=0 stays a veto"
+        );
+        assert_eq!(
+            decide_automigrate(None, Some("1"), None),
+            AutomigrateDecision::NoDsn
+        );
+        assert_eq!(
+            decide_automigrate(None, Some("1"), Some("   ")),
+            AutomigrateDecision::NoDsn,
+            "a blank DSN is no DSN"
+        );
     }
 }

@@ -1,0 +1,34 @@
+PLATFORM arch=aarch64 os=macos pointer_width=64 profile=release
+PRIMITIVE input_a ef0dc7ce292aab8f99099908ef1dfb306ac7ed2f038b1ff332b15aef7188dfbd
+DETAIL    input_a n=4096 first_bits=0xbf34eeb0
+PRIMITIVE input_b 9af976a4697b5cb7aba3996fff1d5ea2a889873a10fbc5d59d157c436a427a8e
+DETAIL    input_b n=4096 first_bits=0xbe5df284
+PRIMITIVE input_positive fd506d52f2f96f2025240f4bf7808c8f5a4ce29783f779421dd3189434e8d57e
+DETAIL    input_positive n=4096 first_bits=0x400f4a9e
+PRIMITIVE input_ranged dff27d4d8b7be4e80065bf6328d5c67cd0d57a01f0231e50ebc0a1bdc830bed0
+DETAIL    input_ranged n=4096 first_bits=0xbff784ac
+PRIMITIVE dot_sequential_4096 b8194eadf31dac2763e4945d0a2faeb3436b6f46a048c7a7a301022f7420efbc
+DETAIL    dot_sequential_4096 n=1 first_bits=0x447d1b06
+PRIMITIVE dot_split8_4096 559837cedd3c8749e66a8d7f7d0bf927c76be6dec2a3c195fdb33577ce695ec3
+DETAIL    dot_split8_4096 n=1 first_bits=0x447d1b0f
+PRIMITIVE exp_4096 da21b7d2ae9578bbe6ebe089b65d9e78977aebc0b5e8655c939dfeb501374fc2
+DETAIL    exp_4096 n=4096 first_bits=0x3e1413d4
+PRIMITIVE ln_4096 92d8570e4e8546c7244ab648bbc22ea1ea6acc69710841056c709ab8dcaa8de6
+DETAIL    ln_4096 n=4096 first_bits=0x3f4e55de
+PRIMITIVE sqrt_4096 8673c1472b4452b4b8eca9917b8934d203faa67ea099c4d56c90bb4ea9daee09
+DETAIL    sqrt_4096 n=4096 first_bits=0x3fbf86ee
+PRIMITIVE powf_4096 9c9938ff73747ca30fce88ecd2df01d907d1d5772bce1e752d324def573fcf94
+DETAIL    powf_4096 n=4096 first_bits=0x40683a0e
+PRIMITIVE cos_4096 10b3c47cd1f01c9e8de03b73ae25bb1a5de766c6bee8c2e2c620fa28eef41132
+DETAIL    cos_4096 n=4096 first_bits=0xbeb5c5bd
+PRIMITIVE sqrelu_4096 4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe
+DETAIL    sqrelu_4096 n=4096 first_bits=0x00000000
+PRIMITIVE softmax_4096 27bfe3723da351408ed3e31760ea32f0dac04fe6d900fc02b9033a5061ffcc0a
+DETAIL    softmax_4096 n=4096 first_bits=0x398ca6fa
+PRIMITIVE layer_norm_64 d0a67af559306e42683c724f73782112f0a4f85a0c678f3038f9aca77004b9cc
+DETAIL    layer_norm_64 n=64 first_bits=0xbf59b8ad
+PRIMITIVE matvec_384x64 f2c23c3efc235242150c74db2c0bc90ab5968139951fc03b76ffdea041f4597c
+DETAIL    matvec_384x64 n=384 first_bits=0x419bb659
+PRIMITIVE forward_tiny_h64 9eeb6b05fb70205a92da5b43e183eb9c09de45fd7553ccae8edadd26f465aaa3
+DETAIL    forward_tiny_h64 n=129 first_bits=0x2942a5c8
+SUMMARY primitives=16 declared=16 randomness=none file_io=none env_reads=none

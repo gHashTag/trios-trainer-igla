@@ -244,6 +244,23 @@ fn deploy_seed(
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // FIRST STATEMENT, ahead of `clap`. `Commands::Race` reads `DATABASE_URL`
+    // directly (see below), which is one name out of `DSN_ENV_VARS`; on a shell
+    // that also exports `TRIOS_DATABASE_URL` this binary would report on, and
+    // `race start` would work against, whichever of the two the chain happened
+    // to reach first. The gate refuses that environment with
+    // `neon_writer::DSN_CONFLICT_EXIT_CODE` and prints which variable points
+    // where. It returns immediately when the visible DSN variables agree or
+    // fewer than two are set, which is every ordinary invocation, so the
+    // non-database subcommands (`deploy`, `status`) are unaffected in practice
+    // -- and when they ARE affected, the environment is one in which this
+    // binary could not have said truthfully which database it meant.
+    //
+    // This does NOT change tri's status semantics: a present DATABASE_URL is
+    // still not evidence that anything is reachable, and every race subcommand
+    // still fails loudly with or without a DSN.
+    trios_trainer::neon_writer::enforce_dsn_conflict_gate();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -289,44 +306,47 @@ async fn main() -> anyhow::Result<()> {
                 eprintln!("Project '{}' ready", RAILWAY_PROJECT);
             }
         },
-        Commands::Race { race_cmd } => match race_cmd {
-            RaceCommands::Start => {
-                let neon_url = std::env::var("DATABASE_URL").unwrap_or_default();
-                if neon_url.is_empty() {
-                    eprintln!("WARNING: DATABASE_URL not set — running in local-only mode");
-                }
-                let machine_id = hostname_or_default();
-                let best_bpb = Arc::new(RwLock::new(f64::MAX));
-                let result =
+        // A present DATABASE_URL is not evidence that anything is reachable.
+        // The old arms bailed when it was unset, which made the output of the
+        // stub backend maximally believable: you had to supply a DSN to be
+        // told "No completed trials yet" by code that opened no socket. Every
+        // race subcommand now fails loudly on stderr and exits non-zero, with
+        // or without a DSN. See src/race/neon.rs::STUB_REFUSAL.
+        //
+        // The single-name read below is reached only on an environment
+        // `enforce_dsn_conflict_gate()` (first statement of `main`) has already
+        // declared unambiguous, so taking `DATABASE_URL` alone can no longer
+        // quietly ignore a differing `TRIOS_DATABASE_URL`.
+        Commands::Race { race_cmd } => {
+            let neon_url = std::env::var("DATABASE_URL").unwrap_or_default();
+            let outcome = match race_cmd {
+                RaceCommands::Start => {
+                    let machine_id = hostname_or_default();
+                    let best_bpb = Arc::new(RwLock::new(f64::MAX));
                     trios_trainer::race::asha::run_worker(&neon_url, &machine_id, 0, best_bpb)
-                        .await;
-                match result {
-                    Ok(bpb) => println!("BPB={:.4}", bpb),
-                    Err(e) => {
-                        eprintln!("ASHA worker error: {e}");
-                        std::process::exit(1);
+                        .await
+                        .map(|bpb| println!("BPB={:.4}", bpb))
+                }
+                RaceCommands::Status => {
+                    match trios_trainer::race::neon::NeonDb::connect(&neon_url).await {
+                        Ok(db) => trios_trainer::race::status::show_status(&db).await,
+                        Err(e) => Err(e),
                     }
                 }
-            }
-            RaceCommands::Status => {
-                let neon_url = std::env::var("DATABASE_URL").unwrap_or_default();
-                if neon_url.is_empty() {
-                    eprintln!("No DATABASE_URL set — no leaderboard");
-                    return Ok(());
+                RaceCommands::Best => {
+                    match trios_trainer::race::neon::NeonDb::connect(&neon_url).await {
+                        Ok(db) => trios_trainer::race::status::show_best(&db).await,
+                        Err(e) => Err(e),
+                    }
                 }
-                let db = trios_trainer::race::neon::NeonDb::connect(&neon_url).await?;
-                trios_trainer::race::status::show_status(&db).await?;
+            };
+            if let Err(e) = outcome {
+                // eprintln!, not tracing: this binary installs no subscriber,
+                // so an info!/warn! here would print nothing at all.
+                eprintln!("tri race: {e:#}");
+                std::process::exit(1);
             }
-            RaceCommands::Best => {
-                let neon_url = std::env::var("DATABASE_URL").unwrap_or_default();
-                if neon_url.is_empty() {
-                    eprintln!("No DATABASE_URL set");
-                    return Ok(());
-                }
-                let db = trios_trainer::race::neon::NeonDb::connect(&neon_url).await?;
-                trios_trainer::race::status::show_best(&db).await?;
-            }
-        },
+        }
         Commands::Gardener { gardener_cmd } => match gardener_cmd {
             GardenerCommands::Status => gardener_status()?,
             GardenerCommands::Harvest { service } => gardener_harvest(&service)?,
@@ -374,7 +394,10 @@ fn gardener_status() -> anyhow::Result<()> {
     let harvest_log = ".trinity/gardener_harvest.log";
 
     println!("=== САД IGLA RACE ===");
-    println!("Время: {}", chrono::Local::now().format("%Y-%m-%d %H:%M:%S"));
+    println!(
+        "Время: {}",
+        chrono::Local::now().format("%Y-%m-%d %H:%M:%S")
+    );
 
     let proc_out = std::process::Command::new("sh")
         .arg("-c")
@@ -385,26 +408,32 @@ fn gardener_status() -> anyhow::Result<()> {
 
     let disk_out = std::process::Command::new("sh")
         .arg("-c")
-        .arg(&format!("du -sh {} 2>/dev/null || echo 'N/A'", log_dir))
+        .arg(format!("du -sh {} 2>/dev/null || echo 'N/A'", log_dir))
         .output()?;
     println!("Логи: {}", String::from_utf8_lossy(&disk_out.stdout).trim());
 
     if std::path::Path::new(harvest_log).exists() {
         let best_out = std::process::Command::new("sh")
             .arg("-c")
-            .arg(&format!(
+            .arg(format!(
                 "grep -E 'best=([0-9.]+)' {} | sed 's/.*best=//' | sort -n | head -1",
                 harvest_log
             ))
             .output()?;
         let best = String::from_utf8_lossy(&best_out.stdout).trim().to_string();
-        println!("Лучший BPB (fleet): {}", if best.is_empty() { "N/A" } else { &best });
+        println!(
+            "Лучший BPB (fleet): {}",
+            if best.is_empty() { "N/A" } else { &best }
+        );
 
         let cnt_out = std::process::Command::new("sh")
             .arg("-c")
-            .arg(&format!("wc -l < {}", harvest_log))
+            .arg(format!("wc -l < {}", harvest_log))
             .output()?;
-        println!("Harvest entries: {}", String::from_utf8_lossy(&cnt_out.stdout).trim());
+        println!(
+            "Harvest entries: {}",
+            String::from_utf8_lossy(&cnt_out.stdout).trim()
+        );
     }
 
     Ok(())
@@ -418,16 +447,22 @@ fn gardener_harvest(service: &str) -> anyhow::Result<()> {
         .env("RAILWAY_NON_INTERACTIVE", "1")
         .output()?;
     if !output.status.success() {
-        anyhow::bail!("railway logs failed: {}", String::from_utf8_lossy(&output.stderr));
+        anyhow::bail!(
+            "railway logs failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
     let stdout = String::from_utf8_lossy(&output.stdout);
     let latest = stdout
         .lines()
-        .filter(|l| l.contains("step=") && l.contains("val_bpb="))
-        .last();
+        .rfind(|l| l.contains("step=") && l.contains("val_bpb="));
     let line = match latest {
         Some(l) => format!("{} {}", tag, l),
-        None => format!("{} NO_DATA {}", tag, chrono::Local::now().format("%Y-%m-%dT%H:%M:%S")),
+        None => format!(
+            "{} NO_DATA {}",
+            tag,
+            chrono::Local::now().format("%Y-%m-%dT%H:%M:%S")
+        ),
     };
     println!("{}", line);
     std::fs::OpenOptions::new()
@@ -501,17 +536,17 @@ fn gardener_prune() -> anyhow::Result<()> {
         .arg("ps aux | grep trios-train | grep -v grep | grep 'defunct' | awk '{print $2}'")
         .output()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let pids: Vec<&str> = stdout
-        .lines()
-        .filter(|l| !l.is_empty())
-        .collect();
+    let pids: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
     if pids.is_empty() {
         println!("No zombie/defunct processes found.");
     } else {
         println!("Zombie PIDs: {}", pids.join(", "));
         for pid in &pids {
             println!("Killing zombie PID {} ...", pid);
-            let _ = std::process::Command::new("kill").arg("-9").arg(pid).status();
+            let _ = std::process::Command::new("kill")
+                .arg("-9")
+                .arg(pid)
+                .status();
         }
     }
     Ok(())
@@ -524,10 +559,7 @@ fn gardener_water() -> anyhow::Result<()> {
         .arg("grep -l 'CUDA out of memory\\|Killed\\|Segmentation fault' .trinity/results/*.log 2>/dev/null")
         .output()?;
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let logs: Vec<&str> = stdout
-        .lines()
-        .filter(|l| !l.is_empty())
-        .collect();
+    let logs: Vec<&str> = stdout.lines().filter(|l| !l.is_empty()).collect();
     if logs.is_empty() {
         println!("No crashed logs found.");
     } else {
@@ -561,7 +593,9 @@ fn gardener_report() -> anyhow::Result<()> {
     }
     #[cfg(target_os = "linux")]
     {
-        std::process::Command::new("xdg-open").arg(report).status()?;
+        std::process::Command::new("xdg-open")
+            .arg(report)
+            .status()?;
     }
     println!("Opened {}", report);
     Ok(())

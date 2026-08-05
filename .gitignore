@@ -15,7 +15,7 @@ Cargo.lock.bak
 # ABOUT them is the opposite: `/data/` used to hide data/README.md and the
 # corpus manifest from `git add`, so the one file that lets a third party
 # confirm they hold the same bytes could not be committed. Re-included by name;
-# the .txt/.bin corpora stay ignored.
+# the derived and defective corpora stay ignored.
 #
 # `/data/*` and not `/data/`: git never descends into an EXCLUDED DIRECTORY, so
 # a negation under `/data/` can never fire. Excluding the contents instead is
@@ -23,6 +23,16 @@ Cargo.lock.bak
 /data/*
 !/data/README.md
 !/data/MANIFEST.sha256
+# The two corpora every reported BPB in this repository was measured against.
+# 1.1 MB total, and tracking them is what makes the evidence chain survive its
+# upstream: a hash detects SUBSTITUTION but cannot detect DELETION, so a pinned
+# checksum whose preimage nobody holds tells an auditor they failed without
+# telling them what the right bytes were. A conformity dossier has to stay
+# re-checkable for the life of the certificate, which is longer than the life of
+# a raw.githubusercontent.com path. Tracked copy is NORMATIVE; the curl in
+# README.md is now a fallback. See data/README.md.
+!/data/tiny_shakespeare.txt
+!/data/tiny_shakespeare_val.txt
 *.jsonl.tmp
 
 # Training logs (thousands of files choke git)

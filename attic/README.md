@@ -14,9 +14,10 @@ indistinguishable from live code to anyone who cloned it.
 
 Three independent facts, each checkable:
 
-1. **Not declared.** `src/lib.rs` declares 24 modules. None of them is any of
-   these 16 files. A `.rs` file in `src/` that no `mod` statement names is not
-   part of the crate; rustc never sees it.
+1. **Not declared.** `src/lib.rs` declared 24 modules on 2026-08-03 (25 on
+   2026-08-05; the crate is under active development and this number moves).
+   None of them is any of these 16 files, at either date. A `.rs` file in `src/`
+   that no `mod` statement names is not part of the crate; rustc never sees it.
 2. **Not picked up as binaries.** `Cargo.toml` sets `autobins = false`, so cargo
    does not auto-discover targets, and no `[[bin]]` entry - live or commented -
    points at any of these files.
@@ -48,6 +49,46 @@ move as before it. If that count had changed, something would have referenced
 these files and the move would have been wrong.
 
 Total quarantined: 6221 lines across 16 files.
+
+
+### Re-verified 2026-08-05
+
+The absolute test count is not a stable check - other work in this tree adds
+tests, and the same command now reports 686. The count is therefore the weak
+form of the argument. The strong form, re-run on 2026-08-05 and independent of
+how many tests the crate has:
+
+```
+$ cargo build --release                              # Finished `release` profile
+$ cargo test --release --lib | tail -1
+test result: ok. 686 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+
+# extract every #[test] fn name from the 16 files here (83 attributes,
+# 74 distinct names) and look for each one in the live test listing:
+$ cargo test --release --lib -- --list > /tmp/list.txt   # 686 tests, 0 benchmarks
+$ ... grep each name ...
+distinct test fn names extracted: 74
+quarantined test names appearing in the live test listing: 0
+```
+
+Also re-confirmed on that date: no `mod <name>;`, `#[path = ...]` or `include!`
+anywhere in `src/` or `tests/` names any of these 16 files (the only `#[path]`
+in the tree points at `src/bin/ckpt_replay.rs`, which is live), and no `path =`
+line in `Cargo.toml` - live or commented - points at a file that is not there.
+
+
+## Note: this directory holds more than these 16 files
+
+A second quarantine pass on 2026-08-03 moved additional never-built files into
+this same directory from `src/bin/`: `attn_train.rs`, `bench_cpu.rs`,
+`lr_calibration.rs`, `ptq_eval.rs`, `train_cpu.rs`, `transformer_train.rs`,
+`tjepa_modules/`, `trinity_3k_fineweb_train.rs`, `trinity_3k_simple_train.rs`,
+`trinity_3k_tinyshakespeare.rs` and `trinity_tournament.rs`. Each is documented
+where its target used to be declared, in the `[[bin]]` section of `Cargo.toml`.
+Most of them failed to build precisely because they depended on the 16 library
+files quarantined here. The file table below covers only the 16; the opening
+sentence of this README - nothing here is built, tested or referenced by any
+claim - covers everything in the directory.
 
 
 ## WARNING - fabricated output. Never quote a number from this directory.

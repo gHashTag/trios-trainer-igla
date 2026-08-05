@@ -1,0 +1,17 @@
+{
+  "schema": "canonical-digest/1",
+  "params": 212992,
+  "bitwise_differing": 95144,
+  "numerically_differing": 93071,
+  "signed_zero_only": 2073,
+  "zero_in_both": 33503,
+  "raw_sha256_a": "8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c",
+  "raw_sha256_b": "bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3",
+  "canonical_sha256_a": "78a0c83d3fca81769789983467b4ec5a2fc80374a765b16e9705176849e44200",
+  "canonical_sha256_b": "f3b0816db2921c868eed3443d56f89f1f987ec096029290cf0b50b0d8ff7d9e1",
+  "raw_digests_equal": false,
+  "canonical_digests_equal": false,
+  "canonicalization_changes_verdict": false,
+  "negative_zero_count_a": 8119,
+  "negative_zero_count_b": 7947
+}

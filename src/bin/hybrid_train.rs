@@ -39,10 +39,24 @@ const GATE_FINAL_SEEDS: &[u64] = trios_trainer::train_loop::GATE_FINAL_SEEDS;
 const DEFAULT_TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
 const DEFAULT_VAL_PATH: &str = "data/tiny_shakespeare_val.txt";
 const CTX_WEIGHTS: [f32; NUM_CTX] = [0.70, 0.45, 0.30, 0.20, 0.13, 0.08];
+/// Windows `evaluate` averages over. Named so the corpus precondition in
+/// `main` can ask its question at the coverage this binary actually uses: a
+/// chunk count computed from a different chunking is not a precondition.
+const EVAL_NUM_CHUNKS: usize = 40;
 const NCA_WEIGHT: f32 = 0.25;
 const NCA_K: usize = 9;
 const NCA_ENTROPY_MIN: f32 = 1.5;
 const NCA_ENTROPY_MAX: f32 = 2.8;
+/// Probability floor for the NCA entropy REGULARISER only - never for a loss
+/// or an eval reading.
+///
+/// `-sum p*ln p` needs the `0*ln 0 = 0` limit, and this floor supplies it:
+/// at `p == 0` the term is `0 * ln(1e-10) == 0`, the mathematically correct
+/// value. It is named rather than written inline so that a search for a
+/// probability clamp in this file finds nothing in a measurement path: the
+/// identical expression in `loss_on_seq` was fabricating 33.21928 bpb, this
+/// one shapes a gradient and is never reported as a number.
+const NCA_ENTROPY_PROB_FLOOR: f32 = 1e-10;
 
 /// Read a corpus from disk. A missing or empty file is an error.
 ///
@@ -289,12 +303,16 @@ impl HybridModel {
     /// hold an n-gram pair or the forward pass produced a non-number.
     ///
     /// A short sequence used to return `0.0`, a loss no model achieves, which
-    /// averaged into `evaluate` as a real reading. `f32::max` also ignores NaN,
-    /// so `logits[target].max(1e-10)` turned a poisoned forward pass into a
-    /// finite 23.03-nat measurement; NaN is now an absence. The 1e-10 clamp is
-    /// kept for a genuinely underflowed probability - capping it is a documented
-    /// floor on surprisal, and dropping those chunks instead would bias the
-    /// reported BPB downward.
+    /// averaged into `evaluate` as a real reading. Clamping `logits[target]` to
+    /// a 1e-10 floor was the same defect one step further on: `f32::max`
+    /// ignores NaN, so a poisoned forward pass became a finite 23.03-nat
+    /// measurement, and a merely UNDERFLOWED probability - a finite `0.0` out
+    /// of the f32 softmax, which `is_nan` and `is_finite` both accept - became
+    /// the identical 23.02585 nats / 33.21928 bpb. That constant is the
+    /// crate's documented fake-measurement signature, and `final_val_bpb` is a
+    /// SEALED field, so it shipped inside an authenticated declaration. A
+    /// probability that is not finite and strictly positive is an absence, and
+    /// a mean is not reported over absences.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < NGRAM + 1 {
             return None;
@@ -306,10 +324,10 @@ impl HybridModel {
             let (_, _, _, mut logits, _) = self.forward_position(tokens, i);
             softmax(&mut logits);
             let p = logits[target];
-            if p.is_nan() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            total -= p.max(1e-10).ln();
+            total -= p.ln();
         }
         Some(total / count as f32)
     }
@@ -353,7 +371,7 @@ fn compute_grads_for_positions(
             }
             let entropy: f32 = -probs
                 .iter()
-                .map(|&p: &f32| p.max(1e-10).ln() * p)
+                .map(|&p: &f32| p.max(NCA_ENTROPY_PROB_FLOOR).ln() * p)
                 .sum::<f32>();
             let nca_grad = if entropy < NCA_ENTROPY_MIN {
                 -2.0 * NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy)
@@ -361,7 +379,7 @@ fn compute_grads_for_positions(
                 2.0 * NCA_WEIGHT * (entropy - NCA_ENTROPY_MAX)
             };
             for vi in 0..VOCAB {
-                let d_ent = probs[vi] * (probs[vi].max(1e-10).ln() + entropy);
+                let d_ent = probs[vi] * (probs[vi].max(NCA_ENTROPY_PROB_FLOOR).ln() + entropy);
                 for hi in 0..h {
                     g_head[vi * h + hi] += nca_grad * d_ent * hidden[hi] * 0.01;
                 }
@@ -436,7 +454,7 @@ fn compute_grads_for_positions(
 /// silent about HOW MUCH of the corpus failed.
 fn evaluate(model: &HybridModel, tokens: &[usize]) -> Option<f32> {
     let chunk_size = SEQ + 1;
-    let num_chunks = 40usize;
+    let num_chunks = EVAL_NUM_CHUNKS;
     let max_start = tokens.len().saturating_sub(chunk_size);
     if max_start == 0 {
         return None;
@@ -499,7 +517,7 @@ fn nca_entropy_loss(logits: &[f32]) -> f32 {
     }
     let entropy: f32 = -probs
         .iter()
-        .map(|&p: &f32| p.max(1e-10).ln() * p)
+        .map(|&p: &f32| p.max(NCA_ENTROPY_PROB_FLOOR).ln() * p)
         .sum::<f32>();
     if entropy < NCA_ENTROPY_MIN {
         NCA_WEIGHT * (NCA_ENTROPY_MIN - entropy).powi(2)
@@ -543,8 +561,41 @@ fn gf16_floor(weights: &mut [f32]) {
     }
 }
 
+/// Every argument this binary reads, in the spellings `arg_value` implements.
+///
+/// `arg_value` accepts BOTH `--name=VALUE` and `--name VALUE` for every one of
+/// them, so each appears twice: `trios_trainer::reject_unknown_args` reads the
+/// pair as "this flag takes a value in either spelling".
+const KNOWN_ARGS: [&str; 16] = [
+    "seed",
+    "seed=",
+    "steps",
+    "steps=",
+    "lr",
+    "lr=",
+    "hidden",
+    "hidden=",
+    "eval-every",
+    "eval-every=",
+    "accum",
+    "accum=",
+    "train-path",
+    "train-path=",
+    "val-path",
+    "val-path=",
+];
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
+    // The corpus spellings here are `--train-path` / `--val-path`. Given
+    // `--train` / `--val` this binary dropped both, trained the DEFAULT split
+    // and published `bpb=5.0731` with exit 0 (measured at --steps=20). The
+    // argument check therefore runs before anything is read, trained or
+    // printed. See `trios_trainer::reject_unknown_args`.
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
     let seed: u64 = find_arg(&args, "--seed", 0u64);
     let steps: usize = find_arg(&args, "--steps", 81000usize);
     let base_lr: f32 = find_arg(&args, "--lr", 0.003f32);
@@ -588,6 +639,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let train_data = load_data(&train_path)?;
         let val_data = load_data(&val_path)?;
         eprintln!("train={} val={}", train_data.len(), val_data.len());
+
+        // This binary writes ledger rows through `neon_writer::bpb_sample` and
+        // carried NO corpus precondition: a run with `--train-path` equal to
+        // `--val-path` completed and reported bpb=3.9591, and only an unset DSN
+        // kept the row off the ledger. `reject_bpb`'s floor of 2.0 cannot catch
+        // it either, because a 100% verbatim overlap lands near 2.48 on this
+        // architecture - above the floor and BELOW `BPB_CHAMPION` = 2.5193,
+        // i.e. it reads as a new champion. The guard is the shared one, asked
+        // at this binary's own eval coverage.
+        trios_trainer::train_loop::check_train_val_disjoint(
+            &train_data,
+            &val_data,
+            trios_trainer::train_loop::eval_chunk_count(val_data.len(), EVAL_NUM_CHUNKS),
+        )
+        .map_err(|reason| {
+            format!(
+                "SPLIT REFUSED: {reason} Refusing to train: no BPB measured \
+                 against this split is a model result, and this binary publishes \
+                 its BPB to the ledger."
+            )
+        })?;
 
         let mut model = HybridModel::new(hidden, seed);
 
@@ -858,10 +930,16 @@ mod tests {
             .map(|s| s.to_string())
             .collect();
         assert_eq!(arg_value(&sp, "--steps").as_deref(), Some("2"));
-        assert_eq!(arg_value(&sp, "--train-path").as_deref(), Some("data/x.txt"));
+        assert_eq!(
+            arg_value(&sp, "--train-path").as_deref(),
+            Some("data/x.txt")
+        );
         assert_eq!(find_arg(&sp, "--steps", 81000usize), 2usize);
 
-        let eq: Vec<String> = ["prog", "--steps=2"].iter().map(|s| s.to_string()).collect();
+        let eq: Vec<String> = ["prog", "--steps=2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(find_arg(&eq, "--steps", 81000usize), 2usize);
 
         let none: Vec<String> = vec!["prog".to_string()];
@@ -885,6 +963,55 @@ mod tests {
     fn fmt_bpb_never_invents_a_number() {
         assert_eq!(fmt_bpb(None), "unmeasured");
         assert_eq!(fmt_bpb(Some(2.6141)), "2.6141");
+    }
+
+    /// An UNDERFLOWED target probability is an absence, not 33.21928 bpb.
+    ///
+    /// This binary publishes its BPB through `neon_writer::bpb_sample`, and
+    /// `final_val_bpb` is a SEALED field. An f32 softmax returns a finite,
+    /// exact `0.0` for a target the model finds impossible - no NaN, no
+    /// infinity, so the previous `p.is_nan()` guard accepted it - and
+    /// clamping `p` to a 1e-10 floor then contributed exactly 23.02585 nats,
+    /// which is 33.21928 bpb: the constant this crate documents as the
+    /// fake-measurement signature.
+    #[test]
+    fn an_underflowed_target_probability_is_an_absence_not_33_bpb() {
+        let mut model = HybridModel::new(64, 47);
+        // Exactly one scoring position, so one forward pass fixes the reading.
+        let tokens: Vec<usize> = vec![1; NGRAM + 1];
+        let target = tokens[NGRAM].min(VOCAB - 1);
+        let h = model.hidden;
+        let (_, _, hidden, _, _) = model.forward_position(&tokens, 0);
+        let norm2: f32 = hidden.iter().map(|x| x * x).sum();
+        assert!(norm2 > 0.0, "fixture needs a non-zero hidden state");
+
+        // Put the target's logit 400 nats under the maximum. f32 `exp`
+        // underflows to exactly 0.0 below about -104, so the target
+        // probability is an honest zero and NOT a NaN.
+        let big = if target == 0 { 1 } else { 0 };
+        model.lm_head.iter_mut().for_each(|w| *w = 0.0);
+        let scale = 400.0 / norm2;
+        for hi in 0..h {
+            model.lm_head[big * h + hi] = hidden[hi] * scale;
+        }
+        let (_, _, _, mut logits, _) = model.forward_position(&tokens, 0);
+        softmax(&mut logits);
+        let p = logits[target];
+        assert_eq!(p, 0.0, "fixture must UNDERFLOW, not poison");
+        assert!(!p.is_nan() && p.is_finite(), "and it must look measurable");
+
+        assert_eq!(
+            model.loss_on_seq(&tokens),
+            None,
+            "an underflowed probability is an absence, not a number"
+        );
+
+        // The reading the clamp used to manufacture, computed rather than
+        // quoted, so this test fails loudly if the floor is reintroduced.
+        let laundered_nats = -(1e-10f32).ln();
+        let laundered_bpb = laundered_nats / LN_2;
+        assert!((laundered_nats - 23.02585).abs() < 1e-3, "{laundered_nats}");
+        assert!((laundered_bpb - 33.21928).abs() < 1e-3, "{laundered_bpb}");
     }
 
     #[test]

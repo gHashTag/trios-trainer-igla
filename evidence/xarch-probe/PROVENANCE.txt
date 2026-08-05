@@ -1,0 +1,161 @@
+==========================================================================
+ evidence/xarch-probe -- the ULP census, both architecture arms
+==========================================================================
+
+WHAT THIS DIRECTORY IS
+
+  The artifact for the sharpest technical claim in this repository: the
+  cross-architecture divergence of the trainer is carried by the platform
+  maths library, not by reduction order, and every disagreement measured is
+  exactly one unit in the last place.
+
+  Until now that claim shipped without evidence. The measuring program lived
+  in /tmp, was reproduced by transcription in docs/DIVERGENCE-MECHANISM.md,
+  and could not be re-run by a reader. A citation to /tmp is not evidence.
+  The program is now src/bin/ulp_census.rs, both arms are published here, and
+  docs/DIVERGENCE-MECHANISM.md derives every cell of its table from these
+  files.
+
+FILES
+
+  ulp-arm64.txt     stdout of ulp_census, aarch64-apple-darwin
+  ulp-x86_64.txt    stdout of ulp_census, x86_64-apple-darwin (Rosetta 2)
+  probe-arm64.txt   stdout of xarch_probe, aarch64-apple-darwin
+  probe-x86_64.txt  stdout of xarch_probe, x86_64-apple-darwin (Rosetta 2)
+  ULP-CENSUS.txt    the census table, DERIVED from the two ulp-*.txt dumps by
+                    tests/xarch_probe_census.rs and asserted against them on
+                    every `cargo test --test xarch_probe_census`. Nothing in
+                    it is typed by hand.
+
+WHAT IS HELD FIXED AND WHAT VARIES
+
+  The x86_64 arm is x86_64-apple-darwin executing under Rosetta 2 on Apple
+  Silicon. One host, one OS build, one kernel, one compiler build, one libm
+  VENDOR, two instruction sets. The single variable is therefore the ISA,
+  which is what lets this experiment attribute anything at all.
+
+  It is NOT the native x86_64 Linux arm that produced the CI mismatch of
+  GitHub Actions run 30767491098; that job moves architecture, OS and libc at
+  once. This directory constrains that result, it does not replace it. Under
+  Rosetta the x86_64 binary resolves _expf out of the x86_64 slice of the
+  platform libm, itself x86_64 code being translated, so this evidence cannot
+  separate "Apple's x86_64 expf rounds differently" from "Rosetta's
+  translation of it rounds differently". Both lie outside the trainer's own
+  compiled arithmetic, which is the distinction the experiment was run to
+  make; neither is individually established here.
+
+SAMPLE SIZE
+
+  n=1 run per arm. No repetition, no variance estimate, no error bar. The
+  justification for a single run is that both binaries are deterministic by
+  construction -- no arguments, no environment reads, no file I/O, no
+  randomness, no clock (tests/xarch_probe_census.rs checks the sources for
+  each of those) -- and that the aarch64 arm reproduces the sixteen hashes
+  published in docs/DIVERGENCE-MECHANISM.md exactly. That is an argument, not
+  a measurement of run-to-run variance, and it is recorded here as such.
+
+PLATFORM
+
+  os                 macOS 26.5.2 (build 25F84)
+  kernel             Darwin 25.5.0 arm64
+  cpu                Apple Silicon (arm64), Rosetta 2 present
+  rustc -vV          rustc 1.96.0 (ac68faa20 2026-05-25)
+                     binary: rustc
+                     commit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+                     commit-date: 2026-05-25
+                     host: aarch64-apple-darwin
+                     release: 1.96.0
+                     LLVM version: 22.1.2
+  toolchain pin      rust-toolchain.toml, channel = "1.96.0"
+  profile            release
+  targets            aarch64-apple-darwin
+                     x86_64-apple-darwin
+
+COMMANDS
+
+  cargo build --release --target aarch64-apple-darwin --bin ulp_census --bin xarch_probe
+  cargo build --release --target x86_64-apple-darwin  --bin ulp_census --bin xarch_probe
+  ./target/aarch64-apple-darwin/release/ulp_census  > evidence/xarch-probe/ulp-arm64.txt
+  ./target/x86_64-apple-darwin/release/ulp_census   > evidence/xarch-probe/ulp-x86_64.txt
+  ./target/aarch64-apple-darwin/release/xarch_probe > evidence/xarch-probe/probe-arm64.txt
+  ./target/x86_64-apple-darwin/release/xarch_probe  > evidence/xarch-probe/probe-x86_64.txt
+  cargo test --release --test xarch_probe_census
+
+  No `arch -x86_64` prefix is needed: macOS routes a Mach-O x86_64 executable
+  through Rosetta 2 on its own.
+
+BINARIES
+
+  file(1):
+    aarch64-apple-darwin  ulp_census   Mach-O 64-bit executable arm64
+    aarch64-apple-darwin  xarch_probe  Mach-O 64-bit executable arm64
+    x86_64-apple-darwin   ulp_census   Mach-O 64-bit executable x86_64
+    x86_64-apple-darwin   xarch_probe  Mach-O 64-bit executable x86_64
+
+  sha256:
+    2f5f880f839d5d3675f5310aa1b5e2f433d68c1a5d68683989af9e00beb3336f  aarch64 ulp_census
+    eb89ff571d86d10fdff0c6ab073e5a561dd27b8c2c87fadda3103499c3bd7dcf  aarch64 xarch_probe
+    c34a8dc835b975ce71ecde52158c1267b66c8ebb8a5be10c4b8ed8bae55d69fa  x86_64  ulp_census
+    7fc6223fe9986aa61edc60b9086dec54518db24f806cf8195c9f6a611f54e82d  x86_64  xarch_probe
+
+  The two binary hashes of one program differ across the targets, and that
+  carries no information: different machine code for a different instruction
+  set cannot hash the same. They are recorded so a reader can tell whether a
+  future run used the same executable. A binary hash is NOT claimed stable
+  across unrelated edits elsewhere in the crate -- these were taken from a
+  working tree with other work in flight (see LIMITS).
+
+OUTPUTS
+
+  sha256:
+    01679e7a81513f3aa6d9864569eafd2a95d8d9239a1e8d219a425193f632686e  ulp-arm64.txt
+    abc930e4e45a41c434399d925b68422330e950c87cf51824152ff4d38458cc69  ulp-x86_64.txt
+    b6ea6b2aee0eded03da4638bc67fa7ef83b090392a7a0848df41a50fb70d7fcf  probe-arm64.txt
+    ea5aa9a72378435d4d42ecf8f4ab6cab7366bfd527ee8394b0cd196a8be9e907  probe-x86_64.txt
+    24220f54d4a603d064e7bf1c04816a1de4e3df1c440f0eca7169acdc6d9327ac  ULP-CENSUS.txt
+
+RESULT, IN ONE TABLE
+
+  Reproduced from ULP-CENSUS.txt, which is itself derived from the two dumps:
+
+    function  differing  of    share    max ULP  first index  arm64 / x86_64
+    exp       30         4096  0.732%   1        279          0x39cb81f8 0x39cb81f9
+    ln        0          4096  0.000%   0        --           --
+    sqrt      0          4096  0.000%   0        --           --
+    powf      25         4096  0.610%   1        128          0x4058d9b2 0x4058d9b1
+    cos       60         4096  1.465%   1        35           0x3e57a105 0x3e57a104
+
+  sqrt agreeing is a control, not a finding: IEEE 754 pins it and LLVM lowers
+  it to a hardware instruction. ln agreeing IS a finding, and a weak one --
+  an observation on 4096 inputs in [0.25, 8.0), not a guarantee that two logf
+  implementations agree.
+
+  The sixteen per-primitive hashes in probe-arm64.txt and probe-x86_64.txt
+  reproduce the tables published in docs/DIVERGENCE-MECHANISM.md exactly,
+  including forward_tiny_h64 =
+  9eeb6b05fb70205a92da5b43e183eb9c09de45fd7553ccae8edadd26f465aaa3 on the
+  aarch64 arm. Same-machine determinism therefore held across the rebuild
+  that produced this directory.
+
+LIMITS
+
+  git_sha ba272b988971545801c9e337b0b42e35dc18abc4, git_dirty = true; other
+  work was landing in the tree while these runs were taken. Three things bound
+  that exposure:
+
+  1. Neither instrument depends on any module of this crate. The LCG, the
+     layer_norm, the softmax and the forward pass are written out inside the
+     binaries, so a concurrent edit to src/train_loop.rs cannot reach these
+     numbers.
+  2. All four binaries were built back to back from one tree state, and the
+     aarch64 arm reproduced the sixteen previously published hashes.
+  3. The two arms were run within seconds of each other on the same host.
+
+  Not measured anywhere in this directory: a native x86_64 CPU, a second
+  libc, a second compiler version, a third architecture, or any input
+  distribution other than the two buffers named above.
+
+  This file deliberately records no host name and no filesystem path outside
+  the repository. Published provenance describes the platform, not the person;
+  evidence/xarch-local-isa/probe.json does leak a machine name and should not
+  be taken as the pattern.

@@ -81,7 +81,11 @@ struct AdamW {
 
 impl AdamW {
     fn new(size: usize) -> Self {
-        Self { m: vec![0.0; size], v: vec![0.0; size], step: 0 }
+        Self {
+            m: vec![0.0; size],
+            v: vec![0.0; size],
+            step: 0,
+        }
     }
     fn update(&mut self, params: &mut [f32], grads: &[f32], lr: f32, wd: f32) {
         self.step += 1;
@@ -102,7 +106,9 @@ impl Model {
     fn new(dim: usize, hidden: usize, ctx_len: usize, seed: u64) -> Self {
         let mut s = seed;
         let mut rng = || {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
         };
         let cat_dim = ctx_len * dim;
@@ -147,7 +153,10 @@ impl Model {
             }
             h1_raw[hi] = val;
         }
-        let h1: Vec<f32> = h1_raw.iter().map(|&v| v * (v > 0.0) as u32 as f32).collect();
+        let h1: Vec<f32> = h1_raw
+            .iter()
+            .map(|&v| v * (v > 0.0) as u32 as f32)
+            .collect();
         let h1_ln = layer_norm(&h1, 1e-5);
 
         let mut h2_raw = vec![0.0f32; h];
@@ -158,7 +167,10 @@ impl Model {
             }
             h2_raw[hi] = val;
         }
-        let h2: Vec<f32> = h2_raw.iter().map(|&v| v * (v > 0.0) as u32 as f32).collect();
+        let h2: Vec<f32> = h2_raw
+            .iter()
+            .map(|&v| v * (v > 0.0) as u32 as f32)
+            .collect();
         let h2_ln = layer_norm(&h2, 1e-5);
 
         let mut logits = vec![0.0f32; VOCAB];
@@ -168,7 +180,17 @@ impl Model {
             }
         }
 
-        FwdState { cat, cat_ln, h1_raw, h1, h1_ln, h2_raw, h2, h2_ln, logits }
+        FwdState {
+            cat,
+            cat_ln,
+            h1_raw,
+            h1,
+            h1_ln,
+            h2_raw,
+            h2,
+            h2_ln,
+            logits,
+        }
     }
 
     fn backward_one(&self, st: &FwdState, context: &[usize], target: usize) -> (Grads, f32) {
@@ -179,7 +201,20 @@ impl Model {
 
         let mut probs = st.logits.clone();
         softmax(&mut probs);
-        let loss = -probs[target].max(1e-10).ln();
+        let p = probs[target];
+        // `f32::max` ignores NaN, so a 1e-10 floor used to return 1e-10 here,
+        // whose negative log is a finite, plausible-looking 23.026 nats per
+        // token - a poisoned forward pass reported as a training loss. The
+        // floor did the same to a merely UNDERFLOWED probability: a finite
+        // `0.0` out of the f32 softmax, which `is_nan` accepts, became the
+        // identical 23.02585 nats. `loss_on_seq` below refuses on exactly this
+        // condition; here the sequence has no other sample to shrink to, so it
+        // reports NaN - which `eval_bpb`'s `is_finite` filter rejects.
+        let loss = if !p.is_finite() || p <= 0.0 {
+            f32::NAN
+        } else {
+            -p.ln()
+        };
 
         let mut d_logits = probs;
         d_logits[target] -= 1.0;
@@ -207,7 +242,9 @@ impl Model {
 
         let mut d_h1_ln = vec![0.0f32; h];
         for hi in 0..h {
-            if d_h2_raw[hi] == 0.0 { continue; }
+            if d_h2_raw[hi] == 0.0 {
+                continue;
+            }
             for j in 0..h {
                 g_proj2[hi * h + j] += d_h2_raw[hi] * st.h1_ln[j];
                 d_h1_ln[j] += d_h2_raw[hi] * self.proj2[hi * h + j];
@@ -222,7 +259,9 @@ impl Model {
 
         let mut d_cat_ln = vec![0.0f32; cat_dim];
         for hi in 0..h {
-            if d_h1_raw[hi] == 0.0 { continue; }
+            if d_h1_raw[hi] == 0.0 {
+                continue;
+            }
             for j in 0..cat_dim {
                 g_proj1[hi * cat_dim + j] += d_h1_raw[hi] * st.cat_ln[j];
                 d_cat_ln[j] += d_h1_raw[hi] * self.proj1[hi * cat_dim + j];
@@ -239,20 +278,33 @@ impl Model {
             }
         }
 
-        (Grads { g_embed, g_pos, g_proj1, g_proj2, g_head }, loss)
+        (
+            Grads {
+                g_embed,
+                g_pos,
+                g_proj1,
+                g_proj2,
+                g_head,
+            },
+            loss,
+        )
     }
 
     /// Mean NLL over `tokens`, or `None` when nothing could be measured.
     ///
     /// The `0.0` returned for a too-short sequence was a sentinel that read as
-    /// a perfect score, and `probs[target].max(1e-10)` laundered a poisoned
-    /// forward pass into a finite one: `f32::max` returns the OTHER operand
+    /// a perfect score, and clamping `probs[target]` to a 1e-10 floor laundered
+    /// a poisoned forward pass into a finite one: `f32::max` returns the OTHER operand
     /// when one side is NaN, so a NaN probability silently became 1e-10 and
-    /// contributed a plausible ~23 nats. Both are now an explicit absence.
+    /// contributed a plausible ~23 nats. Both are now an explicit absence, and
+    /// the training loss in `backward_one` is guarded the same way - it reports
+    /// NaN, because a single position has no sample to shrink.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let cl = self.ctx_len;
         let count = tokens.len().saturating_sub(cl + 1);
-        if count == 0 { return None; }
+        if count == 0 {
+            return None;
+        }
         let mut total = 0.0f32;
         for i in 0..count {
             let context = &tokens[i..i + cl];
@@ -444,17 +496,23 @@ fn evaluate(model: &Model, tokens: &[usize]) -> Option<f32> {
     let cl = model.ctx_len;
     let dl = tokens.len();
     let num_possible = dl.saturating_sub(SEQ + 1);
-    if num_possible == 0 { return None; }
+    if num_possible == 0 {
+        return None;
+    }
     let nc = EVAL_CHUNKS.min(num_possible);
     let stride = num_possible / nc;
-    if stride == 0 { return None; }
+    if stride == 0 {
+        return None;
+    }
     let mut total = 0.0f32;
     let mut n = 0usize;
     let mut dropped = 0usize;
     for c in 0..nc {
         let start = c * stride;
         let end = (start + SEQ + 1).min(dl);
-        if end <= start + cl + 1 { continue; }
+        if end <= start + cl + 1 {
+            continue;
+        }
         let chunk = &tokens[start..end];
         // A chunk that measured nothing is `None` rather than a 0.0 that
         // averaged in as a perfect score (#62), and it is COUNTED here rather
@@ -484,29 +542,84 @@ fn evaluate(model: &Model, tokens: &[usize]) -> Option<f32> {
         );
         return None;
     }
-    if n == 0 || !total.is_finite() { None } else { Some(total / n as f32) }
+    if n == 0 || !total.is_finite() {
+        None
+    } else {
+        Some(total / n as f32)
+    }
 }
+
+/// Every argument this binary reads, in the spellings its own parser reads.
+///
+/// The scalars are matched with `starts_with("--name=")`, so only the `=` form
+/// exists for them; `--train-data` / `--val-data` go through `arg_path`, which
+/// accepts both spellings and therefore appear twice; `--help` / `-h` are
+/// whole-token matches (`reject_unknown_args` strips the leading dashes, so the
+/// single-dash short form is covered by the entry `"h"`). See
+/// `trios_trainer::reject_unknown_args`.
+const KNOWN_ARGS: [&str; 12] = [
+    "seed=",
+    "steps=",
+    "lr=",
+    "dim=",
+    "hidden=",
+    "ctx=",
+    "train-data",
+    "train-data=",
+    "val-data",
+    "val-data=",
+    "help",
+    "h",
+];
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    // Before `--help`, and before any corpus is opened: a misspelled
+    // `--val-data` used to be dropped in silence, and this binary feeds the
+    // pair into the train/val disjointness guard, so the guard then answered a
+    // question about a different pair than the one asked for.
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        eprintln!();
+        eprintln!("{}", USAGE);
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!("{}", USAGE);
         return Ok(());
     }
     // Canon #93 forbids seeds {42, 43, 44, 45} (see src/seed_canon.rs); the
     // default is a permitted one so an argument-free run is not born invalid.
-    let seed: u64 = args.iter().find(|a| a.starts_with("--seed="))
-        .and_then(|a| a[7..].parse().ok()).unwrap_or(47);
-    let steps: usize = args.iter().find(|a| a.starts_with("--steps="))
-        .and_then(|a| a[8..].parse().ok()).unwrap_or(15000);
-    let lr: f32 = args.iter().find(|a| a.starts_with("--lr="))
-        .and_then(|a| a[5..].parse().ok()).unwrap_or(0.003);
-    let dim: usize = args.iter().find(|a| a.starts_with("--dim="))
-        .and_then(|a| a[6..].parse().ok()).unwrap_or(32);
-    let hidden: usize = args.iter().find(|a| a.starts_with("--hidden="))
-        .and_then(|a| a[9..].parse().ok()).unwrap_or(384);
-    let ctx_len: usize = args.iter().find(|a| a.starts_with("--ctx="))
-        .and_then(|a| a[6..].parse().ok()).unwrap_or(12);
+    let seed: u64 = args
+        .iter()
+        .find(|a| a.starts_with("--seed="))
+        .and_then(|a| a[7..].parse().ok())
+        .unwrap_or(47);
+    let steps: usize = args
+        .iter()
+        .find(|a| a.starts_with("--steps="))
+        .and_then(|a| a[8..].parse().ok())
+        .unwrap_or(15000);
+    let lr: f32 = args
+        .iter()
+        .find(|a| a.starts_with("--lr="))
+        .and_then(|a| a[5..].parse().ok())
+        .unwrap_or(0.003);
+    let dim: usize = args
+        .iter()
+        .find(|a| a.starts_with("--dim="))
+        .and_then(|a| a[6..].parse().ok())
+        .unwrap_or(32);
+    let hidden: usize = args
+        .iter()
+        .find(|a| a.starts_with("--hidden="))
+        .and_then(|a| a[9..].parse().ok())
+        .unwrap_or(384);
+    let ctx_len: usize = args
+        .iter()
+        .find(|a| a.starts_with("--ctx="))
+        .and_then(|a| a[6..].parse().ok())
+        .unwrap_or(12);
 
     let (train_data, train_corpus) = load_or_refuse(&arg_path("--train-data", DEFAULT_TRAIN_PATH));
     let (val_data, val_corpus) = load_or_refuse(&arg_path("--val-data", DEFAULT_VAL_PATH));
@@ -514,7 +627,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Corpus val:   {}", val_corpus.describe());
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let val = if val_data.len() > 100 { &val_data } else { &train_data[train_end..] };
+    let val = if val_data.len() > 100 {
+        &val_data
+    } else {
+        &train_data[train_end..]
+    };
     // Named here, where the choice is made, so a refusal can say which bytes
     // it failed to measure.
     let eval_source = if val_data.len() > 100 {
@@ -559,7 +676,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let off = (step * 97 + seed as usize) % dl.saturating_sub(SEQ + 1);
         let seq = &train[off..off + SEQ + 1];
         let count = seq.len().saturating_sub(ctx_len + 1);
-        if count == 0 { continue; }
+        if count == 0 {
+            continue;
+        }
 
         let step_count = 8.min(count);
         let stride = count / step_count;
@@ -571,21 +690,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let st = model.forward_one(context);
             let (grads, _loss) = model.backward_one(&st, context, target);
 
-            for j in 0..VOCAB * dim { acc_embed[j] += grads.g_embed[j]; }
-            for j in 0..ctx_len * dim { acc_pos[j] += grads.g_pos[j]; }
-            for j in 0..h * cat_dim { acc_p1[j] += grads.g_proj1[j]; }
-            for j in 0..h * h { acc_p2[j] += grads.g_proj2[j]; }
-            for j in 0..VOCAB * h { acc_head[j] += grads.g_head[j]; }
+            for j in 0..VOCAB * dim {
+                acc_embed[j] += grads.g_embed[j];
+            }
+            for j in 0..ctx_len * dim {
+                acc_pos[j] += grads.g_pos[j];
+            }
+            for j in 0..h * cat_dim {
+                acc_p1[j] += grads.g_proj1[j];
+            }
+            for j in 0..h * h {
+                acc_p2[j] += grads.g_proj2[j];
+            }
+            for j in 0..VOCAB * h {
+                acc_head[j] += grads.g_head[j];
+            }
         }
 
         if step % accum == 0 || step == steps {
-            let num_acc = if step % accum == 0 { accum * step_count } else { (step % accum) * step_count };
+            let num_acc = if step % accum == 0 {
+                accum * step_count
+            } else {
+                (step % accum) * step_count
+            };
             let inv = 1.0 / num_acc as f32;
-            for x in acc_embed.iter_mut() { *x *= inv; }
-            for x in acc_pos.iter_mut() { *x *= inv; }
-            for x in acc_p1.iter_mut() { *x *= inv; }
-            for x in acc_p2.iter_mut() { *x *= inv; }
-            for x in acc_head.iter_mut() { *x *= inv; }
+            for x in acc_embed.iter_mut() {
+                *x *= inv;
+            }
+            for x in acc_pos.iter_mut() {
+                *x *= inv;
+            }
+            for x in acc_p1.iter_mut() {
+                *x *= inv;
+            }
+            for x in acc_p2.iter_mut() {
+                *x *= inv;
+            }
+            for x in acc_head.iter_mut() {
+                *x *= inv;
+            }
 
             let cur_lr = cosine_lr(step, steps, lr, warmup);
             opt_embed.update(&mut model.embed, &acc_embed, cur_lr, wd);
@@ -594,11 +737,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             opt_p2.update(&mut model.proj2, &acc_p2, cur_lr, wd);
             opt_head.update(&mut model.lm_head, &acc_head, cur_lr, wd);
 
-            for x in acc_embed.iter_mut() { *x = 0.0; }
-            for x in acc_pos.iter_mut() { *x = 0.0; }
-            for x in acc_p1.iter_mut() { *x = 0.0; }
-            for x in acc_p2.iter_mut() { *x = 0.0; }
-            for x in acc_head.iter_mut() { *x = 0.0; }
+            for x in acc_embed.iter_mut() {
+                *x = 0.0;
+            }
+            for x in acc_pos.iter_mut() {
+                *x = 0.0;
+            }
+            for x in acc_p1.iter_mut() {
+                *x = 0.0;
+            }
+            for x in acc_p2.iter_mut() {
+                *x = 0.0;
+            }
+            for x in acc_head.iter_mut() {
+                *x = 0.0;
+            }
         }
 
         if step % EVAL_INTERVAL == 0 || step == steps {
@@ -652,6 +805,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The probability floor that was doing the laundering, named so that a
+    /// search for a clamp in a measurement path finds nothing outside this
+    /// regression test. The value is the point of the test: `-ln(1e-10)` is
+    /// 23.02585 nats and 33.21928 bpb, the crate's fake-measurement signature.
+    const LAUNDER_FLOOR: f32 = 1e-10;
     use super::*;
 
     /// The refusal is the point: a missing corpus must stop the run, not
@@ -672,5 +831,34 @@ mod tests {
         assert_eq!(corpus.bytes, 160);
         assert_eq!(corpus.sha256.len(), 64, "sha256 must be 64 hex chars");
         assert!(!corpus.synthetic);
+    }
+
+    /// A poisoned forward pass must not be reported as 23.026 nats per token.
+    #[test]
+    fn a_nan_target_probability_does_not_become_a_training_loss() {
+        let laundered = -f32::NAN.max(LAUNDER_FLOOR).ln();
+        assert!(
+            (laundered - 23.025_85).abs() < 1e-3,
+            "f32::max still ignores NaN, so the clamp still has to be guarded: {laundered}"
+        );
+
+        let mut model = Model::new(8, 8, 3, 1);
+        model.lm_head[0] = f32::NAN;
+        let context = vec![1usize, 2, 3];
+        let st = model.forward_one(&context);
+        let (_, loss) = model.backward_one(&st, &context, 4);
+
+        assert!(
+            !loss.is_finite(),
+            "a NaN target probability must not yield a finite loss, got {loss}"
+        );
+        assert!(
+            loss.is_nan(),
+            "a poisoned position must report NaN, not a plausible number, got {loss}"
+        );
+        assert!(
+            (loss - laundered).abs() >= 1e-3 || loss.is_nan(),
+            "the loss must not be the laundered 23.026 constant"
+        );
     }
 }

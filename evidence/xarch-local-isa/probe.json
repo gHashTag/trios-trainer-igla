@@ -1,0 +1,80 @@
+{
+  "binaries": {
+    "aarch64-apple-darwin": {
+      "file": "Mach-O 64-bit executable arm64",
+      "path": "target/release/trios-train",
+      "sha256": "faec08709529bbb0b34445aa523c4456cfcd6328b527fe13efa0d5d18d189e42"
+    },
+    "x86_64-apple-darwin": {
+      "file": "Mach-O 64-bit executable x86_64",
+      "path": "target/x86_64-apple-darwin/release/trios-train",
+      "sha256": "a213d226fc92a2ead8116dbd218dbebe57ccae9b5fdafefd7a1b2f2acf57d1fc"
+    }
+  },
+  "control": {
+    "passed": true,
+    "ran": true
+  },
+  "corpus": {
+    "train": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d",
+    "val": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+  },
+  "declared_platform": {
+    "isa-probe-arm64": {
+      "arch": "aarch64",
+      "os": "macos",
+      "translation": "native execution"
+    },
+    "isa-probe-x86_64": {
+      "arch": "x86_64",
+      "os": "macos",
+      "translation": "Rosetta 2 binary translation, not native x86_64 silicon"
+    }
+  },
+  "flags": [
+    "--seed",
+    "47",
+    "--steps",
+    "10",
+    "--hidden",
+    "384",
+    "--attn-layers",
+    "2",
+    "--eval-every",
+    "1000",
+    "--lr",
+    "0.003",
+    "--optimizer",
+    "adamw",
+    "--train-data",
+    "data/tiny_shakespeare.txt",
+    "--val-data",
+    "data/tiny_shakespeare_val.txt"
+  ],
+  "hashes": {
+    "isa-probe-arm64-b/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "isa-probe-arm64-b/10": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "isa-probe-arm64/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "isa-probe-arm64/10": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "isa-probe-x86_64-b/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "isa-probe-x86_64-b/10": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab",
+    "isa-probe-x86_64/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "isa-probe-x86_64/10": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab"
+  },
+  "host": "Darwin playras-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64",
+  "init": {
+    "aarch64": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "match": true,
+    "x86_64": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457"
+  },
+  "run_dir": "checkpoints/isa-probe/20260805T150936Z",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "schema": "trios-local-isa-probe/1",
+  "step10": {
+    "aarch64": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "match": false,
+    "x86_64": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab"
+  },
+  "translation": "x86_64 arm executed under Rosetta 2",
+  "verdict": "ISA_SUFFICIENT_TO_DIVERGE"
+}

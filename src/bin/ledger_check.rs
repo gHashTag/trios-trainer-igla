@@ -23,7 +23,8 @@
 //!    (`step >= INV2_WARMUP_BLIND_STEPS`).
 //! 3. Every BPB ≥ `JEPA_PROXY_BPB_FLOOR` (= 0.1) — refuses TASK-5D.
 //! 4. ≥ 3 distinct seeds satisfy `bpb < IGLA_TARGET_BPB` (= 1.5).
-//! 5. The Welch one-tailed t-test against `TTEST_BASELINE_MU0` (= 1.55)
+//! 5. The one-tailed ONE-SAMPLE t-test against `TTEST_BASELINE_MU0` (= 1.55),
+//!    with df = n - 1 over every parsed row (NOT a Welch two-sample test),
 //!    rejects H₀ at `TTEST_ALPHA` (= 0.01) AND
 //!    `mean ≤ μ₀ − TTEST_EFFECT_SIZE_MIN` (= 0.05).
 //!
@@ -93,7 +94,8 @@ use trios_trainer::race::victory::{TTEST_ALPHA, TTEST_BASELINE_MU0, TTEST_EFFECT
     name = "ledger_check",
     about = "Adjudicate INV-7 Victory Gate against a JSONL seed-results ledger.",
     long_about = "Read assertions/seed_results.jsonl (or any --ledger path) \
-                  and run the L7 Victory Gate plus the Welch t-test. \
+                  and run the L7 Victory Gate plus the one-sample t-test \
+                  against mu0 (df = n - 1; NOT a Welch two-sample test). \
                   Exit 0 = victory; non-zero = honest rejection with reason."
 )]
 struct Args {
@@ -323,18 +325,30 @@ fn render_human(verdict: &LedgerVerdict, rows: &[SeedResult], verbose: bool) -> 
             let _ = writeln!(s, "   winning_seeds     : {:?}", report.winning_seeds);
             let _ = writeln!(s, "   min_bpb           : {:.6}", report.min_bpb);
             let _ = writeln!(s, "   mean_bpb          : {:.6}", report.mean_bpb);
+            // `df` used to be printed under the labels `-t_crit` / `t_critical`
+            // -- it is not a critical value, and the resulting line
+            // ("t_stat / -t_crit : -0.0500 < -6.0000") was arithmetically FALSE
+            // on the gate's own output.  Print df as df, and state the
+            // comparison the gate actually made: p against alpha.
+            let _ = writeln!(s, "   df (n-1)          : {:.4}", ttest.df);
+            let _ = writeln!(s, "   t_stat            : {:.4}", ttest.t_statistic);
             let _ = writeln!(
                 s,
-                "   t_stat / -t_crit  : {:.4} < -{:.4}",
-                ttest.t_statistic, ttest.df
+                "   p / alpha         : {:.6} < {}",
+                ttest.p_value, ttest.alpha
             );
         }
         LedgerVerdict::GateOkStatWeak { report, ttest } => {
             let _ = writeln!(s, " VERDICT             : NECESSARY-OK / STAT-WEAK");
             let _ = writeln!(s, "   winning_seeds     : {:?}", report.winning_seeds);
             let _ = writeln!(s, "   mean_bpb          : {:.6}", report.mean_bpb);
+            let _ = writeln!(s, "   df (n-1)          : {:.4}", ttest.df);
             let _ = writeln!(s, "   t_stat            : {:.4}", ttest.t_statistic);
-            let _ = writeln!(s, "   t_critical        : {:.4}", ttest.df);
+            // Printed as two facts rather than one inequality: a non-passing
+            // report can fail on the effect-size floor with p < alpha, so
+            // neither `p < alpha` nor `p >= alpha` is safe to assert here.
+            let _ = writeln!(s, "   p                 : {:.6}", ttest.p_value);
+            let _ = writeln!(s, "   alpha             : {}", ttest.alpha);
             let _ = writeln!(s, "   passed            : {}", ttest.passed);
         }
         LedgerVerdict::GateOkStatError { report, ttest_err } => {
@@ -382,6 +396,8 @@ fn render_json(verdict: &LedgerVerdict, rows: &[SeedResult]) -> String {
             "mean_bpb": report.mean_bpb,
             "t_stat": ttest.t_statistic,
             "df": ttest.df,
+            "p_value": ttest.p_value,
+            "alpha": ttest.alpha,
             "passed": ttest.passed,
         }),
         LedgerVerdict::GateOkStatError { report, ttest_err } => serde_json::json!({
@@ -403,9 +419,13 @@ fn render_json(verdict: &LedgerVerdict, rows: &[SeedResult]) -> String {
             "target_bpb": IGLA_TARGET_BPB,
             "victory_seed_target": VICTORY_SEED_TARGET,
             "jepa_proxy_floor": JEPA_PROXY_BPB_FLOOR,
-            "welch_baseline_mu0": TTEST_BASELINE_MU0,
-            "welch_alpha": TTEST_ALPHA,
-            "welch_effect_size_min": TTEST_EFFECT_SIZE_MIN,
+            // Renamed from `welch_*` (2026-08-05): the gate runs a ONE-SAMPLE
+            // t-test against a fixed mu0 with df = n - 1, not a Welch
+            // two-sample test with Welch-Satterthwaite df.  The only consumer
+            // of these keys in the tree is this file's own renderer.
+            "ttest_baseline_mu0": TTEST_BASELINE_MU0,
+            "ttest_alpha": TTEST_ALPHA,
+            "ttest_effect_size_min": TTEST_EFFECT_SIZE_MIN,
         },
     });
     serde_json::to_string_pretty(&body).unwrap_or_else(|_| "{}".into())
@@ -468,7 +488,7 @@ mod tests {
     /// L-R14 anchor check — the constants the CLI prints must be the ones
     /// the gate actually computes with.  Asserting their literal values
     /// only proved that the same number was typed twice: `μ₀ = 1.55` was
-    /// printed here and exported as `welch_baseline_mu0` for months while
+    /// printed here and exported as `ttest_baseline_mu0` for months while
     /// `stat_strength` silently tested against 1.5.  So instead we assert
     /// that MOVING μ₀ MOVES THE VERDICT — a sample that passes at 1.55 must
     /// fail at 1.50.  A printed constant the arithmetic ignores cannot

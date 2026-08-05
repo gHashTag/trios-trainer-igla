@@ -100,20 +100,182 @@ jobs:
       - name: Build the trainer and the auditor
         run: cargo build --release --locked --bin trios-train --bin ckpt_replay
 
-      # The corpus is not in git. Rebuild it from the canonical source and
-      # prove it is the same bytes before any number is produced.
-      - name: Fetch and split the corpus, byte-disjoint
+      # WHAT THIS STEP PROVES, AND WHAT IT DOES NOT.
+      #
+      # It proves that every checkpoint sidecar TRACKED IN GIT under evidence/
+      # still points at a .bin whose bytes hash to the digest that sidecar
+      # publishes. That is integrity, and it is the whole claim: a green check
+      # here is NOT a reproduction. Nothing is re-derived and no trainer is
+      # executed, because re-deriving the 12 000-step records
+      # (evidence/heldout/*, evidence/xarch-run-30767491098/) costs hours per
+      # record and no push-triggered gate can pay it. An unaltered forgery
+      # passes this step, because a forgery hashes to its own record too. The
+      # step BELOW is the one that re-derives, and it can only afford to do it
+      # on an artifact it trains itself.
+      #
+      # It exists because the step below was, until now, the ONLY thing this
+      # workflow graded. That step iterates `checkpoints/*/*.json`, which is
+      # gitignored and empty in git (`git ls-files checkpoints` -> 0 files), so
+      # the only record it has ever graded is the one it produced itself three
+      # minutes earlier. Meanwhile the 13 sidecars committed under evidence/ -
+      # the artifacts README.md and docs/ actually cite - were read by no job at
+      # all. A published evidence tree that nobody re-hashes is a tree that rots
+      # silently.
+      #
+      # Verdict policy, and note it is STRICTER than the replay census below:
+      #
+      #   exit 0  INTEGRITY OK   counted
+      #   exit 1  ARTIFACT ALTERED / ARTIFACT MISSING   FAILS the job. There is
+      #           no benign reading: a tracked record whose bytes are gone or
+      #           changed is a defect in the evidence, not a difference of
+      #           opinion between two laboratories.
+      #   exit 2  INCOMPARABLE   counted, does NOT fail - the record carries no
+      #           sha256 at all, so there is nothing to compare against
+      #   exit 7  SKIPPED        counted, does NOT fail - the JSON is not a
+      #           checkpoint record (evidence/xarch-local-isa/probe.json is a
+      #           trios-local-isa-probe/1 document and publishes no artifact)
+      #   other   FAILS the job  - an unrecognised code is not a verdict
+      #
+      # Every record is ALSO graded against the seal published for it in
+      # evidence/SEALS.txt, via --expect-provenance-seal. Re-hashing the .bin
+      # says the record describes the bytes beside it; the seal says the record
+      # is the one that digest was published for. Without the second question a
+      # declaration can be attached to weights it never described - see
+      # docs/PROVENANCE-BINDING.md section 2.1, where the x86_64 Linux record
+      # was pointed at the aarch64 macOS container and both verifiers passed.
+      #
+      #   SEAL MISMATCH   FAILS the job - the declaration is not the one that
+      #                   digest was published for. Nothing else was graded.
+      #   no SEALS.txt line   FAILS the job - a record published without a seal
+      #                   is a record nobody can check, and letting it through
+      #                   would make the table optional the moment it is
+      #                   inconvenient.
+      #
+      # Every count is printed, so a drift toward "everything was SKIPPED" is
+      # visible in the log rather than absorbed by it, and the census fails if
+      # it finds nothing to grade.
+      - name: Re-hash the published evidence (integrity, NOT reproduction)
+        run: |
+          set -uo pipefail
+          records=$(git ls-files evidence | grep '\.json$' || true)
+          if [ -z "$records" ]; then
+            echo "::error::no tracked evidence/*.json sidecars were found, so this step would grade nothing"
+            exit 1
+          fi
+          if [ ! -f evidence/SEALS.txt ]; then
+            echo "::error::evidence/SEALS.txt is missing; the published seals are what every record below is graded against"
+            exit 1
+          fi
+          # errexit OFF on purpose: the non-zero exits are the readings this
+          # loop exists to collect.
+          set +e
+          ok=0; tampered=0; incomparable=0; skipped=0; other=0
+          unsealed=0; sealbad=0
+          failures=""
+          n=0
+          for record in $records; do
+            n=$((n + 1))
+            echo "--------------------------------------------------------------"
+            echo "record $n: $record"
+
+            # The seal published for THIS record, looked up by exact path. A
+            # record with no line is not graded and is not forgiven: see the
+            # verdict policy above.
+            seal=$(awk -F'\t' -v p="$record" '$1 == p {print $2}' evidence/SEALS.txt)
+            if [ -z "$seal" ]; then
+              echo "::error::$record :: no line in evidence/SEALS.txt, so its declaration is published under no digest at all"
+              failures="$failures $record(no-seal-published)"
+              unsealed=$((unsealed + 1))
+              continue
+            fi
+            echo "published seal: $seal"
+
+            out="${RUNNER_TEMP:-/tmp}/integrity-$n.log"
+            ./target/release/ckpt_replay --record "$record" --integrity-only \
+              --expect-provenance-seal "$seal" > "$out" 2>&1
+            code=$?
+            cat "$out"
+            echo "exit: $code"
+
+            # Matched by NAME as well as by code, for the same reason as the
+            # two verdicts below: a future exit-code regression must not be
+            # able to turn a forged declaration into a pass.
+            if grep -q '^SEAL MISMATCH' "$out"; then
+              echo "::error::$record :: the declaration does not seal to the digest published in evidence/SEALS.txt"
+              failures="$failures $record(seal)"
+              sealbad=$((sealbad + 1))
+              continue
+            fi
+
+            # Matched by NAME as well as by code: these two verdicts mean the
+            # published evidence itself is wrong, and a future exit-code
+            # regression must not be able to turn either into a pass.
+            if grep -qE '^(ARTIFACT ALTERED|ARTIFACT MISSING)' "$out"; then
+              echo "::error::$record :: the published artifact is altered or missing"
+              failures="$failures $record(tamper)"
+              tampered=$((tampered + 1))
+              continue
+            fi
+
+            case "$code" in
+              0) ok=$((ok + 1)) ;;
+              1) tampered=$((tampered + 1)); failures="$failures $record(exit 1)" ;;
+              2) incomparable=$((incomparable + 1)) ;;
+              7) skipped=$((skipped + 1)) ;;
+              *) other=$((other + 1)); failures="$failures $record(exit $code)" ;;
+            esac
+          done
+
+          echo "=============================================================="
+          echo " published-evidence integrity census over $n tracked sidecar(s)"
+          echo "   INTEGRITY OK  $ok   (bytes still hash to the record, AND the"
+          echo "                       declaration seals to evidence/SEALS.txt)"
+          echo "   SEAL MISMATCH $sealbad   (fails this job)"
+          echo "   NO SEAL PUBLISHED  $unsealed   (fails this job)"
+          echo "   ALTERED/MISSING  $tampered   (fails this job)"
+          echo "   INCOMPARABLE  $incomparable   (record states no sha256)"
+          echo "   SKIPPED       $skipped   (not a checkpoint record; counted, never silent)"
+          echo "   other         $other   (unrecognised exit code; fails this job)"
+          echo " NOTE: this census is INTEGRITY ONLY. No record above was"
+          echo "       re-derived; a green result here is not a reproduction"
+          echo "       claim. See docs/REPRODUCIBILITY-GRADING.md."
+          echo "=============================================================="
+
+          rc=0
+          if [ -n "$failures" ]; then
+            echo "::error::published evidence failed integrity on:$failures"
+            rc=1
+          fi
+          # A run in which nothing was gradeable is not a pass: it is the same
+          # empty-gate defect this workflow was written to end.
+          if [ "$ok" -eq 0 ]; then
+            echo "::error::no tracked sidecar graded INTEGRITY OK; this step proved nothing"
+            rc=1
+          fi
+          exit $rc
+
+      # The corpus is IN GIT (data/tiny_shakespeare.txt, _val.txt), so the
+      # checkout above normally provides it and this step does nothing. The
+      # download stays as a FALLBACK for a tree that arrived without its git
+      # objects. Either way the verify step below runs unconditionally, so a
+      # tracked file that has drifted fails exactly like a bad download.
+      - name: Provide the corpus, byte-disjoint (tracked copy first)
         run: |
           set -euo pipefail
           mkdir -p data
-          curl -sL --retry 3 \
-            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
-            > data/full.txt
-          SIZE=$(wc -c < data/full.txt)
-          echo "downloaded $SIZE bytes"
-          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
-          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
-          rm data/full.txt
+          if [ -s data/tiny_shakespeare.txt ] && [ -s data/tiny_shakespeare_val.txt ]; then
+            echo "corpus present from the checkout; not downloading"
+          else
+            echo "corpus absent from the checkout; falling back to the upstream download"
+            curl -sL --retry 3 \
+              https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+              > data/full.txt
+            SIZE=$(wc -c < data/full.txt)
+            echo "downloaded $SIZE bytes"
+            head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+            tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+            rm data/full.txt
+          fi
 
       - name: Verify the corpus against data/MANIFEST.sha256
         run: |

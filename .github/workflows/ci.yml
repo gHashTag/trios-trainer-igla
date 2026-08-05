@@ -1,10 +1,31 @@
 name: CI
 
+# TRUE STATE OF THIS GATE as of 2026-08-06, read from the GitHub API
+# (`gh run list --workflow ci.yml`), not from memory:
+#   newest run 28749383875 | conclusion success | branch main | 2026-07-05T17:43:33Z
+# The complete set of branches this workflow has ever run on is
+# {main, f2-methodology, feat/format-champion-sweep-183, feat/igla-coder-v1}.
+# fix/509-qat-v2 -- the branch carrying the checkpoint, provenance and
+# cross-arch work -- is not in that set. This gate has therefore never once
+# executed against this code, and "CI is green" has never been a statement
+# about it. Both triggers below now name the work branch so that both a push
+# and a PR from it are graded; until a run actually appears for it, the
+# correct description of this gate's status on this code is ABSENT, not green.
 on:
   push:
-    branches: [main]
+    # fix/509-qat-v2 is where the work is: 58 commits ahead of main with no open
+    # PR, so fmt, clippy, the test suite and the anchor census below had never
+    # once executed against the code the evidence came from. A gate that cannot
+    # run on the branch the work is on enforces nothing. ckpt-replay-audit.yml
+    # already lists both branches; this file now matches it.
+    branches: [main, fix/509-qat-v2]
   pull_request:
-    branches: [main]
+    # Must match the push list above. Note the exact semantics: this filter is
+    # on the PR's BASE branch, not its head, so `[main]` alone already graded a
+    # PR from fix/509-qat-v2 into main -- what it did not grade is a PR whose
+    # base is the work branch. The push trigger is what makes the work branch
+    # itself gated; keeping the two lists identical removes the asymmetry.
+    branches: [main, fix/509-qat-v2]
 
 jobs:
   ci:
@@ -31,8 +52,36 @@ jobs:
       - name: cargo test (default features)
         run: cargo test --release
 
+      # The constitutional anchor gate. It MUST execute exactly ANCHOR_TESTS_EXPECTED
+      # tests, and today those are:
+      #   trios_trainer (lib)       tests::anchor_holds          (src/lib.rs)
+      #   trios_trainer (lib)       igla::tests::phi_anchor_holds (src/igla.rs)
+      #   tests/invariants_match.rs trinity_anchor_holds
+      #
+      # Until 2026-08-05 this step read `cargo test --release anchor_holds -- --exact`.
+      # `--exact` requires the filter to equal the FULL test path, and no test is
+      # named plain `anchor_holds`, so every binary reported
+      # "0 passed; 0 failed; ... filtered out" and the step exited 0
+      # unconditionally. The headline invariant had never once been enforced by CI.
+      # The filter below is a substring match, which is what actually selects the
+      # three tests; the count assertion is what keeps a rename or a deletion from
+      # silently emptying the gate again. If you legitimately add or remove an
+      # anchor test, change ANCHOR_TESTS_EXPECTED in the same commit -- that edit
+      # is the point: the census is reviewable in the diff.
       - name: anchor invariant phi^2 + phi^-2 = 3
-        run: cargo test --release anchor_holds -- --exact
+        env:
+          ANCHOR_TESTS_EXPECTED: 3
+        run: |
+          set -o pipefail
+          log="${RUNNER_TEMP:-/tmp}/anchor.log"
+          cargo test --release anchor_holds 2>&1 | tee "$log"
+          ran=$(grep -E '^test result:' "$log" | awk -F'[ ;]' '{s+=$4} END {print s+0}')
+          echo "anchor tests executed: $ran (expected ${ANCHOR_TESTS_EXPECTED})"
+          if [ "$ran" -ne "$ANCHOR_TESTS_EXPECTED" ]; then
+            echo "::error::anchor gate ran $ran tests, expected ${ANCHOR_TESTS_EXPECTED};" \
+                 "a gate that measures nothing cannot fail -- fix the filter or update the census"
+            exit 1
+          fi
 
   docker:
     runs-on: ubuntu-latest

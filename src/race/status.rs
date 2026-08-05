@@ -1,3 +1,12 @@
+//! Leaderboard printers for `tri race status` / `tri race best`.
+//!
+//! Both functions may only report what a query actually returned. `show_best`
+//! used to answer "No completed trials yet" from the `Err` arm of `query_one`,
+//! which conflated "the ledger has no completed trial" with "nothing was
+//! contacted" -- and against the stub backend it was always the latter. The
+//! error is now propagated, and the no-rows sentence is printed only from an
+//! empty row set that a read produced.
+
 use anyhow::Result;
 
 use crate::race::neon::NeonDb;
@@ -52,9 +61,12 @@ pub async fn show_status(db: &NeonDb) -> Result<()> {
 }
 
 pub async fn show_best(db: &NeonDb) -> Result<()> {
-    let row = db
+    // `query`, not `query_one`: an empty row set is a fact the ledger stated,
+    // while `query_one`'s `Err` cannot distinguish "no such row" from "no
+    // connection". Only the first justifies printing a count of zero.
+    let rows = db
         .client()
-        .query_one(
+        .query(
             "SELECT trial_id, machine_id, config::text, \
                     COALESCE(best_bpb::text, '-'), status \
              FROM igla_race_trials \
@@ -62,30 +74,28 @@ pub async fn show_best(db: &NeonDb) -> Result<()> {
              ORDER BY best_bpb ASC LIMIT 1",
             &[],
         )
-        .await;
+        .await?;
 
-    match row {
-        Ok(r) => {
-            let trial_id: String = r.get(0);
-            let machine_id: String = r.get(1);
-            let config_str: String = r.get(2);
-            let bpb: String = r.get(3);
-            let status: String = r.get(4);
+    let Some(r) = rows.first() else {
+        eprintln!("No completed trials yet");
+        return Ok(());
+    };
 
-            let config: serde_json::Value = serde_json::from_str(&config_str).unwrap_or_default();
-            eprintln!("BEST TRIAL");
-            eprintln!("  Trial:   {}", trial_id);
-            eprintln!("  Machine: {}", machine_id);
-            eprintln!("  Status:  {}", status);
-            eprintln!("  BPB:     {}", bpb);
-            eprintln!(
-                "  Config:  {}",
-                serde_json::to_string_pretty(&config).unwrap_or_default()
-            );
-        }
-        Err(_) => {
-            eprintln!("No completed trials yet");
-        }
-    }
+    let trial_id: String = r.get(0);
+    let machine_id: String = r.get(1);
+    let config_str: String = r.get(2);
+    let bpb: String = r.get(3);
+    let status: String = r.get(4);
+
+    let config: serde_json::Value = serde_json::from_str(&config_str).unwrap_or_default();
+    eprintln!("BEST TRIAL");
+    eprintln!("  Trial:   {}", trial_id);
+    eprintln!("  Machine: {}", machine_id);
+    eprintln!("  Status:  {}", status);
+    eprintln!("  BPB:     {}", bpb);
+    eprintln!(
+        "  Config:  {}",
+        serde_json::to_string_pretty(&config).unwrap_or_default()
+    );
     Ok(())
 }

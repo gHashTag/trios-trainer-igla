@@ -365,14 +365,14 @@ impl NgramModel {
     /// non-number.
     ///
     /// A short sequence used to return `0.0`, a loss no model achieves.
-    /// `f32::max` also ignores NaN, so clamping `logits[target]` with
-    /// `.max(1e-10)` turned a poisoned forward pass into a finite 23.03-nat
+    /// `f32::max` also ignores NaN, so clamping `logits[target]` to a 1e-10
+    /// floor turned a poisoned forward pass into a finite 23.03-nat
     /// measurement - 33.2 bpb,
     /// which is positive, finite and small enough that every downstream guard
-    /// accepted it. NaN is now an absence. The 1e-10 clamp is kept for a
-    /// genuinely underflowed probability - capping it is a documented floor on
-    /// surprisal, and dropping those chunks instead would bias the reported
-    /// BPB downward.
+    /// accepted it. The same floor did the same to a merely UNDERFLOWED
+    /// probability: a finite `0.0` out of the f32 softmax, which `is_nan` and
+    /// `is_finite` both accept, became the identical 23.02585 nats. A
+    /// probability that is not finite and strictly positive is now an absence.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         let num_ctx = self.ctx.len();
         let ngram = num_ctx + 2;
@@ -389,10 +389,10 @@ impl NgramModel {
             let mut logits = self.predict(&hidden);
             softmax(&mut logits);
             let p = logits[target];
-            if p.is_nan() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            total -= p.max(1e-10).ln();
+            total -= p.ln();
         }
         Some(total / count as f32)
     }
@@ -879,8 +879,24 @@ fn run_trial(
     (best_bpb, best_step, outcome, total.as_secs_f64())
 }
 
+/// Every argument this binary reads, in the spellings its own parser reads.
+///
+/// `--all` is a whole-token match (and is only honoured as `args[1]`);
+/// `--trial` is matched with `starts_with("--trial=")`, so only the `=` form
+/// exists for it; `--train-data` goes through `arg_path`, which accepts both
+/// spellings and therefore appears twice. See
+/// `trios_trainer::reject_unknown_args`.
+const KNOWN_ARGS: [&str; 4] = ["all", "trial=", "train-data", "train-data="];
+
 fn main() {
     let args: Vec<String> = env::args().collect();
+    // First, before five trials of 5000 steps each start: an argument this
+    // binary does not read used to be discarded in silence, so `--trials=1`
+    // for `--trial=1` ran the whole sweep instead of the one trial asked for.
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
 
     // Trial configurations
     let trials = [
@@ -1060,6 +1076,12 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+
+    /// The probability floor that was doing the laundering, named so that a
+    /// search for a clamp in a measurement path finds nothing outside this
+    /// regression test. The value is the point of the test: `-ln(1e-10)` is
+    /// 23.02585 nats and 33.21928 bpb, the crate's fake-measurement signature.
+    const LAUNDER_FLOOR: f32 = 1e-10;
     use super::*;
 
     /// The refusal is the point: a missing corpus must stop the run, not
@@ -1099,19 +1121,22 @@ mod tests {
     }
 
     /// The exact laundering this guard removes: `f32::max` returns the
-    /// non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose negative log is
+    /// non-NaN operand, so clamping `NaN` to a 1e-10 floor yields `1e-10`, whose negative log is
     /// 23.026 nats and whose BPB is 33.2 - positive, finite, and small enough
     /// that nothing downstream rejected it.
     #[test]
     fn f32_max_launders_nan_into_a_publishable_bpb() {
-        let laundered = f32::NAN.max(1e-10);
-        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let laundered = f32::NAN.max(LAUNDER_FLOOR);
+        assert_eq!(laundered, LAUNDER_FLOOR, "f32::max ignores NaN");
         let bpb = -laundered.ln() / LN_2;
         assert!(
             (bpb - 33.2).abs() < 0.05,
             "the laundered reading is 33.2 bpb, got {bpb}"
         );
-        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every downstream guard");
+        assert!(
+            bpb > 0.0 && bpb < 64.0,
+            "and it passes every downstream guard"
+        );
     }
 
     /// A poisoned forward pass is an absence, not 33.2 bpb.

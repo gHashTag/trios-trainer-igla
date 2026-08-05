@@ -171,7 +171,11 @@ fn collect_bins(dir: &Path, out: &mut Artifacts) {
         if path.extension().and_then(|e| e.to_str()) != Some("bin") {
             continue;
         }
-        let step: u64 = match path.file_stem().and_then(|s| s.to_str()).and_then(|s| s.parse().ok()) {
+        let step: u64 = match path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .and_then(|s| s.parse().ok())
+        {
             Some(s) => s,
             // A checkpoint whose name is not a step is not part of the
             // trajectory being compared; skip rather than guess.
@@ -428,13 +432,11 @@ fn a_recipe_parameter_does_move_the_weights() {
     let (a, b, common) = compare_variants(&case);
     for step in &common {
         assert_ne!(
-            a[step],
-            b[step],
+            a[step], b[step],
             "seed 47 and seed 89 produced the SAME checkpoint at step {}: \
              sha256={}. The artifact does not depend on the run, so every \
              equality assertion in this file is vacuous.",
-            step,
-            a[step]
+            step, a[step]
         );
     }
 }

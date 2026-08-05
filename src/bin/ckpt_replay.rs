@@ -16,8 +16,12 @@
 //!   MISMATCH          exit 1   they do not (both hashes are printed, together
 //!                              with every header field the record fails to state)
 //!   ARTIFACT ALTERED  exit 1   the .bin no longer hashes to its own record, or
+//!                              it is not the LENGTH the record declares, or
 //!                              its bytes do not obey the TRIOSCKP format they
 //!                              claim (bad magic, truncation, trailing garbage)
+//!   PUBLISHED ARTIFACT
+//!             MISSING exit 1   `--integrity-only` found no `.bin` beside the
+//!                              record; the record's own `path` is NOT followed
 //!   CORPUS MISMATCH   exit 1   the named corpus is not the corpus that was used
 //!   TRAINER MISMATCH  exit 1   the executable offered for the replay is not the
 //!                              one the record names; NOTHING is executed
@@ -36,7 +40,50 @@
 //!   L2 PASS / L3 FAIL exit 6   the bytes differ and the metric agrees within
 //!                              the stated tolerance: an honest second
 //!                              laboratory, not a forgery
+//!   SKIPPED           exit 7   `--integrity-only` was asked to grade a JSON
+//!                              that is not a checkpoint record at all
 //! ```
+//!
+//! # `--integrity-only`: a weaker question, asked honestly
+//!
+//! Re-deriving a 12 000-step record costs hours, so no gate can afford to ask
+//! the full question of every record in `evidence/` on every push. The flag
+//! asks the one question that IS affordable: do the bytes on disk today still
+//! hash to the digest published beside them? Nothing is re-derived and no
+//! trainer is executed - `--integrity-only` returns before the corpus is even
+//! looked at.
+//!
+//! That is deliberately a much weaker claim than `VERIFIED`, and the verdict
+//! line says so in the verdict itself rather than in a footnote somewhere else:
+//! an unaltered forgery passes this check, because a forgery hashes to its own
+//! record too. What it catches is an evidence tree that has rotted, been
+//! partially updated, or had one `.bin` swapped under a record that still names
+//! the old digest - which is exactly what happens to a published corpus of
+//! artifacts nobody re-hashes.
+//!
+//! The artifact is resolved DIFFERENTLY here, and the difference is load
+//! bearing. The replay path prefers the `path` the record states, because that
+//! is the file the record is about. For published evidence that preference is
+//! wrong twice over: the recorded path was written on the training machine, and
+//! when it is RELATIVE it resolves against the auditor's current directory and
+//! can land on an unrelated local file. Measured on this repository:
+//! `evidence/xarch-run-30767491098/12000.json` records
+//! `path: checkpoints/r4-docs-repro/12000.bin`, and a local checkout has a file
+//! at that path - the `aarch64` macOS artifact `8a86fe69...`, while the record
+//! is the `x86_64` Linux one `bb14ab18...`. Grading the record against whatever
+//! happens to sit at that relative path reports `ARTIFACT ALTERED` about a
+//! published file that was never touched. So the copy PUBLISHED BESIDE THE
+//! RECORD is the ONLY candidate (`<record stem>.bin`, then `{step}.bin`), the
+//! recorded path is never followed here, and the file actually hashed is always
+//! printed.
+//!
+//! There is no last resort on purpose. A `.bin` deleted from the evidence tree
+//! under a record that stays behind is exactly the rot this mode exists to
+//! catch, and a fallback to the recorded `path` grades that record against a
+//! file that is still whole somewhere else - reporting `INTEGRITY OK`, exit 0,
+//! about an artifact that is gone. Sibling-only resolution turns the deletion
+//! into `PUBLISHED ARTIFACT MISSING`, exit 1, which is what an audit wiring
+//! this binary to an exit code needs to see.
 //!
 //! # The eval grid is part of the recipe, and it is restored
 //!
@@ -236,6 +283,7 @@ use std::process::{Command, ExitCode, Stdio};
 use clap::Parser;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use trios_trainer::provenance_seal::{provenance_seal, sealed_field_names};
 
 /// Prefix every accepted sidecar schema string starts with. The trailing
 /// version is NOT compared: `/1`, `/2`, `/3` and anything later are all read by
@@ -293,9 +341,9 @@ const PLATFORM_FIELDS: &[&str] = &[
 ];
 
 /// Recipe inputs that only schema 3 records. Used when present; their absence
-/// is printed, never assumed away. They cannot make a `VERIFIED` verdict wrong
-/// - bit-identity could not arise if the replay had used different values - but
-/// they are the first suspects behind a `MISMATCH`.
+/// is printed, never assumed away. They cannot make a `VERIFIED` verdict
+/// wrong - bit-identity could not arise if the replay had used different
+/// values - but they are the first suspects behind a `MISMATCH`.
 const SCHEMA3_RECIPE_FIELDS: &[&str] = &["lr", "attn_scale", "attn_seq"];
 
 /// Every field of the TRIOSCKP header, paired with the sidecar paths that
@@ -367,6 +415,14 @@ const EXIT_BPB_MISMATCH: u8 = 5;
 /// an honest laboratory on another platform looks like, and collapsing it into
 /// `MISMATCH` is what left this binary unable to tell one from a forgery.
 const EXIT_L2_PASS_L3_FAIL: u8 = 6;
+/// `--integrity-only` was pointed at a JSON that is not a checkpoint record.
+/// A distinct code, not `INCOMPARABLE`: exit 2 means "this IS a record and it
+/// cannot state its own recipe", which is a finding about a checkpoint. A
+/// sidecar-shaped file that describes something else entirely (the ISA probe in
+/// `evidence/xarch-local-isa/probe.json` is a `trios-local-isa-probe/1`
+/// document with no artifact of its own) is not a finding at all, and a census
+/// that cannot tell the two apart cannot report either honestly.
+const EXIT_SKIPPED: u8 = 7;
 
 /// Default `|recorded - replayed|` a metric may differ by and still count as
 /// reproduced (the L2 rung of `docs/REPRODUCIBILITY-GRADING.md`).
@@ -408,7 +464,7 @@ const DONE_BPB_DECIMALS: usize = 4;
                     exit 0  VERIFIED - the bytes re-derived, and the metric was \
                   confirmed when the record states one\n  \
                     exit 1  MISMATCH / ARTIFACT ALTERED / ARTIFACT MISSING / \
-                  CORPUS MISMATCH / TRAINER MISMATCH\n  \
+                  PUBLISHED ARTIFACT MISSING / CORPUS MISMATCH / TRAINER MISMATCH\n  \
                     exit 2  INCOMPARABLE - the record cannot state its own recipe, \
                   or it contradicts its own artifact\n  \
                     exit 3  REFUSED - over the --max-steps budget; nothing was executed\n  \
@@ -416,7 +472,9 @@ const DONE_BPB_DECIMALS: usize = 4;
                     exit 5  BPB MISMATCH / BPB NOT CONFIRMED / GRID MISMATCH - the \
                   bytes matched and the number did not, or was not gradeable\n  \
                     exit 6  L2 PASS / L3 FAIL - the bytes differ and the metric agrees \
-                  within --bpb-tolerance: an honest second laboratory, not a forgery"
+                  within --bpb-tolerance: an honest second laboratory, not a forgery\n  \
+                    exit 7  SKIPPED - --integrity-only was pointed at a JSON that is \
+                  not a checkpoint record"
 )]
 struct Args {
     /// Sidecar to grade (`{step}.json` written next to `{step}.bin`).
@@ -443,6 +501,95 @@ struct Args {
     /// trainer prints. The value in force is printed in the verdict.
     #[arg(long, default_value_t = BPB_TOLERANCE_DEFAULT)]
     bpb_tolerance: f64,
+
+    /// Grade the artifact's INTEGRITY only: re-hash the published .bin and
+    /// compare it with the digest the record itself carries. Nothing is
+    /// re-derived, no trainer is executed, no corpus is read.
+    ///
+    /// INTEGRITY IS NOT REPRODUCTION. A pass here proves exactly one thing: the
+    /// bytes on disk today are the bytes that were published under this record.
+    /// It says NOTHING about whether the recipe the record states produces those
+    /// bytes - that is the question this binary answers WITHOUT this flag, and
+    /// answering it costs a training run (hours, for the 12 000-step records).
+    /// An unaltered forgery passes this mode, because a forgery hashes to its
+    /// own record too. Use it to keep a large published evidence tree honest at
+    /// milliseconds per record; never read a pass as a reproducibility claim.
+    ///
+    /// ONLY the copy published BESIDE the record is graded (`<stem>.bin`, then
+    /// `{step}.bin`). The recorded `path` is never followed here, because it was
+    /// written on the training machine and, when relative, resolves against the
+    /// auditor's own directory - and because following it would let a DELETED
+    /// published artifact pass by being graded against a copy elsewhere. The
+    /// file actually hashed is always printed.
+    ///
+    /// Exits: 0 the bytes match; 1 ARTIFACT ALTERED, ARTIFACT MISSING or
+    /// PUBLISHED ARTIFACT MISSING; 2 the
+    /// record carries no sha256 to compare against; 7 SKIPPED, the JSON is not
+    /// a checkpoint record at all.
+    #[arg(long)]
+    integrity_only: bool,
+
+    /// Print the record's PROVENANCE SEAL and exit 0. Nothing is verified.
+    ///
+    /// The seal is `sha256:` over the record's declaration half - the platform
+    /// block, the corpus and trainer digests, `git_sha`, `git_dirty`,
+    /// `steps_total`, `eval_every`, `final_val_bpb` and `schema` - which no
+    /// container byte can confirm and which every other mode of this binary
+    /// therefore quotes without checking. The exact rule, and the fields it
+    /// does NOT cover, are in `src/provenance_seal.rs` and
+    /// `docs/PROVENANCE-BINDING.md`.
+    ///
+    /// A seal is NOT a signature. Publishing it moves a forged declaration
+    /// from undetectable to detectable-by-anyone-holding-the-published-digest;
+    /// it does not stop an adversary who controls the publication channel too.
+    #[arg(long)]
+    provenance_seal: bool,
+
+    /// Require the record's declaration to seal to this digest
+    /// (`sha256:<64 hex>`, as printed by --provenance-seal). A disagreement is
+    /// `SEAL MISMATCH`, exit 1, and nothing else is run.
+    ///
+    /// This is the ONLY way any mode of this binary states an opinion about
+    /// the platform triple, the toolchain string or `final_val_bpb`. Without
+    /// it, every verdict carries the UNAUTHENTICATED DECLARATION line instead.
+    #[arg(long, value_name = "sha256:...")]
+    expect_provenance_seal: Option<String>,
+}
+
+/// Say, next to every verdict, what the verdict did not cover.
+///
+/// The declaration half of a record is free text written by the party being
+/// audited. `INTEGRITY OK` and `VERIFIED` are both statements about BYTES, and
+/// printing either one alone is what let a sidecar rewritten to claim the
+/// wrong architecture, a fabricated rustc and the retracted 1.5492 pass both
+/// of this repository's verifiers (docs/PROVENANCE-BINDING.md). So the scope
+/// is printed unconditionally, in the same breath as the verdict, and it names
+/// the fields rather than gesturing at "provenance".
+fn print_declaration_scope(root: &Value, authenticated_against: Option<&str>) {
+    let seal = match provenance_seal(root) {
+        Ok(s) => s,
+        Err(e) => {
+            println!("DECLARATION NOT SEALABLE: {e}");
+            return;
+        }
+    };
+    let names = sealed_field_names(root).unwrap_or_default();
+    match authenticated_against {
+        Some(expected) => println!(
+            "DECLARATION SEAL MATCHED: the {} declared field(s) below seal to {expected}, the \
+             digest supplied on the command line. That is as strong as the channel you got \
+             that digest from - it is a seal, not a signature: {}",
+            names.len(),
+            names.join(", ")
+        ),
+        None => println!(
+            "UNAUTHENTICATED DECLARATION: the verdict above grades BYTES. These {} field(s) \
+             are written by the party being audited and NOTHING above checked them - pass \
+             --expect-provenance-seal {seal} to make this line a check instead of a quote: {}",
+            names.len(),
+            names.join(", ")
+        ),
+    }
 }
 
 /// Lowercase hex SHA-256, identical to `shasum -a 256`.
@@ -693,23 +840,20 @@ fn le_f64(raw: &[u8], off: usize) -> f64 {
 /// Render bytes as lowercase hex, for naming what was found where the magic
 /// should have been without letting arbitrary bytes reach the terminal.
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
-        use std::fmt::Write as _;
-        let _ = write!(acc, "{b:02x}");
-        acc
-    })
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut acc, b| {
+            use std::fmt::Write as _;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
 }
 
 /// Decode an ASCII, NUL-padded fixed-width field. The spec says "ASCII,
 /// NUL-padded" and nothing more, so the strictest reading those words support
 /// is enforced: bytes before the first NUL are the value, they must be
 /// printable ASCII, and no byte after the first NUL may be anything but NUL.
-fn ascii_field(
-    raw: &[u8],
-    off: usize,
-    len: usize,
-    name: &str,
-) -> Result<String, HeaderDefect> {
+fn ascii_field(raw: &[u8], off: usize, len: usize, name: &str) -> Result<String, HeaderDefect> {
     let field = &raw[off..off + len];
     let (value, padding) = match field.iter().position(|&b| b == 0) {
         Some(i) => field.split_at(i),
@@ -908,11 +1052,19 @@ fn cross_check(header: &HeaderFacts, root: &Value) -> (Vec<Disagreement>, usize)
     let mut compared = 0usize;
 
     for (field, dotted, want) in [
-        ("format_version", "format_version", u64::from(header.format_version)),
+        (
+            "format_version",
+            "format_version",
+            u64::from(header.format_version),
+        ),
         ("vocab", "vocab", u64::from(header.vocab)),
         ("hidden", "hidden", u64::from(header.hidden)),
         ("d_model", "d_model", u64::from(header.d_model)),
-        ("num_attn_layers", "num_attn_layers", u64::from(header.num_attn_layers)),
+        (
+            "num_attn_layers",
+            "num_attn_layers",
+            u64::from(header.num_attn_layers),
+        ),
         ("attn_seq", "attn_seq", u64::from(header.attn_seq)),
         ("seed", "seed", header.seed),
         ("step", "step", header.step),
@@ -1106,6 +1258,157 @@ fn locate_artifact(record_path: &Path, root: &Value, step: u64) -> Option<PathBu
     None
 }
 
+// ---- integrity, which is not reproduction ------------------------------------
+
+/// Locate the copy of the artifact that was PUBLISHED beside this record.
+///
+/// Only siblings are candidates, and that is the whole point. A record under
+/// `evidence/` is graded where it was published, and the `path` it states is a
+/// path on the TRAINING machine: absolute ones do not exist for anyone else,
+/// and relative ones resolve against whatever directory the auditor happens to
+/// be standing in. That is not a hypothetical - see the worked
+/// `checkpoints/r4-docs-repro/12000.bin` collision in this file's header.
+///
+/// Following the recorded `path` would also make the mode unable to detect the
+/// defect it exists to detect: a published `.bin` DELETED from the evidence tree
+/// while its record stays behind. With a fallback, such a record is graded
+/// against a byte-identical file somewhere else on the auditing machine and
+/// passes, so the audit reports OK about a file that is gone. Sibling-only
+/// resolution makes the deletion a verdict instead.
+///
+/// Returned with the RULE that found it, so the verdict can name the file it
+/// hashed and how it chose it rather than implying there was only ever one
+/// candidate.
+fn locate_published_artifact(record_path: &Path, root: &Value) -> Option<(PathBuf, &'static str)> {
+    // `isa-probe-arm64-0.json` names its artifact `isa-probe-arm64-0.bin`; the
+    // step-named convention below does not reach it, because its step is 0 and
+    // four such records share the directory.
+    if let Some(stem) = record_path.file_stem() {
+        let by_stem = record_path.with_file_name(format!("{}.bin", stem.to_string_lossy()));
+        if by_stem.is_file() {
+            return Some((by_stem, "published beside the record (<stem>.bin)"));
+        }
+    }
+    if let Some(step) = as_u64(root, "step") {
+        let by_step = record_path.with_file_name(format!("{step}.bin"));
+        if by_step.is_file() {
+            return Some((by_step, "published beside the record ({step}.bin)"));
+        }
+    }
+    None
+}
+
+/// Answer the affordable question: do the published bytes still hash to the
+/// digest published with them?
+///
+/// This function deliberately RETURNS before anything is re-derived. It never
+/// reads the corpus, never resolves a trainer and never spawns a process, so a
+/// caller cannot accidentally buy a training run by passing the wrong flag.
+fn integrity_verdict(record_path: &Path, root: &Value, authenticated: Option<&str>) -> ExitCode {
+    let schema = match as_str(root, "schema") {
+        Some(s) if s.starts_with(SCHEMA_PREFIX) => s.to_string(),
+        Some(s) => {
+            println!("SKIPPED: {record_path:?} is a {s:?} document, not a {SCHEMA_PREFIX}* record");
+            println!(
+                "  note:  it publishes no artifact of its own, so there is no digest to \
+                 re-check. A skip is counted, never silent: this is not a pass."
+            );
+            return ExitCode::from(EXIT_SKIPPED);
+        }
+        None => {
+            println!("SKIPPED: {record_path:?} states no schema, so it is not a checkpoint record");
+            println!("  note:  a skip is counted, never silent: this is not a pass.");
+            return ExitCode::from(EXIT_SKIPPED);
+        }
+    };
+
+    let recorded_sha = as_str(root, "sha256").unwrap_or("").trim().to_string();
+    if recorded_sha.is_empty() {
+        println!("INCOMPARABLE: {record_path:?} (schema {schema}) records no sha256");
+        println!(
+            "  note:  there is nothing to compare the bytes against. This is a verdict, \
+             not a failure - and it is exit 2 rather than a skip, because the file IS a \
+             checkpoint record and its silence is a fact about the evidence."
+        );
+        return ExitCode::from(EXIT_INCOMPARABLE);
+    }
+
+    let (artifact, rule) = match locate_published_artifact(record_path, root) {
+        Some(found) => found,
+        None => {
+            println!(
+                "PUBLISHED ARTIFACT MISSING: record {record_path:?} publishes no .bin beside it"
+            );
+            println!(
+                "  the record's own `path` ({}) was NOT followed, because in integrity \
+                 mode a path on the training machine is not the file under audit",
+                as_str(root, "path").unwrap_or("(none)")
+            );
+            println!(
+                "  looked for:    <stem>.bin and {{step}}.bin beside the record, and \
+                 nothing else"
+            );
+            println!("  recorded sha:  {recorded_sha}");
+            return ExitCode::from(EXIT_MISMATCH);
+        }
+    };
+    let raw = match std::fs::read(&artifact) {
+        Ok(raw) => raw,
+        Err(e) => {
+            println!("ARTIFACT MISSING: cannot read {artifact:?}: {e}");
+            return ExitCode::from(EXIT_MISMATCH);
+        }
+    };
+    let got = sha256_hex(&raw);
+    if got != recorded_sha {
+        println!("ARTIFACT ALTERED: {artifact:?} no longer hashes to its record");
+        println!("  record:   {record_path:?} (schema {schema})");
+        println!("  resolved: {rule}");
+        println!("  recorded: {recorded_sha}");
+        println!("  on disk:  {got} ({} bytes)", raw.len());
+        return ExitCode::from(EXIT_MISMATCH);
+    }
+
+    // The length the record declares, compared against the length on disk.
+    // `interop/triosckp_reader.py` has always done this (`SIDECAR_CHECKS` maps
+    // `bytes` -> the container length, and a disagreement is
+    // `SIDECAR_MISMATCH`); this binary did not, so a record edited to say
+    // `"bytes": 1` printed INTEGRITY OK here and failed there. Two verifiers
+    // disagreeing about the same record is the defect, not a difference of
+    // opinion - and the weaker of the two was the one that reported success.
+    // A record that states no length is not failed for it: absence is a fact
+    // about the evidence, and the seal is what makes it undeletable.
+    if let Some(declared_bytes) = as_u64(root, "bytes") {
+        let actual_bytes = raw.len() as u64;
+        if declared_bytes != actual_bytes {
+            println!("ARTIFACT ALTERED: {artifact:?} is not the length its record declares");
+            println!("  record:   {record_path:?} (schema {schema})");
+            println!("  resolved: {rule}");
+            println!("  declared: {declared_bytes} bytes");
+            println!("  on disk:  {actual_bytes} bytes");
+            println!(
+                "  the recorded sha256 DID match these bytes, so the record contradicts \
+                 itself: its digest describes this file and its length describes another. \
+                 interop/triosckp_reader.py calls this SIDECAR_MISMATCH."
+            );
+            return ExitCode::from(EXIT_MISMATCH);
+        }
+    }
+
+    println!("INTEGRITY OK: {record_path:?} (schema {schema})");
+    println!("  artifact: {artifact:?} ({} bytes)", raw.len());
+    println!("  resolved: {rule}");
+    println!("  sha256:   {got} - re-hashed from disk, matches the record");
+    println!(
+        "  NOT A REPRODUCTION: nothing was re-derived and no trainer was executed. \
+         This says the published bytes are unchanged, and says nothing about whether \
+         the recipe in this record produces them; run ckpt_replay without \
+         --integrity-only to ask that, at the cost of the run."
+    );
+    print_declaration_scope(root, authenticated);
+    ExitCode::SUCCESS
+}
+
 // ---- the child's environment -------------------------------------------------
 
 /// The eval grid the record declares, as `(chunks, seq)`. Both are schema-6
@@ -1135,17 +1438,27 @@ pub(crate) fn replay_env(root: &Value, ckpt_dir: &Path) -> Vec<(String, String)>
     let mut env: Vec<(String, String)> = Vec::new();
     let mut set = |k: &str, v: String| env.push((k.to_string(), v));
 
-    let canon_name = as_str(root, "canon_name").unwrap_or("ckpt-replay").to_string();
+    let canon_name = as_str(root, "canon_name")
+        .unwrap_or("ckpt-replay")
+        .to_string();
     let gf16_floor_every = as_u64(root, "gf16_floor_every").unwrap_or_default();
-    let fq_format = as_str(root, "fake_quant_format").unwrap_or("f32").to_string();
+    let fq_format = as_str(root, "fake_quant_format")
+        .unwrap_or("f32")
+        .to_string();
 
-    set("TRIOS_CHECKPOINT_DIR", ckpt_dir.to_string_lossy().into_owned());
+    set(
+        "TRIOS_CHECKPOINT_DIR",
+        ckpt_dir.to_string_lossy().into_owned(),
+    );
     set("TRIOS_CANON_NAME", canon_name);
     set("TRIOS_GF16_FLOOR_EVERY", gf16_floor_every.to_string());
     set("TRIOS_FORMAT_TYPE", fq_format);
     set("TRINITY_AUTOMIGRATE", "0".to_string());
 
-    if dig(root, "data_synthetic").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if dig(root, "data_synthetic")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         set("TRIOS_ALLOW_SYNTHETIC_DATA", "1".to_string());
     }
 
@@ -1207,6 +1520,76 @@ fn main() -> ExitCode {
         }
     };
 
+    // (a.-1) The declaration seal. Answered before anything else, because it
+    // is the only question here that costs nothing and the only one that is
+    // about the half of the record no other mode checks.
+    if args.provenance_seal {
+        match provenance_seal(&root) {
+            Ok(seal) => {
+                println!("provenance-seal {seal}");
+                println!(
+                    "  covers {} declared field(s): {}",
+                    sealed_field_names(&root).unwrap_or_default().len(),
+                    sealed_field_names(&root).unwrap_or_default().join(", ")
+                );
+                println!(
+                    "  a SEAL, not a signature: it is only worth the channel it is \
+                     published on. See docs/PROVENANCE-BINDING.md."
+                );
+                return ExitCode::SUCCESS;
+            }
+            Err(e) => {
+                println!("ERROR: cannot seal record {:?}: {e}", args.record);
+                return ExitCode::from(EXIT_ERROR);
+            }
+        }
+    }
+
+    // (a.0) The declaration, checked against a digest the auditor brought with
+    // them. A mismatch ends the run: every verdict below quotes the fields this
+    // flag covers, so grading bytes under a declaration already known to be
+    // wrong would print a true sentence beside a false one.
+    let authenticated: Option<String> = match args.expect_provenance_seal.as_deref() {
+        None => None,
+        Some(expected) => {
+            let expected = expected.trim();
+            let got = match provenance_seal(&root) {
+                Ok(seal) => seal,
+                Err(e) => {
+                    println!("ERROR: cannot seal record {:?}: {e}", args.record);
+                    return ExitCode::from(EXIT_ERROR);
+                }
+            };
+            if got != expected {
+                println!(
+                    "SEAL MISMATCH: record {:?} declares {got}, you expected {expected}",
+                    args.record
+                );
+                println!(
+                    "  the declaration - platform block, corpus and trainer digests, \
+                     git_sha, git_dirty, seed, step, steps_total, eval_every, \
+                     gf16_floor_every, final_val_bpb, schema, and the artifact this \
+                     record names (sha256, bytes) - is not the one that seal was \
+                     published for. Nothing was graded. Run --provenance-seal to see \
+                     this record's own digest and the exact field list, and \
+                     evidence/SEALS.txt for the published table."
+                );
+                return ExitCode::from(EXIT_MISMATCH);
+            }
+            Some(expected.to_string())
+        }
+    };
+
+    // (a.0) The affordable question, asked and answered before anything
+    // expensive is even resolved. Placed here rather than after the schema and
+    // field-presence gates because those gates ask whether the record can state
+    // its RECIPE, and integrity does not depend on the recipe: an archived
+    // `schema/2` record that will never be gradeable as a reproduction still has
+    // a digest, and that digest is still checkable.
+    if args.integrity_only {
+        return integrity_verdict(&args.record, &root, authenticated.as_deref());
+    }
+
     // (a) Schema. Accepted by prefix, read by field presence. An unknown
     // trailing version is fine; an unknown FORMAT is not.
     let schema = match as_str(&root, "schema") {
@@ -1256,11 +1639,15 @@ fn main() -> ExitCode {
     let eval_every = as_u64(&root, "eval_every").unwrap_or_default();
     let gf16_floor_every = as_u64(&root, "gf16_floor_every").unwrap_or_default();
     let optimizer = as_str(&root, "optimizer").unwrap_or("adamw").to_string();
-    let fq_format = as_str(&root, "fake_quant_format").unwrap_or("f32").to_string();
+    let fq_format = as_str(&root, "fake_quant_format")
+        .unwrap_or("f32")
+        .to_string();
     let data_synthetic = dig(&root, "data_synthetic")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
-    let canon_name = as_str(&root, "canon_name").unwrap_or("ckpt-replay").to_string();
+    let canon_name = as_str(&root, "canon_name")
+        .unwrap_or("ckpt-replay")
+        .to_string();
     let train_path = as_str(&root, "corpus.train.path").unwrap_or("").to_string();
     let val_path = as_str(&root, "corpus.val.path").unwrap_or("").to_string();
 
@@ -1291,8 +1678,14 @@ fn main() -> ExitCode {
     let artifact = match locate_artifact(&args.record, &root, step) {
         Some(p) => p,
         None => {
-            println!("ARTIFACT MISSING: no readable .bin for record {:?}", args.record);
-            println!("  recorded path: {}", as_str(&root, "path").unwrap_or("(none)"));
+            println!(
+                "ARTIFACT MISSING: no readable .bin for record {:?}",
+                args.record
+            );
+            println!(
+                "  recorded path: {}",
+                as_str(&root, "path").unwrap_or("(none)")
+            );
             return ExitCode::from(EXIT_MISMATCH);
         }
     };
@@ -1323,9 +1716,7 @@ fn main() -> ExitCode {
     let header = match parse_header(&artifact_raw) {
         Ok(h) => h,
         Err(HeaderDefect::Altered(why)) => {
-            println!(
-                "ARTIFACT ALTERED: {artifact:?} does not obey the TRIOSCKP format it claims"
-            );
+            println!("ARTIFACT ALTERED: {artifact:?} does not obey the TRIOSCKP format it claims");
             println!("  defect:   {why}");
             println!("  recorded: {recorded_sha} ({artifact_bytes} bytes)");
             println!(
@@ -1338,9 +1729,7 @@ fn main() -> ExitCode {
             println!("INCOMPARABLE: format_version - {why}");
             println!("  record:   {:?} (schema {schema})", args.record);
             println!("  artifact: {artifact:?}");
-            println!(
-                "  note:     this is a verdict, not a failure. Nothing was executed."
-            );
+            println!("  note:     this is a verdict, not a failure. Nothing was executed.");
             return ExitCode::from(EXIT_INCOMPARABLE);
         }
     };
@@ -1519,6 +1908,19 @@ fn main() -> ExitCode {
         );
         // The flags file is the usual reason an honest auditor lands here, so
         // the record's own statement about it is printed next to the remedy.
+        //
+        // Under a heading that says what the digest is worth, because on its
+        // own it reads like a check and is not one: nothing here compares
+        // `rustflags_sha256` against anything, and it could not - the file it
+        // hashes is the gitignored `.cargo/config.toml` that
+        // `scripts/repro_build.sh` writes, carrying the TRAINING host's
+        // absolute paths, so a fresh clone cannot produce it and no third
+        // party can ever match it.
+        println!(
+            "  build flags, QUOTED AND NOT CHECKED: the digest below hashes a gitignored, \
+             host-absolute .cargo/config.toml that no fresh clone has, so it gates nothing \
+             here and is printed only to tell an honest auditor which flags to rebuild with"
+        );
         println!(
             "  recorded build flags: source={} remap_applied={} sha256={}",
             as_str(&root, "platform.rustflags_source").unwrap_or("(not recorded)"),
@@ -1732,22 +2134,26 @@ fn main() -> ExitCode {
         ("eval_seq", rec_seq, rep_seq),
     ]
     .into_iter()
-    .filter_map(|(field, recorded, replayed_value)| match (recorded, replayed_value) {
-        (Some(a), Some(b)) if a != b => Some(Disagreement {
-            field,
-            // `header` and `record` are the two sides this struct prints; here
-            // they are the replay's grid and the record's grid.
-            header: b.to_string(),
-            record: a.to_string(),
-        }),
-        _ => None,
-    })
+    .filter_map(
+        |(field, recorded, replayed_value)| match (recorded, replayed_value) {
+            (Some(a), Some(b)) if a != b => Some(Disagreement {
+                field,
+                // `header` and `record` are the two sides this struct prints; here
+                // they are the replay's grid and the record's grid.
+                header: b.to_string(),
+                record: a.to_string(),
+            }),
+            _ => None,
+        },
+    )
     .collect();
     let grid_line = match (rec_chunks, rec_seq, rep_chunks, rep_seq) {
         (None, _, rep_c, _) => format!(
             "NOT RECORDED by this schema (schemas 1-5 predate TRIOS_EVAL_CHUNKS and \
              provably ran at the hardcoded default); the replay ran at {} chunks",
-            rep_c.map(|c| c.to_string()).unwrap_or_else(|| "(unstated)".to_string())
+            rep_c
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "(unstated)".to_string())
         ),
         (Some(c), seq, Some(rc), rseq) => format!(
             "record eval_chunks={c}{} - the replay was driven to it with \
@@ -1781,8 +2187,8 @@ fn main() -> ExitCode {
     // observe from the outside.
     let declared_os = as_str(&root, "platform.os").or_else(|| as_str(&root, "os"));
     let declared_arch = as_str(&root, "platform.arch").or_else(|| as_str(&root, "arch"));
-    let platform_conflict = declared_os.is_some_and(|d| d != os)
-        || declared_arch.is_some_and(|d| d != arch);
+    let platform_conflict =
+        declared_os.is_some_and(|d| d != os) || declared_arch.is_some_and(|d| d != arch);
 
     println!("--- ckpt_replay verdict ---");
     println!("record:        {:?} (schema {schema})", args.record);
@@ -1791,7 +2197,9 @@ fn main() -> ExitCode {
     println!("               optimizer={optimizer} fake_quant_format={fq_format} gf16_floor_every={gf16_floor_every} eval_every={eval_every} data_synthetic={data_synthetic}");
     match recorded_lr {
         Some(lr) => println!("lr:            {lr} (from the record)"),
-        None => println!("lr:            NOT RECORDED by this schema; replay used the trainer default"),
+        None => {
+            println!("lr:            NOT RECORDED by this schema; replay used the trainer default")
+        }
     }
     if !unrecorded_recipe.is_empty() {
         println!(
@@ -1829,7 +2237,9 @@ fn main() -> ExitCode {
     if let Some(vocab) = as_u64(&root, "vocab") {
         println!("vocab:         {vocab} (alphabet the corpus was folded onto)");
     } else {
-        println!("vocab:         NOT RECORDED by this schema; the alphabet behind the BPB is unstated");
+        println!(
+            "vocab:         NOT RECORDED by this schema; the alphabet behind the BPB is unstated"
+        );
     }
     println!(
         "header:        TRIOSCKP v{} decoded from the artifact; {cross_checked} scalars \
@@ -1945,11 +2355,13 @@ fn main() -> ExitCode {
             ExitCode::from(EXIT_BPB_MISMATCH)
         } else if !states_bpb {
             println!("VERIFIED on {os}/{arch}");
+            print_declaration_scope(&root, authenticated.as_deref());
             println!("{platform_note}");
             println!("WEIGHTS VERIFIED; final_val_bpb NOT GRADED (not recorded)");
             ExitCode::SUCCESS
         } else if recorded_bpb.is_some() && !final_step {
             println!("VERIFIED on {os}/{arch}");
+            print_declaration_scope(&root, authenticated.as_deref());
             println!("{platform_note}");
             println!(
                 "WEIGHTS VERIFIED; final_val_bpb NOT GRADED (the record states {} at step \
@@ -1961,6 +2373,7 @@ fn main() -> ExitCode {
         } else if let (Some(rec), Some(tok)) = (recorded_bpb, replayed) {
             if bpb_agrees(rec, tok) {
                 println!("VERIFIED on {os}/{arch}");
+                print_declaration_scope(&root, authenticated.as_deref());
                 println!("{platform_note}");
                 println!("final_val_bpb {tok} confirmed by replay ({DONE_BPB_DECIMALS} dp)");
                 // Through the same table the other three cases go through, so
@@ -2019,8 +2432,7 @@ fn main() -> ExitCode {
                     (None, Some(l), _) => format!("no finite bpb= token in {l:?}"),
                     (None, None, Some(why)) =>
                         format!("no DONE: line was captured - the trainer's stdout {why}"),
-                    (None, None, None) =>
-                        "the replay printed no DONE: line at all".to_string(),
+                    (None, None, None) => "the replay printed no DONE: line at all".to_string(),
                 }
             );
             println!(
@@ -2055,16 +2467,14 @@ fn main() -> ExitCode {
         ) {
             (Some(rec), Some(rep), true, true) => Ok((rec, rep)),
             (None, _, _, _) => Err("the record states no finite final_val_bpb".to_string()),
-            (_, None, _, _) => {
-                Err("the replay stated no finite bpb= token".to_string())
-            }
+            (_, None, _, _) => Err("the replay stated no finite bpb= token".to_string()),
             (_, _, false, _) => Err(format!(
                 "the record is an intermediate checkpoint (step {step} of {steps_total}), \
                  so its metric and the replay's DONE: line are different quantities"
             )),
-            (_, _, _, false) => Err(
-                "the replay did not run on the eval grid the record declares".to_string(),
-            ),
+            (_, _, _, false) => {
+                Err("the replay did not run on the eval grid the record declares".to_string())
+            }
         };
         let metric_agrees = ladder
             .as_ref()

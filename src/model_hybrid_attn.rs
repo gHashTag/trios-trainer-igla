@@ -1814,9 +1814,7 @@ mod falsifiers {
             .expect("forward should succeed");
 
         // Upstream gradient (non-uniform so layer-norm backward is non-zero)
-        let d_output: Vec<f32> = (0..seq_len * d)
-            .map(|i| (i as f32) * 0.1 + 0.5)
-            .collect();
+        let d_output: Vec<f32> = (0..seq_len * d).map(|i| (i as f32) * 0.1 + 0.5).collect();
 
         let mut grads = AttentionGradients::new(d);
         block.backward_v2(&d_output, &cache, &mut grads);

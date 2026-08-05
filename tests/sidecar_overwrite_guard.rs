@@ -100,6 +100,10 @@ fn record(canon: &str, ledger: &str) -> CheckpointRecord {
             weight_decay: 0.04,
             source: "tests::sidecar_overwrite_guard".to_string(),
         }),
+        // Schema 9. Derived from `fake_quant_format` above by the same function
+        // `train_loop` uses, so this fixture cannot claim a faithfulness its
+        // own label does not support.
+        format_faithful: checkpoint::format_label_faithful("f32"),
     }
 }
 
@@ -167,8 +171,7 @@ fn a_pending_record_may_be_finalised_by_one_that_only_fills_it_in() {
         // three measurements that were null.
         let mut final_rec = record("IGLA-GUARD-PENDING", "written");
         final_rec.ts = "2026-08-03T00:00:01Z".to_string();
-        checkpoint::write_sidecar(&final_rec)
-            .expect("finalising a pending record must be allowed");
+        checkpoint::write_sidecar(&final_rec).expect("finalising a pending record must be allowed");
 
         let on_disk = read_json(&path);
         assert_eq!(on_disk["ledger"], serde_json::json!("written"));
@@ -191,8 +194,8 @@ fn a_rewrite_that_changes_a_measurement_is_refused() {
 
         let mut second = record("IGLA-GUARD-REMEASURED", "written");
         second.final_val_bpb = Some(4.473_849_8);
-        let err = checkpoint::write_sidecar(&second)
-            .expect_err("a changed measurement must be refused");
+        let err =
+            checkpoint::write_sidecar(&second).expect_err("a changed measurement must be refused");
         let msg = format!("{err:#}");
 
         assert!(

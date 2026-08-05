@@ -16,20 +16,72 @@
 use std::process::ExitCode;
 
 use trios_trainer::multi_seed::{run_multi_seed, F2Verdict};
+use trios_trainer::seed_canon;
 
-/// Canon #93 allowed seed set, mirrored from `src/seed_canon.rs`
+/// The seed set this harness proposes to run: the Canon #93 allowed set
 /// (forbidden: {42, 43, 44, 45}; allowed: {47, 89, 123, 144}).
 ///
-/// This harness used to run the contiguous range starting at 43, i.e. three
-/// forbidden seeds published straight into its own config header.
-/// `seed_canon::parse_seed` could not catch it: it reads only the `SEED`
-/// environment variable, and this binary never consults it.
-const CANON_SEEDS: &[u64] = &[47, 89, 123, 144];
+/// This harness used to run the contiguous range `(43..51)`, i.e. three
+/// forbidden seeds published straight into its own printed config header.
+/// `seed_canon::parse_seed` could not catch that, because it reads only the
+/// `SEED` environment variable and this binary never consulted it.
+///
+/// A literal is a PROPOSAL here, not a permission: it is submitted to
+/// [`canon_checked_seeds`] before anything is printed or run.
+const PROPOSED_SEEDS: &[u64] = &[47, 89, 123, 144];
+
+/// Submit each proposed seed to the canon's own parser and return the set only
+/// if every one of them is allowed.
+///
+/// `seed_canon::parse_seed` takes no argument and reads only `SEED`, so the
+/// only way to put a seed in front of the canon's own check - rather than in
+/// front of a second copy of its forbidden set, which is how two lists drift
+/// apart - is to present each candidate in that variable. This runs in `main`
+/// before any thread is spawned, and the caller's `SEED` is restored before
+/// returning.
+///
+/// A caller's `SEED` is deliberately NOT adopted as configuration: one seed
+/// cannot make a two-sample comparison, and silently running a one-seed
+/// "multi-seed" harness is how an undefined p-value gets manufactured.
+fn canon_checked_seeds(proposed: &[u64]) -> Result<Vec<u64>, String> {
+    let previous = std::env::var_os("SEED");
+    let mut accepted = Vec::with_capacity(proposed.len());
+    let mut refusal = None;
+    for &candidate in proposed {
+        std::env::set_var("SEED", candidate.to_string());
+        match seed_canon::parse_seed() {
+            Ok(seed) => accepted.push(seed),
+            Err(e) => {
+                refusal = Some(e);
+                break;
+            }
+        }
+    }
+    match previous {
+        Some(v) => std::env::set_var("SEED", v),
+        None => std::env::remove_var("SEED"),
+    }
+    match refusal {
+        Some(e) => Err(e),
+        None => Ok(accepted),
+    }
+}
 
 fn main() -> ExitCode {
     // Default config: the Canon #93 seed set, 40 steps, 8-step full-precision
-    // warmup, dim 128.
-    let seeds: Vec<u64> = CANON_SEEDS.to_vec();
+    // warmup, dim 128. Nothing below prints until the seeds are canon-checked,
+    // so a forbidden seed cannot reach the config header even for one line.
+    let seeds: Vec<u64> = match canon_checked_seeds(PROPOSED_SEEDS) {
+        Ok(seeds) => seeds,
+        Err(e) => {
+            eprintln!("[canon-93] refusing to run f2_harness: {e}");
+            eprintln!(
+                "           the proposed seed set is {PROPOSED_SEEDS:?}; fix \
+                 PROPOSED_SEEDS in src/bin/f2_harness.rs"
+            );
+            return ExitCode::FAILURE;
+        }
+    };
     let steps = 40usize;
     let warmup = 8usize;
     let dim = 128usize;
@@ -45,7 +97,7 @@ fn main() -> ExitCode {
     println!("         promote the moat. Accuracy verdict may be Tie/ZooWins.");
     println!("------------------------------------------------------------------");
     println!(
-        " config: seeds={:?} (Canon #93 allowed set) steps={steps} \
+        " config: seeds={:?} (each checked by seed_canon::parse_seed) steps={steps} \
          warmup_unquantized={warmup} dim={dim} alpha={alpha}",
         seeds
     );
@@ -135,5 +187,60 @@ fn main() -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    /// `canon_checked_seeds` mutates the process-wide `SEED`, so the tests that
+    /// call it cannot run concurrently with each other.
+    static SEED_ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    /// The set this binary ships must survive the canon's own parser. If a
+    /// future edit reintroduces `(43..51)` or any other forbidden seed, this
+    /// fails in CI instead of appearing in a published config header.
+    #[test]
+    fn proposed_seeds_pass_the_canon() {
+        let _g = SEED_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let seeds = canon_checked_seeds(PROPOSED_SEEDS)
+            .unwrap_or_else(|e| panic!("shipped seed set must be canon-clean: {e}"));
+        assert_eq!(seeds, PROPOSED_SEEDS.to_vec());
+    }
+
+    /// The check is the canon's, not a local copy of it: a forbidden seed is
+    /// refused with the canon's own wording.
+    #[test]
+    fn a_forbidden_seed_is_refused_by_the_canon_not_by_a_local_copy() {
+        let _g = SEED_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for forbidden in [42u64, 43, 44, 45] {
+            let err = canon_checked_seeds(&[47, forbidden])
+                .expect_err("a forbidden seed must not reach the config header");
+            assert!(
+                err.contains("forbidden") && err.contains(&forbidden.to_string()),
+                "seed {forbidden}: the refusal must name the canon and the seed: {err}"
+            );
+        }
+    }
+
+    /// The caller's environment is left as it was found, whether the set is
+    /// accepted or refused.
+    #[test]
+    fn the_callers_seed_env_is_restored() {
+        let _g = SEED_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        std::env::set_var("SEED", "89");
+        let _ = canon_checked_seeds(PROPOSED_SEEDS);
+        assert_eq!(std::env::var("SEED").ok().as_deref(), Some("89"));
+        let _ = canon_checked_seeds(&[43]);
+        assert_eq!(std::env::var("SEED").ok().as_deref(), Some("89"));
+
+        std::env::remove_var("SEED");
+        let _ = canon_checked_seeds(PROPOSED_SEEDS);
+        assert!(
+            std::env::var_os("SEED").is_none(),
+            "an unset SEED must stay unset"
+        );
     }
 }

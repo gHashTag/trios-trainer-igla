@@ -32,6 +32,22 @@ Output on 2026-08-03:
 51 records. **47 say the tree was dirty, 4 say no tree was inspected, and not
 one says `false`.**
 
+Re-run on 2026-08-05, after two further days of experiments in this working
+tree:
+
+```
+   4 None
+ 105 True
+```
+
+109 records. The population grew by 58 and the finding did not move: the count
+of `git_dirty: false` under `checkpoints/` is still **zero**. That is the
+expected result, not a regression - the artifact this document reports lives in
+a throwaway clone at `/tmp/cleantree`, deliberately outside `checkpoints/`, and
+every run performed in the repository itself is by construction a run on a dirty
+tree. The census is worth re-running rather than quoting, which is why the
+command is printed above and the number is dated wherever it appears.
+
 `git_dirty: true` at `git_sha X` means: the recorded commit is *not* the code
 that ran. `git_dirty: null` is weaker still - schema 1 reported an uninspected
 tree and a clean tree identically, which is the defect
@@ -121,10 +137,10 @@ All three match `data/MANIFEST.sha256`.
 
 ---
 
-## 3. The two hashes
+## 3. The hashes
 
-The command in step 4 was run twice, unchanged, on the same machine. Both runs
-produced the same artifact:
+On 2026-08-03 the command in step 4 was run twice, unchanged, on the same
+machine. Both runs produced the same artifact:
 
 ```
 run 1 : 7e567530acd2d265a08832dd845ac2d89945fee810f06bc428dbe63ef6774ec8   852 272 bytes
@@ -135,6 +151,60 @@ run 2 : 7e567530acd2d265a08832dd845ac2d89945fee810f06bc428dbe63ef6774ec8   852 2
 elsewhere in this repository; what is new is that it is now established **on a
 tree that has a name**, so "identical inputs" is a checkable statement rather
 than a description of a working directory that no longer exists.
+
+### Repeated from a second clone, 2026-08-05
+
+The original `/tmp/cleantree` did not survive; `/tmp` was reaped between
+sessions. That turned out to be worth more than keeping it. The whole procedure
+in section 2 was executed again from scratch two days later - a **new** clone, a
+**new** `cargo build --release --locked`, on the same host - and every hash in
+this document came back unchanged:
+
+| Quantity | 2026-08-03 clone | 2026-08-05 clone |
+|---|---|---|
+| corpus: train / val / union | `1a5aead1...` / `2088af36...` / `86c4e6aa...` | identical, all three re-checked before training |
+| `git status --porcelain` at `3c1f751` | empty | empty |
+| `source_sha256` | `19aa22fb...` | `19aa22fb...` |
+| `trainer.sha256` (the release binary) | `bbafbe51...` | `bbafbe51...` |
+| checkpoint `sha256` | `7e567530...` | `7e567530...` |
+
+The trainer row is the one that was not planned. A `cargo build --release
+--locked` run on a different day, in a different directory, from a fresh clone,
+produced a **byte-identical executable** - so on this host the chain
+*named commit -> source digest -> binary -> checkpoint* reproduces end to end,
+and not merely the last link of it. This is still one host: it says nothing
+about the crossing documented in `docs/CROSS-ARCH-DIVERGENCE.md`.
+
+### What `PATH` changes, and what it does not
+
+Three runs were made in the 2026-08-05 clone. Two used a pinned minimal
+`PATH=/usr/bin:/bin:/usr/sbin:/sbin`; the third used the ambient `PATH` that the
+recipe in section 2 passes through. All three wrote the same
+`7e567530...` checkpoint, so the artifact is invariant to `PATH`.
+
+**The record is not.** `rustc` is not under `/usr/bin` on this host, so the two
+minimal-`PATH` runs recorded:
+
+```
+platform.toolchain            = "unknown"
+platform.toolchain_provenance = "unavailable"
+```
+
+and the ambient-`PATH` run recorded:
+
+```
+platform.toolchain            = "rustc 1.96.0 (ac68faa20 2026-05-25)"
+platform.toolchain_provenance = "runtime-path-query"
+```
+
+This is the `TOOLCHAIN_PROVENANCE_NONE` branch of `resolve_toolchain` behaving
+as designed: the crate has no `build.rs`, so there is no compiler-injected
+version constant, and when the run-time query cannot be made the field says
+`unavailable` rather than filling in the compiler that probably built it. The
+practical rule for anyone repeating this procedure is to keep `PATH="$PATH"` as
+section 2 has it - **not** because the bytes depend on it, but because
+stripping it silently costs you a provenance field. A recipe that is more
+hermetic than the record can describe buys nothing.
 
 ### What the record says
 
@@ -148,9 +218,9 @@ From `/tmp/cleantree/checkpoints/cleantree-2000/2000.json`:
 | `source_sha256` | `19aa22fb7cd187774b71cbde7cb89b664aff7260b57f55afd865dd447707108b` |
 | `sha256` | `7e567530acd2d265a08832dd845ac2d89945fee810f06bc428dbe63ef6774ec8` |
 | `trainer.sha256` | `bbafbe51c47ae8f871250cdb1a21c24e7805035dd1791a6b9e790027ee3c1074` |
-| `platform` | `macos/aarch64`, `rustc 1.96.0 (ac68faa20 2026-05-25)` |
+| `platform` | `macos/aarch64`, `pointer_width 64`, `libc undetermined`; `toolchain unknown` / `toolchain_provenance unavailable` -- this is the minimal-`PATH` run, see above. The ambient-`PATH` run of the same command, `checkpoints/cleantree-2000-toolchain/`, records `rustc 1.96.0 (ac68faa20 2026-05-25)` / `runtime-path-query` and the same checkpoint `sha256` |
 | `ledger` | `skipped-no-dsn` (nothing outside this checkout supplied a number) |
-| `schema` | `trios-checkpoint-record/4` |
+| `schema` | `trios-checkpoint-record/4` -- the tag *this* record carries, not the tag a record written today would carry; see "Gap now closed" below |
 | `final_val_bpb` | `2.9743857383728027` (an `f32` expansion - see below) |
 
 The four assertions that were checked mechanically, not read off by eye:
@@ -220,9 +290,28 @@ true limit ("swapping the whole source tree under a pre-compiled binary changes
 this digest without changing a single instruction that executes"), so nothing
 was lost by removing it.
 
-`PlatformProvenance::source_digest_scope` now records the absolute directory the
-walk ranged over, so `/tmp/cleantree` is legible in the record instead of being
+`PlatformProvenance::source_digest_scope` now records WHICH tree the walk ranged
+over, so `/tmp/cleantree` is legible in the record instead of being
 indistinguishable from a repository run.
+
+**It records a classification, not a path**, and this paragraph used to say the
+opposite. Schema 6 wrote the absolute directory, which answered the question at
+the price of publishing `/Users/<user>/...` in every locally produced sidecar -
+in the same artifact set that reports those paths being removed from the binary,
+and those sidecars are uploaded as CI artifacts. Schema 7 replaced it with
+`repository-root`, or `other:<sha256 of the absolute path>`, or the sentinel
+`not-computed`. The hash is one-way, so it still separates a throwaway clone
+from the repository and one throwaway clone from another - which is the entire
+job of the field - while naming no directory. Read
+`resolve_source_digest_scope` in `src/checkpoint.rs` for the current definition
+rather than trusting this sentence.
+
+Note what that means for the artifact in section 3: it was written by the
+`3c1f751` binary, which predates the field, so its sidecar carries **no** scope
+at all. An absent scope is defined as *silent*, not as "the repository root" -
+so the fact that this particular run happened in `/tmp/cleantree` is established
+here by the procedure and by `git_sha` + `git_dirty`, not by that field. The
+field is what makes the NEXT such run self-describing.
 
 **Gap now closed, with a residue that is not.** This paragraph used to disclose
 that the schema tag had not been bumped when `source_digest_scope` was added, so
@@ -231,6 +320,21 @@ the tag is defined in exactly one place, `CHECKPOINT_RECORD_SCHEMA` in
 `src/checkpoint.rs`, and a freshly written sidecar carries whatever that constant
 says. Do not hardcode the number here or anywhere else in the docs - read the
 constant, or read the `schema` field of the record in front of you.
+
+**The rule, stated so it survives the next bump.** The tag is
+`trios-checkpoint-record/N`, `N` is a single monotonically increasing integer,
+and it is bumped whenever a field is added to the record. No document in this
+repository should assert a value for `N`; it should say how to obtain it:
+
+```bash
+grep -oE 'trios-checkpoint-record/[0-9]+' src/checkpoint.rs | head -1
+```
+
+Run on 2026-08-05 that printed `trios-checkpoint-record/8`, and a bump to `/9`
+was already in flight as this was written - which is exactly why the number is
+quoted as a dated observation and not as a fact about the format. A reader who
+gets a different `N` has not caught an error; they have caught a later version,
+and the correct response is to decide by field presence, as below.
 
 The residue is the records already on disk. A sidecar written before the bump
 keeps its old tag forever, so a reader holding a mixed set of checkpoints must

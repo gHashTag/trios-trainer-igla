@@ -1104,19 +1104,19 @@ impl CpuModel {
             }
             softmax(&mut logits);
             let p_target = logits[target];
-            if p_target.is_nan() {
-                // `f32::max` ignores NaN, so clamping `logits[target]` with
-                // `.max(1e-10)` used to return 1e-10 here, whose negative log is 23.026 nats -
+            if !p_target.is_finite() || p_target <= 0.0 {
+                // `f32::max` ignores NaN, so clamping `logits[target]` to a
+                // 1e-10 floor used to return 1e-10 here, whose negative log is 23.026 nats -
                 // a finite 33.2 bpb that passed `eval_bpb`'s `is_finite()`
-                // filter and was published as a measurement. A poisoned
-                // forward pass now yields a NaN loss, which that filter
-                // rejects. NaN is absorbing, so one bad position invalidates
-                // the whole sequence, which is the honest reading. The 1e-10
-                // clamp is kept for a genuinely underflowed probability - a
-                // documented floor on surprisal.
+                // filter and was published as a measurement. The floor did the
+                // same to a merely UNDERFLOWED probability: a finite `0.0` out
+                // of the f32 softmax, which `is_nan` accepts, became the
+                // identical 23.02585 nats. Both now yield a NaN loss, which
+                // that filter rejects. NaN is absorbing, so one bad position
+                // invalidates the whole sequence, which is the honest reading.
                 total_loss = f32::NAN;
             } else {
-                total_loss -= p_target.max(1e-10).ln();
+                total_loss -= p_target.ln();
             }
             for (vi, dl) in d_logits[i].iter_mut().enumerate() {
                 *dl = logits[vi] - if vi == target { 1.0 } else { 0.0 };
@@ -2039,6 +2039,12 @@ fn results_path(
 
 #[cfg(test)]
 mod tests {
+
+    /// The probability floor that was doing the laundering, named so that a
+    /// search for a clamp in a measurement path finds nothing outside this
+    /// regression test. The value is the point of the test: `-ln(1e-10)` is
+    /// 23.02585 nats and 33.21928 bpb, the crate's fake-measurement signature.
+    const LAUNDER_FLOOR: f32 = 1e-10;
     use super::*;
 
     // test_algoopt_dispatch -- each variant constructible, step() doesn't panic on 10-param vec
@@ -2287,20 +2293,23 @@ mod tests {
     }
 
     /// The exact laundering the guard in `loss_and_grad` removes: `f32::max`
-    /// returns the non-NaN operand, so `NaN.max(1e-10)` is `1e-10`, whose
+    /// returns the non-NaN operand, so clamping `NaN` to a 1e-10 floor yields `1e-10`, whose
     /// negative log is 23.026 nats and whose BPB is 33.2 - positive, finite,
     /// and below `BPB_SENTINEL_CEILING`, so `eval_bpb`'s `is_finite()` filter
     /// passed it straight through to the results file.
     #[test]
     fn test_f32_max_launders_nan_into_a_publishable_bpb() {
-        let laundered = f32::NAN.max(1e-10);
-        assert_eq!(laundered, 1e-10, "f32::max ignores NaN");
+        let laundered = f32::NAN.max(LAUNDER_FLOOR);
+        assert_eq!(laundered, LAUNDER_FLOOR, "f32::max ignores NaN");
         let bpb = -laundered.ln() / LN_2;
         assert!(
             (bpb - 33.2).abs() < 0.05,
             "the laundered reading is 33.2 bpb, got {bpb}"
         );
-        assert!(bpb > 0.0 && bpb < 64.0, "and it passes every downstream guard");
+        assert!(
+            bpb > 0.0 && bpb < 64.0,
+            "and it passes every downstream guard"
+        );
     }
 
     /// A NaN forward pass produces no measurement, not 33.2 bpb.
@@ -2320,7 +2329,10 @@ mod tests {
         model.lm_head[0] = f32::NAN;
 
         let (loss, _, _) = model.loss_and_grad(&tokens[..9]);
-        assert!(loss.is_nan(), "a poisoned forward pass is not a loss: {loss}");
+        assert!(
+            loss.is_nan(),
+            "a poisoned forward pass is not a loss: {loss}"
+        );
         assert!(
             (loss - 23.026).abs() > 1.0 || loss.is_nan(),
             "23.026 nats is the laundered NaN, not a loss: {loss}"

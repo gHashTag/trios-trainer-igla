@@ -1,0 +1,90 @@
+==========================================================================
+ LOCAL ISA PROBE - one host, one OS, one libm vendor, two ISAs
+==========================================================================
+PRECONDITIONS
+  targets installed              aarch64-apple-darwin, x86_64-apple-darwin
+  rosetta 2                      executes x86_64
+  corpus train                   1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  corpus val                     2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+  rustc                          rustc 1.96.0 (ac68faa20 2026-05-25)
+  host                           arm64
+  run directory                  checkpoints/isa-probe/20260805T150936Z
+
+ENVIRONMENT SCRUB
+  no DSN alias reaches the trainer; automigrate is off
+  (this shell has DATABASE_URL set; the scrub is what removes it)
+
+BUILD (one working tree, two targets)
+  cargo build (host)                    0.7s  ok
+  cargo build --target x86_64-apple-darwin    0.4s  ok
+  aarch64-apple-darwin         faec08709529bbb0b34445aa523c4456cfcd6328b527fe13efa0d5d18d189e42
+      Mach-O 64-bit executable arm64
+  x86_64-apple-darwin          a213d226fc92a2ead8116dbd218dbebe57ccae9b5fdafefd7a1b2f2acf57d1fc
+      Mach-O 64-bit executable x86_64
+  The two BINARY hashes differ, and that carries no information:
+  different machine code for a different instruction set cannot hash
+  the same. Only the CHECKPOINT was ever claimed to be portable.
+
+RUNS
+  train isa-probe-arm64                 8.1s  ok
+  train isa-probe-x86_64               10.6s  ok
+  train isa-probe-arm64-b               7.0s  ok
+  train isa-probe-x86_64-b              8.3s  ok
+
+BINARIES UNCHANGED THROUGHOUT - all four artifacts come from the two
+binaries hashed above.
+
+DECLARED PLATFORM, read back out of each run's own sidecar
+  isa-probe-arm64                os=macos arch=aarch64 [native execution]
+  isa-probe-x86_64               os=macos arch=x86_64 [Rosetta 2 binary translation, not native x86_64 silicon]
+  ISA varied, OS held fixed: this is the single-variable experiment.
+
+==========================================================================
+ WITHIN-ARM REPEATABILITY CONTROL (n=2 per arm, same host, same flags)
+==========================================================================
+ isa-probe-arm64      step 0   SELF-MATCH
+ isa-probe-arm64      step 10  SELF-MATCH
+ isa-probe-x86_64     step 0   SELF-MATCH
+ isa-probe-x86_64     step 10  SELF-MATCH
+ Both arms repeat themselves byte for byte. Determinism is a
+ property of this trainer on BOTH instruction sets, so a
+ cross-ISA mismatch below cannot be dismissed as the trainer
+ simply being unrepeatable on one of them.
+
+==========================================================================
+ CROSS-ISA COMPARISON - two independent readings, one line each
+==========================================================================
+ INIT   aarch64 4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457
+ INIT   x86_64  4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457   MATCH
+ STEP10 aarch64 efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac
+ STEP10 x86_64  5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab   MISMATCH
+==========================================================================
+
+VERDICT: ISA_SUFFICIENT_TO_DIVERGE
+
+  Initialisation is byte-identical across the ISA change and the
+  divergence is introduced within ten optimizer steps. The cause is
+  the floating-point arithmetic of the training loop - reduction
+  order or libm - and it is fixable only by constraining that
+  arithmetic, at a cost in speed.
+
+  An ISA change ALONE is therefore sufficient to produce a
+  divergence. That is not the same as showing it is the only cause
+  operating in run 30767491098, which also varied the OS and libc.
+
+  It is not the only cause, and that is measured rather than
+  conceded. A THIRD step-10 hash exists for these same declared
+  inputs, from native x86_64 Linux (glibc 2.39, CI run 31004703001):
+    x86_64 linux   a32e9b2ab0043b91aaaae96f3e6945a419ef305e375fa2aaf2ba38a6deba19d1
+    x86_64 rosetta 5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab
+  Same declared architecture on both, different OS and libc,
+  different bytes. So the isolation is one-way: the ISA suffices,
+  and it is not alone. This verdict is named SUFFICIENT, not ONLY,
+  for that reason.
+
+SCOPE, which may not be dropped when this result is quoted:
+  Rosetta 2 is binary translation, not native x86_64 silicon, and the
+  x86_64 slice of Apple's libm is not glibc's libm. This constrains
+  the native x86_64 Linux arm; it does not replace it.
+
+wrote /tmp/isa_probe_final.json

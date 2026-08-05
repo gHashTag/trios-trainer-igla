@@ -1,0 +1,40 @@
+# evidence/SEALS.txt - the published declaration seals, machine-readable.
+#
+# One line per tracked sidecar under evidence/, as
+#     <record path><TAB>sha256:<seal>
+# Lines beginning with '#' are comments; there are no other line shapes.
+#
+# The seal is defined in src/provenance_seal.rs and re-implemented in
+# interop/triosckp_reader.py; the two must agree on every line below or the
+# SPECIFICATION is wrong, not the record. The prose table in
+# docs/PROVENANCE-BINDING.md section 4 renders from this file.
+#
+# A seal is NOT a signature. These digests are only worth the channel a reader
+# obtained them from: an adversary holding both the record and this file simply
+# recomputes them. What they buy is that a forgery becomes detectable by anyone
+# who read them, instead of undetectable by everyone.
+#
+# Regenerate:
+#   for j in $(git ls-files evidence | grep '\.json$'); do
+#     printf '%s\t%s\n' "$j" \
+#       "$(./target/release/ckpt_replay --record "$j" --provenance-seal \
+#          | grep -o 'sha256:[0-9a-f]*' | head -1)"
+#   done
+#
+# Minted 2026-08-06, after `sha256`, `bytes`, `seed`, `step` and
+# `gf16_floor_every` entered the sealed set. Every digest published before that
+# date is superseded.
+evidence/heldout/r6-heldout-select/12000.json	sha256:ecbb311ff04d238b64ec4218dfde0b00e205d9eb1186f3575c9ab485eb87ef96
+evidence/heldout/r6-heldout-test/12000.json	sha256:9edeb4bde2bc30d0e673073c23b640d90586944d8d769cab7ff139f0eb6a902c
+evidence/xarch-aarch64-reference/12000.json	sha256:ba83ebc2b6585da1cdb29f57836ac1d681674cda942a464f2ba59cb37a652a76
+evidence/xarch-local-isa/isa-probe-arm64-0.json	sha256:1dacd92ce0a9fd62cf233634b7ebe3e587d689395138f8f859a179b6d2d32988
+evidence/xarch-local-isa/isa-probe-arm64-10.json	sha256:a149633516924f7716fdd4841e6ce0cc22b9cc1665f70fa6704a1fd3bb7229c5
+evidence/xarch-local-isa/isa-probe-x86_64-0.json	sha256:8304ec46248cadcbf873bd1d1b6f7470b648e07b3034c6dc43260fc561cf06c9
+evidence/xarch-local-isa/isa-probe-x86_64-10.json	sha256:2d082292e5d26b191945879b4548b9ddb3c9b9b695307f6c377c6e5b7592296b
+evidence/xarch-local-isa/probe.json	sha256:b42eb2377b25c4143511761b3667fa0cd8500029b311842539e06621a811ac07
+evidence/xarch-run-30767491098/12000.json	sha256:fbd960235a100ac77ee3283cb29b869fbf1aaba1e460b6cb2a20c2a5a31e748d
+evidence/xarch-rustc/linux-rustc191/lin191/300.json	sha256:91889a74c1d947ff8892fd4a3c5638bf421687b196e91faaf3c6d7d9532c9d18
+evidence/xarch-rustc/linux-rustc191/lin3k/3000.json	sha256:7122f7557fe4672e5866e14803c7769652af1eb5862e002febe66f493ac88039
+evidence/xarch-rustc/linux-rustc196/lin196/300.json	sha256:91889a74c1d947ff8892fd4a3c5638bf421687b196e91faaf3c6d7d9532c9d18
+evidence/xarch-rustc/macos/mac/xarch-mac/300.json	sha256:2c0a560cb1c0e1d68023de1eb17f5252d8b2d40b9ca15f4a9b3bd272f51c4c55
+evidence/xarch-rustc/macos/mac3k/mac3k/3000.json	sha256:061278bc1a055638e77cf9d53bc06cef719124c4cff7a9bdb586f3235a3a6c9c

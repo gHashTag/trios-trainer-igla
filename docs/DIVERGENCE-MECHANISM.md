@@ -105,7 +105,15 @@ The primitive set mirrors the real training path rather than a textbook one:
 | + | `layer_norm_64` | `src/train_loop.rs::layer_norm` at its real width: two reductions plus one `sqrt` |
 | + | `matvec_384x64` | the `proj` matvec at its real shape, 384 rows of 64 |
 
-Five unit tests ship with it, of which one is load-bearing:
+A second instrument sits beside it: `src/bin/ulp_census.rs`, which recomputes
+`exp`, `ln`, `sqrt`, `powf` and `cos` over the *same* two buffers and prints the
+raw u32 bit pattern of all 4096 results of each, plus a per-function `DIGEST`
+that must equal the probe's `PRIMITIVE` hash for that function. The probe says
+WHICH primitives disagree; the census says BY HOW MUCH, which a hash cannot.
+It has the same construction -- no arguments, no environment, no file I/O, no
+randomness, no dependency on any module of this crate.
+
+Six unit tests ship with the probe, of which one is load-bearing:
 `split_accumulator_changes_the_sum` **fails** if the sequential and 8-way-split
 dot ever agree exactly, because at that moment the reduction-order probe would
 be measuring nothing and this document's reading of it would be void. On this
@@ -115,33 +123,56 @@ being *able* to move the number between architectures -- and it did not.
 
 ## The commands
 
-Measured 2026-08-03 on one host: Apple M1 Pro, macOS 26.5.2 (build 25F84),
+First measured 2026-08-03 on one host: Apple M1 Pro, macOS 26.5.2 (build 25F84),
 `Darwin 25.5.0 arm64`, rustc `1.96.0 (ac68faa20 2026-05-25)` pinned by
 `rust-toolchain.toml`, release profile, Rosetta 2 present
 (`/usr/libexec/rosetta`: `oahd`, `runtime`, `translate_tool`).
 `git_sha = 3c1f751cf4376c13d26e247c2cd86357ab51dd20`, tree dirty (see "Limits on
 the local reference" below).
 
-```bash
-cargo build --release --bin xarch_probe
-cargo build --release --target x86_64-apple-darwin --bin xarch_probe
+Re-run 2026-08-06 on the same host at
+`git_sha = ba272b988971545801c9e337b0b42e35dc18abc4` to emit the committed
+evidence under `evidence/xarch-probe/`. **All sixteen hashes reproduced on both
+arms**, including `forward_tiny_h64 = 9eeb6b05...`, across a three-day gap and a
+rebuild -- which is the same-machine determinism claim, tested rather than
+asserted. The probe binaries themselves changed between the two runs (the
+`SUMMARY` count became derived and the loss site acquired a NaN guard), so the
+binary hashes below are the current ones and differ from those of 2026-08-03;
+the sixteen output hashes did not move, which is the point.
 
-./target/release/xarch_probe                     | tee /tmp/probe_arm64.txt
-./target/x86_64-apple-darwin/release/xarch_probe  | tee /tmp/probe_x86.txt
-diff /tmp/probe_arm64.txt /tmp/probe_x86.txt
+```bash
+cargo build --release --target aarch64-apple-darwin --bin xarch_probe --bin ulp_census
+cargo build --release --target x86_64-apple-darwin  --bin xarch_probe --bin ulp_census
+
+./target/aarch64-apple-darwin/release/xarch_probe > evidence/xarch-probe/probe-arm64.txt
+./target/x86_64-apple-darwin/release/xarch_probe  > evidence/xarch-probe/probe-x86_64.txt
+diff evidence/xarch-probe/probe-arm64.txt evidence/xarch-probe/probe-x86_64.txt
 ```
+
+Both arms of both instruments are published under `evidence/xarch-probe/`, with
+`PROVENANCE.txt` recording the compiler, the two target triples, the SHA-256 of
+each of the four binaries and of each output, the OS build, and the fact that
+this is n=1 per arm with no variance estimate. Re-running the commands above
+must reproduce those files byte for byte on this platform; on any other
+platform the aarch64 arm is the one to compare, and a mismatch there is a
+finding about same-machine determinism rather than about architecture.
 
 The x86_64 binary is a Mach-O x86_64 executable run on Apple Silicon, so macOS
 routes it through Rosetta 2; no `arch -x86_64` prefix is needed, and `file`
 confirms which slice was built.
 
-| target | sha256 of `xarch_probe` | `file` says |
-|---|---|---|
-| `aarch64-apple-darwin` | `c1bc686e5ae26f61b8ee1e76df6e34881a9604aa861a1e04bbfcacbc81329983` | Mach-O 64-bit executable arm64 |
-| `x86_64-apple-darwin` | `9ca60975759a8c71326292f73a5f8e5750fdef52d293eff7309b32da90e189d5` | Mach-O 64-bit executable x86_64 |
+| target | binary | sha256 | `file` says |
+|---|---|---|---|
+| `aarch64-apple-darwin` | `xarch_probe` | `eb89ff571d86d10fdff0c6ab073e5a561dd27b8c2c87fadda3103499c3bd7dcf` | Mach-O 64-bit executable arm64 |
+| `x86_64-apple-darwin` | `xarch_probe` | `7fc6223fe9986aa61edc60b9086dec54518db24f806cf8195c9f6a611f54e82d` | Mach-O 64-bit executable x86_64 |
+| `aarch64-apple-darwin` | `ulp_census` | `2f5f880f839d5d3675f5310aa1b5e2f433d68c1a5d68683989af9e00beb3336f` | Mach-O 64-bit executable arm64 |
+| `x86_64-apple-darwin` | `ulp_census` | `c34a8dc835b975ce71ecde52158c1267b66c8ebb8a5be10c4b8ed8bae55d69fa` | Mach-O 64-bit executable x86_64 |
 
-The two binary hashes differ, which is expected and carries no information:
-different machine code for a different instruction set cannot hash the same.
+The two binary hashes of one program differ across the targets, which is
+expected and carries no information: different machine code for a different
+instruction set cannot hash the same. They are recorded, here and in
+`evidence/xarch-probe/PROVENANCE.txt`, so a reader can tell whether a later run
+used the same executable.
 
 The vectorisation arm was built with the flag applied to **this binary only**,
 using `cargo rustc` rather than `RUSTFLAGS`, so that the dependency graph was
@@ -223,10 +254,12 @@ unchanged.
 
 ### What differed, and by how much
 
-Only libm. To quantify it, the same inputs were dumped element-wise by a
-throwaway program built with the same pinned `rustc` for both targets (it lives
-in `/tmp`, is not part of this repository, and is reproduced in full at the
-bottom of this file so the numbers below can be re-derived):
+Only libm. To quantify it, the same inputs were dumped element-wise by
+`src/bin/ulp_census.rs`, built with the same pinned `rustc` for both targets. A
+hash of 4096 values is equally consistent with one last-place rounding decision
+and with total nonsense, so the elements are what makes the size of the finding
+readable; the census program prints the raw u32 bit pattern of every one of
+them.
 
 | function | elements differing | of | share | max difference |
 |---|---:|---:|---:|---|
@@ -235,6 +268,18 @@ bottom of this file so the numbers below can be re-derived):
 | `cos` | 60 | 4096 | 1.465% | **1 ULP** |
 | `ln` | 0 | 4096 | 0.000% | -- |
 | `sqrt` | 0 | 4096 | 0.000% | -- |
+
+**Every cell of that table is derived, not transcribed.** The two dumps are
+`evidence/xarch-probe/ulp-arm64.txt` and `evidence/xarch-probe/ulp-x86_64.txt`
+(20 480 elements each); the table is
+`evidence/xarch-probe/ULP-CENSUS.txt`, recomputed from those two files by
+`tests/xarch_probe_census.rs` on every test run and asserted against them, so a
+hand-edited cell fails the build. That test also refuses a difference larger
+than 1 ULP, refuses a disagreement in `sqrt` (IEEE 754 pins it; a mismatch would
+mean the method is broken rather than that a libm slice rounds differently), and
+checks that each `DIGEST` line of the census equals the corresponding
+`PRIMITIVE` hash of `xarch_probe` on the same arm -- the join that says the two
+instruments measured the same numbers.
 
 Every single disagreement is exactly one unit in the last place. The first for
 each: `exp` at index 279, `0x39cb81f8` against `0x39cb81f9`; `powf` at index
@@ -342,32 +387,39 @@ eliminating it, and now knows what eliminating it would cost.
 
 ## Limits on the local reference itself
 
-`git_sha = 3c1f751cf4376c13d26e247c2cd86357ab51dd20`, `git_dirty = true`; other
-work was landing in the tree while these runs were taken. Three things bound
-that risk here, and the exposure is far smaller than in
+`git_sha = 3c1f751cf4376c13d26e247c2cd86357ab51dd20` for the first measurement and
+`ba272b988971545801c9e337b0b42e35dc18abc4` for the committed re-run, `git_dirty
+= true` in both cases; other work was landing in the tree while these runs were
+taken. Four things bound that risk here, and the exposure is far smaller than in
 `docs/DIVERGENCE-LOCALIZATION.md`:
 
-1. **The probe depends on no crate module.** It imports `sha2` for hashing and
-   nothing else; its LCG, its `layer_norm`, its `softmax` and its forward pass
-   are written out inside the file. Concurrent edits to `src/train_loop.rs`
-   cannot reach these numbers.
+1. **Neither instrument depends on a crate module.** Both import `sha2` for
+   hashing and nothing else; the LCG, the `layer_norm`, the `softmax` and the
+   forward pass are written out inside the files. Concurrent edits to
+   `src/train_loop.rs` cannot reach these numbers.
 2. **Both binaries were re-built from the same tree state back to back**, and
    the aarch64 output was re-produced after the de-vectorised arm had
    overwritten and then restored the binary; the sixteen hashes were identical.
-3. **`src/bin/tjepa_train.rs` did not compile at the time of these runs**, due
-   to another item's in-flight change to `compute_grads` in `src/train_loop.rs`.
-   That blocks `cargo test --test ledger_exit_code_binaries` (which builds all
-   bin targets) but not `cargo build --bin xarch_probe`, `cargo test --bin
-   xarch_probe`, or anything on this page. Recorded so the reader is not
-   surprised by it and does not attribute it here.
+3. **The re-run three days later, from a differently dirty tree and with the
+   probe binary itself changed, reproduced all sixteen hashes on both arms.**
+   That is the strongest statement this page makes about the tree state: the
+   numbers survived the churn they were taken in.
+4. **`src/bin/tjepa_train.rs` did not compile at the time of the first runs**,
+   due to another item's in-flight change to `compute_grads` in
+   `src/train_loop.rs`. That blocks `cargo test --test
+   ledger_exit_code_binaries` (which builds all bin targets) but not
+   `cargo build --bin xarch_probe`, `cargo test --bin xarch_probe`, or anything
+   on this page. It compiled again at the time of the re-run. Recorded so the
+   reader is not surprised by it and does not attribute it here.
 
 ## Scope of every claim on this page
 
 | claim | rests on |
 |---|---|
 | Reduction order does not vary between the aarch64 and x86_64 backends for these primitives | this local Rosetta experiment only, default and `-force-vector-width=1` |
-| `expf`, `powf`, `cosf` differ by 1 ULP between the two Apple libm slices | this local Rosetta experiment only, 4096 inputs each |
+| `expf`, `powf`, `cosf` differ by 1 ULP between the two Apple libm slices | this local Rosetta experiment only, 4096 inputs each; both arms published as `evidence/xarch-probe/ulp-{arm64,x86_64}.txt`, table re-derived from them by `tests/xarch_probe_census.rs` |
 | `logf` and `sqrtf` agree between the two slices | this local Rosetta experiment only, 4096 inputs each; `sqrtf` additionally by IEEE 754 and by not being imported |
+| The 16 per-primitive hashes are reproducible on this machine | two runs three days apart, `evidence/xarch-probe/probe-{arm64,x86_64}.txt`; n=1 per arm per run, no variance estimate -- see `evidence/xarch-probe/PROVENANCE.txt` |
 | FMA contraction is not present | disassembly of four binaries plus `grep -c mul_add src/train_loop.rs` = 0 |
 | Initialisation is byte-portable; divergence starts after gradient steps | `docs/DIVERGENCE-LOCALIZATION.md` |
 | A checkpoint produced on x86_64 **Linux** differs from the aarch64 macOS one | CI run 30767491098 only |
@@ -381,53 +433,40 @@ hash is a measurement, and a measurement without its conditions is not a result.
 
 ## Appendix: the element-wise dump program
 
-Reproduced in full because the ULP table above is the only number on this page
-that `xarch_probe` does not itself print. Build it with the repository's pinned
-toolchain -- run `rustc` from inside the checkout so `rust-toolchain.toml`
-applies, otherwise a different default toolchain may not have the x86_64 target
-installed:
+It is `src/bin/ulp_census.rs`, and it is part of this repository. It was not,
+until this document was revised: the ULP table was produced by a throwaway
+program in a scratch directory, reproduced here by transcription. That is not
+evidence. A reader could not re-run it, could not check that the transcription
+matched what actually ran, and could not tell whether the numbers came from the
+program on the page at all. Every other claim in this repository ships an
+artifact; this one, the sharpest of them, did not.
+
+The arithmetic is unchanged in the move -- same LCG constants, same buffer
+seeds (`pos = fill_range(4096, 123, 0.25, 8.0)`, `ranged = fill_range(4096, 144,
+-8.0, 8.0)`), same call expressions, same order -- so the published numbers
+remain the measured ones. What changed is that it now also prints a per-function
+`DIGEST`, which must equal `xarch_probe`'s `PRIMITIVE` hash for the same
+function on the same arm. That join is what says the ULP counts and the
+per-primitive hashes are two readings of one measurement rather than two
+measurements that happen to appear on one page.
+
+Build both arms with the repository's pinned toolchain:
 
 ```bash
-rustc -O --target aarch64-apple-darwin -o /tmp/expdump_arm /tmp/expdump.rs
-rustc -O --target x86_64-apple-darwin  -o /tmp/expdump_x86 /tmp/expdump.rs
-/tmp/expdump_arm > /tmp/dump_arm.txt
-/tmp/expdump_x86 > /tmp/dump_x86.txt
+cargo build --release --target aarch64-apple-darwin --bin ulp_census
+cargo build --release --target x86_64-apple-darwin  --bin ulp_census
+./target/aarch64-apple-darwin/release/ulp_census > evidence/xarch-probe/ulp-arm64.txt
+./target/x86_64-apple-darwin/release/ulp_census   > evidence/xarch-probe/ulp-x86_64.txt
+diff evidence/xarch-probe/ulp-arm64.txt evidence/xarch-probe/ulp-x86_64.txt
 ```
 
-```rust
-struct Lcg { state: u64 }
-impl Lcg {
-    fn new(seed: u64) -> Self { Self { state: seed } }
-    fn next_u64(&mut self) -> u64 {
-        self.state = self.state.wrapping_mul(6364136223846793005)
-                               .wrapping_add(1442695040888963407);
-        self.state
-    }
-    fn next_f32(&mut self) -> f32 {
-        let s = self.next_u64();
-        ((s >> 33) as f32) / (u32::MAX as f32) * 2.0 - 1.0
-    }
-}
-fn fill(n: usize, seed: u64) -> Vec<f32> {
-    let mut rng = Lcg::new(seed);
-    (0..n).map(|_| rng.next_f32()).collect()
-}
-fn fill_range(n: usize, seed: u64, lo: f32, hi: f32) -> Vec<f32> {
-    let mid = (lo + hi) * 0.5; let half = (hi - lo) * 0.5;
-    fill(n, seed).into_iter().map(|v| mid + v * half).collect()
-}
-fn main() {
-    let pos = fill_range(4096, 123, 0.25, 8.0);
-    let ranged = fill_range(4096, 144, -8.0, 8.0);
-    for (i, v) in ranged.iter().enumerate() { println!("exp {} {:08x}", i, v.exp().to_bits()); }
-    for (i, v) in pos.iter().enumerate() { println!("ln {} {:08x}", i, v.ln().to_bits()); }
-    for (i, v) in pos.iter().enumerate() { println!("sqrt {} {:08x}", i, v.sqrt().to_bits()); }
-    for (i, v) in pos.iter().enumerate() { println!("powf {} {:08x}", i, 10_000.0f32.powf(*v / 16.0).to_bits()); }
-    for (i, v) in ranged.iter().enumerate() { println!("cos {} {:08x}", i, v.cos().to_bits()); }
-}
-```
+Like `xarch_probe`, it takes no arguments, reads no environment, opens no file
+and uses no randomness, so nothing about the host can reach the numbers except
+the instruction set and the maths library. `tests/xarch_probe_census.rs` checks
+that claim against the source rather than trusting the sentence.
 
-The two dumps were compared line by line, counting differing bit patterns per
-function and taking the maximum absolute difference of the u32 bit patterns as
-the ULP figure (valid here because every value involved is finite, positive-
-exponent and of the same sign on both arms).
+The two dumps are compared element by element, counting differing bit patterns
+per function and taking the maximum absolute difference of the u32 bit patterns
+as the ULP figure. That reading is valid only because every value involved is
+finite and of the same sign on both arms, which the deriving test asserts before
+it counts anything rather than leaving it as a caveat in prose.

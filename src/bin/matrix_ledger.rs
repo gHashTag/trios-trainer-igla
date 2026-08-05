@@ -221,10 +221,10 @@ fn collect(args: &[String]) -> Result<(), LedgerError> {
 
     let root = PathBuf::from(&artefact_root);
     if !root.exists() {
-        return Err(
-            format!("artefact root {artefact_root:?} does not exist (CI step ordering issue?)")
-                .into(),
-        );
+        return Err(format!(
+            "artefact root {artefact_root:?} does not exist (CI step ordering issue?)"
+        )
+        .into());
     }
 
     // Walk every `cell.json` under the artefact root. Each per-cell artifact
@@ -453,9 +453,15 @@ mod tests {
         // Serialize a default row and assert the schema exposes the raw seed
         // and no phi-painted alias, and no hardcoded wallclock column.
         let json = serde_json::to_string(&LedgerRow::default()).expect("serialize");
-        assert!(json.contains("\"seed\":"), "missing raw seed column: {json}");
+        assert!(
+            json.contains("\"seed\":"),
+            "missing raw seed column: {json}"
+        );
         assert!(!json.contains("seed_phi"), "seed_phi resurrected: {json}");
-        assert!(!json.contains("wallclock_ms"), "wallclock resurrected: {json}");
+        assert!(
+            !json.contains("wallclock_ms"),
+            "wallclock resurrected: {json}"
+        );
         assert!(
             json.contains("\"loss_final_derived\":"),
             "derived loss must be labelled as derived: {json}"

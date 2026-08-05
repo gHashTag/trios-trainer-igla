@@ -78,6 +78,27 @@
 // for fp80/posit16, as "not a distinct format measurement".
 // ----------------------------------------------------------------------------
 //
+// ----------------------------------------------------------------------------
+// UNSCREENED ROWS (2026-08-06) -- EVERY ROW THIS BINARY HAS ALREADY PUBLISHED
+// INTO `ssot.bpb_samples` WAS WRITTEN WITHOUT PASSING THE WRITE-SIDE BPB
+// SCREEN. `write_row_async` opens its own `tokio_postgres` connection and
+// INSERTs directly, so it never entered `src/neon_writer.rs` and therefore
+// never reached `reject_bpb` -- the check that module documents as living "on
+// the WRITE side so no caller can bypass it". Concretely, the rows already on
+// the public leaderboard were never tested for `is_finite`, never tested
+// against `BPB_SENTINEL_CEILING` (the f32::MAX sentinel that was once
+// published and then divided by), and never tested against
+// `invariants::PUBLISHED_BPB_FLOOR` (the bound that admits 2.61 and refuses
+// the retracted 1.5492). The same path also read `MATRIX_DATABASE_URL` /
+// `DATABASE_URL` and connected on their presence alone, ignoring the
+// `TRIOS_LEDGER_WRITE=1` opt-in that `neon_writer` declares mandatory.
+//
+// From this commit onward both gates run in `resolve_write_gate`, BEFORE any
+// socket is opened. That fixes what is written NEXT; it does not retroactively
+// screen anything. Existing rows must be re-screened at read time before they
+// are cited.
+// ----------------------------------------------------------------------------
+//
 // Anchor: phi^2 + phi^-2 = 3.
 
 use std::env;
@@ -285,6 +306,7 @@ fn build_canon_name_lane(
 ///     `0` both rendered `LR0`;
 ///   * values >= 1 kept their bare digits, so `0.1` ("0.1" -> strip "0." ->
 ///     "1") and `1.0` ("1") both rendered `LR1`.
+///
 /// Both are now distinguishable:
 ///   * the source string is the SHORTEST ROUND-TRIP decimal (`{}` on f64,
 ///     which never uses exponent notation), so no magnitude is truncated;
@@ -294,6 +316,7 @@ fn build_canon_name_lane(
 ///     disjoint, so no cross-branch collision is possible, and within each
 ///     branch the round-trip property of the decimal makes distinct f64 values
 ///     produce distinct strings.
+///
 /// Every LR token this repo has actually published (`001`, `0001`, `003`,
 /// `01`) is byte-identical to what the old body produced, so no historical
 /// canon_name changes shape.
@@ -392,14 +415,14 @@ struct MatrixRow {
     ts_unix: i64,
 }
 
-fn arg_or(flag: &str, default: &str) -> String {
+/// The value of `--flag=value` if it was passed at all.
+fn arg_opt(flag: &str) -> Option<String> {
     let key = format!("--{flag}=");
-    for a in env::args() {
-        if let Some(v) = a.strip_prefix(&key) {
-            return v.to_string();
-        }
-    }
-    default.to_string()
+    env::args().find_map(|a| a.strip_prefix(&key).map(|v| v.to_string()))
+}
+
+fn arg_or(flag: &str, default: &str) -> String {
+    arg_opt(flag).unwrap_or_else(|| default.to_string())
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -410,6 +433,14 @@ fn env_or(key: &str, default: &str) -> String {
 /// from the algo (3) and format (5) rejections so a supervisor can tell a
 /// malformed invocation from a rejected experiment.
 const EXIT_BAD_ARGS: u8 = 4;
+
+/// Exit code for a reading the write-side screen refuses to publish.
+///
+/// Distinct from the DB-write failure (6) on purpose: "the database did not
+/// accept this row" and "this number is not a measurement" are different
+/// facts, and only the second one means the cell must never be retried into
+/// the leaderboard.
+const EXIT_BPB_REFUSED: u8 = 9;
 
 /// Read a known flag and parse it, or reject the invocation.
 ///
@@ -543,7 +574,7 @@ fn run_cpu_train(
     let announced = stdout
         .lines()
         .filter_map(|l| l.strip_prefix("Results: "))
-        .last()
+        .next_back()
         .map(|p| p.trim().to_string())
         .ok_or_else(|| {
             format!(
@@ -558,6 +589,167 @@ fn run_cpu_train(
     let parsed: CpuTrainResult =
         serde_json::from_slice(&bytes).map_err(|e| format!("parse result {path:?}: {e}"))?;
     Ok(parsed)
+}
+
+/// The DSN this binary would use, read from the two names the
+/// format-algo-matrix workflow documents.
+///
+/// MATRIX-first, then the neutral name -- the precedence this binary has
+/// always used. It is only ever exercised on an environment
+/// `enforce_dsn_conflict_gate()` (first statement of `main`) has already
+/// declared unambiguous: if these two names disagreed the process exited 78
+/// before any work ran, so the winner here cannot be a database nobody named.
+fn configured_dsn() -> Option<String> {
+    env::var("MATRIX_DATABASE_URL")
+        .ok()
+        .or_else(|| env::var("DATABASE_URL").ok())
+        .filter(|d| !d.is_empty())
+}
+
+/// Everything that must be true before this binary opens a socket to the SSOT.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WriteGate {
+    /// The reading itself must never be published, for the named reason.
+    Refused(String),
+    /// No DSN configured: nothing was promised, so nothing is owed.
+    NoDsn,
+    /// A DSN is configured but `TRIOS_LEDGER_WRITE` is not `1`.
+    NotOptedIn,
+    /// Cleared to connect, with this DSN.
+    Cleared(String),
+}
+
+/// Decide, without touching the network, whether this cell may be written.
+///
+/// ORDER IS LOAD-BEARING AND IS TESTED (`tests/ledger_write_guard.rs`).
+///
+///   1. The BPB screen runs FIRST, before the DSN is even looked at, so a
+///      sentinel can never cost a connection and can never depend on whether
+///      a database happened to be reachable. It is
+///      `neon_writer::bpb_refusal_reason` -- the same implementation
+///      `bpb_sample` uses -- and not a second copy of the rules, because the
+///      defect being closed here is precisely that this binary had its own
+///      write path and therefore no rules at all.
+///   2. `TRIOS_LEDGER_WRITE=1` is then required. A DSN alone is not
+///      permission: any of these names is routinely present in a developer or
+///      CI shell for reasons that have nothing to do with this trainer, and
+///      connecting on their presence is how a scouting run put rows on the
+///      shared ledger before anyone noticed. `neon_writer::check_write_opt_in`
+///      prints that module's own wording, once, naming the variable.
+fn resolve_write_gate(bpb: f64, dsn: Option<String>) -> WriteGate {
+    if let Some(reason) = trios_trainer::neon_writer::bpb_refusal_reason(bpb as f32) {
+        return WriteGate::Refused(reason);
+    }
+    let Some(dsn) = dsn else {
+        return WriteGate::NoDsn;
+    };
+    if !trios_trainer::neon_writer::check_write_opt_in() {
+        return WriteGate::NotOptedIn;
+    }
+    WriteGate::Cleared(dsn)
+}
+
+/// `--write-preflight=<bpb>`: run the gate above on a supplied reading and
+/// stop.
+///
+/// This exists so the ORDER of the gates is observable from outside the
+/// binary. The refusal it must produce sits, in a real run, behind a full
+/// training run whose BPB nobody can dictate -- there is no way to ask
+/// `cpu_train` for `f32::MAX` -- so without this entry point the only evidence
+/// that the screen precedes the socket would be a reading of the source.
+///
+/// It calls exactly the same [`resolve_write_gate`] the write path calls, and
+/// when the gate CLEARS it opens the same connection with the same
+/// `connect: ` error prefix, so a test can prove the socket is genuinely
+/// downstream of both gates rather than absent from this mode. It never
+/// executes DDL and never INSERTs: the connection is dropped as soon as it is
+/// established.
+fn run_write_preflight(raw: &str) -> ExitCode {
+    let bpb: f64 = match trios_trainer::parse_flag_value::<f64>("write-preflight", raw) {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[matrix_runner] R5-REJECT {e}");
+            return ExitCode::from(EXIT_BAD_ARGS);
+        }
+    };
+    eprintln!(
+        "[matrix_runner] write-preflight: gating bpb={bpb} only; no training was \
+         performed and no row will be written"
+    );
+    match resolve_write_gate(bpb, configured_dsn()) {
+        WriteGate::Refused(reason) => refuse_bpb(&reason),
+        WriteGate::NoDsn => {
+            announce_no_dsn();
+            ExitCode::SUCCESS
+        }
+        WriteGate::NotOptedIn => {
+            announce_not_opted_in();
+            ExitCode::SUCCESS
+        }
+        WriteGate::Cleared(dsn) => {
+            eprintln!("[matrix_runner] write-preflight: gates cleared, probing the connection");
+            match Runtime::new().map_err(|e| format!("build tokio runtime: {e}")) {
+                Ok(rt) => match rt.block_on(probe_connect_async(&dsn)) {
+                    Ok(()) => {
+                        eprintln!(
+                            "[matrix_runner] write-preflight: connection OK, nothing written"
+                        );
+                        ExitCode::SUCCESS
+                    }
+                    Err(e) => {
+                        eprintln!("[matrix_runner] write-preflight: {e}");
+                        ExitCode::from(6)
+                    }
+                },
+                Err(e) => {
+                    eprintln!("[matrix_runner] write-preflight: {e}");
+                    ExitCode::from(6)
+                }
+            }
+        }
+    }
+}
+
+/// Say that the reading is not publishable, and that no database was touched.
+fn refuse_bpb(reason: &str) -> ExitCode {
+    eprintln!("[matrix_runner] R5-REJECT BPB REFUSED by the write-side screen: {reason}");
+    eprintln!(
+        "[matrix_runner] No database was contacted and nothing was written. This \
+         cell has no publishable measurement; do not retry it into the leaderboard."
+    );
+    ExitCode::from(EXIT_BPB_REFUSED)
+}
+
+fn announce_no_dsn() {
+    eprintln!(
+        "[matrix_runner] no DSN configured (MATRIX_DATABASE_URL and \
+         DATABASE_URL both unset/empty); row only echoed on stdout. \
+         Nothing was promised to the SSOT, so this is exit 0."
+    );
+}
+
+fn announce_not_opted_in() {
+    eprintln!(
+        "[matrix_runner] a DSN is configured but the ledger write opt-in is not \
+         set, so no connection was opened and the row is only echoed on stdout. \
+         Nothing was promised to the SSOT, so this is exit 0."
+    );
+}
+
+/// Open a connection and drop it. No DDL, no INSERT.
+///
+/// Shares `write_row_async`'s `connect: ` error prefix deliberately: the
+/// preflight's whole job is to be the same socket, reached the same way.
+async fn probe_connect_async(dsn: &str) -> Result<(), String> {
+    let (_client, connection) = tokio_postgres::connect(dsn, NoTls)
+        .await
+        .map_err(|e| format!("connect: {e}"))?;
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("[matrix_runner] preflight conn task: {e}");
+        }
+    });
+    Ok(())
 }
 
 /// Write a single bpb_samples row into the Railway SSOT.
@@ -656,6 +848,20 @@ async fn ensure_schema(client: &Client) -> Result<(), String> {
 }
 
 fn main() -> ExitCode {
+    // FIRST STATEMENT, deliberately. The DSN read that decides where this
+    // cell's row lands is ~180 lines below, AFTER a full training run and after
+    // the `MATRIX_ROW` witness has been printed. Gating there would still be
+    // "before the connection", but the operator would have paid for the
+    // training and read a witness line first, and the refusal's own sentence
+    // ("no database was contacted and nothing was written") would sit under a
+    // page of this binary's output. Gating here costs four environment reads
+    // and makes that sentence checkable.
+    //
+    // `MATRIX_DATABASE_URL` is part of `DSN_ENV_VARS` as of 2026-08-05, so this
+    // call sees the very pair -- MATRIX_DATABASE_URL vs DATABASE_URL -- that
+    // the read below would otherwise resolve by silent precedence.
+    trios_trainer::neon_writer::enforce_dsn_conflict_gate();
+
     let format_raw = arg_or("format", &env_or("TRIOS_FORMAT_TYPE", "fp32"));
     let algo_raw = arg_or("algo", &env_or("TRIOS_ALGO_TYPE", "adamw"));
     // Every one of these used to be `.parse().unwrap_or(<default>)`, so a known
@@ -759,10 +965,14 @@ fn main() -> ExitCode {
     // instead of one training run.
     if arg_or("dry-run-canon", "0") == "1" || env::args().any(|a| a == "--dry-run-canon") {
         println!("CANON_NAME {canon_name}");
-        eprintln!(
-            "[matrix_runner] dry-run-canon: no training performed, no row written"
-        );
+        eprintln!("[matrix_runner] dry-run-canon: no training performed, no row written");
         return ExitCode::SUCCESS;
+    }
+
+    // `--write-preflight=<bpb>`: the write-path gate, on a supplied reading,
+    // without training. See `run_write_preflight` for why this seam exists.
+    if let Some(raw) = arg_opt("write-preflight") {
+        return run_write_preflight(&raw);
     }
 
     eprintln!(
@@ -832,10 +1042,15 @@ fn main() -> ExitCode {
         serde_json::to_string(&row).unwrap_or_else(|_| "{}".to_string())
     );
 
-    let dsn = env::var("MATRIX_DATABASE_URL")
-        .ok()
-        .or_else(|| env::var("DATABASE_URL").ok());
-
+    // -- R5 GUARD 10 -- THE WRITE-SIDE SCREEN AND THE WRITE OPT-IN ---------
+    //
+    // Both gates run here, BEFORE any socket exists. `write_row_async` below
+    // carries its own connection and never enters `neon_writer`, so until this
+    // call every row this binary published skipped `reject_bpb` entirely and
+    // treated the mere presence of a DSN as permission to write. See the
+    // UNSCREENED ROWS note at the top of this file for what that means for the
+    // rows already in `ssot.bpb_samples`.
+    //
     // -- R5 GUARD 6 -- A CONFIGURED DSN THAT LANDS NOTHING IS A FAILURE -----
     //
     // The previous version printed "DB write skipped" for a hard connection
@@ -846,8 +1061,11 @@ fn main() -> ExitCode {
     // The distinction that matters is CONFIGURED vs NOT CONFIGURED:
     //   * no DSN in the environment -> nothing was promised, exit 0;
     //   * a DSN was configured and 0 of N writes landed -> exit non-zero.
-    match dsn {
-        Some(dsn) if !dsn.is_empty() => {
+    match resolve_write_gate(row.bpb, configured_dsn()) {
+        WriteGate::Refused(reason) => return refuse_bpb(&reason),
+        WriteGate::NoDsn => announce_no_dsn(),
+        WriteGate::NotOptedIn => announce_not_opted_in(),
+        WriteGate::Cleared(dsn) => {
             let attempted = 1usize;
             let mut landed = 0usize;
             let mut last_error = String::new();
@@ -877,16 +1095,7 @@ fn main() -> ExitCode {
                 );
                 return ExitCode::from(6);
             }
-            eprintln!(
-                "[matrix_runner] DB write summary: attempted={attempted} landed={landed}"
-            );
-        }
-        _ => {
-            eprintln!(
-                "[matrix_runner] no DSN configured (MATRIX_DATABASE_URL and \
-                 DATABASE_URL both unset/empty); row only echoed on stdout. \
-                 Nothing was promised to the SSOT, so this is exit 0."
-            );
+            eprintln!("[matrix_runner] DB write summary: attempted={attempted} landed={landed}");
         }
     }
 
@@ -1129,7 +1338,9 @@ mod tests {
             );
         }
         // Real kernels are unaffected, with or without the opt-in.
-        for real in ["fp32", "fp16", "bf16", "gf16", "fp8_e4m3", "fp8_e5m2", "int8", "int4"] {
+        for real in [
+            "fp32", "fp16", "bf16", "gf16", "fp8_e4m3", "fp8_e5m2", "int8", "int4",
+        ] {
             assert_eq!(
                 resolve_format_faithful(real, false),
                 Ok(true),

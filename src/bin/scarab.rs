@@ -163,7 +163,13 @@ async fn run_strategy(
         .val_path
         .clone()
         .unwrap_or_else(|| "/work/data/tiny_shakespeare_val.txt".into());
-    let neon = env::var("NEON_DATABASE_URL").unwrap_or_default();
+    // The DSN handed down to the trainer child. Read through the same gated
+    // chain as `main`, not through a bare `NEON_DATABASE_URL` lookup: the bare
+    // read could forward a DIFFERENT database from the one this worker claimed
+    // the strategy out of, so the row describing the run and the run itself
+    // would land in two places. `resolved_dsn` cannot disagree with `main` here
+    // -- a conflicted environment never reaches this function.
+    let neon = trios_trainer::neon_writer::resolved_dsn().unwrap_or_default();
     let max_secs = strat.spec.constraints.max_runtime_sec.unwrap_or(900);
 
     println!(
@@ -424,16 +430,27 @@ fn strip_channel_binding(dsn: &str) -> String {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Resolve Postgres DSN with neutral name first, then fall back to legacy aliases.
+    // Resolve Postgres DSN through the crate's single gated chain.
+    //
     // Trinity moved off Neon onto Railway Postgres (2026-05). DATABASE_URL is the
     // canonical neutral name; NEON_DATABASE_URL / TRIOS_DATABASE_URL kept as aliases
     // for backward compatibility with operator-side scripts that still set them.
-    let raw_db_url = env::var("DATABASE_URL")
-        .or_else(|_| env::var("NEON_DATABASE_URL"))
-        .or_else(|_| env::var("TRIOS_DATABASE_URL"))
-        .map_err(|_| anyhow::anyhow!(
+    //
+    // This WAS an inline `DATABASE_URL -> NEON_DATABASE_URL ->
+    // TRIOS_DATABASE_URL` chain: a second reader of the same names, running
+    // before `neon_writer`'s conflict gate had ever been consulted. A worker
+    // deployed with one variable, on a host whose environment already exported
+    // another, took the first hit, connected, claimed strategies and inserted
+    // rows -- into a database nobody had named, while printing "ready". The
+    // call below refuses that environment (exit
+    // `neon_writer::DSN_CONFLICT_EXIT_CODE`) before any socket is opened, and
+    // it is the FIRST statement of `main` so nothing of scarab's own output can
+    // precede the refusal.
+    let raw_db_url = trios_trainer::neon_writer::resolved_dsn().ok_or_else(|| {
+        anyhow::anyhow!(
             "no Postgres DSN found: set DATABASE_URL (preferred) or NEON_DATABASE_URL / TRIOS_DATABASE_URL"
-        ))?;
+        )
+    })?;
     let db_url = strip_channel_binding(&raw_db_url);
     if db_url != raw_db_url {
         eprintln!("[scarab] stripped channel_binding from DSN (rustls limitation)");

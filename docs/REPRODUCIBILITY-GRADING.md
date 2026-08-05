@@ -41,6 +41,13 @@ awarded the top grade. Read
 [(v) The scale has one axis](#v-the-scale-has-one-axis-validity-is-the-other-and-l3-is-blind-to-it)
 before treating `VERIFIED` as an endorsement of a method.
 
+The two upper rungs also answer two different questions, and only one of them
+is about the identity of the artifact. L3 is an integrity claim; L2 is a
+portability claim, and a pair of artifacts differing in 43.70% of their
+parameters passes it. Read
+[L2.1 -- What metric-equivalence does not attest](#l21----what-metric-equivalence-does-not-attest)
+before quoting an L2 pass as evidence about what a model contains.
+
 ---
 
 ## L1 -- an artifact, hashed from disk
@@ -82,6 +89,104 @@ gap grows with the number of steps rather than shrinking.
   --train-data data/tiny_shakespeare.txt --val-data data/tiny_shakespeare_val.txt
 # then compare `final_val_bpb` in the new sidecar against the recorded one.
 ```
+
+## L2.1 -- What metric-equivalence does not attest
+
+L2 is the rung a workable conformity scheme is most likely to land on, because
+L3 costs a second full training run
+([(e)](#e-verification-costs-what-training-cost)). That makes it the rung whose
+scope has to be stated most carefully, and this repository's own measured L2
+pass is the sharpest illustration available of what the rung buys and what it
+does not.
+
+The pass in question is the cross-architecture pair in
+[The headline artifact, re-run on a second machine](#the-headline-artifact-re-run-on-a-second-machine-mismatch):
+identical corpus, identical compiler, identical locked dependency graph, and
+**93 071 of the 212 992 serialized parameters different** -- 43.70% of them,
+every element of all four trained attention matrices among them, the largest
+single disagreement a change of sign, read out of the record
+`docs/cross-arch-divergence.json` rather than transcribed
+(`"params": 212992`, `"params_differing": 93071`) -- while `final_val_bpb` moved by
+`0.0030086` bpb (`2.637763500213623` against `2.6347548961639404`), which is
+5.5% of that record's own `val_bpb_stderr` of `0.0551`. Under the unpaired
+acceptance rule stated below, that pair **CONFORMS**. Four things follow. The
+rung survives all four; what changes is what may be said on the strength of it.
+
+**1. Bit-identity inside a declared and hashed platform triple is an INTEGRITY
+claim.** SHA-256 equality on the artifact detects *any* change to the bytes --
+a rounding difference, a truncated write, a swapped optimizer, and equally an
+implanted one. It does not distinguish between them, and it does not need to:
+it fails on all of them. That is the whole value of L3, and it is why L3 is
+worth keeping even though it does not survive a change of CPU.
+
+**2. Metric-equivalence within a stated tolerance is a PORTABILITY claim, and
+explicitly not an integrity claim.** The pair above is the proof, measured in
+this repository rather than argued: two artifacts differing in 43.70% of their
+parameters agreed on aggregate bpb to 5.5% of one arm's own standard error. The
+same agreement is exactly what a backdoored artifact produces. An adversary who
+modifies weights while holding aggregate perplexity fixed is not defeating the
+L2 test -- L2 does not test for that, and cannot be made to by tightening the
+tolerance, because the honest cross-architecture pair sits well inside any
+tolerance a backdoor would also sit inside. **No L2 pass, at any tolerance, is
+evidence that two artifacts are the same artifact.**
+
+**2a. The second budget makes point 2 worse, not better `[ADDED 2026-08-06]`.**
+The smallest defensible L2 tolerance is bounded below by the expanded
+uncertainty of the comparison, and
+[EVAL-UNCERTAINTY.md](EVAL-UNCERTAINTY.md#3b-the-budget-proper) section 3b now
+publishes **two** of those, not one: **Budget I**, `u_c = 0.0657`,
+`U = 0.13 bpb` (`k = 2`), scope *same hashed eval corpus*; and **Budget II**,
+`u_c = 0.2883`, `U = 0.58 bpb` (`k = 2`), scope *different eval corpora, or a
+BPB read as a property of the model*. The honest cross-architecture difference
+measured above, `0.0030086 bpb`, is **2.3% of `U` under Budget I and 0.52%
+under Budget II**. Read the two together and point 2 hardens: the room an
+adversary has to work in is not a hair's breadth of instrument noise but a band
+between `0.13` and `0.58 bpb` wide, depending only on whether the scheme pinned
+the corpus hash -- and `0.58` is **4.39x** `0.13`. A conformity scheme that
+forgets to demand the eval corpus hash does not merely lose precision; it
+quadruples the interval inside which a modified artifact reports as conforming.
+Budget II is therefore an argument for clause L2-1, not against L2.
+
+**3. Aggregate bpb over a 100 KB corpus is blind to behaviour on any chosen
+input.** `final_val_bpb` is one scalar averaged over 40 windows of 129 tokens
+-- 5.16% of a 100 000-byte held-out corpus. A behaviour that fires on inputs
+outside those windows, or on inputs inside them but at a magnitude the average
+absorbs, moves the scalar by less than the instrument can resolve. So **an L2
+pass licenses a statement about a number, and no statement about what the model
+does.** For a statute whose motivation is "this artifact is what its developer
+says it is and contains nothing implanted", this is the load-bearing sentence
+on this page: the L2 rung is worth least exactly where that motivation is
+strongest, and the answer is not a better tolerance but a different test --
+behavioural evaluation on adversarially chosen inputs, which nothing in this
+repository performs and nothing in this scale grades.
+
+**4. n = 1 per arm. The agreement is not established, and the experiment that
+would establish it has not been run.** Both arms of the pair above were trained
+exactly once at 12 000 steps. The `0.0030086` is one observation of a
+difference whose between-arm variance is **unestimated**, and one observation
+per arm cannot separate a between-architecture effect from within-arm
+non-repeatability on the arm that was never repeated. The control that would
+estimate it is a within-`ubuntu-latest` repeat of the documented seed, compared
+against itself; `.github/workflows/cross-arch-repro.yml` in the working tree now
+contains that job and **it has not been run**. The local Rosetta 2 control in
+`docs/DIVERGENCE-LOCALIZATION.md` does not substitute for it: it establishes
+byte-identity of two x86_64 executions on the *macOS* host at 0, 10 and 200
+steps, which removes "this trainer is not repeatable on x86_64" as an
+explanation, and estimates no variance of `final_val_bpb` at 12 000 steps on the
+arm that produced `bb14ab18...`.
+
+This is named here as an **outstanding experiment**, not as a caveat on a
+result: until it runs, "the platforms agree within uncertainty" is a sentence
+this repository is not entitled to. The sentence it is entitled to is the
+weaker one already stated below -- the platforms *have not been shown to
+disagree*, at an unpaired resolution of about 0.19 bpb, from one paired run per
+arm.
+
+None of this demotes L2. It states the rung's scope: **L2 answers "does this
+recipe carry to another laboratory", L3 answers "is this the same artifact",
+and neither answers "is this artifact safe".** A conformity scheme that reads
+an L2 pass as an integrity finding has made a category error, and it is cheaper
+to write that down here than to have it discovered across a table.
 
 ## L3 -- the bytes reproduce, on a declared platform
 
@@ -297,6 +402,21 @@ Two lines in that output are worth more than the verdict. `re-hashed here and
 it MATCHES` is the verifier declining to trust the `--trainer` path it was
 handed. `recorded only; this binary does NOT re-derive it` is the verifier
 declining to claim something it did not check.
+
+One line in it counts fewer parameters than the artifact carries, and both
+numbers belong in the record. **`params=196608` is the EFFECTIVE count -- the
+weights training can move. The serialized checkpoint holds 212 992
+parameters.** The difference is the 16 384 layer-2 projection weights
+(`wq2/wk2/wv2/wo2`): allocated, carried through every forward pass, and still
+exactly zero after training, because `HybridAttn::with_config` zero-fills them
+and `wo2 = 0` makes their gradients identically zero at init. The trainer
+therefore excludes them from what it prints, while
+[CROSS-ARCH-DIVERGENCE.md](CROSS-ARCH-DIVERGENCE.md) counts the 43.70%
+divergence against all 212 992, since those are the bytes on disk. The freeze
+is enforced by the test `run_single_emits_a_loadable_artifact_and_freezes_layer_two`
+in `src/train_loop.rs` rather than asserted in prose, and `README.md` states the
+same thing next to the headline figure. The transcript above is pasted as
+emitted and is not edited to say so.
 
 ### The predecessor, and a schema that ungrades its own history
 
@@ -520,6 +640,39 @@ k     = 2
 T_unpaired = k * u_d = 0.19 bpb
 ```
 
+**Which budget this rule is entitled to, and why `[ADDED 2026-08-06]`.**
+Section 3b publishes two budgets, and the `0.0657` above is **Budget I**, not
+the whole budget:
+
+| budget | scope | `u_c` (k = 1) | `U` (k = 2) | rows combined |
+|---|---|---:|---:|---|
+| **I -- declared corpus** | reproducing a stated reading on the SAME corpus hash, under a possibly different sampling plan | **0.0657** | **0.13** | 0 (`0.0551`) + 1 (`0.0358`) |
+| **II -- corpus choice included** | comparing readings taken on DIFFERENT eval corpora, or reading a BPB as a property of the MODEL | **0.2883** | **0.58** | 0 + 1 + 2 (`0.2807`) |
+
+`u_c(II) = sqrt(0.0551^2 + 0.0358^2 + 0.2807^2) = 0.288288`, so
+`U(II) = 0.576577`; **Budget II is 4.39x Budget I**, and row 2 alone is 4.27x
+the entire `u_c` of Budget I.
+
+**This rule uses Budget I, and is entitled to only because clause L2-1 already
+forces the eval corpus `sha256` to be declared and re-checked.** Both
+laboratories therefore read the identical bytes, and the corpus-choice
+component is not neglected as small -- it is **common-mode and cancels
+exactly**, which is a different and much stronger reason. Withdraw the corpus
+hash from L2-1 and the arithmetic collapses: the applicable per-laboratory
+figure becomes `0.2883`, `u_d = sqrt(2) * 0.2883 = 0.4077`, an unpaired
+tolerance of `k * u_d = 0.82 bpb`, and against the policy tolerance
+`T = 0.20 bpb` of section 3c the guarded acceptance interval is
+`A = T - w = 0.20 - 0.58 = -0.38` -- empty, exactly as the `+/- 0.04` rule
+retracted below was empty. **The corpus hash is what makes the L2 tier
+decidable at all.**
+
+A submission whose eval corpus differs from the declared one is therefore **out
+of scope of the L2 tier**, not merely graded more loosely inside it. If such a
+comparison must be quoted anyway, it is quoted against Budget II and at two
+significant figures -- `2.6 +/- 0.58 bpb (k = 2, corpus choice included)` --
+because against `U = 0.58` the second decimal is not supported and writing
+`2.63 +/- 0.58` would quote a digit the budget has just withdrawn.
+
 > **UNPAIRED ACCEPTANCE RULE (adopted here).** Two laboratories reporting
 > `final_val_bpb` on the same corpus hash but on independently chosen sampling
 > plans **agree** when `|b1 - b2| <= 0.19 bpb`. `k = 2` is chosen because it is
@@ -545,10 +698,24 @@ because no guard band had ever been computed.
 the new one.** `0.19` rests on the same two quantified components and is a
 **LOWER BOUND** for the same reasons: the `0.0358` term was computed from seven
 *nested*, hence correlated, prefixes, and it was measured on a 1 200-step
-checkpoint and transferred to a 12 000-step one; and the budget still excludes
-**corpus choice, seed, platform and step count** entirely, none of which is
-quantified anywhere. The tolerance is the part of the dispersion that has been
-measured, not the dispersion. It is also, independently, within rounding of the
+checkpoint and transferred to a 12 000-step one; and the budget behind it
+excludes **corpus choice, seed, platform and step count** entirely.
+**`[CORRECTED 2026-08-06 -- this sentence used to end "none of which is
+quantified anywhere".]`** Three of those four are still unquantified: **seed**
+(one seed, 47, no replicate), **platform** (`(os, arch, libc, toolchain)`,
+where only a *paired* residual of `0.0031 bpb` exists and a paired residual is
+not a component of an unpaired budget) and **step count** (the seven-grid
+experiment has never been repeated at 12 000 steps) are rows 3, 4 and 5 of
+EVAL-UNCERTAINTY.md section 3b and each still reads `not quantified`. **Corpus
+choice is not.** It is row 2, it is **Type A**, and it is `0.2807 bpb`:
+identical weights -- both `12000.bin` hashing to `902cfb69a84b...`, 852 272
+bytes -- read against two held-out corpora gave `2.638520` and `2.919297`, a
+difference of `0.280777` against a combined stderr of `0.063214`
+(HELD-OUT-PROTOCOL.md section (iii)). It is excluded from `0.19` **on purpose
+and correctly**, because L2-1 pins the corpus hash and the component cancels;
+it is not excluded because nobody measured it. The tolerance is the part of the
+dispersion that has been measured **and is in scope**, not the dispersion. It
+is also, independently, within rounding of the
 `T = 0.20 bpb` that section 3c declares as a policy choice -- two different
 routes to the same order of magnitude, which is corroboration and not a second
 measurement.
@@ -801,9 +968,12 @@ training time by construction, not by inefficiency.
 At this fixture's scale that is a rounding error. At the scale 243-FZ is aimed
 at, it is the whole problem: **verifying a foundation model this way costs a
 second training run**, which is why L2 with a declared tolerance, not L3, is
-the level any workable conformity scheme is likely to land on. This repository
-demonstrates L3 on a 196.6K-parameter fixture and makes no claim that the
-method scales as-is.
+the level any workable conformity scheme is likely to land on -- with
+[L2.1](#l21----what-metric-equivalence-does-not-attest) attached, because that
+rung is a portability claim and not an integrity one. This repository
+demonstrates L3 on a fixture whose serialized artifact carries 212 992
+parameters, of which 196 608 (196.6K) are effective and 16 384 are the frozen
+layer-2 block, and makes no claim that the method scales as-is.
 
 ### (f) What this is not new relative to
 
@@ -816,12 +986,37 @@ Stated so the prior art is in the document rather than in an objection:
 - **The niche is occupied.** Proof-of-Training-Data (arXiv 2307.00682, NeurIPS
   2023) and zkPoT (CCS 2025) attack training-provenance verification directly,
   and EQTY Lab sells provenance attestation commercially.
+- **The grading scale itself is prior art, and this document used to claim it.**
+  `[SECONDARY SOURCE 2026-08-06]` Gundersen and Kjensmo, *State of the Art:
+  Reproducibility in Artificial Intelligence* (AAAI 2018), defines a three-level
+  scale -- R1 / R2 / R3, reported as experiment, data and method reproducibility
+  -- and is reported to have been revised by the same author into four
+  reproducibility types in 2021. ACM's *Artifact Review and Badging* policy,
+  version 1.1, defines Artifacts Available / Artifacts Evaluated / Results
+  Validated, with the *Reproduced* and *Replicated* labels swapped relative to
+  v1.0 on 15.05.2020. A tiered reproducibility scale is therefore a solved and
+  standardised thing, not a contribution.
 
-What this repository contributes is narrower and should be described as such: a
-**grading scale with a deciding command per level**, applied to a trainer whose
-own history contains a documented L0 -- 1 851 runs behind a `checkpoint::save`
-that returned `Ok(())` and wrote nothing. The contribution is the scale and the
-refusal to round a verdict up, not the cryptography.
+What this repository contributes is narrower than this document previously
+claimed, and must be described as the narrower thing: **a deciding command per
+level -- a program that returns `VERIFIED` or `MISMATCH` without human
+judgement** -- applied to a trainer whose own history contains a documented
+L0, 1 851 runs behind a `checkpoint::save` that returned `Ok(())` and wrote
+nothing.
+
+`[RETRACTED 2026-08-06 -- until this date, this paragraph ended by naming the
+grading scale itself as the contribution, alongside the refusal to round a
+verdict up and against the cryptography. The first of those three is withdrawn
+outright and the retired claim is deliberately not reproduced verbatim here, so
+that no future reader or grep finds this document still asserting it. A tiered
+reproducibility scale is Gundersen and Kjensmo 2018 and ACM badging v1.1. The
+retraction is recorded rather than the change being made silently.]`
+
+The surviving differentiator, stated as exactly that and no wider: **every
+prior scale grades documentation completeness or a social process -- were the
+artifacts posted, did a committee look at them, is the method described well
+enough to re-implement. None of them has a deciding command.** No reviewer
+badge is computed. `ckpt_replay` is, and it returns an exit code.
 
 ---
 
@@ -926,33 +1121,92 @@ so an L3 audit of a foundation model costs a second full training run.
 
 **The claim, in one sentence, and it is deliberately weaker than the
 demonstration:** *we demonstrate L3 on a fixture and claim only L2 at scale.*
-The scale, the deciding commands and the refusal to round up transfer; the bit
-identity does not, and this repository has not measured whether it could.
+What transfers is **the deciding commands and the refusal to round a verdict
+up**; the bit identity does not, and this repository has not measured whether it
+could. The scale itself is borrowed rather than transferred -- see
+[(f)](#f-what-this-is-not-new-relative-to): tiered reproducibility scales are
+prior art (Gundersen and Kjensmo 2018, ACM badging v1.1) and this document no
+longer claims one as its contribution.
 
-### (iv) Nothing in the repository lets a third party start
+**The one exception, and it is the cheapest result on this page.** The *initial
+coefficient matrix* -- the artifact 243-FZ names in its own words alongside
+training -- does reproduce bit-for-bit across a change of instruction set, at
+L1 cost rather than L3 cost, because deciding it requires one `shasum` and not a
+second training run. That is the one place where an L3-strength claim survives a
+platform change, and it is written up in
+[INIT-MATRIX-CRITERION.md](INIT-MATRIX-CRITERION.md) together with the ceiling
+that travels with it.
 
-`checkpoints/` is gitignored (`.gitignore` line 13, `/checkpoints/`), and
-`evidence/` is untracked -- `git status` reports it as `??`. Both therefore ship
-**zero files**:
+### (iv) Almost nothing in the repository lets a third party start
+
+**`[PARTIALLY CLOSED 2026-08-05 -- this section used to say "Nothing in the
+repository lets a third party start" and asserted that `checkpoints/` and
+`evidence/` both ship zero files. That is now FALSE of `evidence/`, and the
+original wording is kept visible here rather than quietly replaced.]`**
+
+`checkpoints/` is gitignored (`.gitignore` line 13, `/checkpoints/`) and still
+ships nothing. `evidence/` now ships files. **Measured 2026-08-05** on the
+working tree at `ba272b9`:
 
 ```console
-$ git ls-files checkpoints evidence | wc -l
+$ git ls-files checkpoints | wc -l
+0
+$ git ls-files evidence | wc -l
+31
+$ git ls-files evidence | grep -c '\.bin$'
+12
+```
+
+**These two counts are moving, on purpose, and will be stale before they are
+wrong.** Evidence directories are being added as fast as measurements are taken
+(`evidence/xarch-local-isa/` landed the same day; `evidence/r6-portable/` is
+queued). A reader should not check the figures below against the repository and
+conclude the document lies -- they should re-derive them with the one command
+above and expect a larger number. The count is context; the argument in this
+section depends only on the re-hash, which is stated as a procedure and not as a
+total.
+
+**One of the two cross-architecture arms is now fetchable and re-hashable by a
+reader**, which is the first digest in this document that resolves to something
+other than the author's disk:
+
+```console
+$ shasum -a 256 evidence/xarch-run-30767491098/12000.bin
+bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3
+$ wc -c < evidence/xarch-run-30767491098/12000.bin
+852272
+```
+
+That is byte-for-byte the x86_64 Linux artifact named in the CI run and quoted
+throughout this document, and it now travels with the repository rather than
+with a claim about it.
+
+**What is still not fetchable, and it is the more important half.** The
+`aarch64/macOS` reference `8a86fe69...` -- the *headline* artifact, the one every
+`VERIFIED` verdict and every quoted `final_val_bpb` in this document rests on --
+**is not shipped**. `git ls-files evidence` contains no file that hashes to it.
+That was checked 2026-08-05 by re-hashing **every** tracked `.bin` under
+`evidence/` -- 12 of them on that date -- and finding no match:
+
+```console
+$ git ls-files evidence | grep '\.bin$' | xargs shasum -a 256 | grep -c '^8a86fe69'
 0
 ```
 
-The consequence is blunt: every digest quoted in every document here --
-`8a86fe69...`, `bb14ab18...`, the `trainer.sha256` in the headline record --
-**resolves to exactly one filesystem**, the author's. A reader cannot fetch the
-artifact and re-hash it. They can only re-run the training and hope to land on
-the same bytes, which sections (a) through (d) have already shown they will not
-if their CPU architecture differs.
+The count of `.bin` files will grow; the command will not, and it is the command
+rather than the number that carries the claim. Nor is the trainer binary
+the headline record pins by `trainer.sha256`. So a reader can today check the arm
+that *failed* and cannot check the arm that *passed*, which is exactly the wrong
+way round for a reader trying to falsify us.
 
-**The counter:** this is fixable and cheap, and until it is fixed no claim in
-this document is independently checkable by a reader who declines to run a
-training job. The 852 272-byte headline checkpoint and its sidecar are small
-enough to publish as a release asset. Until they are published, the honest
-description of the evidence base is: *one public CI transcript that anyone can
-re-run, plus a set of digests that only their author can resolve.*
+**The counter, unchanged in substance:** the remainder is fixable and cheap, and
+until it is fixed the headline claim is not independently checkable by a reader
+who declines to run a training job. The 852 272-byte headline checkpoint, its
+sidecar and the pinned trainer binary are small enough to publish as release
+assets. Until they are, the honest description of the evidence base is: *one
+public CI transcript anyone can re-run, one of its two artifacts now shipped and
+re-hashable, and a headline artifact whose digest still resolves to exactly one
+filesystem.*
 
 ### (v) The scale has one axis. Validity is the other, and L3 is blind to it
 
@@ -1042,14 +1296,17 @@ being claimed here. Populating it is not done.
 
 Stated so the closest existing work is named by us rather than produced as an
 objection. Section [(f)](#f-what-this-is-not-new-relative-to) lists the
-artifact-signing and training-provenance neighbours; these four are the ones
-that share this document's exact problem statement.
+artifact-signing and training-provenance neighbours; the works below are the
+ones that share this document's exact problem statement.
 
-**Reading status, stated before the content.** All four were read **by arXiv
-abstract only**, on 2026-08-03. None was read in full. Nothing below asserts
-anything about their experimental sections, their threat models beyond what the
-abstract states, or their measured results, because none of that was verified
-here. Anyone quoting these in a room should read the papers first.
+**Reading status, stated before the content.** The first four were read **by
+arXiv abstract only**, on 2026-08-03. None was read in full. Nothing below
+asserts anything about their experimental sections, their threat models beyond
+what the abstract states, or their measured results, because none of that was
+verified here. Anyone quoting these in a room should read the papers first. The
+last four rows were added on 2026-08-06 and their reading status is stated per
+row; where a figure comes from reporting rather than from a page read here, it
+is marked `[SECONDARY SOURCE 2026-08-06]` at the point of use.
 
 | Work | Identifier | Venue per arXiv | Read |
 |------|-----------|-----------------|------|
@@ -1057,6 +1314,10 @@ here. Anyone quoting these in a room should read the papers first.
 | Proof-of-Learning is Currently More Broken Than You Think (Fang, Jia, Thudi, Yaghini, Choquette-Choo, Dullerud, Chandrasekaran, Papernot) | arXiv:2208.03567 | "Published in IEEE EuroS&P 2023" | abstract only |
 | RepDL: Bit-level Reproducible Deep Learning Training and Inference (Xie, Zhang, Chen) | arXiv:2510.09180 | listed comment "Originally drafted in 2023" | abstract only |
 | Optimistic Verifiable Training by Controlling Hardware Nondeterminism (Srivastava, Arora, Boneh) | arXiv:2403.09603 | NeurIPS 2024 | abstract only, not verified against the PDF |
+| State of the Art: Reproducibility in Artificial Intelligence (Gundersen, Kjensmo) | AAAI 2018 | AAAI | **not read here** `[SECONDARY SOURCE 2026-08-06]` |
+| Artifact Review and Badging, version 1.1 | ACM policy | ACM | **not read here** `[SECONDARY SOURCE 2026-08-06]` |
+| Verde: Verification via Refereed Delegation for Machine Learning Programs, and its `RepOps` library (Arun, St. Arnaud, Titov, Wilcox, Kolobaric, Brinkmann, Ersoy, Fielding, Bonneau -- Gensyn) | arXiv:2502.19405 | arXiv | title, authors and abstract read from the arXiv landing page 2026-08-06; **body not read**; overhead figures `[SECONDARY SOURCE 2026-08-06]` |
+| EQTY Lab Verifiable Compute; ISP RAS Trusted AI Platform | vendor / institute pages | n/a | **not read here** `[SECONDARY SOURCE 2026-08-06]` |
 
 **Proof-of-Learning** is the five-year-old academic protocol with this
 document's problem statement. Its abstract states the gap directly: once final
@@ -1157,6 +1418,146 @@ auto-vectorisation changes no output byte. Naming three functions is a costed
 fix; "floating point is like that" is not. Whether removing them closes the
 native x86_64 Linux gap is **not established** and is stated as open in that
 document.
+
+#### Gundersen and Kjensmo, and ACM badging: the scale is theirs
+
+`[SECONDARY SOURCE 2026-08-06 -- both are reported here from secondary
+reporting, not read against the AAAI proceedings or the ACM policy page. Read
+them before quoting either in a room.]`
+
+Gundersen and Kjensmo (AAAI 2018) is reported to define a three-level scale --
+R1 / R2 / R3, reported as experiment, data and method reproducibility -- and to
+have been revised by the same author into four reproducibility types in 2021.
+ACM's *Artifact Review and Badging* v1.1 defines Artifacts Available /
+Artifacts Evaluated / Results Validated, with *Reproduced* and *Replicated*
+swapped relative to v1.0 on 15.05.2020. Section
+[(f)](#f-what-this-is-not-new-relative-to) now credits them and withdraws this
+document's earlier claim that the scale was its contribution.
+
+**And ACM states the counter-position to this whole document as policy.**
+`[SECONDARY SOURCE 2026-08-06]` The badging policy is reported to say that
+exact reproduction is *not* required and that results must agree **within a
+tolerance**. That is the tolerance-band argument this repository rejects,
+stated as standing policy by the largest computing society since 2020. It is
+the strongest published objection available, it is not a fringe view, and it
+must be conceded as such before it is answered.
+
+**The answer is a measurement this repository already owns, and it is one line
+long.** Two artifacts sharing **no common hash** -- the step-10 cross-ISA pair,
+`efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac` on aarch64
+against `5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab` on
+x86_64 -- report `final_val_bpb = 6.257606029510498` **to all sixteen digits**,
+read out of `evidence/xarch-local-isa/isa-probe-arm64-10.json` and
+`isa-probe-x86_64-10.json`. No tolerance band, however tight, separates them.
+A tolerance of zero would accept them. So the objection and this document are
+not disagreeing about how tight a band should be; they are answering different
+questions, and [L2.1](#l21----what-metric-equivalence-does-not-attest) names
+which is which: a metric band is a **portability** test and can never be an
+**integrity** test, because agreement of the number is exactly what a modified
+artifact also produces. ACM is right about reproducing a *result*. It is not
+addressing the question a conformity statute asks about an *artifact*.
+
+That is the concession and the answer together, and neither half may be quoted
+without the other.
+
+#### Gensyn Verde / RepOps: cross-hardware bit-identity now has a price tag
+
+The arXiv landing page for **arXiv:2502.19405** was read on 2026-08-06 and
+gives the title *Verde: Verification via Refereed Delegation for Machine
+Learning Programs*, authors Arun, St. Arnaud, Titov, Wilcox, Kolobaric,
+Brinkmann, Ersoy, Fielding and Bonneau (Gensyn), and an abstract that adapts
+refereed delegation to machine learning and names a library, **RepOps**, for
+bitwise-reproducing ML programs across different hardware setups. **The body of
+the paper was not read here.**
+
+`[SECONDARY SOURCE 2026-08-06 -- the three overhead figures below are from
+reporting of the paper, NOT from the arXiv landing page, which carries no
+overhead numbers. They are quoted as reported figures and must be checked
+against the PDF before being used with a counterparty.]` RepOps is reported to
+cost **258-312% overhead on DistilBERT training, 67-374% on Llama-1B, and 126%
+on an 8B LoRA fine-tune**, evaluated on **four NVIDIA GPUs and no CPUs**.
+
+Two consequences, and the first is the one that matters commercially.
+
+**1. It makes the declared-platform position CHEAPER rather than ONLY
+POSSIBLE, which is a strictly stronger argument.** Until this figure existed,
+the honest framing of this repository's boundary was defensive: we declare the
+platform because we cannot eliminate it. With a published price attached to
+elimination, the framing becomes a trade: eliminating the platform dependency
+is *available* and costs somewhere between a two-thirds and a four-fold
+increase in training time; declaring and hashing the platform costs a sidecar
+field. A regulator choosing between them is choosing on price, not on
+feasibility, and that is a conversation this repository wins on its own terms.
+
+**2. It finishes retiring the forbidden line.** Together with Srivastava, Arora
+and Boneh above, "every framework fails at this" is now doubly false and must
+never be used. Two independent published systems achieve cross-hardware bit
+identity. The correct sentence is that both do it **by constraining the
+arithmetic at a measured cost**, and that this trainer has not paid that cost
+and says so.
+
+The scope rider, which may not be dropped: **the reported evaluation is four
+NVIDIA GPUs and no CPUs.** The pairs that broke this trainer are CPU / OS /
+libc pairs. RepOps is therefore not demonstrated on this repository's failure
+mode, and no claim is made here that adopting it would close the native x86_64
+Linux gap.
+
+#### EQTY Lab Verifiable Compute: the direct substitute, and why a sovereignty statute cannot buy it
+
+`[SECONDARY SOURCE 2026-08-06 -- vendor material, not read here; described from
+reporting.]`
+
+EQTY Lab's Verifiable Compute is the sharpest commercial substitute for
+everything on this page, because it answers the question **"did this code run
+on this machine"** by hardware attestation -- and it answers it **without
+bit-reproducibility at all**. If the silicon signs a statement that a specific
+binary executed on it over specific inputs, no one needs to re-derive the
+artifact, and the entire L3 apparatus, the cost argument in
+[(e)](#e-verification-costs-what-training-cost) and the cross-architecture
+boundary all become irrelevant in one move. Anyone selling reproducibility
+methodology must expect to be asked why the buyer should not simply purchase
+attestation instead. The answer must not be that attestation is weak. It is
+not weak; it is answering a different and in some ways easier question, and for
+many buyers it is the better purchase.
+
+**The answer that does survive is jurisdictional rather than technical.** The
+root of trust is reported to be Intel and NVIDIA silicon. Under a statute whose
+entire motivation is technological sovereignty, a conformity scheme whose
+foundation is a signing key held by a US chip vendor is not a scheme that can
+be adopted, whatever its technical merits. That is a policy argument, it is
+stated as one, and it does not claim any technical deficiency in the product.
+
+#### ISP RAS Trusted AI Platform: the Russian incumbent, and a distinction rather than a denial
+
+`[SECONDARY SOURCE 2026-08-06 -- the institute's public page is described from
+reporting; it was not read here. This paragraph makes a claim about what a page
+says and must be re-checked before use.]`
+
+The Institute for System Programming of the Russian Academy of Sciences (ISP
+RAS) runs a Trusted AI Platform, and its public description is reported to
+claim `obespechenie vosproizvodimosti rezultatov` -- ensuring reproducibility
+of results. That is the incumbent, it is domestic, it is institutionally
+positioned exactly where a 243-FZ conformity scheme will be written, and any
+proposal that ignores it will be told about it.
+
+**The answer is a distinction, not a denial.** On the reported description, the
+mechanisms named are **versioning and experiment isolation** -- recording which
+code, data and configuration produced which run, and keeping runs from
+contaminating one another. Those are necessary, they are real engineering, and
+this repository does not claim to do them better. They are also not
+**re-execution to a digest**. Nothing in that description decides, by running a
+command, whether a re-run produces the same bytes; the platform makes a run
+*describable* and *repeatable in intent*, and the verdict remains a human
+reading of a record. The gap between "the run is fully described" and "the
+re-run is proved identical" is precisely the gap
+[DECIDABILITY-AND-TRACEABILITY.md](DECIDABILITY-AND-TRACEABILITY.md) is about,
+and it is the only gap this repository claims to close.
+
+Stated as the sentence to use: **ISP RAS makes a development cycle
+reproducible in the ordinary sense; what has no procedure anywhere is deciding,
+mechanically, whether a given re-execution reproduced it.** That is a
+complement to the incumbent, not a competitor to it, and it should be offered
+that way.
 
 ---
 

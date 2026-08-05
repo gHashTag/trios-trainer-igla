@@ -22,6 +22,26 @@
 //! the runner's own parsed `lr` was correct all along, it simply never reached
 //! the trainer.
 //!
+//! WHY lr=0.9 IS NOW A REFUSAL, NOT A NUMBER
+//!
+//! `lr_changes_the_measurement` originally proved `--lr` reaches the trainer by
+//! contrasting a converging rate with lr=0.9, and asserted the child exited 0
+//! at both. That contrast was never a measurement on the divergent side. At
+//! lr=0.9 (seed=1597, steps=120, dim=64) every eval window on
+//! `data/tiny_shakespeare_val.txt` goes non-finite, and the pre-fix binary
+//! laundered that into a printable figure:
+//!
+//!     Time: 0.6s | Init BPB: 7.0001 | Best BPB: 7.0001 | Final BPB: 28.2217
+//!
+//! 28.2217 is RETIRED. It is not a held-out bits-per-byte reading of anything;
+//! it is what the reduction returned once the poisoned windows were folded in.
+//! `cpu_train::require_complete_sample` now refuses that publication path,
+//! printing "NO MEASUREMENT ... Refusing to report a BPB nobody measured." and
+//! exiting EXIT_NO_MEASUREMENT (7). Asserting `success()` at lr=0.9 would today
+//! be an assertion that the laundering is still in place, so the divergent leg
+//! asserts the REFUSAL, and the file's actual property -- the label tracks the
+//! run -- is carried by a positive control at two CONVERGING rates.
+//!
 //! No test in this file writes to a database: `DATABASE_URL` and
 //! `MATRIX_DATABASE_URL` are removed from every child environment, which is
 //! also the configuration under which `matrix_runner` legitimately exits 0
@@ -46,6 +66,27 @@ const TEST_SEED: &str = "1597";
 /// `matrix_runner` cell never share a `.trinity/results/` path.
 const SEED_ROW_LR: &str = "2584";
 const SEED_ROW_STAMPS: &str = "4181";
+
+/// `cpu_train`'s exit code for "a BPB was asked for and none was measured".
+/// Mirrors `EXIT_NO_MEASUREMENT` in `src/bin/cpu_train.rs`; kept as a literal
+/// here on purpose, because a test that imported the constant would follow the
+/// binary if the binary ever stopped refusing.
+const EXIT_NO_MEASUREMENT: i32 = 7;
+
+/// The sentence `require_complete_sample` prints instead of a fabricated BPB.
+const REFUSAL_SENTENCE: &str = "Refusing to report a BPB nobody measured";
+
+/// A learning rate at which this (seed, steps, dim) tuple diverges hard enough
+/// that every eval window is non-finite. See the module comment: the pre-fix
+/// binary printed `Final BPB: 28.2217` here.
+const DIVERGENT_LR: &str = "0.9";
+
+/// Two CONVERGING rates. Both terminate with a real held-out reading, and the
+/// readings differ -- which is the property this file exists to prove. `0.003`
+/// is also `cpu_train`'s own default, so a tie between these two is the exact
+/// signature of `--lr` being dropped on the floor.
+const CONVERGING_LR_A: &str = "0.001";
+const CONVERGING_LR_B: &str = "0.003";
 
 fn base_command(bin: &str) -> Command {
     let mut cmd = Command::new(bin);
@@ -83,9 +124,11 @@ fn canon_name_for_lr(lr: &str) -> String {
         .unwrap_or_else(|| panic!("no CANON_NAME line for lr={lr}; stdout=\n{stdout}"))
 }
 
-/// Final BPB reported by `cpu_train` for one (seed, steps, dim, lr) tuple.
-fn final_bpb_at_lr(lr: &str) -> f64 {
-    let out = base_command(CPU_TRAIN)
+/// One `cpu_train` run over the shared (seed, steps, dim) tuple. Returns the
+/// raw `Output` so a caller can assert on a REFUSAL as readily as on a result;
+/// the divergent leg of `lr_changes_the_measurement` needs the former.
+fn run_cpu_train(lr: &str) -> std::process::Output {
+    base_command(CPU_TRAIN)
         .args([
             &format!("--seed={TEST_SEED}"),
             &format!("--steps={TEST_STEPS}"),
@@ -93,7 +136,14 @@ fn final_bpb_at_lr(lr: &str) -> f64 {
             &format!("--lr={lr}"),
         ])
         .output()
-        .expect("spawn cpu_train");
+        .expect("spawn cpu_train")
+}
+
+/// Final BPB reported by `cpu_train` for one (seed, steps, dim, lr) tuple.
+/// Only legitimate for a rate that converges: a run that refuses has no final
+/// BPB, and this function is required to fail rather than invent one.
+fn final_bpb_at_lr(lr: &str) -> f64 {
+    let out = run_cpu_train(lr);
     assert!(
         out.status.success(),
         "cpu_train failed at lr={lr}: {}",
@@ -110,7 +160,6 @@ fn final_bpb_at_lr(lr: &str) -> f64 {
         .nth(1)
         .expect("Final BPB separator");
     after
-        .trim()
         .split_whitespace()
         .next()
         .expect("Final BPB value")
@@ -127,8 +176,19 @@ fn lr_token_is_injective_through_canon_name() {
     // PR-smoke constant `0.001`, `cpu_train`'s own default `0.003` -- plus the
     // pairs that used to collide.
     let lrs = [
-        "0.001", "0.0001", "0.003", "0.01", "0.1", "0.5", "1.0", "1.5", "0.9", "0.00001",
-        "0.000001", "0.0000001", "0",
+        "0.001",
+        "0.0001",
+        "0.003",
+        "0.01",
+        "0.1",
+        "0.5",
+        "1.0",
+        "1.5",
+        "0.9",
+        "0.00001",
+        "0.000001",
+        "0.0000001",
+        "0",
     ];
     let mut seen: BTreeMap<String, &str> = BTreeMap::new();
     for lr in lrs {
@@ -169,31 +229,71 @@ fn lr_token_is_injective_through_canon_name() {
     );
 }
 
+/// A divergent rate has no measurement, and `cpu_train` must say so rather
+/// than print the reduction over poisoned windows. This is the leg that used to
+/// assert `success()` and accept `Final BPB: 28.2217`.
+#[test]
+fn divergent_lr_refuses_instead_of_reporting_a_bpb() {
+    let out = run_cpu_train(DIVERGENT_LR);
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let combined = format!("{stdout}{stderr}");
+
+    assert_eq!(
+        out.status.code(),
+        Some(EXIT_NO_MEASUREMENT),
+        "cpu_train at lr={DIVERGENT_LR} exited {:?}, expected \
+         EXIT_NO_MEASUREMENT ({EXIT_NO_MEASUREMENT}). Exit 0 here means the \
+         laundered reduction over non-finite eval windows is publishable \
+         again.\n--- stdout ---\n{stdout}--- stderr ---\n{stderr}",
+        out.status.code()
+    );
+    assert!(
+        combined.contains("NO MEASUREMENT") && combined.contains(REFUSAL_SENTENCE),
+        "cpu_train at lr={DIVERGENT_LR} exited {EXIT_NO_MEASUREMENT} without \
+         saying why; a bare exit code is not a record a reader can act \
+         on.\n--- stdout ---\n{stdout}--- stderr ---\n{stderr}"
+    );
+    assert!(
+        !combined.contains("Final BPB:"),
+        "cpu_train refused at lr={DIVERGENT_LR} and STILL emitted a \
+         `Final BPB:` line. A refusal that also publishes a number is worse \
+         than no refusal: the retired 28.2217 would be scrapeable \
+         again.\n--- stdout ---\n{stdout}--- stderr ---\n{stderr}"
+    );
+}
+
 /// F1, measured end to end: the same seed, steps and dim at two different
 /// learning rates must produce two different numbers. Before this fix the
 /// matrix ran every cell at 0.003 regardless of its label, so this comparison
 /// was bit-identical no matter which LRs were named.
+///
+/// Both rates converge on purpose. The original version of this test reached
+/// for lr=0.9 to make the gap unmistakable, but a divergent rate produces no
+/// measurement at all (see `divergent_lr_refuses_instead_of_reporting_a_bpb`),
+/// and a comparison against a non-measurement proves nothing about the flag.
+/// Two real readings that differ prove it exactly.
 #[test]
 fn lr_changes_the_measurement() {
-    let low = final_bpb_at_lr("0.001");
-    let high = final_bpb_at_lr("0.9");
+    let low = final_bpb_at_lr(CONVERGING_LR_A);
+    // CONVERGING_LR_B is also cpu_train's own default -- the rate the
+    // mislabelled rows were really trained at. If the labelled run matches it,
+    // `--lr` is being dropped again.
+    let default_lr = final_bpb_at_lr(CONVERGING_LR_B);
     assert!(
         low.is_finite(),
-        "cpu_train reported a non-finite bpb at lr=0.001: {low}"
+        "cpu_train reported a non-finite bpb at lr={CONVERGING_LR_A}: {low}"
     );
     assert!(
-        (low - high).abs() > 1e-9,
-        "bpb is IDENTICAL at lr=0.001 ({low}) and lr=0.9 ({high}): the \
-         learning rate is not reaching the training loop, so every row's LR \
-         label is a claim with no measurement behind it"
+        default_lr.is_finite(),
+        "cpu_train reported a non-finite bpb at lr={CONVERGING_LR_B}: {default_lr}"
     );
-    // The default the mislabelled rows were really trained at. If either
-    // labelled run matches it bit-for-bit, `--lr` is being dropped again.
-    let default_lr = final_bpb_at_lr("0.003");
     assert!(
         (low - default_lr).abs() > 1e-9,
-        "lr=0.001 produced exactly the bpb of cpu_train's default 0.003 \
-         ({default_lr}): the flag is being ignored"
+        "bpb is IDENTICAL at lr={CONVERGING_LR_A} ({low}) and lr=\
+         {CONVERGING_LR_B} ({default_lr}), and {CONVERGING_LR_B} is \
+         cpu_train's default: the learning rate is not reaching the training \
+         loop, so every row's LR label is a claim with no measurement behind it"
     );
 }
 

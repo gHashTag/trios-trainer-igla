@@ -57,6 +57,39 @@
 //! native x86_64 Linux that produced the CI mismatch).
 
 use sha2::{Digest, Sha256};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Every primitive this binary reports, in emission order.
+///
+/// The `SUMMARY` line used to end with the primitive count as a hardcoded
+/// literal that nothing checked. An instrument that states its own coverage
+/// from a typed constant can silently misreport it: add a `report()` call and
+/// the count does not move, drop one and it still does not. It is derived from
+/// `REPORTED`, the emitted names are checked against this list as they are
+/// emitted, and `tests/xarch_probe_census.rs` asserts that the emitted count,
+/// the declared length and the number of `PRIMITIVE` lines on stdout are the
+/// same number.
+const PRIMITIVES: &[&str] = &[
+    "input_a",
+    "input_b",
+    "input_positive",
+    "input_ranged",
+    "dot_sequential_4096",
+    "dot_split8_4096",
+    "exp_4096",
+    "ln_4096",
+    "sqrt_4096",
+    "powf_4096",
+    "cos_4096",
+    "sqrelu_4096",
+    "softmax_4096",
+    "layer_norm_64",
+    "matvec_384x64",
+    "forward_tiny_h64",
+];
+
+/// How many primitives `report()` has actually emitted.
+static REPORTED: AtomicUsize = AtomicUsize::new(0);
 
 // -------------------------------------------------------------------
 // Deterministic inputs
@@ -133,6 +166,20 @@ fn sha256_f32(values: &[f32]) -> String {
 /// arms disagree that is what says whether the disagreement is one unit in the
 /// last place or a different number, without a second run.
 fn report(name: &str, values: &[f32]) {
+    let index = REPORTED.fetch_add(1, Ordering::SeqCst);
+    assert!(
+        index < PRIMITIVES.len(),
+        "primitive `{}` is the {}th reported but only {} are declared in \
+         PRIMITIVES; the SUMMARY census would understate the probe's coverage",
+        name,
+        index + 1,
+        PRIMITIVES.len()
+    );
+    assert_eq!(
+        name, PRIMITIVES[index],
+        "primitive {} is emitted as `{}` but declared as `{}`",
+        index, name, PRIMITIVES[index]
+    );
     println!("PRIMITIVE {} {}", name, sha256_f32(values));
     let first_bits = values.first().map(|v| v.to_bits()).unwrap_or(0);
     println!(
@@ -244,7 +291,16 @@ fn matvec(w: &[f32], x: &[f32], rows: usize, cols: usize) -> Vec<f32> {
 /// crate module this binary is deliberately free of). Returns the softmaxed
 /// logits with the cross-entropy of one target appended, so the hash covers
 /// both the distribution and the `.ln()` that the loss is read through.
-fn forward_tiny(hidden: usize) -> Vec<f32> {
+///
+/// `None` when the target probability is NaN. `f32::max` returns the non-NaN
+/// operand, so `NaN.max(1e-10)` is `1e-10` and `-1e-10.ln()` is a finite
+/// 23.0259 nats -- the laundering this repository removed from nine loss sites.
+/// In a measuring instrument it would be worse than in a trainer: BOTH arms
+/// would launder to the same 23.0259, the appended loss would hash identically,
+/// and `forward_tiny_h64` would be reported SAME on a pass that measured
+/// nothing. Unreachable today (softmax of finite logits is finite), which is
+/// exactly why it must be a branch and not a comment.
+fn forward_tiny(hidden: usize) -> Option<Vec<f32>> {
     const DIM: usize = 64;
     const VOCAB: usize = 128;
     const NUM_CTX: usize = 6;
@@ -278,10 +334,13 @@ fn forward_tiny(hidden: usize) -> Vec<f32> {
     softmax(&mut logits);
 
     let p = logits[target];
+    if p.is_nan() {
+        return None;
+    }
     let loss = -p.max(1e-10).ln();
     let mut out = logits;
     out.push(loss);
-    out
+    Some(out)
 }
 
 // -------------------------------------------------------------------
@@ -364,10 +423,24 @@ fn main() {
     let w = fill(384 * 64, 47);
     report("matvec_384x64", &matvec(&w, &a[..64], 384, 64));
 
-    // (8) one full forward pass on fixed weights.
-    report("forward_tiny_h64", &forward_tiny(64));
+    // (8) one full forward pass on fixed weights. `expect` rather than a
+    // laundered constant: a poisoned pass must stop the report, not appear in
+    // it as a number both arms agree on.
+    let forward = forward_tiny(64).expect(
+        "forward_tiny produced a NaN target probability; the probe measured \
+         nothing and must not emit a hash for it",
+    );
+    report("forward_tiny_h64", &forward);
 
-    println!("SUMMARY primitives=16 randomness=none file_io=none env_reads=none");
+    // Counts, not claims. `primitives` is what `report()` actually emitted and
+    // `declared` is the length of `PRIMITIVES`; `report()` refuses a name that
+    // is not the declared one at that position, so the two can only agree when
+    // the coverage is what this line says it is.
+    println!(
+        "SUMMARY primitives={} declared={} randomness=none file_io=none env_reads=none",
+        REPORTED.load(Ordering::SeqCst),
+        PRIMITIVES.len()
+    );
 }
 
 #[cfg(test)]
@@ -382,7 +455,30 @@ mod tests {
         let b = fill(4096, 89);
         assert_eq!(dot_sequential(&a, &b), dot_sequential(&a, &b));
         assert_eq!(dot_split8(&a, &b), dot_split8(&a, &b));
-        assert_eq!(forward_tiny(64), forward_tiny(64));
+        let forward = forward_tiny(64).expect("forward pass returned a NaN probability");
+        assert_eq!(Some(forward), forward_tiny(64));
+    }
+
+    /// The forward pass must not launder a NaN into a finite reading.
+    ///
+    /// `f32::max` ignores NaN, so the pre-guard expression `NaN.max(1e-10).ln()`
+    /// evaluated to a finite -23.0259 -- identical on both architectures. This
+    /// asserts the arithmetic of the trap rather than the comment about it, so
+    /// the guard cannot be deleted without a red test.
+    #[test]
+    fn nan_is_not_laundered_into_a_finite_loss() {
+        let laundered = -f32::NAN.max(1e-10).ln();
+        assert!(
+            laundered.is_finite(),
+            "the laundering this guard exists to prevent no longer happens; \
+             re-read the guard before deleting it"
+        );
+        assert!(
+            (laundered - 23.0259).abs() < 1e-3,
+            "laundered value {}",
+            laundered
+        );
+        assert!(f32::NAN.is_nan(), "the guard's own predicate must hold");
     }
 
     /// Reduction order is a real effect on THIS hardware, not a hypothesis.

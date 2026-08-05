@@ -212,6 +212,18 @@ impl SGDMomentum {
 ///   where a=3.4445, b=-4.7750, c=2.0315
 ///
 /// Applied only to hidden layers (not embedding/output), per original Muon spec.
+///
+/// # Not serialisable by the window-audit resume format
+///
+/// `momentum_buffer` and `step` below are private mutable state that
+/// `TRIOSRSM` version 1 (see `crate::checkpoint`) does not carry: that format
+/// covers the `train_loop::AdamW` instances only. A Muon run is therefore
+/// still auditable only by re-executing it from step 0, and
+/// `train_loop::run_with_optimizer_resumed` REFUSES `--resume-from` on this
+/// path rather than warm-starting from a zeroed momentum buffer - which would
+/// run to completion, print a plausible BPB, and be a segment of no run at
+/// all. Extending the format to this optimizer means serialising both fields
+/// and the `param_rows`/`param_cols` shape the Newton-Schulz iteration uses.
 #[derive(Debug, Clone)]
 pub struct MuonOptimizer {
     pub lr: f64,

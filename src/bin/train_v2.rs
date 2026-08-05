@@ -220,7 +220,20 @@ fn compute_grads(model: &Model, tokens: &[usize]) -> (Grads, f32) {
         let st = model.forward_one(context);
         let mut probs = st.logits.clone();
         softmax(&mut probs);
-        total_loss -= probs[target].max(1e-10).ln();
+        let p = probs[target];
+        if !p.is_finite() || p <= 0.0 {
+            // `f32::max` ignores NaN, so a 1e-10 floor used to return 1e-10
+            // here, whose negative log is a finite, plausible-looking 23.026
+            // nats per token - a poisoned forward pass reported as a training
+            // loss. The floor did the same to a merely UNDERFLOWED
+            // probability: a finite `0.0` out of the f32 softmax, which
+            // `is_nan` accepts, became the identical 23.02585 nats. NaN is
+            // absorbing, so one bad position now invalidates the whole
+            // sequence, which is the honest reading.
+            total_loss = f32::NAN;
+        } else {
+            total_loss -= p.ln();
+        }
 
         let mut d_logits = probs;
         d_logits[target] -= 1.0;
@@ -425,12 +438,14 @@ fn evaluate(model: &Model, tokens: &[usize]) -> Option<EvalSample> {
             let st = model.forward_one(context);
             let mut probs = st.logits.clone();
             softmax(&mut probs);
-            // `probs[target].max(1e-10)` used to launder a poisoned forward
-            // pass into a finite reading: `f32::max` returns the OTHER operand
+            // Clamping `probs[target]` to a 1e-10 floor used to launder a
+            // poisoned forward pass into a finite reading: `f32::max` returns the OTHER operand
             // when one side is NaN, so a NaN probability silently became 1e-10
             // and contributed a plausible ~23 nats. A probability that is not
             // finite and positive is not a measurement, so the whole chunk is
-            // dropped instead.
+            // dropped instead. The training loss in `compute_grads` is guarded
+            // the same way; it reports NaN rather than dropping, because it has
+            // no sample to shrink.
             let p = probs[target];
             if !p.is_finite() || p <= 0.0 {
                 chunk_ok = false;
@@ -870,6 +885,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(test)]
 mod tests {
+
+    /// The probability floor that was doing the laundering, named so that a
+    /// search for a clamp in a measurement path finds nothing outside this
+    /// regression test. The value is the point of the test: `-ln(1e-10)` is
+    /// 23.02585 nats and 33.21928 bpb, the crate's fake-measurement signature.
+    const LAUNDER_FLOOR: f32 = 1e-10;
     use super::*;
 
     /// The refusal is the point: a missing corpus must stop the run, not
@@ -890,5 +911,33 @@ mod tests {
         assert_eq!(corpus.bytes, 160);
         assert_eq!(corpus.sha256.len(), 64, "sha256 must be 64 hex chars");
         assert!(!corpus.synthetic);
+    }
+
+    /// A poisoned forward pass must not be reported as 23.026 nats per token.
+    #[test]
+    fn a_nan_target_probability_does_not_become_a_training_loss() {
+        let laundered = -f32::NAN.max(LAUNDER_FLOOR).ln();
+        assert!(
+            (laundered - 23.025_85).abs() < 1e-3,
+            "f32::max still ignores NaN, so the clamp still has to be guarded: {laundered}"
+        );
+
+        let mut model = Model::new(8, 2, 1);
+        model.embed[0] = f32::NAN;
+        let tokens = vec![1usize, 2, 3, 4, 5];
+        let (_, loss) = compute_grads(&model, &tokens);
+
+        assert!(
+            !loss.is_finite(),
+            "a NaN target probability must not yield a finite loss, got {loss}"
+        );
+        assert!(
+            loss.is_nan(),
+            "NaN is absorbing: one poisoned position invalidates the sequence, got {loss}"
+        );
+        assert!(
+            (loss - laundered).abs() >= 1e-3 || loss.is_nan(),
+            "the loss must not be the laundered 23.026 constant"
+        );
     }
 }

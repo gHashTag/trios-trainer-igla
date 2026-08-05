@@ -1,0 +1,2 @@
+[2026-08-05T18:57:04Z] TASK: GF16 4-Gram training | seed=42 | steps=2 | val_bpb=7.0626->7.0614 | 0.8s | q_err=0.00%
+[2026-08-05T18:57:26Z] TASK: Trinity PR#1722 adapted training | seed=47 | steps=2 | held_out=true | eval_corpus=data/tiny_shakespeare_val.txt | eval_weights=ema | init_val_bpb=7.2862 best=7.2846 final=7.2846 | 1.8s

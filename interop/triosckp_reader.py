@@ -12,7 +12,7 @@ tree.
 Standard library only: struct, hashlib, json, argparse, sys, os.
 
 Sidecar schema versions. The reader accepts trios-checkpoint-record/1 through
-/7 and dispatches on FIELD PRESENCE, not on matching the `schema` string, so an
+/9 and dispatches on FIELD PRESENCE, not on matching the `schema` string, so an
 unseen tag is still read for everything it carries and a tag that claims fields
 the record lacks is reported. For every record it names which of the post-schema-1
 fields are absent - all of them are absent from the oldest archived checkpoints
@@ -35,6 +35,17 @@ first set is interlaboratory agreement. The provenance block (`platform`,
 `eval_seq`, `val_bpb_stderr`) are in the second set: this instrument cannot
 confirm or refute a single one of them, and no citation of its agreement may
 imply otherwise.
+
+Derived architecture. One statement in the VERIFIED column is not a comparison
+against a sidecar field but a measurement of the payload: the reader decodes the
+tensor directory, walks the four layer-2 attention projections (wq2, wk2, wv2,
+wo2) and counts how many of their f32 elements are exactly zero. A record may
+declare `num_attn_layers: 2` while every byte of the second layer is zero, in
+which case the second layer contributes nothing to any forward pass and the
+EFFECTIVE count is one. That is reported as a measurement of the container and
+never as an accusation - see `derive_architecture` for what it does and does not
+license - and it is generic: a record whose layer-2 tensors hold any non-zero
+element is reported as effective 2.
 
 The `ledger` field. Unlike every other sidecar-only field, `ledger` is checked
 against a closed vocabulary and an unknown value FAILS the record instead of
@@ -59,6 +70,26 @@ prose either. Agreement on `lr`, `attn_scale`, `attn_seq`, `vocab` and
 encodings of the same quantity; it is not evidence about the specification,
 because the sidecar was never in the specification (see interop/README.md,
 ambiguity A6).
+
+SECOND SCOPE CAVEAT, narrower and newer, 2026-08-05. The schema 8 and 9 rows of
+the table below were read from the version notes above `CHECKPOINT_RECORD_SCHEMA`
+in src/checkpoint.rs - that is, from the ENCODER's own prose - and then confirmed
+against the records on disk. The two halves of that sentence carry different
+weight and are stated separately on purpose:
+
+  * confirmed by artifact: every one of the 87 records on disk tagged /8 or /9
+    carries `git_untracked`, `platform.libc_provenance` and `platform.features`,
+    and all 16 /9 records carry `format_faithful`. That part is the same
+    diff-derived evidence as schemas 6 and 7.
+  * NOT independent: the reason `platform.libc_version` is listed as a known
+    field and NOT as a marker came from the encoder, which serializes it only
+    when a version query succeeded. No artifact on disk shows that case, so no
+    amount of diffing would have found it.
+
+Nothing here touches the container decode, which still does not read `save` /
+`load` or `to_checkpoint_bytes` / `from_checkpoint_bytes`. But a schema table
+partly copied from the writer is not a second opinion about the schema, and a
+citation that leans on this reader's schema bookkeeping must say so.
 
 Exit codes:
     0  every requested check passed
@@ -92,6 +123,19 @@ TENSOR_NAMES = [
     "wq", "wk", "wv", "wo",
     "wq2", "wk2", "wv2", "wo2",
 ]
+
+# The four projections of the SECOND attention layer, in directory order. Named
+# here rather than sliced out of TENSOR_NAMES by position so that the derived
+# check below reads as what it is - a statement about these four tensors - and
+# breaks loudly rather than silently if the canonical order ever changes.
+LAYER2_TENSORS = ["wq2", "wk2", "wv2", "wo2"]
+
+# The f32 bit pattern of positive zero. The zero census below tests BYTES, not
+# decoded floats, so "exactly zero" means these four bytes and nothing else: no
+# tolerance, no rounding, and negative zero counted separately because it is a
+# different bit pattern that is nonetheless numerically inert.
+F32_POSITIVE_ZERO = b"\x00\x00\x00\x00"
+F32_NEGATIVE_ZERO = b"\x00\x00\x00\x80"
 
 # Header fields at absolute byte offsets, spec lines 19-39.
 # (name, offset, struct format). All little-endian; floats are IEEE-754 bit
@@ -270,7 +314,162 @@ def parse_container(raw, path):
             % (info["element_total"], expected_len, len(raw), len(raw) - expected_len),
         )
 
+    info["architecture"] = derive_architecture(raw, counts, info["num_attn_layers"])
+
     return info
+
+
+def derive_architecture(raw, counts, declared_layers):
+    """Measure the layer-2 attention block in the PAYLOAD BYTES.
+
+    Returns a dict describing what the container actually carries for the second
+    attention layer, so that the effective layer count is a reading rather than a
+    quotation. Every number in it is computed here; none of it comes from a
+    sidecar.
+
+    WHAT THIS ESTABLISHES. `num_attn_layers` in both the header and the sidecar
+    is a DECLARATION of how many layers were allocated. It is not a statement
+    that each of them holds anything. If wq2, wk2, wv2 and wo2 are entirely zero
+    then the second layer's contribution to every forward pass is zero, whatever
+    the arithmetic around it, so the parameters outside that block are the only
+    ones the artifact can be said to carry. That is a property of these bytes and
+    it is checkable by anyone holding the .bin alone.
+
+    WHAT IT DOES NOT ESTABLISH, and the distinction has to survive being quoted.
+    An all-zero block says the SERIALIZED model has an inert layer. It says
+    nothing about intent: it cannot distinguish a design that deliberately
+    allocates a second layer and freezes it from a training loop that meant to
+    train one and failed to. It is not evidence of a defect and must never be
+    presented as one - the trainer's own documentation states the layer is
+    allocated, carried through every forward pass and provably inert, and this
+    check simply moves that sentence from prose into a measurement.
+
+    NOT A FLOAT COMPARISON. The census is over 4-byte groups, so a value is
+    "exactly zero" only if its bit pattern is 00 00 00 00. Negative zero is
+    counted apart: it is numerically inert in the same way and a different
+    encoding, and folding the two together would hide which one the file holds.
+    """
+    offsets = {}
+    cursor = PAYLOAD_OFFSET
+    for name, count in zip(TENSOR_NAMES, counts):
+        offsets[name] = (cursor, count)
+        cursor += ELEMENT_SIZE * count
+
+    census = []
+    block_elements = 0
+    positive_zero = 0
+    negative_zero = 0
+    for name in LAYER2_TENSORS:
+        start, count = offsets[name]
+        block = raw[start:start + ELEMENT_SIZE * count]
+        zeros = 0
+        negatives = 0
+        for index in range(count):
+            word = block[ELEMENT_SIZE * index:ELEMENT_SIZE * (index + 1)]
+            if word == F32_POSITIVE_ZERO:
+                zeros += 1
+            elif word == F32_NEGATIVE_ZERO:
+                negatives += 1
+        census.append((name, zeros, negatives, count))
+        block_elements += count
+        positive_zero += zeros
+        negative_zero += negatives
+
+    element_total = sum(counts)
+    inert = block_elements > 0 and positive_zero + negative_zero == block_elements
+    # An unserialized block (every layer-2 count zero) is inert for the trivial
+    # reason that it holds nothing, and is reported with its own wording rather
+    # than folded into the all-zero case.
+    unserialized = block_elements == 0
+
+    if declared_layers >= 2 and (inert or unserialized):
+        effective_layers = declared_layers - 1
+    else:
+        effective_layers = declared_layers
+
+    return {
+        "declared_layers": declared_layers,
+        "effective_layers": effective_layers,
+        "census": census,
+        "block_elements": block_elements,
+        "positive_zero": positive_zero,
+        "negative_zero": negative_zero,
+        "inert": inert,
+        "unserialized": unserialized,
+        "element_total": element_total,
+        "outside_block": element_total - block_elements,
+    }
+
+
+def architecture_lines(arch):
+    """The derived architecture report, as lines, worded as a measurement.
+
+    Rendered under the VERIFIED heading because every number in it was computed
+    from the container bytes. It is deliberately NOT added to the scope's
+    `cross_checked` list: that list names sidecar KEYS which agree with the
+    header, and this is a reading of the payload that no sidecar key states.
+    """
+    declared = arch["declared_layers"]
+    effective = arch["effective_layers"]
+    lines = [
+        "num_attn_layers declared %d, effective %d (derived from the payload "
+        "bytes, not read from the sidecar)" % (declared, effective),
+    ]
+
+    if declared < 2:
+        lines.append(
+            "the record declares fewer than 2 attention layers, so there is no "
+            "layer-2 block to examine"
+        )
+        return lines
+
+    if arch["unserialized"]:
+        lines.append(
+            "layer-2 projections %s carry 0 elements between them: the block is "
+            "not serialized at all" % "/".join(LAYER2_TENSORS)
+        )
+    else:
+        per_tensor = ", ".join(
+            "%s %s/%s" % (name, format(zeros + negatives, ","), format(count, ","))
+            for name, zeros, negatives, count in arch["census"]
+        )
+        lines.append(
+            "layer-2 zero census %s/%s elements exactly zero (%s)"
+            % (format(arch["positive_zero"] + arch["negative_zero"], ","),
+               format(arch["block_elements"], ","), per_tensor)
+        )
+        if arch["negative_zero"]:
+            lines.append(
+                "of those, %s carry the NEGATIVE zero bit pattern (80 00 00 00 "
+                "little-endian), which is numerically zero and a different "
+                "encoding" % format(arch["negative_zero"], ",")
+            )
+
+    if arch["inert"] or arch["unserialized"]:
+        lines.append(
+            "serialized parameters %s total, %s in the layer-2 block, %s outside "
+            "it; the block contributes nothing to a forward pass, so %s is the "
+            "count the artifact can be said to carry"
+            % (format(arch["element_total"], ","),
+               format(arch["block_elements"], ","),
+               format(arch["outside_block"], ","),
+               format(arch["outside_block"], ","))
+        )
+        lines.append(
+            "this is a statement about these bytes only: it shows the container "
+            "carries an inert second layer, NOT that the training recipe "
+            "intended one"
+        )
+    else:
+        lines.append(
+            "serialized parameters %s total, %s in the layer-2 block, of which "
+            "%s are non-zero; the block is not inert in this artifact"
+            % (format(arch["element_total"], ","),
+               format(arch["block_elements"], ","),
+               format(arch["block_elements"] - arch["positive_zero"]
+                      - arch["negative_zero"], ","))
+        )
+    return lines
 
 
 def read_checkpoint(path):
@@ -354,7 +553,34 @@ SCHEMA_MARKERS = [
         "platform.remap_applied",
         "platform.source_digest_scope",
     ]),
+    (8, [
+        "git_untracked",
+        "platform.libc_provenance",
+        "platform.features",
+    ]),
+    (9, [
+        "format_faithful",
+    ]),
 ]
+
+# NOT a marker, and the omission is the point: `platform.libc_version` arrives
+# with the three schema 8 names above and is present in every /8 and /9 record on
+# disk, yet it is listed under PLATFORM_FIELDS as merely KNOWN. The writer emits
+# it only when a version query for the target succeeded (see the SECOND SCOPE
+# CAVEAT); on a target with no such query the field is absent from a perfectly
+# well-formed /8 record. Making it a marker would infer schema 7 for that record
+# and then FAIL it for over-promising a /8 tag - a false accusation produced
+# entirely by this reader's bookkeeping, which is the exact defect the /4 round
+# recorded in interop/README.md section 4. A marker must be a field the writer
+# cannot omit, not a field this tree happens never to have omitted.
+#
+# The same reasoning applies to `platform.rustflags_sha256` and
+# `platform.rustflags_source` at /7, which are marked and are also conditionally
+# serialized (they are absent when no build-flags file was found). They are left
+# as markers because every /7-and-higher record on disk carries them and changing
+# an established version boundary is a separate decision from adding two new
+# ones; the latent false-failure is recorded here rather than left to be
+# rediscovered.
 
 # Fields that a later schema STOPPED writing, by the version at which they
 # disappear from every record carrying that tag. They stay known names - an
@@ -366,10 +592,32 @@ SCHEMA_MARKERS = [
 # two were read off the artifacts: no /6-or-higher record on disk carries
 # `best_val_bpb` (it is superseded by `min_observed_val_bpb`), and no /7 record
 # carries `run_id`.
+#
+# Nothing is retired at /8 or /9: both are additive over the version below them
+# on every record on disk, and the /8 and /9 field sets are supersets of /7 key
+# for key.
 SCHEMA_RETIRED = [
     (2, ["bpb"]),
     (6, ["best_val_bpb"]),
     (7, ["run_id"]),
+]
+
+# Fields a later schema kept under the same NAME while changing what the value
+# MEANS. Neither an addition nor a retirement, and the one kind of schema change
+# a presence-based reader is structurally blind to: the key is there, the tag is
+# consistent, and every check passes over a value that no longer says what the
+# older records' value said.
+#
+# `path` at /9. Through /8 it was an absolute filesystem location, so every
+# locally produced record published the writer's home directory. At /9 it is the
+# artifact RELATIVE to `platform.source_digest_scope`, or the literal
+# `outside-scope:<file name>` when it lies outside that scope. A consumer that
+# joined `path` onto nothing and opened it worked for eight schema versions and
+# stops working at the ninth, without a single check in this reader failing -
+# `path` has no counterpart in the container and is ECHOED, as it always was.
+# Saying so is the only thing this instrument can do about it.
+SCHEMA_REDEFINED = [
+    (9, ["path"]),
 ]
 
 # The highest schema version whose field set this reader knows. A record whose
@@ -450,6 +698,7 @@ PLATFORM_FIELDS = [
          "toolchain", "toolchain_provenance"]),
     (7, ["rustflags_sha256", "rustflags_source",
          "remap_applied", "source_digest_scope"]),
+    (8, ["libc_version", "libc_provenance", "features"]),
 ]
 
 # Nested objects this reader descends into when looking for unrecognised keys,
@@ -484,6 +733,17 @@ PROVENANCE_FIELDS = [
 ]
 
 SCHEMA_PREFIX = "trios-checkpoint-record/"
+
+# Names under which a record might state a parameter count, so that the derived
+# serialized total has something to be compared against when one appears. None of
+# them occurs in any record on disk: the sidecar records geometry (`hidden`,
+# `d_model`, `num_attn_layers`, `vocab`) and never a total, so the trainer's
+# printed `params=196608` lives only in stdout and in prose. The derived total is
+# therefore reported WITHOUT a counterpart, which is stated rather than left to be
+# read as agreement.
+SIDECAR_PARAM_COUNT_KEYS = [
+    "params", "param_count", "parameters", "n_params", "num_params",
+]
 
 # ---------------------------------------------------------------------------
 # The `ledger` vocabulary, and why an unknown value here is a FAILURE.
@@ -601,6 +861,218 @@ def echoed_keys(record, cross_checked):
     elif "platform" in record:
         echoed.append("platform")
     return echoed
+
+
+# ---------------------------------------------------------------------------
+# The provenance seal: a digest over the ECHOED half of the record.
+#
+# Everything above tells you honestly that the provenance block is echoed and
+# not verified. That honesty is worth nothing to an auditor holding one record:
+# a sidecar rewritten to claim the wrong architecture, a rustc that never
+# existed and a retracted BPB still prints RESULT PASS here, because the
+# container it is checked against is untouched and the declaration is checked
+# against nothing at all.
+#
+# The seal does not fix that by itself and is not a signature. It gives the
+# declaration a digest that CAN be published out of band, so a forgery becomes
+# detectable by anyone who read the published seal instead of undetectable by
+# everyone. The normative definition lives in src/provenance_seal.rs; this is
+# the second implementation of it, and the two agreeing on every record in
+# evidence/ is the interop check. If they ever disagree at HEAD, the
+# specification is wrong - not the record.
+#
+# Deliberately NOT derived from `echoed_keys` above: that set depends on which
+# fields this reader happened to cross-check, so it would drift with the
+# reader. A seal is a fixed field list or it is not a seal.
+# ---------------------------------------------------------------------------
+
+SEAL_PREFIX = "sha256:"
+SEAL_ABSENT = "<absent>"
+
+# `platform` sub-keys the seal always states, present or not. Every OTHER key
+# found under `platform` is sealed too; these four are listed because their
+# ABSENCE must also change the digest.
+SEALED_PLATFORM_KEYS = ["arch", "libc", "os", "toolchain"]
+
+# Sorted, and identical name-for-name to SEALED_TOP_LEVEL in
+# src/provenance_seal.rs. `sha256` and `bytes` are in the set: the earlier
+# defence that they were "sealed by the container digest already" was circular,
+# because `sha256` IS the container digest and cannot seal itself. A seal that
+# named no artifact bound its declaration to no particular .bin, so one
+# authenticated declaration fitted every container of the same length - the
+# x86_64 Linux record could be handed the aarch64 macOS weights (both 852272
+# bytes) and still match the seal published for the Linux run. `seed` and `step`
+# name which artifact the recipe was meant to produce; `gf16_floor_every` is a
+# recipe parameter that mutates the weights and lives in no container header.
+SEALED_TOP_LEVEL = [
+    "bytes",
+    "corpus",
+    "eval_every",
+    "final_val_bpb",
+    "gf16_floor_every",
+    "git_dirty",
+    "git_sha",
+    "schema",
+    "seed",
+    "sha256",
+    "source_sha256",
+    "step",
+    "steps_total",
+    "trainer",
+]
+
+
+def rust_f64_display(value):
+    """Render a float exactly as Rust's `{}` on `f64` does.
+
+    Rust is the normative side, so this reproduces IT rather than the other way
+    round. `repr()` already chooses the shortest round-trip digits, and differs
+    from Rust in two places only: it writes an integral value as `2.0` where
+    Rust writes `2`, and it uses exponent notation where Rust never does.
+    """
+    if value != value:
+        return "NaN"
+    if value == float("inf"):
+        return "inf"
+    if value == float("-inf"):
+        return "-inf"
+    text = repr(float(value))
+    if "e" in text or "E" in text:
+        import decimal
+        text = format(decimal.Decimal(text), "f")
+    elif text.endswith(".0"):
+        text = text[:-2]
+    return text
+
+
+def seal_escape(text):
+    """Escape a string value so it cannot forge a line of the listing.
+
+    Without this a toolchain string carrying a newline could contain
+    `\\nplatform.arch=x86_64` and add a line the record never declared - a
+    collision an attacker picks rather than one they have to find.
+    """
+    return text.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r")
+
+
+def seal_render_scalar(value):
+    """One scalar rendered per the seal specification. Containers never reach here."""
+    if value is None:
+        return "<null>"
+    if isinstance(value, bool):
+        # Checked before int: in Python `bool` IS an `int`, and `True` must
+        # render as `true` and never as `1`.
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return rust_f64_display(value)
+    if isinstance(value, str):
+        return seal_escape(value)
+    return "<unrenderable:%s>" % type(value).__name__
+
+
+def seal_flatten(prefix, value, out):
+    """Append `(key, value)` pairs for `value` under `prefix`, flattening containers."""
+    if isinstance(value, dict):
+        if not value:
+            out.append((prefix, "<empty-object>"))
+            return
+        for key in sorted(value):
+            seal_flatten("%s.%s" % (prefix, key), value[key], out)
+        return
+    if isinstance(value, list):
+        if not value:
+            out.append((prefix, "<empty-array>"))
+            return
+        for index, item in enumerate(value):
+            seal_flatten("%s.%d" % (prefix, index), item, out)
+        return
+    out.append((prefix, seal_render_scalar(value)))
+
+
+def provenance_listing(record):
+    """The exact bytes the seal is taken over, as text.
+
+    A field the record does NOT carry is rendered `key=<absent>` rather than
+    skipped: deleting a field has to change the digest, or deletion is a free
+    edit for a forger.
+    """
+    if not isinstance(record, dict):
+        raise ValueError("a checkpoint record must be a JSON object, not %s"
+                         % type(record).__name__)
+
+    fields = []
+    for key in SEALED_TOP_LEVEL:
+        if key in record:
+            seal_flatten(key, record[key], fields)
+        else:
+            fields.append((key, SEAL_ABSENT))
+
+    platform = record.get("platform")
+    if isinstance(platform, dict):
+        for key in SEALED_PLATFORM_KEYS:
+            if key in platform:
+                seal_flatten("platform.%s" % key, platform[key], fields)
+            else:
+                fields.append(("platform.%s" % key, SEAL_ABSENT))
+        for key in sorted(k for k in platform if k not in SEALED_PLATFORM_KEYS):
+            seal_flatten("platform.%s" % key, platform[key], fields)
+    elif "platform" in record:
+        # Present but not an object. The four required keys are absent from it
+        # whatever it is, and the thing itself is sealed under its own name so
+        # the anomaly cannot be edited away.
+        for key in SEALED_PLATFORM_KEYS:
+            fields.append(("platform.%s" % key, SEAL_ABSENT))
+        seal_flatten("platform", platform, fields)
+    else:
+        for key in SEALED_PLATFORM_KEYS:
+            fields.append(("platform.%s" % key, SEAL_ABSENT))
+
+    fields.sort(key=lambda pair: pair[0])
+    deduped = []
+    for key, value in fields:
+        if deduped and deduped[-1][0] == key:
+            continue
+        deduped.append((key, value))
+    return "".join("%s=%s\n" % (key, value) for key, value in deduped)
+
+
+def provenance_seal(record):
+    """`sha256:` plus the lowercase hex SHA-256 of the listing bytes."""
+    listing = provenance_listing(record).encode("utf-8")
+    return SEAL_PREFIX + hashlib.sha256(listing).hexdigest()
+
+
+def seal_report(sidecar_path):
+    """The one line every run prints about the record's declaration half.
+
+    Printed whether the record passed, failed or was never opened: a reader
+    that announced the seal only on success would be silent in exactly the case
+    an auditor is looking at it.
+    """
+    if sidecar_path is None:
+        return ("provenance-seal none - no sidecar was read, so this run says "
+                "nothing about any declaration")
+    try:
+        with open(sidecar_path, "r") as handle:
+            record = json.load(handle)
+    except (OSError, ValueError) as exc:
+        return "provenance-seal UNSEALABLE - %s: %s" % (sidecar_path, exc)
+    try:
+        seal = provenance_seal(record)
+    except ValueError as exc:
+        return "provenance-seal UNSEALABLE - %s" % exc
+    return ("provenance-seal %s over %d declared field(s) [%s] - ECHOED, never "
+            "verified here; compare it against the digest published for this "
+            "record out of band (evidence/SEALS.txt, explained in "
+            "docs/PROVENANCE-BINDING.md), or it authenticates "
+            "nothing" % (
+                seal,
+                len(provenance_listing(record).splitlines()),
+                ", ".join(line.split("=", 1)[0]
+                          for line in provenance_listing(record).splitlines()),
+            ))
 
 
 def declared_schema(record):
@@ -761,6 +1233,44 @@ def compare_sidecar(info, sidecar_path):
                 "schema %d: %s" % (version, inferred, ", ".join(early))
             )
 
+    # A key whose MEANING a later schema changed while keeping the name. Nothing
+    # here can fail: the value is echoed either way, and the whole hazard is that
+    # every check passes. Naming the key and the version is the entire remedy
+    # available to a reader that has no container counterpart for it.
+    for version, fields in SCHEMA_REDEFINED:
+        if inferred < version:
+            continue
+        changed = [k for k in fields if record_has(record, k)]
+        if changed:
+            notes.append(
+                "field(s) REDEFINED at schema %d and present here, same name and "
+                "a different meaning than in an earlier record: %s"
+                % (version, ", ".join(changed))
+            )
+
+    # The derived parameter total, and whether anything in the record claims one.
+    arch = info.get("architecture")
+    if arch is not None:
+        advertised = [k for k in SIDECAR_PARAM_COUNT_KEYS if k in record]
+        if advertised:
+            notes.append(
+                "record states a parameter count (%s); the container serializes "
+                "%s elements, %s of them outside the layer-2 block. This reader "
+                "has no rule saying which of the two a %r field names, so the "
+                "numbers are reported side by side and NOT compared"
+                % (", ".join("%s=%r" % (k, record[k]) for k in advertised),
+                   format(arch["element_total"], ","),
+                   format(arch["outside_block"], ","),
+                   advertised[0])
+            )
+        else:
+            notes.append(
+                "no field in this record states a parameter count, so the "
+                "derived serialized total (%s elements) has no counterpart to "
+                "agree or disagree with"
+                % format(arch["element_total"], ",")
+            )
+
     # A field a later schema stopped writing, still present in a record that
     # reaches that schema. Either the record or this reader's table is wrong
     # about where the boundary is; saying which fields are involved is what
@@ -836,6 +1346,34 @@ def print_report(info):
     print("directory")
     for name in TENSOR_NAMES:
         print("  %-10s %d" % (name, info["directory"][name]))
+    for line in architecture_lines(info["architecture"]):
+        print("derived         %s" % line)
+
+
+def architecture_summary(arch):
+    """One line of the derived architecture reading, for a quoted verdict.
+
+    The long form is `architecture_lines`. This is what goes on a RESULT line, so
+    it carries the three numbers that cannot be dropped without changing the
+    claim: declared layers, effective layers, and the zero census they rest on.
+    """
+    if arch["declared_layers"] < 2:
+        return "%d attention layer(s) declared, no layer-2 block to examine" % (
+            arch["declared_layers"],
+        )
+    if arch["unserialized"]:
+        census = "layer-2 block not serialized (0 elements)"
+    else:
+        census = "layer-2 zeros %s/%s" % (
+            format(arch["positive_zero"] + arch["negative_zero"], ","),
+            format(arch["block_elements"], ","),
+        )
+    return "attention layers declared %d / effective %d, %s, %s parameters " \
+           "serialized (%s outside the layer-2 block)" % (
+               arch["declared_layers"], arch["effective_layers"], census,
+               format(arch["element_total"], ","),
+               format(arch["outside_block"], ","),
+           )
 
 
 def format_scope(scope, full):
@@ -874,8 +1412,11 @@ def verify_one(bin_path, sidecar_path, verbose):
     if verbose:
         print_report(info)
     if sidecar_path is None:
-        return True, "container ok, sha256 %s (NO sidecar read: nothing " \
-                     "outside the container was checked)" % info["sha256"], None
+        return True, "container ok, sha256 %s, derived %s (NO sidecar read: " \
+                     "nothing outside the container was checked)" % (
+                         info["sha256"],
+                         architecture_summary(info["architecture"]),
+                     ), None
     problems, notes, scope = compare_sidecar(info, sidecar_path)
     if verbose:
         for note in notes:
@@ -883,6 +1424,11 @@ def verify_one(bin_path, sidecar_path, verbose):
         print("scope           VERIFIED against the container (%d): %s"
               % (len(scope["cross_checked"]),
                  ", ".join(scope["cross_checked"]) or "none"))
+        # Belongs on the VERIFIED side of the line and nowhere else: it is
+        # measured in the payload, so a sidecar cannot make it agree. It is kept
+        # out of the count above because that count is of sidecar KEYS.
+        print("scope           VERIFIED, derived from the payload rather than "
+              "compared to a key: %s" % architecture_summary(info["architecture"]))
         print("scope           ECHOED from the sidecar, NOT verified against "
               "the container (%d): %s"
               % (len(scope["echoed"]), ", ".join(scope["echoed"]) or "none"))
@@ -892,12 +1438,14 @@ def verify_one(bin_path, sidecar_path, verbose):
                  ", ".join(scope["uninterpreted"]) or "none"))
     if problems:
         return False, "SIDECAR_MISMATCH: " + "; ".join(problems), scope
+    derived = architecture_summary(info["architecture"])
     if verbose:
-        return True, "container ok, sha256 %s; sidecar scope: %s" % (
-            info["sha256"], format_scope(scope, full=True),
+        return True, "container ok, sha256 %s; derived %s; sidecar scope: %s" % (
+            info["sha256"], derived, format_scope(scope, full=True),
         ), scope
-    return True, "container ok, sha256 %s; %s [%s]" % (
-        info["sha256"], format_scope(scope, full=False), "; ".join(notes),
+    return True, "container ok, sha256 %s; derived %s; %s [%s]" % (
+        info["sha256"], derived, format_scope(scope, full=False),
+        "; ".join(notes),
     ), scope
 
 
@@ -926,6 +1474,7 @@ def verify_all(root):
                   % (bin_path, sidecar_path))
             continue
         ok, message, scope = verify_one(bin_path, sidecar_path, verbose=False)
+        print("SEAL %s  %s" % (bin_path, seal_report(sidecar_path)))
         if scope:
             for key in scope["uninterpreted"]:
                 uninterpreted_total[key] = uninterpreted_total.get(key, 0) + 1
@@ -1031,6 +1580,12 @@ def main(argv):
                   "carries no provenance" % args.checkpoint)
 
     ok, message, _scope = verify_one(args.checkpoint, args.sidecar, verbose=True)
+    # Printed on EVERY run, pass or fail, and before the verdict: the verdict
+    # is about bytes, and this is the digest of everything the verdict does not
+    # cover. The Rust side prints the same string
+    # (`ckpt_replay --record <json> --provenance-seal`); the two agreeing is
+    # what makes the seal specification a specification and not a habit.
+    print(seal_report(args.sidecar))
     if ok:
         print("RESULT PASS  %s" % message)
         return 0

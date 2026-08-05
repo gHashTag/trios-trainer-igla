@@ -45,6 +45,12 @@ const HEARTBEAT_INTERVAL_SECS: u64 = 60;
 /// a supervisor grading a batch does not have to special-case this binary.
 const EXIT_NO_MEASUREMENT: i32 = 7;
 
+/// The shipped byte-disjoint split (train 1,015,394 B / val 100,000 B, concat
+/// sha256 86c4e6aa...). Named so `main` cannot name one path in a refusal and
+/// read another.
+const TRAIN_PATH: &str = "data/tiny_shakespeare.txt";
+const VAL_PATH: &str = "data/tiny_shakespeare_val.txt";
+
 // ── primitives ──
 
 fn layer_norm(x: &[f32], eps: f32) -> Vec<f32> {
@@ -233,12 +239,13 @@ impl NgramModel {
     /// hold a single n-gram pair or the forward pass produced a non-number.
     ///
     /// A short sequence used to return `0.0`, a loss no model achieves, which
-    /// averaged into `evaluate` as a real reading. `f32::max` also ignores NaN,
-    /// so `logits[target].max(1e-10)` turned a poisoned forward pass into a
-    /// finite 23.03-nat measurement; NaN is now an absence. The 1e-10 clamp is
-    /// kept for a genuinely underflowed probability - capping it is a documented
-    /// floor on surprisal, and dropping those chunks instead would bias the
-    /// reported BPB downward.
+    /// averaged into `evaluate` as a real reading. Clamping `logits[target]` to
+    /// a 1e-10 floor was the same defect one step further on: `f32::max`
+    /// ignores NaN, so a poisoned forward pass became a finite 23.03-nat
+    /// measurement, and a merely UNDERFLOWED probability - a finite `0.0` out
+    /// of the f32 softmax, which `is_nan` and `is_finite` both accept - became
+    /// the identical 23.02585 nats / 33.21928 bpb. `backward_pass` in this same
+    /// file already refuses on that condition; the eval path now matches it.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < NGRAM + 1 {
             return None;
@@ -252,10 +259,10 @@ impl NgramModel {
             let mut logits = self.predict(&self.compute_hidden(context));
             softmax(&mut logits);
             let p = logits[target];
-            if p.is_nan() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            total -= p.max(1e-10).ln();
+            total -= p.ln();
         }
         Some(total / count as f32)
     }
@@ -393,7 +400,8 @@ fn backward_pass(
         let mut d_hidden = vec![0.0f32; HIDDEN];
         let mut logits = model.predict(hidden);
         softmax(&mut logits);
-        // `logits[target].max(1e-10)` was the NaN launder removed from the eval
+        // Clamping `logits[target]` to a 1e-10 floor was the NaN launder
+        // removed from the eval
         // path in round 1 and left standing here: `f32::max` returns the OTHER
         // operand when one side is NaN, so a poisoned forward pass silently
         // became `1e-10` and contributed a plausible ~23.03 nats. A probability
@@ -515,6 +523,21 @@ fn evaluate(model: &NgramModel, tokens: &[usize]) -> Option<f32> {
         return None;
     }
     Some(total / n as f32)
+}
+
+/// Windows `evaluate` will actually average over, for `len` tokens. Must track
+/// the loop in `evaluate` exactly: a precondition computed from a different
+/// chunking than the one that runs is not a precondition.
+// `>= NGRAM + 1` rather than clippy's `> NGRAM`: it is the negation of
+// `evaluate`'s `if end - c < NGRAM + 1 { continue; }`, written the same way so
+// the two can be compared by eye. A precondition that has to be re-derived to
+// be checked against the loop it models is a precondition that will drift.
+#[allow(clippy::int_plus_one)]
+fn eval_chunk_count(len: usize) -> usize {
+    (0..len)
+        .step_by(SEQ + 1)
+        .filter(|&c| len.min(c + SEQ + 1) - c >= NGRAM + 1)
+        .count()
 }
 
 /// Render an optional BPB without inventing a number for an absent one.
@@ -893,22 +916,82 @@ fn print_results(cfg: &Config, best_bpb: Option<f32>, elapsed: f64) {
 
 // ── main ──
 
+/// Every argument `parse_config` reads, in the spellings it reads them.
+///
+/// `find_arg` is called with the `=` already in the prefix (`"--seed="`), so
+/// every value flag here is `=`-only; `--no-jepa`, `--no-nca` and the
+/// `--optimizer=muon` comparison are whole-token matches. `--optimizer` is
+/// listed as a value flag because that is the shape the caller writes, even
+/// though only `muon` changes anything. This binary reads its corpus from the
+/// `TRAIN_PATH` / `VAL_PATH` constants and has NO corpus flag: `--train-data`
+/// was therefore accepted in silence and ignored, which is exactly what the
+/// container entrypoint passes it.
+const KNOWN_ARGS: [&str; 15] = [
+    "seed=",
+    "steps=",
+    "lr=",
+    "encoder-lr=",
+    "ntp-lr=",
+    "ntp-weight=",
+    "jepa-weight=",
+    "nca-weight=",
+    "jepa-warmup=",
+    "weight-decay=",
+    "optimizer=",
+    "trial-id=",
+    "agent-id=",
+    "no-jepa",
+    "no-nca",
+];
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
+    // Before `parse_config`, which silently kept its own defaults for every
+    // argument it did not recognise. See `trios_trainer::reject_unknown_args`.
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
     let cfg = parse_config(&args);
 
     print_banner(&cfg);
     neon_trial_start(&cfg);
 
-    let train_data = load_data("data/tiny_shakespeare.txt")?;
-    let val_data = load_data("data/tiny_shakespeare_val.txt")?;
+    let train_data = load_data(TRAIN_PATH)?;
+    let val_data = load_data(VAL_PATH)?;
     let train_end = (train_data.len() as f64 * 0.9) as usize;
     let train = &train_data[..train_end];
-    let val = if val_data.len() > 100 {
-        &val_data
-    } else {
-        &train_data[train_end..]
-    };
+    // The `if val_data.len() > 100 { &val_data } else { &train_data[train_end..] }`
+    // that used to stand here was the synthetic-corpus substitution surviving
+    // one level above `load_data`: a val stream under 100 bytes was silently
+    // replaced by the TAIL OF THE TRAINING FILE, and every BPB below it was
+    // then a memorisation reading published as held-out. 100 bytes is also far
+    // under `MIN_VAL_TOKENS` = 8192, so the fallback fired precisely in the
+    // case the size guard exists to reject.
+    if val_data.len() <= 100 {
+        return Err(format!(
+            "cannot use corpus {VAL_PATH}: {} bytes. This trainer does not \
+             download or synthesise a corpus, and it does not fall back to a \
+             slice of the training file; provide the file and re-run.",
+            val_data.len()
+        )
+        .into());
+    }
+    let val: &[usize] = &val_data;
+
+    // This binary writes ledger rows through `neon_writer::bpb_sample` and
+    // carried no corpus precondition at all: the shipped split is train[..90%]
+    // against a separate val file, and nothing checked that they were disjoint.
+    // The guard is the shared `train_loop` one, asked at THIS binary's eval
+    // coverage (full tiling at `SEQ + 1`, not the library's 129-token grid).
+    trios_trainer::train_loop::check_train_val_disjoint(train, val, eval_chunk_count(val.len()))
+        .map_err(|reason| {
+            format!(
+                "SPLIT REFUSED: {reason} Refusing to train: no BPB measured \
+                 against this split is a model result, and this binary publishes \
+                 its BPB to the ledger."
+            )
+        })?;
 
     let mut st = init_training(&cfg);
     let warmup = cfg.steps / 10;

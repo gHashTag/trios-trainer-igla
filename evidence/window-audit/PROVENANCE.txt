@@ -1,0 +1,154 @@
+WINDOW AUDIT - segment versus monolith
+======================================
+
+The question. Does re-executing ONE window of a run, warm-started from a
+published checkpoint plus its resume record, reproduce the monolithic run
+byte for byte? If it does not, a challenged window proves nothing and the
+audit is theatre.
+
+The answer measured here, on this machine, on this date: YES. The two
+step-200 checkpoints are byte-identical, and so are the two step-200 resume
+records - which is the stronger statement, because those carry the AdamW
+moments and the batch-sampler state as well as the weights.
+
+Read docs/WINDOW-AUDIT.md before quoting any of this. In particular: this is
+a SAME-MACHINE claim. It says nothing about a different CPU architecture,
+where the boundary documented in docs/CROSS-ARCH-DIVERGENCE.md is unchanged.
+
+
+PLATFORM
+--------
+os / arch      : macos / aarch64 (Darwin 25.5.0 arm64; macOS 26.5.2, build 25F84)
+rustc -vV      : rustc 1.96.0 (ac68faa20 2026-05-25)
+                 binary: rustc
+                 commit-hash: ac68faa20c58cbccd01ee7208bf3b6e93a7d7f96
+                 commit-date: 2026-05-25
+                 host: aarch64-apple-darwin
+                 release: 1.96.0
+                 LLVM version: 22.1.2
+trainer binary : target/release/trios-train
+                 sha256 81faceb3fe5aa8bdae108c01deb441a773476b8b45e9290f620a9d665579a9ec
+git HEAD       : ba272b988971545801c9e337b0b42e35dc18abc4
+git dirty      : TRUE. The working tree carried uncommitted changes when these
+                 artifacts were produced - the resume format itself among them -
+                 so `git_sha` in the sidecars identifies the base commit and NOT
+                 the exact source. `source_sha256`
+                 031d69c45befb0a605df462a22f39a1350c32fb7b82da066c3f2b07b634d7450
+                 in every sidecar is the digest of the source tree that actually
+                 ran, and is what a re-run must match.
+
+
+CORPUS (byte-disjoint tinyshakespeare pair)
+-------------------------------------------
+train : data/tiny_shakespeare_train_core.txt  915394 bytes
+        sha256 21f0788a3b5ef3d8138047559f393233f1282403887e1bda2de458af64877da6
+val   : data/tiny_shakespeare_val.txt         100000 bytes
+        sha256 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+
+This is the train/val pair of the THREE-way split described in data/README.md:
+train_core ++ test ++ val is the canonical 1115394-byte corpus
+86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed, and
+tiny_shakespeare_test.txt was not read by either run. Byte-disjointness was
+checked by the trainer itself at startup - `assert_train_val_disjoint` runs on
+every window of both streams before step 1, and passed.
+
+Stated because it is easy to get wrong: a BPB measured under the three-way
+split is NOT comparable to the two-way headline of 2.63 (different training
+corpus, 100000 bytes smaller). None of the numbers here are offered as a
+quality claim. They exist so that two runs can be compared to each other.
+
+
+RUN A - MONOLITH, 0 -> 200
+--------------------------
+Exact command, from the repository root:
+
+  env -u DATABASE_URL -u NEON_DATABASE_URL -u TRIOS_NEON_DSN \
+      -u TRIOS_DATABASE_URL -u TRIOS_FORMAT_TYPE -u GF16_ENABLED \
+      -u TRIOS_GF16_DISABLE -u TRIOS_GF16_FLOOR_EVERY -u HIDDEN_DIM \
+      -u NUM_ATTN_LAYERS -u TRIOS_CHECKPOINT_INIT \
+    TRIOS_CHECKPOINT_DIR=evidence/window-audit/monolith \
+    TRIOS_CANON_NAME=window-audit-monolith \
+    TRIOS_CHECKPOINT_EVERY=100 \
+    ./target/release/trios-train --seed 47 --steps 200 --hidden 64 \
+      --eval-every 50 \
+      --train-data data/tiny_shakespeare_train_core.txt \
+      --val-data data/tiny_shakespeare_val.txt
+
+Result: exit 0, DONE: seed=47 bpb=3.7925 steps=200 opt=adamw
+Reported val_bpb: step 50 = 4.3108, 100 = 3.8702, 150 = 3.7974, 200 = 3.7925
+
+
+RUN B - SEGMENT, resumed at 100, 100 -> 200
+-------------------------------------------
+Same command with the same --steps 200 (the cosine schedule is a function of
+(step, steps_total), so the segment must be given the ORIGINAL total), plus:
+
+    TRIOS_CHECKPOINT_DIR=evidence/window-audit/segment \
+    TRIOS_CANON_NAME=window-audit-segment \
+    --resume-from evidence/window-audit/monolith/window-audit-monolith/100.bin
+
+Result: exit 0, DONE: seed=47 bpb=3.7925 steps=200 opt=adamw
+Reported val_bpb: step 150 = 3.7974, 200 = 3.7925 - identical to run A at the
+same steps, to every printed digit.
+
+The trainer announced the warm start on stderr:
+
+  [resume] warm start from ".../100.bin" sha256=d25ea6d6... step=100 of 200
+  [resume] restored 12 optimizer instances (221184 moment elements)
+
+12 instances is the whole AdamW path: embed, ctx0..ctx5, proj, attn_down,
+attn_up, head, attn_w.
+
+
+DIGESTS (shasum -a 256)
+-----------------------
+d25ea6d6f805e8c54b0ecdff8f29b74b0442ad0cd402d2f874c4fe5e4069e901  monolith-100.bin
+180e8af9e78299d6a4166fb33ab8113d885e638263b5eef11ca99e1c26234a0e  monolith-200.bin
+180e8af9e78299d6a4166fb33ab8113d885e638263b5eef11ca99e1c26234a0e  segment-200.bin
+
+3160fb281ba5e41d74eb2a74ddb024faffcd0fae0e90a37bf31f1e6539c3e07e  monolith-100.resume
+7a5bf8fed881f22fd3df6c5b2d25edb88e7099401648845282c726a5f269903b  monolith-200.resume
+7a5bf8fed881f22fd3df6c5b2d25edb88e7099401648845282c726a5f269903b  segment-200.resume
+
+monolith-200.bin == segment-200.bin: BYTE-IDENTICAL.
+monolith-200.resume == segment-200.resume: BYTE-IDENTICAL, so the segment
+reproduced the optimizer moments, the per-instance step counters, the batch
+sampler state and the reported trajectory as well as the weights.
+
+
+WHAT WAS PUBLISHED, AND ONE THING THAT WAS CHANGED
+--------------------------------------------------
+The runs wrote into
+  evidence/window-audit/monolith/window-audit-monolith/{100,200}.{bin,json,resume}
+  evidence/window-audit/segment/window-audit-segment/200.{bin,json,resume}
+Those files were COPIED to the flat names above and the directories removed,
+so that `shasum -a 256 evidence/window-audit/*.bin` names them. The bytes were
+not touched - the digests above are the digests the trainer printed at write
+time, and they are unchanged. One consequence, stated rather than hidden: the
+`path` field inside each .json still names the ORIGINAL directory, so it does
+not match where the file now sits. Every other field in those sidecars,
+including `sha256`, describes the file as published.
+
+`python3 interop/triosckp_reader.py --verify-all evidence` reads the three new
+(.bin, .json) pairs and passes: 16 pairs, 16 passed, 0 failed.
+
+The resume records are NOT read by that verifier - it decodes TRIOSCKP only.
+They are checked by `cargo test --release --test window_audit_resume`, which
+re-runs this whole segment-versus-monolith comparison in a tempdir on a tiny
+budget (8 steps, split at 4) and asserts byte equality.
+
+
+WHAT THIS DOES NOT SHOW
+-----------------------
+* Not a cross-architecture claim. Both runs executed on the same aarch64
+  macOS machine, in the same binary. The x86_64/aarch64 checkpoint divergence
+  documented in docs/CROSS-ARCH-DIVERGENCE.md is untouched by this work, and
+  a window re-executed on an auditor's own hardware can only be graded on
+  metric agreement within a stated uncertainty budget - never on bit
+  equality. See docs/WINDOW-AUDIT.md.
+* Not a claim about the Muon path. TRIOSRSM version 1 serialises the AdamW
+  instances only; `--resume-from` with --optimizer muon / muon-cwd is refused
+  with a non-zero exit naming the state it cannot carry.
+* Not a claim about a 1B model. 200 steps at hidden=64 is a demonstration of
+  the MECHANISM at a size that fits in one sitting. What scales is the cost
+  ratio, not this number.

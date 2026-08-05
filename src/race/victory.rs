@@ -56,10 +56,14 @@
 //!
 //! It is not re-derived above the publication floor because there is no
 //! recorded measurement to derive a new target from. The honest calibration on
-//! this architecture (h=384, 2 attention layers, ~196.6K params, verified
-//! byte-disjoint tinyshakespeare) bottoms out at raw val_bpb ~2.61 at 12 000
-//! steps; picking any victory target from that would be inventing a number, not
-//! measuring one. Retract first, measure later.
+//! this architecture (h=384, two allocated attention blocks, one effective;
+//! 196,608 effective params of 212,992 serialized, the layer-2 block being
+//! allocated and provably frozen -- see the test
+//! `run_single_emits_a_loadable_artifact_and_freezes_layer_two` in
+//! `src/train_loop.rs`; verified byte-disjoint tinyshakespeare) bottoms out at
+//! raw val_bpb ~2.61 at 12 000 steps; picking any victory target from that
+//! would be inventing a number, not measuring one. Retract first, measure
+//! later.
 //!
 //! The relationship is pinned by a `const` assertion below so the two cannot
 //! drift apart silently again: if someone raises `BPB_VICTORY_TARGET` above the
@@ -83,23 +87,47 @@ const _: () = assert!((BPB_VICTORY_TARGET - 1.5).abs() < f64::EPSILON);
 const _: () = assert!(BPB_VICTORY_TARGET < PUBLISHED_BPB_FLOOR as f64);
 
 // ----------------------------------------------------------------------
-// INV-7: Welch's t-test for statistical strength (pre-registered)
+// INV-7: one-sample t-test against mu0 for statistical strength
 // ----------------------------------------------------------------------
 
-/// Welch's two-sample t-test report (one-tailed, lower-than-baseline).
-/// Pre-registered analysis: α = 0.01, baseline μ₀ = 1.55.
+/// One-sample t-test report: the observed BPBs against the fixed baseline μ₀,
+/// one-tailed, lower-than-baseline.  α = 0.01, μ₀ = 1.55.
+///
+/// NOT a Welch two-sample test, which is what this struct and its fields used
+/// to claim.  A Welch test compares two independently sampled arms and derives
+/// its degrees of freedom from the Welch-Satterthwaite formula; there is only
+/// one arm here, μ₀ is a constant rather than a second sample, and `df` is
+/// simply `n - 1`.  (The crate does contain a real Welch two-sample test — see
+/// [`crate::multi_seed::MultiSeedReport`] — which is precisely why the two must
+/// not share a name.)
+///
+/// The IGLA pre-registration under `docs/preregistration/` does not specify
+/// this analysis: `docs/preregistration/asymlogit_ngram_v1.md` is the only file
+/// there and it registers a Wilcoxon signed-rank analysis of paired per-cell
+/// Δ-BPB, saying nothing about μ₀, α, or which rows enter the t-test.  So the
+/// scope of `sample_mean_all_rows` below is DOCUMENTED, not silently changed:
+/// picking a different set of rows would be inventing a pre-registered choice
+/// that was never registered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TtestReport {
     /// t-statistic (negative when sample mean < baseline, which is good).
     pub t_statistic: f64,
-    /// Degrees of freedom (Welch-Satterthwaite formula).
+    /// Degrees of freedom, `n - 1` for this one-sample test — where `n` is the
+    /// number of rows handed to [`stat_strength`], NOT `VICTORY_SEED_TARGET`.
     pub df: f64,
     /// One-tailed p-value (P(T ≤ t) for lower-tail test).
     pub p_value: f64,
-    /// Sample mean of the winning seeds.
-    pub sample_mean: f64,
-    /// Sample standard deviation.
-    pub sample_std: f64,
+    /// Arithmetic mean over EVERY row handed to [`stat_strength`] — including
+    /// rows that `check_victory` did not select into
+    /// [`VictoryReport::winning_seeds`], and including rows whose BPB is at or
+    /// above `BPB_VICTORY_TARGET`.  It is therefore NOT in general equal to
+    /// [`VictoryReport::mean_bpb`], which is the mean of the winning slice.
+    /// Named for its scope because the two were printed side by side under
+    /// labels that implied they were the same quantity.
+    pub sample_mean_all_rows: f64,
+    /// Sample standard deviation over the same all-rows sample as
+    /// [`TtestReport::sample_mean_all_rows`].
+    pub sample_std_all_rows: f64,
     /// Baseline μ₀ for comparison.
     pub baseline_mu0: f64,
     /// Significance level used (pre-registered α = 0.01).
@@ -108,7 +136,7 @@ pub struct TtestReport {
     pub passed: bool,
 }
 
-/// Pre-registered baseline BPB for Welch's t-test.
+/// Pre-registered baseline BPB for the one-sample t-test.
 /// This is the null hypothesis mean μ₀, and it is the value actually used by
 /// [`stat_strength`], printed by `ledger_check`, and reported in
 /// [`TtestReport::baseline_mu0`].  Those three used to disagree.
@@ -133,16 +161,20 @@ const TTEST_MAX_PASSING_MEAN: f64 = TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN;
 const _: () = assert!((TTEST_MAX_PASSING_MEAN - BPB_VICTORY_TARGET).abs() < 1e-12);
 const _: () = assert!(TTEST_MAX_PASSING_MEAN < PUBLISHED_BPB_FLOOR as f64);
 
-/// Welch's two-sample t-test for IGLA victory gate.
+/// One-sample t-test against the fixed baseline mu0 for the IGLA victory gate.
 ///
 /// Pre-registered analysis (locked before data collection):
-/// - Test: One-tailed Welch t-test (lower-than-baseline)
+/// - Test: One-tailed one-sample t-test against mu0 (lower-than-baseline)
 /// - α = 0.01
 /// - Baseline μ₀ = 1.55
-/// - n = 3 distinct seeds (VICTORY_SEED_TARGET)
+/// - n ≥ 3 rows (VICTORY_SEED_TARGET is the MINIMUM, not the sample size)
 ///
 /// Returns `Ok(TtestReport)` if the sample distribution is statistically
 /// significantly below the baseline at α = 0.01.
+///
+/// The sample is EVERY row passed in, not the winning slice
+/// [`check_victory`] selects — see [`TtestReport::sample_mean_all_rows`] for
+/// why that scope is documented rather than changed.
 ///
 /// # Errors
 ///
@@ -151,13 +183,15 @@ const _: () = assert!(TTEST_MAX_PASSING_MEAN < PUBLISHED_BPB_FLOOR as f64);
 /// - `VictoryError::TtestFailed` if p ≥ α, or t ≥ 0, or the sample mean misses
 ///   the pre-registered effect-size floor
 ///   (`mean > TTEST_BASELINE_MU0 - TTEST_EFFECT_SIZE_MIN`)
+/// - `VictoryError::UnevaluableTailProbability` if the Student-t lower tail
+///   cannot be computed at the resulting `(t, df)`
 ///
 /// # Formula
 ///
-/// For n=3 samples against known baseline μ₀:
+/// For n samples against the known baseline μ₀:
 /// ```text
-/// t = (x̄ - μ₀) / (s / √n)
-/// df = n - 1 = 2
+/// t  = (x̄ - μ₀) / (s / √n)
+/// df = n - 1            // n - 1, for ANY n; it is 2 only when n = 3
 /// ```
 ///
 /// where x̄ is sample mean, s is sample std deviation.
@@ -217,22 +251,20 @@ pub fn stat_strength_against(
     // arithmetic, not a claim about BPB.
     let noise_floor = sample_mean.abs() * f64::EPSILON * n as f64;
     if !(sample_std > noise_floor) {
-        return Err(VictoryError::DegenerateSample {
-            std: sample_std,
-            n,
-        });
+        return Err(VictoryError::DegenerateSample { std: sample_std, n });
     }
 
     // t-statistic: (x̄ - μ₀) / (s / √n)
     let se = sample_std / (n as f64).sqrt();
     let t_statistic = (sample_mean - baseline_mu0) / se;
 
-    // Degrees of freedom for one-sample t-test
+    // Degrees of freedom for the one-sample t-test: df = n - 1.
     let df = (n - 1) as f64;
 
-    // One-tailed p-value using approximation for t-distribution
-    // For df=2, we use the exact t-distribution CDF
-    let p_value = t_cdf_lower_tail(t_statistic, df);
+    // One-tailed (lower) p-value.  `None` is a refusal, not a p-value — see
+    // `VictoryError::UnevaluableTailProbability`.
+    let p_value = t_cdf_lower_tail(t_statistic, df)
+        .ok_or(VictoryError::UnevaluableTailProbability { t_statistic, df })?;
 
     // Test passes if p < α AND t < 0 (mean below baseline) AND the
     // pre-registered effect-size floor is met.
@@ -252,62 +284,43 @@ pub fn stat_strength_against(
         t_statistic,
         df,
         p_value,
-        sample_mean,
-        sample_std,
+        sample_mean_all_rows: sample_mean,
+        sample_std_all_rows: sample_std,
         baseline_mu0,
         alpha: TTEST_ALPHA,
         passed,
     })
 }
 
-/// Approximate lower-tail CDF of t-distribution P(T ≤ t) for given df.
+/// Lower-tail CDF of the Student-t distribution, `P(T <= t)` at `df` degrees
+/// of freedom, or `None` when the tail is not evaluable at this `(t, df)`.
 ///
-/// Uses Abramowitz & Stegun 26.7.1 approximation for the incomplete beta
-/// function. For df=2 (our n=3 case), this is exact.
-fn t_cdf_lower_tail(t: f64, df: f64) -> f64 {
-    // For df=2, we have a closed form using the arctangent
-    if (df - 2.0).abs() < f64::EPSILON {
-        // Exact formula for df=2: 0.5 + t / (2 * sqrt(2 + t²))
-        let denom = 2.0 * (2.0 + t * t).sqrt();
-        if t < 0.0 {
-            0.5 - t.abs() / denom
-        } else {
-            0.5 + t / denom
-        }
-    } else {
-        // Fallback approximation for other df values
-        // Using the regularized incomplete beta function approximation
-        let x = df / (df + t * t);
-        let a = df / 2.0;
-        let b = 0.5;
-
-        // Simple approximation for beta regularized
-        if t < 0.0 {
-            0.5 * incomplete_beta(x, a, b)
-        } else {
-            1.0 - 0.5 * incomplete_beta(x, a, b)
-        }
-    }
-}
-
-/// Approximation of the incomplete beta function I_x(a, b).
-/// Uses a continued fraction expansion (Lentz's method).
-fn incomplete_beta(x: f64, a: f64, b: f64) -> f64 {
-    // Simple approximation for our use case (a > 0, b = 0.5)
-    // For df=2, a=1, b=0.5: I_x(1, 0.5) = sqrt(x)
-    if (a - 1.0).abs() < f64::EPSILON && (b - 0.5).abs() < f64::EPSILON {
-        x.sqrt()
-    } else {
-        // Fallback: power series approximation
-        let k = 20;
-        let mut sum = 0.0;
-        let mut term = 1.0;
-        for i in 0..k {
-            sum += term;
-            term *= x * (a + i as f64) / ((i as f64 + 1.0) * (a + b + i as f64));
-        }
-        sum * x.powf(a) * (1.0 - x).powf(b) / a
-    }
+/// The tail is half of the two-sided tail, and the two-sided tail is computed
+/// by [`crate::multi_seed::two_sided_p_from_t`] — the crate's single Student-t
+/// implementation (regularized incomplete beta via a Lentz continued fraction,
+/// with the `1/B(a, b)` normalization). Every `df` goes through that one path,
+/// including `df == 2`: a closed form kept as "the correct branch" for one
+/// special case leaves the branch every other sample takes unexercised, which
+/// is exactly how the bug below survived.
+///
+/// ## What this replaced (2026-08-05)
+///
+/// The previous implementation special-cased `df == 2` with the exact
+/// arctangent-free closed form and sent every other `df` to a local
+/// `incomplete_beta` that omitted the `1/B(a, b)` factor. The consequence was
+/// not a loss of precision but an inverted verdict: the reported `p` SHRANK as
+/// the sample grew, and tended to 0 as `t -> 0`, so the gate was most
+/// "significant" exactly when the measured effect was smallest. Measured
+/// against the true lower tail: `df=6, t=-0.05` gave 0.00810 for a true
+/// 0.48087; `df=20, t=-0.50` gave 0.01259 for a true 0.31127. It also rejected
+/// genuine effects (`df=4, t=-4.0605`, true `p = 0.00767`). Since `df = n - 1`,
+/// that branch covered every sample except exactly `n = 3` — and every t-test
+/// test in this file built exactly three `SeedResult`s, so it had no coverage
+/// at all. See `tests/victory_tail_probability.rs`.
+pub fn t_cdf_lower_tail(t: f64, df: f64) -> Option<f64> {
+    let two_sided = crate::multi_seed::two_sided_p_from_t(t.abs(), df)?;
+    let half = two_sided / 2.0;
+    Some(if t < 0.0 { half } else { 1.0 - half })
 }
 
 // ----------------------------------------------------------------------
@@ -349,12 +362,16 @@ pub struct SeedResult {
 /// Passing report — only constructible by [`check_victory`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct VictoryReport {
-    /// The distinct seeds that passed the gate.  Always
-    /// `VICTORY_SEED_TARGET` long, sorted ascending.
+    /// The winning slice: the `VICTORY_SEED_TARGET` passing seeds with the
+    /// LOWEST BPB (ties broken by seed id), listed sorted ascending by seed for
+    /// display.  Always `VICTORY_SEED_TARGET` long.
     pub winning_seeds: Vec<u64>,
-    /// Lowest BPB among the winning seeds.
+    /// Lowest BPB among [`VictoryReport::winning_seeds`] — and, because the
+    /// slice is the lowest-BPB one, the lowest BPB of any passing row.
     pub min_bpb: f64,
-    /// Arithmetic mean of the winning seeds' BPBs.
+    /// Arithmetic mean of the BPBs of [`VictoryReport::winning_seeds`].  This
+    /// is the mean of the winning slice, NOT of every row handed to the gate;
+    /// for the latter see [`TtestReport::sample_mean_all_rows`].
     pub mean_bpb: f64,
 }
 
@@ -383,7 +400,7 @@ pub enum VictoryError {
     /// `bpb` is non-finite (NaN / ±∞).  Defensive guard against numeric
     /// pipeline corruption.
     NonFiniteBpb { seed: u64, bpb: f64 },
-    /// Welch's t-test failed: p ≥ α, or t ≥ 0 (mean not below baseline), or
+    /// The one-sample t-test failed: p ≥ α, or t ≥ 0 (mean not below baseline), or
     /// the sample mean missed the pre-registered effect-size floor
     /// (`mean > μ₀ − TTEST_EFFECT_SIZE_MIN`).
     /// Pre-registered analysis: α = 0.01, baseline μ₀ = 1.55, ΔBPB ≥ 0.05.
@@ -399,6 +416,12 @@ pub enum VictoryError {
     /// is defined on it — the standard error is zero to within the
     /// resolution of the arithmetic.
     DegenerateSample { std: f64, n: usize },
+    /// The Student-t lower tail could not be evaluated at this `(t, df)` —
+    /// non-finite inputs, or a continued fraction that exhausted its iteration
+    /// budget without converging.  A p-value that could not be computed is not
+    /// a large p-value and not a small one, so the gate returns the refusal
+    /// instead of a number.  See [`t_cdf_lower_tail`].
+    UnevaluableTailProbability { t_statistic: f64, df: f64 },
 }
 
 // ----------------------------------------------------------------------
@@ -480,18 +503,33 @@ pub fn check_victory(results: &[SeedResult]) -> Result<VictoryReport, VictoryErr
         });
     }
 
-    // 4. assemble the report
-    let mut winning_seeds: Vec<u64> = passing.iter().map(|r| r.seed).collect();
-    winning_seeds.sort_unstable();
-    winning_seeds.truncate(VICTORY_SEED_TARGET as usize);
+    // 4. assemble the report.
+    //
+    // SELECT ONCE.  There used to be two independent selections over `passing`:
+    // the seed list was sorted by SEED ID and then truncated, while the BPB
+    // statistics were taken from the first `VICTORY_SEED_TARGET` rows in FILE
+    // ORDER.  With more than `VICTORY_SEED_TARGET` passing rows those are
+    // different sets, so `min_bpb` and `mean_bpb` described seeds that were not
+    // the ones printed next to them — and `min_bpb`, being the minimum of an
+    // arbitrary three of the passing rows, was not in general the minimum of
+    // anything the report named.
+    //
+    // The winning slice is now the `VICTORY_SEED_TARGET` LOWEST BPBs, chosen
+    // once; every field is derived from that one slice.  Ties in BPB are broken
+    // by seed id so the selection does not depend on the order the rows arrived
+    // in (`admit_seed_ordering_invariant`).  `total_cmp` rather than
+    // `partial_cmp`: all BPBs are known finite by step 2, and a total order
+    // needs no unwrap.
+    let mut winners: Vec<&SeedResult> = passing;
+    winners.sort_by(|a, b| a.bpb.total_cmp(&b.bpb).then(a.seed.cmp(&b.seed)));
+    winners.truncate(VICTORY_SEED_TARGET as usize);
 
-    let bpbs: Vec<f64> = passing
-        .iter()
-        .take(VICTORY_SEED_TARGET as usize)
-        .map(|r| r.bpb)
-        .collect();
-    let min_bpb = bpbs.iter().copied().fold(f64::INFINITY, f64::min);
-    let mean_bpb = bpbs.iter().sum::<f64>() / bpbs.len() as f64;
+    let min_bpb = winners.iter().map(|r| r.bpb).fold(f64::INFINITY, f64::min);
+    let mean_bpb = winners.iter().map(|r| r.bpb).sum::<f64>() / winners.len() as f64;
+
+    // Sorted for display only, AFTER the slice is fixed.
+    let mut winning_seeds: Vec<u64> = winners.iter().map(|r| r.seed).collect();
+    winning_seeds.sort_unstable();
 
     Ok(VictoryReport {
         winning_seeds,
@@ -695,10 +733,10 @@ mod tests {
         assert!((BPB_VICTORY_TARGET - 1.5).abs() < f64::EPSILON);
     }
 
-    /// Falsification 7: Welch t-test rejects when p-value > α.
+    /// Falsification 7: the t-test rejects when p-value > α.
     #[test]
     fn ttest_rejects_when_p_value_above_alpha() {
-        // Pre-registered analysis: Welch's t-test, alpha = 0.01
+        // Pre-registered analysis: one-sample t-test vs mu0, alpha = 0.01
         // Three seeds ABOVE baseline mu0 = 1.55 — t > 0, p > 0.01, gate
         // refuses.  (The values must differ: three identical readings are a
         // DegenerateSample, not a t-test input — see
@@ -738,7 +776,7 @@ mod tests {
         }
     }
 
-    /// Falsification 8: Welch t-test passes when clearly below baseline.
+    /// Falsification 8: the t-test passes when clearly below baseline.
     #[test]
     fn ttest_passes_when_distribution_clearly_below_baseline() {
         let r = vec![
@@ -925,7 +963,7 @@ mod tests {
     fn tight_but_real_spread_is_not_degenerate() {
         let r = vec![mk(1, 1.400), mk(2, 1.405), mk(3, 1.410)];
         let report = stat_strength(&r).expect("a real spread must reach the t-test");
-        assert!(report.sample_std > 0.004);
+        assert!(report.sample_std_all_rows > 0.004);
     }
 
     /// Falsification: the effect-size floor is enforced, not merely declared.

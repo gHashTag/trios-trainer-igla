@@ -108,13 +108,64 @@ the last commit, not the source that ran. `source_sha256` pins the source that
 ran, but it is recorded by the trainer and never re-derived by the verifier, so
 it is an attestation, not a proof.
 
-This is not a property of one record. **Of the 51 sidecars under `checkpoints/`,
-47 record `git_dirty: true`, 4 record `null`, and none records `false`** -- so
-by this repository's own definition of L3 no measurement here had ever been
-produced from a tree a counterparty could obtain.
-[`docs/CLEAN-TREE-PROVENANCE.md`](docs/CLEAN-TREE-PROVENANCE.md) closes that
-gap with a procedure that needs no commit, and states plainly what the resulting
-artifact does and does not license.
+This is not a property of one record. The census below is the **only**
+`git_dirty` census in this document, it covers **both** artifact directories,
+and it is meant to be re-run rather than quoted:
+
+```bash
+python3 -c "
+import json,glob,collections
+for root in ('checkpoints','evidence'):
+    c=collections.Counter()
+    for p in glob.glob(root+'/**/*.json',recursive=True):
+        try: d=json.load(open(p))
+        except Exception: continue
+        c[str(d.get('git_dirty','ABSENT'))]+=1
+    print(root, sum(c.values()), dict(c))"
+```
+
+Output on 2026-08-06:
+
+```
+checkpoints 158 {'True': 154, 'ABSENT': 4}
+evidence 15 {'True': 9, 'ABSENT': 2, 'False': 1, 'None': 3}
+```
+
+Read it with the tracking status attached, because that is the whole point.
+**`/checkpoints/` is gitignored in its entirety** (`.gitignore:13`;
+`git check-ignore` matches all 158 of those files, the verification leftover
+`checkpoints/r6-verify/2000.json` among them), so the **tracked figure for
+`checkpoints/` is zero** -- not one of those 158 records reaches a fresh clone.
+Within that directory the count of `git_dirty: false` is likewise zero, which is
+the finding: every run performed in this working tree is by construction a run
+on a dirty tree, so by this repository's own definition of L3 no measurement
+made *here* had been produced from a tree a counterparty could obtain.
+
+**Exactly one record in the tree says `false`, and it is the stronger artifact,
+not an exception to be filed away.**
+`evidence/xarch-run-30767491098/12000.json` records `git_dirty: false` at
+`git_sha 3c1f751`, and it is tracked at `HEAD` -- 8 of the 15 `evidence/`
+sidecars are (4 `true`, 3 `null`, 1 `false`); the remaining 7 are staged or
+untracked and are in no clone. It was written on a GitHub-hosted runner, where
+`actions/checkout` yields a clean tree by construction, by
+`.github/workflows/cross-arch-repro.yml`. So the honest ordering is the reverse
+of the one this section used to imply: **the x86_64 CI run of 2026-08-02 was
+already produced from a clean checkout at `3c1f751`, on a GitHub-hosted runner a
+stranger can re-run on their own fork** -- a day before, and on stronger footing
+than, the local `/tmp` clone procedure of
+[`docs/CLEAN-TREE-PROVENANCE.md`](docs/CLEAN-TREE-PROVENANCE.md), which is
+scoped to this machine. What the local procedure adds is that the clean-tree
+property is reachable here too; what it does not add is public checkability.
+
+That same record also carries the single cleanest line of divergence evidence in
+the repository. Both arms of the headline cross-architecture pair record the
+**identical** source digest
+`source_sha256 = 19aa22fb7cd187774b71cbde7cb89b664aff7260b57f55afd865dd447707108b`
+-- x86_64 Linux (`evidence/xarch-run-30767491098/12000.json`, checkpoint
+`bb14ab18...`) and aarch64 macOS (`evidence/xarch-aarch64-reference/12000.json`,
+checkpoint `8a86fe69...`), both 852 272 bytes. One source tree, two
+architectures, two different checkpoints: whatever the divergence is, it is not
+attributable to the source.
 
 This is the record the repository's own verifier grades. Re-derived from it
 after the run (record timestamp `2026-08-02T23:58:45Z`), all 12 000 steps
@@ -465,28 +516,38 @@ there to be right or wrong about.
 git clone https://github.com/gHashTag/trios-trainer-igla.git
 cd trios-trainer-igla
 
-# Download data, then split it BYTE-DISJOINT: train is everything but the last
-# 100 KB, val is that last 100 KB. Do not use `head -c 100000 train > val` --
-# that makes val a prefix of train, which is the leak that tainted the
-# 2026-04-30 ledger (#60). The trainer now refuses such a split at startup.
+# The corpus is IN GIT. `git clone` above already delivered
+# data/tiny_shakespeare.txt (1015394 B) and data/tiny_shakespeare_val.txt
+# (100000 B), and the tracked copy is the normative one -- every BPB in this repo
+# is measured against those exact bytes. The download below is a FALLBACK for a
+# tree that arrived without its git objects (tarball, pruned Docker context).
 #
-# The corpus is pinned by checksum: every BPB in this repo is measured against
-# these exact bytes. train ++ val reconstructs the canonical corpus byte for
-# byte (sha256 86c4e6aa..., 1115394 bytes).
+# The split is BYTE-DISJOINT: train is everything but the last 100 KB, val is
+# that last 100 KB. Do not use `head -c 100000 train > val` -- that makes val a
+# prefix of train, which is the leak that tainted the 2026-04-30 ledger (#60).
+# The trainer now refuses such a split at startup. train ++ val reconstructs the
+# canonical corpus byte for byte (sha256 86c4e6aa..., 1115394 bytes).
 mkdir -p data
-curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
-    > data/full.txt
-shasum -a 256 -c - <<'EOF'
+if [ ! -s data/tiny_shakespeare.txt ] || [ ! -s data/tiny_shakespeare_val.txt ]; then
+  curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+      > data/full.txt
+  shasum -a 256 -c - <<'EOF'
 86c4e6aa9db7c042ec79f339dcb96d42b0075e16b8fc2e86bf0ca57e2dc565ed  data/full.txt
 EOF
-SIZE=$(wc -c < data/full.txt)
-head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
-tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+  SIZE=$(wc -c < data/full.txt)
+  head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+  tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+  rm data/full.txt
+fi
+
+# Verify UNCONDITIONALLY. A tracked file that has drifted must fail exactly like
+# a bad download; skipping the check on the clone path would make the tracked
+# copy the one copy nobody ever checks.
 shasum -a 256 -c - <<'EOF'
 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d  data/tiny_shakespeare.txt
 2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502  data/tiny_shakespeare_val.txt
 EOF
-rm data/full.txt
+cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | shasum -a 256   # 86c4e6aa...
 
 # Build just the trainer this quickstart uses. (`cargo build --release` with no
 # --bin also builds the experimental binaries, which are not part of this path.)
@@ -739,17 +800,48 @@ The honest position, stated plainly:
   identical the band is the unpaired `+/- 0.13` bpb at `k = 2`. See
   [`docs/EVAL-UNCERTAINTY.md`](docs/EVAL-UNCERTAINTY.md) section 4a, and
   `docs/CROSS-ARCH-DIVERGENCE.md` for the reminder that the same pair of
-  checkpoints differs in 43.70% of its parameters.
-- **Verified, and new:** a checkpoint produced from a **named source tree**.
-  Of the 51 sidecars under `checkpoints/`, 47 record `git_dirty: true`, 4
-  record `null` and none records `false`, so intra-laboratory L3 had never
-  actually been demonstrated here. A throwaway clone parked at `3c1f751` with
+  checkpoints differs in 43.70% of its parameters. **Two definitions of
+  "differ" are in play and both are published, so read the figure with its
+  definition attached:** 93,071 of 212,992 parameters (43.70%) differ *in
+  value*, and a further 2,073 differ *bitwise* only in the sign of zero and are
+  numerically equal. `43.70%` is the conservative of the two and is the figure
+  quoted throughout this repository; the reconciliation and the full census are
+  in
+  [`docs/CANONICAL-SERIALIZATION.md`](docs/CANONICAL-SERIALIZATION.md).
+- **What a reader can check today, stated in the reader's favour rather than
+  ours.** The *training run* is publicly re-runnable: the workflow above is
+  `.github/workflows/cross-arch-repro.yml`, and a stranger can run it on their
+  own fork. The *artifacts* are not symmetrically available. The arm that
+  **failed** -- the x86_64 CI checkpoint `bb14ab18...` -- is at HEAD under
+  [`evidence/xarch-run-30767491098/`](evidence/xarch-run-30767491098/) and can
+  be re-hashed from a fresh clone. The arm that **passed** -- the aarch64 macOS
+  reference `8a86fe69...`, the side `ckpt_replay` grades `VERIFIED` -- is not:
+  `checkpoints/` is gitignored (`git ls-tree -r HEAD checkpoints` returns
+  nothing), and its verbatim copy under `evidence/xarch-aarch64-reference/` is
+  staged in the author's index and is in **no clone**. So, plainly: **a reader
+  can today check the arm that failed and cannot check the arm that passed.**
+  The builder's side is weaker still -- no third-party rebuild has matched the
+  trainer binary, so `trainer.sha256` is reproducible on one machine only. Do
+  not describe this comparison as end-to-end publicly checkable until that
+  evidence directory is committed; only its *failing* half is.
+- **Verified, and new:** a checkpoint produced **on this machine** from a
+  **named source tree**. Intra-laboratory L3 had never actually been
+  demonstrated here -- see the single tree-wide `git_dirty` census above, which
+  is the only one in this document. A throwaway clone parked at `3c1f751` with
   an empty `git status --porcelain` now yields a record whose commit and tree
-  agree, reproduced byte-identically twice
-  (`7e567530acd2d265a08832dd845ac2d89945fee810f06bc428dbe63ef6774ec8`). It is a
-  2 000-step run from a commit that predates the current honesty fixes, so it
-  demonstrates provenance discipline and is **not** a headline record --
-  see [`docs/CLEAN-TREE-PROVENANCE.md`](docs/CLEAN-TREE-PROVENANCE.md).
+  agree
+  (`7e567530acd2d265a08832dd845ac2d89945fee810f06bc428dbe63ef6774ec8`). It was
+  reproduced byte-identically three times, and -- after `/tmp` was reaped
+  between sessions -- from a **second, independently created clone two days
+  later**, whose `cargo build --release --locked` also produced a
+  byte-identical trainer (`bbafbe51...`): on this host the chain
+  *commit -> source digest -> binary -> checkpoint* reproduces end to end. It
+  is a 2 000-step run from a commit that predates the current honesty fixes, so
+  it demonstrates provenance discipline and is **not** a headline record. Nor is
+  it the repository's first clean-tree artifact: the x86_64 CI record of
+  2026-08-02 was already `git_dirty: false` at the same commit, on a runner a
+  stranger can re-run. See
+  [`docs/CLEAN-TREE-PROVENANCE.md`](docs/CLEAN-TREE-PROVENANCE.md).
 - **Verified:** the headline artifact re-derives from its own record on the
   platform it declares -- `ckpt_replay` returns `VERIFIED on macos/aarch64`,
   exit 0, after re-executing all 12 000 steps. What that attests is an

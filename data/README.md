@@ -27,10 +27,97 @@ shasum -a 256 data/*
 | `tiny_shakespeare_test.txt` | 100000 | `00365e8aa883ffe50d954234fe810d9b2413450c944a67f0a621d433464e9603` | `tiny_shakespeare.txt[915394, 1015394)`. Held-out test split, read once. | YES - and only once, see below. |
 | `tiny_shakespeare_val.txt` | 100000 | `2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502` | TinyShakespeare validation split, byte-disjoint from the train split above. | YES. |
 
-Two of these files are committed in git despite `.gitignore: /data/*` - an
-ignore rule does not untrack a file added before it. `git ls-files data/` lists
-`fineweb_train.bin` and `pangram_fixture_160b.bin`; the rest of `data/` really
-is untracked. See the header of `data/MANIFEST.sha256`.
+Four of these files are committed in git. Two of them - `fineweb_train.bin` and
+`pangram_fixture_160b.bin` - are committed despite `.gitignore: /data/*`, because
+an ignore rule does not untrack a file added before it. The other two -
+`tiny_shakespeare.txt` and `tiny_shakespeare_val.txt` - are tracked on purpose,
+by explicit `!` negations added on 2026-08-05; see the next section. The rest of
+`data/` (`fineweb_train_duplicate.bin`, `tiny_shakespeare_train_core.txt`,
+`tiny_shakespeare_test.txt`) is still untracked and is either a known-defective
+fixture or a recut derivable from the tracked bytes. `git ls-files data/` is the
+authority; the header of `data/MANIFEST.sha256` predates the 2026-08-05 change
+and still describes only the first two.
+
+## The tracked copy is NORMATIVE
+
+`data/tiny_shakespeare.txt` and `data/tiny_shakespeare_val.txt` are **in git**.
+The bytes delivered by `git clone` are the normative ones: they are what every
+BPB, every checkpoint SHA-256 and every ledger row in this repository was
+measured against, and they are what a re-check must be run against. Their blobs
+in the index hash to the two values in the manifest above, and concatenated in
+the order train-then-val they hash to `86c4e6aa...` over 1115394 bytes.
+
+The download recipe in `README.md` is now a **FALLBACK**, for environments that
+have the source tree without the git objects (a tarball export, a Docker build
+context that excluded `data/`, a partial checkout). It is no longer the primary
+way to obtain the corpus, and CI uses it only when the tracked file is absent.
+
+Why 1.1 MB is worth carrying in git: a checksum detects **substitution** but it
+cannot detect **deletion**. If the upstream path moves or disappears,
+`MANIFEST.sha256` can still tell an auditor that what they are holding is wrong,
+but it cannot tell them what the right bytes were, and a fresh clone can then run
+none of the documented verification commands. A conformity dossier has to stay
+re-checkable for as long as the certificate it supports is valid, which is longer
+than the guaranteed lifetime of a branch pointer on someone else's host. A hash
+whose preimage nobody holds is a receipt, not an archival record.
+
+### Provenance of these exact bytes
+
+Upstream (a mutable branch pointer, not a commit SHA - stated as the limitation
+it is):
+
+```
+https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt
+```
+
+That single file is the canonical 1115394-byte corpus, `86c4e6aa...`. The pair in
+this repository is a head/tail cut of it:
+
+```
+SIZE=$(wc -c < input.txt)                 # 1115394
+head -c $((SIZE - 100000)) input.txt > data/tiny_shakespeare.txt   # 1015394 bytes
+tail -c 100000            input.txt > data/tiny_shakespeare_val.txt #  100000 bytes
+```
+
+head/tail and not `head -c 100000 train > val`: the latter makes val a prefix of
+train, which is the leaking split that tainted the 2026-04-30 ledger. The
+concatenation hash above is the checkable proof that this pair is a partition of
+the upstream file - disjoint, complete, nothing added.
+
+### What a hash does and does not attest
+
+A SHA-256 attests **byte identity, and nothing else**. It says that two parties
+hold the same bytes. It does not attest that those bytes were lawfully obtained,
+that they may be redistributed, that they are what the upstream author intended,
+or that they are fit for any particular measurement. Fitness is a separate
+judgement, made in the table above (`fineweb_train_duplicate.bin` hashes fine and
+is 100% overlapped with train). Legality is a separate axis again, and it is not
+decidable by any check in this repository.
+
+### Rights status (partly UNVERIFIED)
+
+Recorded here because `docs/REPRODUCIBILITY-GRADING.md` names the absence of a
+rights block in this file as an open gap. This section narrows that gap for the
+TinyShakespeare pair only; it says nothing about `fineweb_train.bin`, whose
+rights status remains unrecorded.
+
+- **Underlying text.** Plays of William Shakespeare (d. 1616). The works
+  themselves are long out of copyright in every jurisdiction relevant here.
+  *Which* transcription or edition upstream used is **UNVERIFIED** - the bytes
+  carry no edition statement, no front matter and no copyright notice (the file
+  opens directly on `First Citizen:`), and a modern typographic edition can carry
+  its own thin rights claim. Nothing in this repository establishes which one
+  this is.
+- **Upstream repository licence.** `karpathy/char-rnn` **UNVERIFIED**. No copy of
+  its licence is vendored here, and establishing it requires a network call that
+  this record deliberately does not depend on. If the rights status of the
+  redistribution matters to a reader, they must check the upstream repository
+  themselves; do not read the presence of these bytes in git as a licence claim.
+- **This repository's own LICENSE (MIT)** covers the code in this repository. It
+  is not a grant over third-party corpus bytes and must not be read as one.
+
+Anything above marked UNVERIFIED is unverified as of 2026-08-05 and should be
+treated as an open item, not as an assurance.
 
 ## fineweb_train_duplicate.bin - was `fineweb_heldout.bin`
 
@@ -88,8 +175,11 @@ cat data/tiny_shakespeare.txt data/tiny_shakespeare_val.txt | shasum -a 256
 ```
 
 This is the pair behind the honest calibration figures (7.00 at init, ~3.31 at
-step 1000, ~2.61 raw val BPB at step 12000; h=384, 2 attention layers, ~196.6K
-parameters). Earlier documentation described the val split as
+step 1000, ~2.61 raw val BPB at step 12000; h=384, two allocated attention
+blocks, one effective; 196,608 effective parameters of 212,992 serialized --
+the layer-2 block is allocated and provably frozen, see the test
+`run_single_emits_a_loadable_artifact_and_freezes_layer_two` in
+`src/train_loop.rs`). Earlier documentation described the val split as
 `head -c 100000 train > val`, which would have been a leaky split; that is not
 how these two files were produced, and the description has been corrected.
 

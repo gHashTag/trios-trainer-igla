@@ -1,4 +1,4 @@
-# Cross-architecture reproducibility check.
+# Cross-platform reproducibility check.
 #
 # The reproducibility claim in README.md was measured on ONE machine
 # (aarch64 macOS). Determinism on a single host is the easy case and is not
@@ -9,7 +9,38 @@
 # Two variables are deliberately held fixed so a mismatch is interpretable:
 #   - the compiler, by rust-toolchain.toml (1.96.0)
 #   - the dependency graph, by `--locked`
-# What differs is CPU architecture and OS.
+#
+# WHAT THIS JOB VARIES, AND WHY IT CANNOT ATTRIBUTE ITS OWN RESULT.
+#
+# It varies the instruction set AND the operating system JOINTLY, and with the
+# OS its libm and its libc: aarch64 macOS against x86_64 Linux with glibc 2.39.
+# That is two changes in one step. An earlier version of this header named the
+# ISA and the OS and stopped there, as though naming what differs were the same
+# as controlling it - two uncontrolled variables are two too many, however
+# accurately they are listed. Run 30767491098
+# established THAT the artifacts disagree; nothing in this workflow can say
+# WHICH of the two changes produced the disagreement, and this file must not be
+# read as if it could. Do not describe its result as a CPU-architecture effect.
+#
+# THE SINGLE-VARIABLE EXPERIMENT LIVES OUTSIDE CI, and has been run.
+# `scripts/local_isa_probe.py` builds `aarch64-apple-darwin` and
+# `x86_64-apple-darwin` from one working tree with one pinned compiler and runs
+# both on one macOS host, the x86_64 arm under Rosetta 2. OS, kernel, libm
+# vendor and compiler are held fixed and only the ISA target moves. Measured
+# 2026-08-05, n=2 per arm, the within-arm control passing on both:
+#
+#     INIT   (0.bin)  aarch64 == x86_64   4f854c82...   MATCH
+#     STEP10 (10.bin) aarch64 efef1cba... x86_64 5913542e...   MISMATCH
+#
+# So an ISA change ALONE is sufficient to move the artifact, and it moves it
+# only after gradient steps: initialisation and the seeded RNG are portable,
+# and the cause is the training arithmetic (reduction order or libm; FMA
+# contraction is excluded by disassembly - neither binary contains one). What
+# that does NOT establish is that the ISA is the only cause operating in THIS
+# job, which also changed the OS and swapped Apple's libm for glibc's. It
+# constrains the reading here; it does not replace it. Rosetta 2 is also
+# binary translation, not native x86_64 silicon. See
+# docs/DIVERGENCE-LOCALIZATION.md and evidence/xarch-local-isa/.
 #
 # "And only that" would be an overclaim without one more measurement. Until
 # 2026-08-03 this job trained EXACTLY ONCE on x86_64 and compared the result to
@@ -79,21 +110,31 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      # The corpus is not in git. Rebuild it from the canonical source and
-      # prove it is the same bytes before any number is produced.
-      - name: Fetch and split the corpus, byte-disjoint
+      # The corpus is IN GIT (data/tiny_shakespeare.txt, _val.txt), so the
+      # checkout above normally provides it and this step does nothing. The
+      # download stays as a FALLBACK for a tree that arrived without its git
+      # objects. Either way the verify step below runs unconditionally.
+      - name: Provide the corpus, byte-disjoint (tracked copy first)
         run: |
           set -euo pipefail
           mkdir -p data
-          curl -sL --retry 3 \
-            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
-            > data/full.txt
-          SIZE=$(wc -c < data/full.txt)
-          echo "downloaded $SIZE bytes"
-          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
-          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
-          rm data/full.txt
+          if [ -s data/tiny_shakespeare.txt ] && [ -s data/tiny_shakespeare_val.txt ]; then
+            echo "corpus present from the checkout; not downloading"
+          else
+            echo "corpus absent from the checkout; falling back to the upstream download"
+            curl -sL --retry 3 \
+              https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+              > data/full.txt
+            SIZE=$(wc -c < data/full.txt)
+            echo "downloaded $SIZE bytes"
+            head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+            tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+            rm data/full.txt
+          fi
 
+      # UNCONDITIONAL. A tracked file that has drifted is caught here exactly
+      # like a bad download; the check does not know which branch produced the
+      # bytes and must not.
       - name: Verify the corpus against data/MANIFEST.sha256
         run: |
           set -euo pipefail
@@ -238,17 +279,29 @@ jobs:
             echo "(rust-toolchain.toml), the same locked dependencies and the same verified"
             echo "corpus. Non-identity is measured and is not a flake."
             echo ""
-            echo "THE ATTRIBUTION IS A HYPOTHESIS, NOT A MEASUREMENT. Two variables remain"
-            echo "uncontrolled between the two artifacts - CPU architecture and OS - and a"
-            echo "single run per architecture cannot separate a between-architecture effect"
-            echo "from within-arm non-repeatability on the arm that was never repeated. The"
-            echo "control for that is the within-x86_64 repeat above (TRIOS_CANON_NAME="
-            echo "r4-docs-repro-b). Attributing this mismatch to architecture is licensed"
-            echo "ONLY if that control reported SELF-MATCH; it reported: ${SELF_REPEAT:-not run}."
+            echo "THE ATTRIBUTION IS A HYPOTHESIS, NOT A MEASUREMENT. TWO variables were"
+            echo "changed together to get here - the instruction set AND the OS, and with"
+            echo "the OS its libm and its libc. This job cannot say which of them moved the"
+            echo "bytes, and its result must not be reported as a CPU-architecture effect."
+            echo "Separately, a single run per platform cannot separate a between-platform"
+            echo "effect from within-arm non-repeatability on the arm that was never"
+            echo "repeated. The control for that is the within-x86_64 repeat above"
+            echo "(TRIOS_CANON_NAME=r4-docs-repro-b), which reported: ${SELF_REPEAT:-not run}."
             echo ""
-            echo "MOST LIKELY MECHANISM, UNCONFIRMED: floating-point contraction (FMA) or"
-            echo "reduction order in the training loop. Nothing in this job measures that;"
-            echo "the localize-divergence job is what would begin to."
+            echo "WHAT IS ALREADY KNOWN, from a single-variable experiment run off-CI:"
+            echo "scripts/local_isa_probe.py holds the OS, the libm vendor and the compiler"
+            echo "fixed and moves ONLY the ISA (x86_64-apple-darwin under Rosetta 2 on one"
+            echo "macOS host). Verdict 2026-08-05: ISA_SUFFICIENT_TO_DIVERGE - initial"
+            echo "weights are byte-identical across the ISA change and 10-step weights are"
+            echo "not - with the within-arm control passing on both arms. So an ISA change"
+            echo "alone is SUFFICIENT to produce a divergence. It is NOT the only cause:"
+            echo "the step-10 hash from native x86_64 Linux differs from the x86_64 Rosetta"
+            echo "one too, so at fixed architecture the OS and libc move the bytes as well."
+            echo "And Rosetta is not native x86_64 silicon."
+            echo ""
+            echo "MECHANISM: reduction order or libm. Floating-point contraction (FMA) is"
+            echo "excluded in the trainer's own code - neither locally built binary contains"
+            echo "a single FMA instruction. Nothing in this job measures any of it."
             echo "Record it in README.md rather than relaxing this check."
             exit 1
           fi
@@ -364,28 +417,45 @@ jobs:
   # INDEPENDENT lines below - conflating them into one pass/fail would throw
   # away the entire point of the job.
   #
-  # PRECONDITION, NOT YET MET. TRIOS_CHECKPOINT_INIT is not yet committed to
-  # src/train_loop.rs; it exists only in an uncommitted working tree. Measured
-  # 2026-08-03:
-  #
-  #     git show HEAD:src/train_loop.rs | grep -c TRIOS_CHECKPOINT_INIT  ->  0
-  #     grep -c TRIOS_CHECKPOINT_INIT src/train_loop.rs                  ->  5
-  #
-  # On a fresh checkout this job therefore fails at
-  # `test -f checkpoints/loc-divergence/0.bin` (the "Localize the divergence"
-  # step below) for a reason that has NOTHING to do with architecture: the knob
-  # does not exist in the binary that was built, so no `0.bin` is ever written.
-  # Read that failure as "not yet wired", not as a finding. Committing the knob
-  # is the precondition for this job to mean anything at all.
-  #
   # 10 steps, not 12000: this answers the localization question in ~4 minutes.
   # It does NOT replace the `repro` job and is not evidence about the documented
   # 12000-step artifact.
   #
+  # This job HAS RUN AND HAS REPORTED. A long block here used to say the
+  # opposite - an unmet precondition, a job that could not run at all - on the
+  # ground that TRIOS_CHECKPOINT_INIT existed only in an uncommitted working
+  # tree. That was true on 2026-08-03 and is false now; the knob landed in
+  # `ba272b9`. Both commands that block printed as its proof now return the
+  # opposite, re-measured 2026-08-05:
+  #
+  #     git show HEAD:src/train_loop.rs | grep -c TRIOS_CHECKPOINT_INIT   ->  5
+  #     git log --all -S TRIOS_CHECKPOINT_INIT --oneline                  -> ba272b9
+  #
+  # The block is deleted rather than annotated because it told a reader to
+  # discount this job's output as "not yet wired", and run 31004703001 produced
+  # `0.bin` on native x86_64 Linux and reported INIT MATCH / STEP10 MISMATCH.
+  # A stale caveat that turns a real measurement into a non-result is worse than
+  # no comment. The retraction is kept in full in
+  # docs/DIVERGENCE-LOCALIZATION.md, which is where this job's results are
+  # discussed; nothing is silently dropped.
+  #
+  # WHAT ELSE ANSWERS THE SAME QUESTION: `scripts/local_isa_probe.py`, which
+  # runs the identical 0-step/10-step pair locally against the working tree, on
+  # one host, varying ONLY the ISA (x86_64-apple-darwin under Rosetta 2). Its
+  # verdict as of 2026-08-05 is ISA_SUFFICIENT_TO_DIVERGE - init matches across
+  # the ISA change, step 10 does not - with the within-arm repeatability control
+  # passing on both arms. Artifacts in evidence/xarch-local-isa/.
+  #
+  # This job is worth having alongside it, because the local probe holds the OS
+  # fixed on purpose and therefore cannot see a glibc-versus-Apple libm
+  # contribution at all. That is precisely the variable this job adds - and it
+  # is a real one: the step-10 hash this job measured on native x86_64 Linux
+  # differs from the x86_64 Rosetta hash the probe measures, at the same
+  # declared architecture.
+  #
   # The aarch64 reference hashes below were measured on Apple M1 Pro, macOS
   # (Darwin arm64), rustc 1.96.0 (ac68faa20 2026-05-25), commit-clean-or-not as
-  # recorded in the sidecar. See docs/DIVERGENCE-LOCALIZATION.md. The x86_64
-  # side is NOT YET MEASURED; this job is what measures it.
+  # recorded in the sidecar. See docs/DIVERGENCE-LOCALIZATION.md.
   localize-divergence:
     runs-on: ubuntu-latest
     timeout-minutes: 9
@@ -421,19 +491,27 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Fetch and split the corpus, byte-disjoint
+      # Tracked copy first, upstream download only as a fallback; see the same
+      # step in the `repro` job above.
+      - name: Provide the corpus, byte-disjoint (tracked copy first)
         run: |
           set -euo pipefail
           mkdir -p data
-          curl -sL --retry 3 \
-            https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
-            > data/full.txt
-          SIZE=$(wc -c < data/full.txt)
-          echo "downloaded $SIZE bytes"
-          head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
-          tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
-          rm data/full.txt
+          if [ -s data/tiny_shakespeare.txt ] && [ -s data/tiny_shakespeare_val.txt ]; then
+            echo "corpus present from the checkout; not downloading"
+          else
+            echo "corpus absent from the checkout; falling back to the upstream download"
+            curl -sL --retry 3 \
+              https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
+              > data/full.txt
+            SIZE=$(wc -c < data/full.txt)
+            echo "downloaded $SIZE bytes"
+            head -c $((SIZE - 100000)) data/full.txt > data/tiny_shakespeare.txt
+            tail -c 100000            data/full.txt > data/tiny_shakespeare_val.txt
+            rm data/full.txt
+          fi
 
+      # UNCONDITIONAL, whichever branch above ran.
       - name: Verify the corpus against data/MANIFEST.sha256
         run: |
           set -euo pipefail

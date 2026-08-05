@@ -20,21 +20,12 @@ const EXIT_BAD_CORPUS: i32 = 6;
 /// Same value `cpu_train` uses.
 const EXIT_NO_MEASUREMENT: i32 = 7;
 
-/// Comparison window, in tokens, for the train/val overlap guard. Mirrors
-/// `train_loop::OVERLAP_WINDOW`.
-const OVERLAP_WINDOW: usize = 256;
-
-/// Fail the run above this fraction of val windows found verbatim in train.
-/// Mirrors `train_loop::MAX_VAL_OVERLAP_FRACTION`.
-const MAX_VAL_OVERLAP_FRACTION: f64 = 0.01;
-
-/// A val stream shorter than this cannot support a BPB anyone should quote.
-/// Mirrors `train_loop::MIN_VAL_TOKENS`.
-const MIN_VAL_TOKENS: usize = 8192;
-
 /// `evaluate` must average over at least this many chunks for the mean to mean
-/// anything. Mirrors `train_loop::MIN_EVAL_CHUNKS`.
-const MIN_EVAL_CHUNKS: usize = 8;
+/// anything. Re-exported from the library rather than copied: the overlap
+/// window, the overlap threshold and the minimum val size used to be four local
+/// constants beside a local copy of the guard, and a constant that is copied is
+/// a constant that will drift.
+use trios_trainer::train_loop::MIN_EVAL_CHUNKS;
 
 /// Default corpus. The shipped file is `data/tiny_shakespeare.txt`; the old
 /// default here spelled it without the underscore, and that file has never
@@ -172,85 +163,26 @@ fn eval_chunk_count(len: usize, seq_len: usize) -> usize {
         .count()
 }
 
-/// Local mirror of `trios_trainer::train_loop::assert_train_val_disjoint`.
+/// Refuse a split that cannot carry a held-out measurement.
 ///
-/// The library function is `pub(crate)` and `src/bin/*.rs` compile as separate
-/// crates, so it cannot be linked from here; `src/bin/cpu_train.rs` mirrors the
-/// same checks inline for the same reason. Same constants, same thresholds,
-/// same full-coverage comparison - it returns the refusal instead of panicking
-/// so the caller can exit before any result file exists.
+/// The body used to be a LOCAL COPY of
+/// `trios_trainer::train_loop::assert_train_val_disjoint`, written because that
+/// function was `pub(crate)` and `src/bin/*.rs` compile as separate crates. It
+/// is now a thin adapter: same constants, same thresholds, same full-coverage
+/// comparison, one implementation. The `step_by(256)` scan that detected an
+/// overlap with probability 1/256 lived in exactly such a copy.
 ///
-/// Three preconditions, each already violated in a live run:
-/// 1. Size: a val too short, or one yielding too few chunks, is not a held-out
-///    measurement.
-/// 2. Disjointness at full coverage on BOTH sides: every val window is looked
-///    up in the set of train windows, so the detection probability is 1.0.
-/// 3. Non-degeneracy: a periodic or heavily duplicated eval stream drives BPB
-///    toward zero honestly, which is the signature that got 179 ledger rows
-///    misfiled as leaks (#62).
+/// `seq_len` is this binary's own eval chunking, passed through so the size
+/// precondition is asked at the coverage the run will actually use.
+///
+/// Returns the refusal instead of panicking so the caller can exit before any
+/// result file exists.
 fn check_train_val_disjoint(train: &[usize], val: &[usize], seq_len: usize) -> Result<(), String> {
-    use std::collections::HashSet;
-
-    if val.len() < MIN_VAL_TOKENS {
-        return Err(format!(
-            "VAL STREAM TOO SHORT: {} tokens, minimum {}. A BPB averaged over a \
-             handful of windows is not a held-out measurement and must not be \
-             reported as one.",
-            val.len(),
-            MIN_VAL_TOKENS
-        ));
-    }
-    let chunks = eval_chunk_count(val.len(), seq_len);
-    if chunks < MIN_EVAL_CHUNKS {
-        return Err(format!(
-            "VAL STREAM YIELDS ONLY {} EVAL CHUNK(S) at seq={}, minimum {}. \
-             `evaluate` would average over too few windows for the mean to be \
-             informative.",
-            chunks, seq_len, MIN_EVAL_CHUNKS
-        ));
-    }
-    if train.len() < OVERLAP_WINDOW {
-        return Ok(()); // no train window to compare against
-    }
-
-    // Tokens are `% VOCAB` (0..=127), so the windows compare as `u8` slices:
-    // exact, and 8x cheaper to hash than `usize` windows.
-    let train_b: Vec<u8> = train.iter().map(|&t| t as u8).collect();
-    let val_b: Vec<u8> = val.iter().map(|&t| t as u8).collect();
-    let train_windows: HashSet<&[u8]> = train_b.windows(OVERLAP_WINDOW).collect();
-    let val_total = val_b.len() - OVERLAP_WINDOW + 1;
-    let hits = val_b
-        .windows(OVERLAP_WINDOW)
-        .filter(|w| train_windows.contains(*w))
-        .count();
-    let fraction = hits as f64 / val_total as f64;
-    if fraction > MAX_VAL_OVERLAP_FRACTION {
-        return Err(format!(
-            "TRAIN/VAL OVERLAP DETECTED: {:.2}% of val windows ({} of {}, window \
-             {} tokens) appear verbatim in train; threshold is {:.2}%. This is the \
-             2026-04-30 ledger leak bug (trios-trainer-igla#60). Rebuild the split \
-             byte-disjoint: head -c $((SIZE-100000)) for train, tail -c 100000 for val.",
-            fraction * 100.0,
-            hits,
-            val_total,
-            OVERLAP_WINDOW,
-            MAX_VAL_OVERLAP_FRACTION * 100.0
-        ));
-    }
-
-    let distinct: HashSet<&[usize]> = val.windows(8).collect();
-    let total = val.len().saturating_sub(7).max(1);
-    let ratio = distinct.len() as f64 / total as f64;
-    if ratio < 0.05 {
-        return Err(format!(
-            "DEGENERATE EVAL CORPUS: only {:.3}% of val 8-grams are distinct \
-             ({} of {}). BPB measured against this is not a model result.",
-            ratio * 100.0,
-            distinct.len(),
-            total
-        ));
-    }
-    Ok(())
+    trios_trainer::train_loop::check_train_val_disjoint(
+        train,
+        val,
+        eval_chunk_count(val.len(), seq_len),
+    )
 }
 
 fn softmax_cap(v: &mut [f32], softcap: f32) {
@@ -421,10 +353,13 @@ impl TrinityCpuModel {
     /// returned 0.0, which is a perfect prediction -- the best value this
     /// function can produce -- for the case where it predicted nothing at all.
     ///
-    /// `None`, not a clamp, for a NaN probability. `f32::max` returns the OTHER
-    /// operand when one side is NaN, so `logits[target].max(1e-10)` turned a
-    /// poisoned forward pass into exactly `-ln(1e-10)` = 23.0259 nats = 33.219
-    /// bpb, a finite reading indistinguishable from a measured one.
+    /// `None`, not a clamp, for a probability that is not finite and strictly
+    /// positive. `f32::max` returns the OTHER operand when one side is NaN, so
+    /// clamping `logits[target]` to a 1e-10 floor turned a poisoned forward
+    /// pass into exactly `-ln(1e-10)` = 23.0259 nats = 33.219 bpb, a finite
+    /// reading indistinguishable from a measured one - and it did the same to
+    /// a merely UNDERFLOWED probability, a finite `0.0` out of the f32 softmax
+    /// that `is_nan` and `is_finite` both accept.
     fn loss_on_seq(&self, tokens: &[usize]) -> Option<f32> {
         if tokens.len() < 3 {
             return None;
@@ -446,10 +381,9 @@ impl TrinityCpuModel {
             softmax_cap(&mut logits, LOGIT_SOFTCAP);
 
             let p = logits[target];
-            if p.is_nan() {
+            if !p.is_finite() || p <= 0.0 {
                 return None;
             }
-            let p = p.max(1e-10);
             total_loss -= p.ln();
         }
         Some(total_loss / (tokens.len() - 2) as f32)
@@ -585,7 +519,32 @@ fn cosine_lr(step: usize, max_steps: usize, base_lr: f32, warmup: usize) -> f32 
     1e-5 + (base_lr - 1e-5) * cosine
 }
 
+/// Every argument this binary reads, in the spellings its own parser reads.
+///
+/// `--seed`, `--steps` and `--lr` are matched with `starts_with("--name=")`, so
+/// only the `=` form exists for them; `--train-data` / `--val-data` go through
+/// `arg_path`, which accepts both spellings and therefore appear twice. See
+/// `trios_trainer::reject_unknown_args`.
+const KNOWN_ARGS: [&str; 7] = [
+    "seed=",
+    "steps=",
+    "lr=",
+    "train-data",
+    "train-data=",
+    "val-data",
+    "val-data=",
+];
+
 fn main() {
+    // First, before a corpus is opened: this binary feeds `--train-data` and
+    // `--val-data` into the train/val disjointness guard, so an argument name
+    // it did not recognise made the guard evaluate a different pair than the
+    // operator asked for, while the run still published a BPB with exit 0.
+    let args: Vec<String> = std::env::args().collect();
+    if let Err(reason) = trios_trainer::reject_unknown_args(&args, &KNOWN_ARGS) {
+        eprintln!("{reason}");
+        std::process::exit(i32::from(trios_trainer::EXIT_BAD_ARGS));
+    }
     // Canon #93 forbids seeds {42, 43, 44, 45} (see src/seed_canon.rs); the
     // default is a permitted one so an argument-free run is not born invalid.
     let seed = std::env::args()

@@ -33,6 +33,39 @@
 //! honey file legitimately mixes commit-SHA deposits with
 //! audit-only / cron-only deposits whose payload is the report URL.
 //!
+//! ## What the audit does NOT check (2026-08-06)
+//!
+//! It does not check integrity, and it used to say it did. The
+//! final line was `ledger integrity OK` after nothing but the
+//! schema walk above: the `sha` field is recorded, reported as
+//! `sha_present`, and never compared to anything -- not to a
+//! commit, not to the file's own contents, not to a previous
+//! audit. Nothing here can detect an edited deposit, a reordered
+//! file, or a removed one. The verdict now says `schema OK` and
+//! names what was skipped, because a green line claiming a check
+//! that never ran is worse than no check.
+//!
+//! An EMPTY ledger was the same defect in its sharpest form:
+//! zero deposits parsed cleanly, printed `total deposits: 0` and
+//! a green tick, and exited 0. A truncated, emptied or
+//! wrong-path ledger is indistinguishable from a healthy one
+//! under that rule, so it is now exit 46. Pass `--allow-empty`
+//! when an empty file is genuinely expected (a fresh checkout
+//! before the first deposit).
+//!
+//! ## Exit codes
+//!
+//! | code | meaning |
+//! |------|---------|
+//! | 0    | every line parsed against the schema above |
+//! | 40   | the file could not be read |
+//! | 41   | a line is not valid JSON |
+//! | 42   | a line is JSON but not an object |
+//! | 43   | a line is missing a hard-required key |
+//! | 44   | a hard-required key is present but empty |
+//! | 45   | `--strict` and at least one soft warning |
+//! | 46   | zero deposits, without `--allow-empty` |
+//!
 //! ## Why a separate bin (R6 audit)
 //!
 //! Auditing the honey file does **not** belong in any existing
@@ -83,7 +116,20 @@ struct Args {
     /// Treat soft warnings (non-hex sha or missing sha) as fatal.
     #[arg(long, default_value_t = false)]
     strict: bool,
+
+    /// Accept a ledger with zero deposits as a pass (exit 0 instead of
+    /// [`EXIT_EMPTY_LEDGER`]). For the fresh-checkout case, where no
+    /// deposit has been made yet.
+    #[arg(long, default_value_t = false)]
+    allow_empty: bool,
 }
+
+/// Exit code for a ledger that parsed cleanly and contained nothing.
+///
+/// Not shared with any of 40-45: those all mean "a line is wrong", and this
+/// one means "there are no lines", which is what a truncated or emptied file
+/// looks like from here.
+const EXIT_EMPTY_LEDGER: u8 = 46;
 
 /// Errors produced by the honey auditor. Distinct from any race
 /// gate error because a malformed honey deposit is a process
@@ -306,12 +352,15 @@ fn main() -> ExitCode {
         .count();
     let no_sha = deposits.iter().filter(|d| !d.sha_present).count();
     let total = deposits.len();
+    // A ledger with nothing in it is not a ledger that passed.
+    let empty_refusal = total == 0 && !args.allow_empty;
 
     if args.json {
         println!(
             "{}",
             serde_json::json!({
-                "verdict": "ok",
+                "verdict": if empty_refusal { "empty" } else { "schema_ok" },
+                "integrity_checked": false,
                 "path": path_str,
                 "total_deposits": total,
                 "non_hex_sha_count": nonhex,
@@ -335,7 +384,34 @@ fn main() -> ExitCode {
                 println!("     {:<24} {}", lane, n);
             }
         }
-        println!("✅ ledger integrity OK");
+        // Say exactly what was measured. The old line here read "ledger
+        // integrity OK" and was printed after nothing but the schema walk
+        // above: no sha is ever compared to anything, so no edit, reorder or
+        // deletion is detectable from this binary. It is also NOT printed at
+        // all on the refusal below -- a passing-looking line above a refusal
+        // is the same defect one line higher up.
+        if empty_refusal {
+            println!("NO VERDICT: 0 deposits, so there was nothing to check");
+        } else {
+            println!(
+                "schema OK: {} deposit(s) parsed (integrity NOT checked: sha is \
+                 recorded, never verified)",
+                total
+            );
+        }
+    }
+
+    if empty_refusal {
+        if !args.json {
+            eprintln!(
+                "EMPTY LEDGER: {} parsed cleanly and contains 0 deposits. A \
+                 truncated, emptied or wrong-path ledger looks exactly like \
+                 this, so it is not a pass. Re-run with --allow-empty if an \
+                 empty ledger is expected here.",
+                path_str
+            );
+        }
+        return ExitCode::from(EXIT_EMPTY_LEDGER);
     }
 
     if args.strict && (nonhex > 0 || no_sha > 0) {
@@ -355,12 +431,36 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
 
-    /// R8 falsifier: an entirely blank file is not malformed — it is
+    /// R8 falsifier: an entirely blank file is not MALFORMED -- it is
     /// just empty. Audit returns Ok(empty vec).
+    ///
+    /// This is a statement about the parser, and it is unchanged. It is
+    /// NOT a statement about the binary's verdict: `audit_blob("")`
+    /// returning `Ok(vec![])` used to reach a green tick and exit 0,
+    /// which made an emptied ledger indistinguishable from a healthy
+    /// one. The binary now exits [`EXIT_EMPTY_LEDGER`] on that same
+    /// input -- see `honey_audit_empty_ledger_exits_non_zero` in
+    /// `tests/ledger_write_guard.rs`, which spawns the shipped binary
+    /// because `CARGO_BIN_EXE_*` is only defined for integration tests.
     #[test]
     fn empty_blob_audits_clean() {
         let deps = audit_blob("").expect("empty blob is not an error");
         assert!(deps.is_empty());
+    }
+
+    /// The empty-ledger refusal is a property of the CLI flags, so pin
+    /// the one thing testable from here: `--allow-empty` exists and is
+    /// off by default. A default-on flag would restore the old
+    /// behaviour silently.
+    #[test]
+    fn allow_empty_defaults_to_off() {
+        let args = Args::parse_from(["honey_audit"]);
+        assert!(
+            !args.allow_empty,
+            "--allow-empty must be opt-in: an empty ledger is a refusal by default"
+        );
+        let args = Args::parse_from(["honey_audit", "--allow-empty"]);
+        assert!(args.allow_empty);
     }
 
     /// R8 falsifier: blank lines are skipped, not counted.
@@ -537,7 +637,7 @@ mod tests {
     /// against accidental collision when adding new error kinds).
     #[test]
     fn exit_codes_are_distinct() {
-        let codes = [40u8, 41, 42, 43, 44, 45];
+        let codes = [40u8, 41, 42, 43, 44, 45, EXIT_EMPTY_LEDGER];
         let mut sorted = codes.to_vec();
         sorted.sort();
         sorted.dedup();

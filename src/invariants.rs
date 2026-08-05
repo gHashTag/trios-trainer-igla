@@ -42,8 +42,11 @@ pub const BPB_CHAMPION: f64 = 2.5193;
 /// every retracted number this audit exists to remove.
 ///
 /// Derivation, from the calibration quoted in `train_loop::guard_bpb` and
-/// measured on the verified byte-disjoint tinyshakespeare split (h=384, 2
-/// attention layers, ~196.6K params, 128-symbol byte vocabulary):
+/// measured on the verified byte-disjoint tinyshakespeare split (h=384, two
+/// allocated attention blocks, one effective; 196,608 effective params of
+/// 212,992 serialized, the layer-2 block being allocated and provably frozen
+/// -- see the test `run_single_emits_a_loadable_artifact_and_freezes_layer_two`
+/// in `src/train_loop.rs`; 128-symbol byte vocabulary):
 ///
 ///   * ~7.00 at init (= log2(128), the uniform-model ceiling),
 ///   * ~3.31 at step 1000,
@@ -296,17 +299,23 @@ mod tests {
     }
     #[test]
     fn test_phi_inv3_half_is_half_of_phi_inv3() {
-        assert!((PHI_INV3_HALF - PHI_INV3 / 2.0).abs() < 1e-12,
-            "PHI_INV3_HALF must be exactly PHI_INV3/2");
+        assert!(
+            (PHI_INV3_HALF - PHI_INV3 / 2.0).abs() < 1e-12,
+            "PHI_INV3_HALF must be exactly PHI_INV3/2"
+        );
     }
     #[test]
     fn test_phi_inv3_matches_anchor() {
         let phi = (1.0 + 5.0_f64.sqrt()) / 2.0;
         let derived = 1.0 / (phi * phi * phi);
-        assert!((PHI_INV3 - derived).abs() < 1e-12,
-            "PHI_INV3 drifted from 1/φ³");
-        assert!((PHI_INV3 - 0.23607_f64).abs() < 0.001,
-            "PHI_INV3 must be ≈0.23607 (was ~0.118 in old buggy comment)");
+        assert!(
+            (PHI_INV3 - derived).abs() < 1e-12,
+            "PHI_INV3 drifted from 1/φ³"
+        );
+        assert!(
+            (PHI_INV3 - 0.23607_f64).abs() < 0.001,
+            "PHI_INV3 must be ≈0.23607 (was ~0.118 in old buggy comment)"
+        );
     }
     #[test]
     fn test_validate_config_champion() {

@@ -14,7 +14,13 @@ pub struct TrainConfig {
     pub name: String,
     /// Number of optimizer steps. Must be ≥ 4000 for a Gate-2 candidate row.
     pub steps: usize,
-    /// Random seed. Gate-2 victory needs ≥ 3 distinct seeds (43, 44, 45 by default).
+    /// Random seed. Gate-2 victory needs at least 3 distinct seeds.
+    ///
+    /// This line used to name "43, 44, 45 by default" - three of the four seeds
+    /// FORBIDDEN under Canon #93, published as the recommendation in the doc
+    /// comment of the field that carries them. `validate()` below rejects them,
+    /// so the doc contradicted the code it documented. Draw from the allowed
+    /// set: {47, 89, 123, 144}.
     pub seed: u64,
     /// Target BPB for victory check.
     pub target_bpb: f64,
@@ -139,13 +145,23 @@ impl TrainConfig {
         );
         // Canon #93. `seed_canon::parse_seed` takes NO argument: it reads only
         // the `SEED` environment variable, so it cannot check a `--seed` flag
-        // or a TOML field. Exactly one binary calls it at all -
-        // `src/bin/trios-train.rs`, and only on the `SEED` env path; every
-        // other `src/bin/*` main is unchecked by it. A config-driven run
-        // therefore reached `train_loop::run` with an unvalidated seed:
-        // `trios-train --config <path>` validates `cli.seed` and then ignores
-        // it. Enforcing here closes that bypass at the single point every
-        // config passes through, whatever route the seed arrived by.
+        // or a TOML field, and a `src/bin/*` main is subject to it only if it
+        // chooses to call it. Two of the 31 bins do, and this comment names
+        // them because "every bin enforces this" is exactly the kind of claim
+        // that stops a reviewer from checking:
+        //   * `src/bin/trios-train.rs` - on the `SEED` env path only.
+        //   * `src/bin/f2_harness.rs`  - submits each seed of its shipped set
+        //     through `SEED` before printing or running anything, so its config
+        //     header cannot publish a forbidden seed.
+        // Every other bin is unchecked by it; `src/bin/hybrid_train.rs` carries
+        // its own mirrored copy of the forbidden set, which is a second list
+        // free to drift.
+        //
+        // A config-driven run therefore reached `train_loop::run` with an
+        // unvalidated seed: `trios-train --config <path>` validates `cli.seed`
+        // and then ignores it. Enforcing here closes that bypass at the single
+        // point every config passes through, whatever route the seed arrived
+        // by.
         anyhow::ensure!(
             !FORBIDDEN_SEEDS.contains(&self.seed),
             "seed {} forbidden under Canon #93 (allowed: 47, 89, 123, 144). \

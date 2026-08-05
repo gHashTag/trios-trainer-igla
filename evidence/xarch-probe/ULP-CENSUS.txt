@@ -1,0 +1,8 @@
+ULP-CENSUS-TABLE 1
+derived_from ulp-arm64.txt ulp-x86_64.txt
+columns function differing of share max_ulp first_index arm64_bits x86_64_bits
+exp 30 4096 0.732% 1 279 0x39cb81f8 0x39cb81f9
+ln 0 4096 0.000% 0 - - -
+sqrt 0 4096 0.000% 0 - - -
+powf 25 4096 0.610% 1 128 0x4058d9b2 0x4058d9b1
+cos 60 4096 1.465% 1 35 0x3e57a105 0x3e57a104

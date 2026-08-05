@@ -123,6 +123,28 @@ struct Cli {
     #[arg(long, env = "TRIOS_NEON_DSN")]
     #[allow(dead_code)]
     neon: Option<String>,
+
+    /// Warm-start from an earlier checkpoint of the SAME recipe: the window
+    /// audit (`docs/WINDOW-AUDIT.md`).
+    ///
+    /// Name either half of the pair - `checkpoints/{run}/{step}.bin` or the
+    /// `{step}.resume` record beside it. The run continues at `step + 1` with
+    /// the optimizer moments, the per-instance step counters and the batch
+    /// sampler restored, so an auditor re-executes ONE window of N steps
+    /// instead of the whole T-step run.
+    ///
+    /// `--steps` must be the total the original run was planned against: the
+    /// cosine schedule is a function of `(step, steps)`, and every binding -
+    /// weight digest, corpus digests, shape, both cadences, seed, lr, weight
+    /// decay, GF16, QAT format - is checked before the first gradient. Any
+    /// mismatch is a refusal naming its reason and a non-zero exit, never a
+    /// silent restart from zeroed moments.
+    ///
+    /// AdamW only. `--optimizer muon` / `muon-cwd` refuse it rather than
+    /// pretend: `MuonOptimizer` carries a momentum buffer this format does
+    /// not serialise.
+    #[arg(long, env = "TRIOS_RESUME_FROM")]
+    resume_from: Option<std::path::PathBuf>,
 }
 
 fn install_panic_hook() {
@@ -167,14 +189,22 @@ fn install_panic_hook() {
 /// testable without an ambient database. Exactly one `[migrator]` line names
 /// the decision taken, in every branch, so a grep for `[migrator]` still tells
 /// the whole story of what was and was not done.
+///
+/// The DSN comes from `neon_writer::resolved_dsn()`. It used to come from an
+/// inline `DATABASE_URL -> NEON_DATABASE_URL -> TRIOS_NEON_DSN ->
+/// TRIOS_DATABASE_URL` chain written out again here, which handed the chain's
+/// FIRST hit to `Migrator::up` before `neon_writer`'s conflict gate had ever
+/// run: an environment naming two databases got DDL applied to one of them and
+/// was then told "no database was contacted and nothing was written". The gate
+/// now runs as the first statement of `main`, and this function reads the same
+/// resolver every other caller reads, so there is one chain in the crate and
+/// it is checked before it is used. `neon_writer::tests::
+/// trios_train_has_no_inline_dsn_chain` fails the build if a second one
+/// reappears in this file.
 fn run_automigrate() {
     let automigrate = std::env::var("TRINITY_AUTOMIGRATE").ok();
     let consent = std::env::var("TRIOS_ALLOW_AUTOMIGRATE").ok();
-    let raw_dsn = std::env::var("DATABASE_URL")
-        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
-        .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
-        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
-        .ok();
+    let raw_dsn = trios_trainer::neon_writer::resolved_dsn();
 
     let decision = train_loop::decide_automigrate(
         automigrate.as_deref(),
@@ -254,6 +284,23 @@ fn exit_with_ledger_status() -> ! {
 }
 
 fn main() -> Result<()> {
+    // FIRST statement of this process, deliberately, and it must stay first.
+    //
+    // Refuses -- exit 78, nothing else printed -- when the environment names
+    // more than one database. `neon_writer`'s refusal says "no database was
+    // contacted and nothing was written"; the only way that sentence is true
+    // for this binary is if the check precedes everything, so it precedes the
+    // panic hook, the tracing subscriber, the startup banner, `clap`, and
+    // `run_automigrate`, which used to reach `Migrator::up` with the first hit
+    // of its own inline chain before the gate had ever run. Previously the
+    // refusal arrived after `train=1015394`, `params=94208` and a step-0
+    // EVAL-PLAN had already been printed.
+    //
+    // It returns immediately (four `getenv`s) when the variables agree, so the
+    // ordinary run pays nothing for it, and it is idempotent: `resolve_dsn`
+    // still runs the same gate for every other caller.
+    trios_trainer::neon_writer::enforce_dsn_conflict_gate();
+
     install_panic_hook();
 
     tracing_subscriber::fmt()
@@ -369,11 +416,12 @@ fn main() -> Result<()> {
     );
 
     // Set NEON_DATABASE_URL from --neon flag OR inherit from ENV (used by scarab worker)
-    // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first
-    if std::env::var("NEON_DATABASE_URL").is_err() {
-        if let Some(neon_url) = &cli.neon {
-            std::env::set_var("NEON_DATABASE_URL", neon_url);
-        }
+    // scarab passes NEON_DATABASE_URL via ENV inheritance, so check that first.
+    // The read and the write both live in `neon_writer::adopt_neon_flag_dsn`
+    // so this file names none of the DSN variables; the precedence -- an
+    // inherited value beats the flag -- is unchanged.
+    if let Some(neon_url) = &cli.neon {
+        trios_trainer::neon_writer::adopt_neon_flag_dsn(neon_url);
     }
 
     eprintln!(
@@ -381,6 +429,21 @@ fn main() -> Result<()> {
         cli.seed, cli.steps, cli.hidden, cli.lr, cli.ctx, cli.optimizer, cli.neon
     );
     let _ = std::io::stderr().flush();
+
+    // A warm start names ONE artifact of ONE run, so it cannot mean anything
+    // on the sweep arm or in config mode - one drives three seeds, the other
+    // builds its `TrainArgs` from a file this flag says nothing about.
+    // Refused here, before either branch, rather than ignored: silently
+    // training from scratch under an audit command is exactly the failure the
+    // window audit exists to remove.
+    if cli.resume_from.is_some() && (cli.sweep || cli.seed == 0 || cli.config.is_some()) {
+        return Err(anyhow::anyhow!(
+            "{} (unsupported-mode): --resume-from names one checkpoint of one run, so it \
+             cannot be combined with --sweep, --seed 0 or --config. Re-run the single seed \
+             you want to audit.",
+            trios_trainer::checkpoint::RESUME_REFUSAL_PREFIX
+        ));
+    }
 
     if let Some(config_path) = &cli.config {
         let cfg = trios_trainer::TrainConfig::from_toml(config_path)?;
@@ -446,7 +509,11 @@ fn main() -> Result<()> {
         // The match that used to live here was duplicated in the library as
         // `run_with_optimizer` and diverged from the sweep arm, which had no
         // dispatch at all; there is now exactly one.
-        let outcome = train_loop::run_with_optimizer(&cli.optimizer, &args)?;
+        let outcome = train_loop::run_with_optimizer_resumed(
+            &cli.optimizer,
+            &args,
+            cli.resume_from.as_deref(),
+        )?;
         // `bpb=` is the RAW val_bpb measured at the final step. It used to be
         // `best_bpb`: the running minimum of an EMA seeded at init (~7.0), so
         // two runs with byte-identical weights printed 3.5506 and 4.4940 while

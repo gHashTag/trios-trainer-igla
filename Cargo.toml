@@ -357,3 +357,27 @@ path = "src/bin/format_champion_sweep.rs"
 [[bin]]
 name = "xarch_probe"
 path = "src/bin/xarch_probe.rs"
+
+# Element-wise companion to xarch_probe. The probe hashes each primitive whole,
+# which names the mechanism and cannot size it; this one prints the raw u32 bit
+# pattern of all 4096 results of exp/ln/sqrt/powf/cos, so the "every
+# disagreement is exactly 1 ULP" table in docs/DIVERGENCE-MECHANISM.md is
+# derived from a committed artifact rather than from a program that used to
+# live in /tmp. Same LCG, same seeds, same ranges as the probe, so its DIGEST
+# lines must equal the probe's PRIMITIVE hashes on the same arm --
+# tests/xarch_probe_census.rs asserts that join. No arguments, no randomness,
+# no file I/O, no environment reads.
+[[bin]]
+name = "ulp_census"
+path = "src/bin/ulp_census.rs"
+
+# Raw vs canonical checkpoint digest. The reproducibility criterion is sha256
+# over the raw bytes, and that digest distinguishes -0.0 from +0.0 while IEEE
+# 754 and every forward pass in the trainer do not -- so it can report MISMATCH
+# between two numerically identical artifacts. This binary measures how much of
+# a mismatch is that encoding artefact (2 073 of 95 144 parameters on the
+# published cross-architecture pair) and how much is real. See
+# src/canonical_digest.rs and docs/CANONICAL-SERIALIZATION.md.
+[[bin]]
+name = "canon_digest"
+path = "src/bin/canon_digest.rs"

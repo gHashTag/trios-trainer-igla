@@ -1,0 +1,77 @@
+{
+  "schema": "trios-checkpoint-record/8",
+  "canon_name": "isa-probe-arm64",
+  "seed": 47,
+  "step": 0,
+  "path": "checkpoints/isa-probe/20260805T122542Z/isa-probe-arm64/0.bin",
+  "sha256": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 10,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 7.000166416168213,
+  "min_observed_val_bpb": null,
+  "ema_bpb": null,
+  "git_sha": "ba272b988971545801c9e337b0b42e35dc18abc4",
+  "git_provenance": "verified-local",
+  "git_dirty": true,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare.txt",
+      "bytes": 1015394,
+      "sha256": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_val.txt",
+      "bytes": 100000,
+      "sha256": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+    }
+  },
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-05T12:25:48.035308+00:00",
+  "lr": 0.003000000026077032,
+  "attn_scale": 0.10000000149011612,
+  "attn_seq": 8,
+  "platform": {
+    "os": "macos",
+    "arch": "aarch64",
+    "pointer_width": 64,
+    "libc": "undetermined",
+    "toolchain": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "toolchain_provenance": "runtime-path-query",
+    "source_digest_scope": "repository-root",
+    "rustflags_source": "cargo-config-toml",
+    "rustflags_sha256": "b18ac6a3a1eaa5f2126007da415a13b27913ec13f0412df94a9baaa7a8e8ac58",
+    "remap_applied": true,
+    "libc_version": "25.5.0",
+    "libc_provenance": "uname-release-runtime",
+    "features": "ci-strict=0,gf16=0,gpu=0,race=0,smoke=0,trios-integration=0"
+  },
+  "source_sha256": "38f16194e88e4086f1b950016fe78cbdc9d9c646f00a96508757c5d237a92354",
+  "trainer": {
+    "path": "target/release/trios-train",
+    "sha256": "709fcbf2a95342a8bbf70dab6ea3acdc157b8e771b908386ae5e9bb72db36845",
+    "provenance": "self-hashed"
+  },
+  "vocab": 128,
+  "gf16_enabled": true,
+  "eval_chunks": 40,
+  "eval_tokens": 5160,
+  "eval_seq": 129,
+  "val_bpb_stderr": 0.001203614752739668,
+  "optimizer_params": {
+    "beta1": 0.8999999761581421,
+    "beta2": 0.9990000128746033,
+    "eps": 9.99999993922529e-9,
+    "weight_decay": 0.03999999910593033,
+    "source": "train_loop::AdamW"
+  },
+  "git_untracked": true
+}

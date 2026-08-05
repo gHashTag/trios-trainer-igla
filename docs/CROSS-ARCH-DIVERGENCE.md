@@ -17,11 +17,24 @@ byte-identical, or one of these two files has changed.
 **Why it exists.** `docs/REPRODUCIBILITY-GRADING.md` reported the negative
 result honestly and then understated it: "identical 852 272-byte artifact size
 -- and a different artifact." A reader is entitled to hear that as *the same
-model up to rounding*. It is not. **43.70% of the parameters differ**, the
+model up to rounding*. It is not. **43.70% of the parameters differ** -- 93,071
+of 212,992, differing *in value*, with a further 2,073 differing *bitwise* only
+in the sign of zero and therefore numerically equal (see
+[`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md)) -- the
 relative L2 distance is **0.4756**, and every element of all four trained
 attention matrices differs, some by a change of sign. "Same model up to
 rounding" is not available as an answer, and the mechanism that produces the
 divergence is more interesting than the divergence.
+
+**The figure carries a definition, and both definitions are published, so take
+the reconciliation before the objection.** Two counts exist and neither is
+hidden: 93,071 differ in value, 95,144 (44.67%) differ bitwise, and the gap
+between them is exactly the 2,073 signed-zero parameters, which are numerically
+equal. `43.70%` is the conservative of the two and is therefore the figure
+quoted here and everywhere else in this repository. The reconciliation and the
+census are in
+[`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md); section 2 below
+repeats both counts side by side.
 
 **What is proven here, and what is not.** That the two artifacts are not
 identical is measured, and every number below is a measurement on those two
@@ -85,6 +98,95 @@ eval_every, data_synthetic, format_version, git_sha, source_sha256 and all
 three corpus hashes are identical. The aarch64 sidecar records `git_dirty:
 true`; the identical `source_sha256` is what shows the dirt did not reach the
 trainer source.
+
+**Only the failing half is in a clone. Say this before an auditor finds it.**
+The aarch64 arm lives in `checkpoints/r5-adv-recheck/`, which is gitignored:
+`git ls-tree -r HEAD --name-only checkpoints` returns nothing. A copy has been
+made verbatim at `evidence/xarch-aarch64-reference/`, with a `PROVENANCE.txt`
+naming its schema, its missing fields and its `git_dirty` disclosure, and its
+bytes are identical (`cmp`) to `checkpoints/r5-adv-recheck/12000.bin` -- so the
+commands in section 6 and the contents of `docs/cross-arch-divergence.json` are
+unchanged; only the path recorded in a regenerated JSON would differ. **But
+that directory is staged in the author's index and is not at HEAD**, checked
+the only way that answers the question:
+
+```
+$ git ls-tree -r HEAD --name-only evidence/xarch-aarch64-reference   # nothing
+$ git ls-files          evidence/xarch-aarch64-reference             # 3 files
+```
+
+`git ls-files` counts the index and will report those three files to the author
+and to nobody else; `git ls-tree -r HEAD` is what a stranger's clone actually
+receives. Conflating the two is how the earlier "both halves are now tracked"
+sentence came to stand here for two days. Until that directory is committed,
+the honest statement of this comparison is: **the arm that failed
+(`evidence/xarch-run-30767491098/`, x86_64, `bb14ab18...`) is at HEAD and can
+be re-hashed by anyone; the arm that passed (aarch64, `8a86fe69...`) cannot.**
+
+### 1.1 The `source_sha256` equality is sealed to one commit
+
+The sentence above -- "the identical `source_sha256` is what shows the dirt did
+not reach the trainer source" -- is the load-bearing claim that makes this a
+*paired* comparison with one variable changed. It does not survive being
+re-run with today's binary, and the reason is worth stating before anyone else
+finds it.
+
+`19aa22fb...` was computed under the digest domain **`trios-source-tree/1`**,
+whose entire input set at `3c1f751` was `src/**/*.rs` (115 files) plus
+`Cargo.toml`. The tag has since moved twice: `trios-source-tree/2` widened the
+inputs to `Cargo.lock`, `rust-toolchain.toml`, `migration/src/**/*.rs` and the
+compiled feature set, and **`trios-source-tree/3`**, the value at HEAD, added
+`.cargo/config.toml`. `src/checkpoint.rs` says in terms that a `/1` and a `/2`,
+or a `/2` and a `/3`, digest over one unchanged tree differ and that "the
+domain tag is what stops the two being compared as if they were", and the test
+`source_digest_domain_is_version_three` pins the current tag so the rule cannot
+drift silently. So today's trainer, run on a checkout of `3c1f751`, would print
+a different `source_sha256` -- correctly, because it is answering a wider
+question.
+
+What that seals, and what it does not:
+
+* **Sealed.** No binary built from HEAD reproduces `19aa22fb...`. Checking out
+  `3c1f751` and running that trainer is one way back.
+* **Not sealed after all: the digest is recomputable from tracked bytes.** The
+  `/1` algorithm is 12 lines and its inputs are all in git. Recomputing it over
+  `git archive 3c1f751` reproduces `19aa22fb7cd187774b71cbde7cb89b664aff7260b5`
+  `7f55afd865dd447707108b` exactly -- the recipe is in
+  `evidence/xarch-aarch64-reference/PROVENANCE.txt`. That is a stronger result
+  than a re-run would be: it shows a **dirty** aarch64 tree recorded the digest
+  of the **clean** tracked tree, so at walk time every Rust source and the
+  manifest were byte-identical to `3c1f751`.
+* **Narrower than it looks.** A `/1` equality says nothing about `Cargo.lock`,
+  the pinned toolchain file, `migration/`, the feature set or the build flags.
+  The CI arm built with `--locked` and `rust-toolchain.toml` pins the compiler,
+  which is why the toolchain strings agree; but that is evidence from the run
+  log and the record, not from this digest.
+
+### 1.2 Cross-*laboratory* `source_sha256` equality is unattainable by construction
+
+This follows from `/3` and must be said before anyone writes it into a rule.
+`BUILD_FLAGS_PATH` is `.cargo/config.toml`, and at HEAD it is a hashed digest
+input. That file is **gitignored**, is **generated per host** by
+`scripts/repro_build.sh`, and its content **encodes the builder's home
+directory** -- it is a list of `--remap-path-prefix` flags whose left-hand
+sides are this machine's expanded `$HOME`, `$CARGO_HOME` and `$RUSTUP_HOME`.
+Two honest laboratories running the identical procedure will therefore compute
+**different** `source_sha256` values, and a third laboratory that clones the
+repository will not have the file at all -- which `digest_source_inputs`
+deliberately hashes as ABSENT rather than as empty, so that too is a third
+distinct value.
+
+The consequence, stated as a rule:
+
+> A `source_sha256` mismatch between two laboratories is **expected**.
+> `source_sha256` is a **divergence detector within one host** -- it tells you
+> whether the tree moved under you between two runs -- and it is **not** a
+> recipe-identity check across hosts. It must not be used as a grading
+> criterion in any conformity scheme.
+
+The identity a second laboratory can actually be asked to match is the
+declared, hashed *recipe*: `git_sha` plus corpus hashes plus the pinned
+toolchain plus the declared flags. Not this digest.
 
 ---
 
@@ -275,7 +377,11 @@ way, 12,000 times, in two separate executions. They did not, and there is no
 reason grounded in the arithmetic why they should. The single ULP in
 `attn_down` is the size of the perturbation the pipeline actually has to
 tolerate; the 1/16 grid is a mechanism for turning that perturbation into a
-43.70% artifact difference.
+43.70% artifact difference -- 93,071 of 212,992 parameters differing in value,
+with a further 2,073 differing bitwise only in the sign of zero and therefore
+numerically equal. `43.70%` is the conservative of the two definitions and is
+the one used here; see section 2 above and
+[`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md).
 
 Whether the two executions in question differed because they ran on two
 different instruction sets, or would have differed on one, is exactly the
@@ -297,7 +403,11 @@ the same, but on this pipeline a hash *mismatch* proves almost nothing about
 whether the two laboratories ran the same procedure.
 
 **The transferable claim is the metric-level one.** The same run that produced
-this 43.70% byte divergence produced a `final_val_bpb` difference of 0.0030,
+this 43.70% byte divergence -- 93,071 of 212,992 parameters differing in value,
+plus 2,073 more differing bitwise only in the sign of zero and hence
+numerically equal; `43.70%` is the conservative count, reconciled in
+[`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md) -- produced a
+`final_val_bpb` difference of 0.0030,
 which is 0.084 of the estimator's own measured sigma (0.0358 bpb,
 `docs/EVAL-UNCERTAINTY.md`) - statistically indistinguishable from zero. Two
 executions that cannot agree on a single parameter of `wk` agree on the

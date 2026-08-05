@@ -227,7 +227,7 @@ fn the_announced_results_path_is_the_file_that_exists() {
     let announced = stdout
         .lines()
         .filter_map(|l| l.strip_prefix("Results: "))
-        .last()
+        .next_back()
         .expect("cpu_train must announce its results path")
         .trim()
         .to_string();

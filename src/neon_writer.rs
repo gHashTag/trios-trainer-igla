@@ -13,6 +13,14 @@
 //   -> TRIOS_NEON_DSN     (legacy alias)
 //   -> TRIOS_DATABASE_URL (legacy alias)
 //
+// DSN CONFLICT: the chain above ONLY decides anything when every variable that
+//   is set holds the SAME value. Two different values visible at once is a
+//   refusal to run, not a precedence question -- see `resolve_dsn`. An operator
+//   who exports `TRIOS_DATABASE_URL` to redirect this trainer, on a machine
+//   whose shell already carries an unrelated `DATABASE_URL`, used to be obeyed
+//   by neither variable and told "[ledger] connected OK" by the one they did
+//   not name (reproduced 2026-08-05, a real row on a live local database).
+//
 // WRITE OPT-IN: a DSN alone is NOT permission to write.
 //   TRIOS_LEDGER_WRITE=1 must ALSO be set before this process touches the
 //   shared ledger. Any of the four aliases above is routinely present in a
@@ -62,17 +70,231 @@ fn rt() -> &'static Runtime {
 
 // -- DSN helpers ---------------------------------------------------------------
 
+/// Every environment variable that can carry a database DSN, in the order the
+/// chain consults them.
+///
+/// `TRIOS_DATABASE_URL` -- the project's own namespaced name -- is fourth,
+/// which is exactly backwards from an operator's expectation and exactly why
+/// the order must never be load-bearing. It decides which value is returned
+/// ONLY when every variable that is set holds the same value; disagreement is a
+/// refusal (see [`resolve_dsn`]), so the order can no longer pick a database
+/// nobody asked for.
+///
+/// `MATRIX_DATABASE_URL` was added on 2026-08-05. It was NOT part of this
+/// chain, yet `src/bin/matrix_runner.rs` read it -- ahead of `DATABASE_URL` --
+/// and inserted into whichever of the two it found first. A variable that can
+/// select a database while the gate cannot see it is the same defect the gate
+/// exists to close, one name further out, so the name is listed here rather
+/// than special-cased in that binary. It is LAST for the same reason the order
+/// is unimportant everywhere else: it can only decide the answer when no other
+/// variable is set, and `matrix_runner` keeps its own MATRIX-first read for the
+/// unambiguous case, so this position changes no run that was not already about
+/// to be refused.
+pub const DSN_ENV_VARS: [&str; 5] = [
+    "DATABASE_URL",
+    "NEON_DATABASE_URL",
+    "TRIOS_NEON_DSN",
+    "TRIOS_DATABASE_URL",
+    "MATRIX_DATABASE_URL",
+];
+
+/// The one member of [`DSN_ENV_VARS`] a `--neon` flag publishes into.
+///
+/// Spelled as an index into the chain rather than as a second string literal
+/// so the name exists once: a copy is what let `src/bin/trios-train.rs` read
+/// this variable behind the gate's back. `dsn_env_vars_are_the_only_chain`
+/// pins the position.
+pub const NEON_DSN_ENV: &str = DSN_ENV_VARS[1];
+
+/// Exit status used when the environment names two different databases.
+///
+/// 78 is `EX_CONFIG` from sysexits.h -- "a configuration error". Deliberately
+/// NOT the `1` that [`ledger_exit_code`] returns: that 1 means "this run was
+/// supposed to be recorded and was not", which presumes the run happened. This
+/// one means the run was never allowed to begin.
+pub const DSN_CONFLICT_EXIT_CODE: i32 = 78;
+
+/// Render a DSN as `host[:port][/database]`, with every credential removed.
+///
+/// A refusal that does not say WHICH database each variable points at is not
+/// actionable, and a DSN carries a password. Everything up to and including the
+/// last `@` of the authority is dropped -- so a user name goes too, and an
+/// unencoded `@` inside a password cannot leave the tail of it behind -- and so
+/// is any query string, because Neon-style DSNs carry auth-adjacent parameters
+/// there. No redaction helper existed anywhere in this crate to reuse (searched
+/// 2026-08-05); this is it.
+pub fn redact_dsn(dsn: &str) -> String {
+    let trimmed = dsn.trim();
+    let after_scheme = match trimmed.find("://") {
+        Some(i) => &trimmed[i + 3..],
+        None => trimmed,
+    };
+    let path_start = after_scheme.find('/').unwrap_or(after_scheme.len());
+    let (authority, path) = after_scheme.split_at(path_start);
+    let host = authority.rsplit('@').next().unwrap_or("");
+    let path = path.split(['?', '#']).next().unwrap_or("");
+    let rendered = format!("{host}{path}");
+    if rendered.is_empty() {
+        "<empty>".to_string()
+    } else {
+        rendered
+    }
+}
+
+/// The DSN variables that are set to a non-empty value, in chain order.
+///
+/// A variable set to the empty string (or to whitespace) counts as UNSET here
+/// and in [`resolve_dsn`]: `DATABASE_URL=` is how a shell profile disables an
+/// inherited value, and reading it as "a configured DSN that disagrees with
+/// yours" would turn that idiom into a refusal to start.
+fn dsn_env_settings() -> Vec<(&'static str, String)> {
+    DSN_ENV_VARS
+        .iter()
+        .filter_map(|name| {
+            let raw = std::env::var(name).ok()?;
+            let value = raw.trim();
+            if value.is_empty() {
+                None
+            } else {
+                Some((*name, value.to_string()))
+            }
+        })
+        .collect()
+}
+
+/// The refusal text for an environment that names more than one database, or
+/// `None` when the visible variables agree.
+///
+/// A pure function of the pairs, so the message can be tested without mutating
+/// the environment of a test process -- which is also why the environment read
+/// lives in [`dsn_env_settings`] and not here.
+fn dsn_conflict_message(settings: &[(&'static str, String)]) -> Option<String> {
+    let (chosen_name, chosen_value) = settings.first()?;
+    if settings.iter().all(|(_, v)| v == chosen_value) {
+        return None;
+    }
+    let ignored: Vec<&str> = settings
+        .iter()
+        .skip(1)
+        .map(|(name, _)| *name)
+        .collect::<Vec<_>>();
+    // "Refusing to run", not "refusing to start": this fires the first time
+    // anything resolves a DSN, which is before any connection is opened but
+    // NOT before `main` has done other work. Claiming the process was stopped
+    // at startup would be the same species of false log line as the
+    // "connected OK" this gate exists to prevent.
+    let mut msg = String::from(
+        "[ledger] FATAL: the environment names more than one database. Refusing to run; \
+         no database was contacted and nothing was written.\n",
+    );
+    for (name, value) in settings {
+        msg.push_str(&format!("[ledger]   {name} -> {}\n", redact_dsn(value)));
+    }
+    msg.push_str(&format!(
+        "[ledger] Chain order would have used {chosen_name} ({}) and silently ignored \
+         {ignored:?}. This process will not guess which database you meant: a run \
+         redirected with one variable, on a machine whose shell already exports \
+         another, is how rows land somewhere nobody asked for while the log prints \
+         \"connected OK\". Unset all but one of {DSN_ENV_VARS:?} and start again. \
+         Identical values in several variables are not a conflict.",
+        redact_dsn(chosen_value),
+    ));
+    Some(msg)
+}
+
 /// Resolve the database DSN from the environment fallback chain.
 ///
 /// A DSN found here is a piece of CONFIGURATION, not permission to write. Use
 /// [`active_dsn`] everywhere the answer decides whether shared state is
 /// touched.
+///
+/// DESIGN DECISION (2026-08-05), the stricter of the two on offer: when two or
+/// more of [`DSN_ENV_VARS`] are visible with DIFFERENT values this function
+/// does NOT re-rank them, does NOT honour an opt-in flag naming a winner, and
+/// does not return -- it prints every variable that was set with its host and
+/// database (credentials redacted by [`redact_dsn`]) and exits
+/// [`DSN_CONFLICT_EXIT_CODE`]. Promoting `TRIOS_DATABASE_URL` over
+/// `DATABASE_URL` would have fixed the case that was reported and left the
+/// other five orderings picking silently; a guess that is right more often is
+/// still a guess, and the failure it produces is a row in the wrong database,
+/// which is not observable from the log line. Identical values in several
+/// variables are not a conflict, so the Railway deployment that exports the
+/// same DSN twice is untouched.
+///
+/// The refusal is deliberately an exit and not a panic: the panic hook in
+/// `trios-train` prints a `{"event":"panic"}` line that supervisors classify as
+/// a crash to be retried, and this is a configuration error that retrying
+/// cannot fix.
+///
+/// FOLLOW-UP LANDED (2026-08-05): the refusal now lives in
+/// [`enforce_dsn_conflict_gate`], and that call IS the first instruction of
+/// `fn main` in `src/bin/trios-train.rs` -- ahead of the panic hook, the
+/// tracing subscriber, the startup banner and `clap`. Nothing of that binary's
+/// own output can precede it, so the sentence "no database was contacted and
+/// nothing was written" is literally true there and a reader can check the
+/// claim by looking at the first statement of that `main`. The previous note
+/// here said the gate was NOT the first instruction of `main` because moving
+/// it needed a call the change did not own; it now is, and this function keeps
+/// calling the same gate so every other caller in the crate -- including the
+/// binaries that have no such call -- is protected exactly as before, at the
+/// first DSN resolution rather than at startup.
+///
+/// The [`LEDGER_WRITE_OPT_IN`] gate is unchanged and still applies afterwards:
+/// an unambiguous DSN is still not permission to write.
 fn resolve_dsn() -> Option<String> {
-    std::env::var("DATABASE_URL")
-        .or_else(|_| std::env::var("NEON_DATABASE_URL"))
-        .or_else(|_| std::env::var("TRIOS_NEON_DSN"))
-        .or_else(|_| std::env::var("TRIOS_DATABASE_URL"))
-        .ok()
+    enforce_dsn_conflict_gate();
+    dsn_env_settings()
+        .into_iter()
+        .next()
+        .map(|(_, value)| value)
+}
+
+/// Refuse to continue when the environment names more than one database.
+///
+/// The whole of the refusal described on [`resolve_dsn`], extracted so a
+/// binary can run it BEFORE it does anything else. Returns normally -- and
+/// cheaply, it only reads four environment variables -- when the visible DSN
+/// variables agree or fewer than two are set; otherwise it prints
+/// [`dsn_conflict_message`] and exits [`DSN_CONFLICT_EXIT_CODE`].
+///
+/// Safe to call more than once: it is a pure read of the environment plus a
+/// possible exit, holds no state and prints nothing on the agreeing path.
+pub fn enforce_dsn_conflict_gate() {
+    if let Some(msg) = dsn_conflict_message(&dsn_env_settings()) {
+        eprintln!("{msg}");
+        std::process::exit(DSN_CONFLICT_EXIT_CODE);
+    }
+}
+
+/// The configured DSN, resolved through the one gated chain in this crate.
+///
+/// The public face of [`resolve_dsn`], for binaries that need the DSN itself
+/// -- `trios-train` hands it to `Migrator::up` -- so no caller has to re-inline
+/// [`DSN_ENV_VARS`] and pick a winner before the gate above can fire. A DSN
+/// returned here is still CONFIGURATION and not permission to write; use
+/// [`active_dsn`] for anything that reaches shared state.
+pub fn resolved_dsn() -> Option<String> {
+    resolve_dsn()
+}
+
+/// Publish a `--neon <dsn>` flag under `NEON_DATABASE_URL`, unless that
+/// variable already carries a value.
+///
+/// Lives here, and not in `src/bin/trios-train.rs`, so that the names in
+/// [`DSN_ENV_VARS`] are read in exactly one module: an inline read of one of
+/// those names from a binary is how the four-variable chain this gate exists
+/// to police grew back the last time. Returns whether
+/// the value was adopted. The precedence is unchanged -- an inherited
+/// `NEON_DATABASE_URL` (scarab passes one) still beats the flag -- and the
+/// conflict gate is unaffected: adopting a flag that disagrees with another
+/// configured variable is caught at the next [`resolve_dsn`], exactly as it
+/// was when the binary set the variable itself.
+pub fn adopt_neon_flag_dsn(dsn: &str) -> bool {
+    if dsn.is_empty() || std::env::var(NEON_DSN_ENV).is_ok() {
+        return false;
+    }
+    std::env::set_var(NEON_DSN_ENV, dsn);
+    true
 }
 
 /// The env var an operator must set to `1` before this process writes to the
@@ -849,11 +1071,49 @@ pub fn smoke_canon_name(raw: &str) -> String {
 /// rejects every sentinel.
 pub const BPB_SENTINEL_CEILING: f32 = 64.0;
 
+/// The one write-side BPB screen, exposed by name to writers outside this
+/// module.
+///
+/// [`reject_bpb`] below stays private and stays the single implementation;
+/// this is the door. It exists because the sentence "lives on the WRITE side
+/// so no caller can bypass it" was false: `src/bin/matrix_runner.rs` opens its
+/// own `tokio_postgres` connection and INSERTs straight into
+/// `ssot.bpb_samples` without ever entering this module, so every row the
+/// nightly matrix published reached the public leaderboard unscreened -- no
+/// `is_finite` test, no [`BPB_SENTINEL_CEILING`], no
+/// `invariants::PUBLISHED_BPB_FLOOR`. A screen only one caller can reach is
+/// not a screen; a screen no caller can name is not reachable at all.
+///
+/// Returns `None` when the value may be published, `Some(reason)` -- the
+/// named, printable cause -- when it must not.
+pub fn bpb_refusal_reason(bpb: f32) -> Option<String> {
+    reject_bpb(bpb)
+}
+
+/// May a writer that does NOT route through this module touch the ledger?
+///
+/// Same decision, same wording and same once-only announcement as
+/// [`active_dsn`], factored out for the binaries that carry their own
+/// connection. A DSN alone is not permission: `TRIOS_LEDGER_WRITE=1` is the
+/// opt-in this module has declared mandatory since 2026-08-03, and
+/// `matrix_runner` -- the binary the nightly schedule runs -- honoured neither
+/// the variable nor the announcement.
+///
+/// Returns `true` when the operator opted in. Otherwise announces the refusal
+/// once, by name, on stderr and returns `false`.
+pub fn check_write_opt_in() -> bool {
+    if ledger_write_opted_in() {
+        return true;
+    }
+    announce_missing_opt_in();
+    false
+}
+
 /// Reject a BPB that cannot be a measurement of held-out text.
 ///
-/// Mirrors `train_loop::guard_bpb`, but lives on the WRITE side so no caller
-/// can bypass it. Returns the reason string when the value must not be
-/// published.
+/// Mirrors `train_loop::guard_bpb`, but lives on the WRITE side. Callers
+/// outside this module reach it through [`bpb_refusal_reason`]. Returns the
+/// reason string when the value must not be published.
 fn reject_bpb(bpb: f32) -> Option<String> {
     if !bpb.is_finite() {
         return Some(format!("bpb={bpb} is not finite"));
@@ -1151,9 +1411,7 @@ fn bpb_sample_with_algo_inner(
     // that cannot be a measurement must never be published, printed as
     // published, or counted as a dropped write worth retrying.
     if let Some(reason) = reject_bpb(bpb) {
-        eprintln!(
-            "[ledger] REJECT bpb_sample: {canon_name} seed={seed} step={step}: {reason}"
-        );
+        eprintln!("[ledger] REJECT bpb_sample: {canon_name} seed={seed} step={step}: {reason}");
         note_rejected();
         return LedgerWrite::Rejected;
     }
@@ -1698,10 +1956,9 @@ mod tests {
     /// Clear every DSN alias AND the write opt-in so `db()` reports `NoDsn`
     /// deterministically.
     fn clear_dsn_env() {
-        std::env::remove_var("DATABASE_URL");
-        std::env::remove_var("TRIOS_NEON_DSN");
-        std::env::remove_var("NEON_DATABASE_URL");
-        std::env::remove_var("TRIOS_DATABASE_URL");
+        for name in DSN_ENV_VARS {
+            std::env::remove_var(name);
+        }
         std::env::remove_var(LEDGER_WRITE_OPT_IN);
     }
 
@@ -2077,7 +2334,13 @@ mod tests {
     fn bpb_sample_rejects_the_sentinel_without_touching_the_db() {
         let _g = counter_guard();
         let before = dropped_writes();
-        let out = bpb_sample("IGLA-TEST-gf16-h128-LR0.001-rng47-adamw", 47, 0, f32::MAX, None);
+        let out = bpb_sample(
+            "IGLA-TEST-gf16-h128-LR0.001-rng47-adamw",
+            47,
+            0,
+            f32::MAX,
+            None,
+        );
         assert_eq!(out, LedgerWrite::Rejected);
         assert_eq!(out.as_str(), "rejected");
         assert_eq!(
@@ -2499,10 +2762,7 @@ mod tests {
         set_dsn_env("DATABASE_URL");
         let code = ledger_exit_code();
         clear_dsn_env();
-        assert_eq!(
-            code, 1,
-            "every row refused and none landed must not exit 0"
-        );
+        assert_eq!(code, 1, "every row refused and none landed must not exit 0");
     }
 
     /// A landed heartbeat must not license a 0 exit for a run whose evidence
@@ -2659,7 +2919,10 @@ mod tests {
     fn no_dsn_at_all_is_recorded_as_skipped_no_dsn() {
         let _g = counter_guard();
         clear_dsn_env();
-        assert_eq!(skipped_write_outcome(DbStatus::NoDsn), LedgerWrite::SkippedNoDsn);
+        assert_eq!(
+            skipped_write_outcome(DbStatus::NoDsn),
+            LedgerWrite::SkippedNoDsn
+        );
         assert_eq!(
             bpb_sample_with_algo("trios-train-rng47", 47, 1000, 2.6141, None, "adamw"),
             LedgerWrite::SkippedNoDsn,
@@ -2751,5 +3014,193 @@ mod tests {
             );
         }
         clear_dsn_env();
+    }
+
+    // -- the DSN conflict refusal ---------------------------------------------
+    //
+    // Tested through the two PURE functions, not through `resolve_dsn`: the
+    // refusal is a `std::process::exit`, and calling it here would take the
+    // whole test binary down. The end-to-end behaviour -- a real process, a
+    // conflicting environment, a non-zero status -- is pinned in
+    // `tests/dsn_conflict_refusal.rs`, which spawns `trios-train` with a
+    // cleared environment.
+
+    fn pairs(items: &[(&'static str, &str)]) -> Vec<(&'static str, String)> {
+        items.iter().map(|(n, v)| (*n, (*v).to_string())).collect()
+    }
+
+    /// The message must be able to name a value without leaking the secret in
+    /// it. Nothing else about the refusal matters if this is wrong.
+    #[test]
+    fn dsn_conflict_redaction_keeps_host_and_database_only() {
+        for (dsn, want) in [
+            (
+                "postgresql://user:s3cret@host-one:5432/db1",
+                "host-one:5432/db1",
+            ),
+            ("postgresql://a@host-two:5432/db2", "host-two:5432/db2"),
+            ("postgres://localhost/trios", "localhost/trios"),
+            (
+                "postgres://u:p@ep-x.neon.tech/main?sslmode=require&channel_binding=require",
+                "ep-x.neon.tech/main",
+            ),
+            // An unencoded '@' inside the password: the LAST one separates.
+            ("postgres://u:p@ss@host-three/db3", "host-three/db3"),
+            ("", "<empty>"),
+        ] {
+            assert_eq!(redact_dsn(dsn), want, "redacting {dsn:?}");
+        }
+        let secret = "postgresql://user:s3cret@host-one:5432/db1";
+        assert!(
+            !redact_dsn(secret).contains("s3cret") && !redact_dsn(secret).contains("user"),
+            "the redacted form must carry neither password nor user"
+        );
+    }
+
+    /// Two different databases in scope: refuse, and name BOTH variables and
+    /// both hosts, because an operator who cannot see which is which cannot
+    /// decide which to unset.
+    #[test]
+    fn dsn_conflict_message_names_every_variable() {
+        let settings = pairs(&[
+            ("DATABASE_URL", "postgresql://a:pw1@host-one:5432/db1"),
+            ("TRIOS_DATABASE_URL", "postgresql://a:pw2@host-two:5432/db2"),
+        ]);
+        let msg = dsn_conflict_message(&settings).expect("two different DSNs must be refused");
+        for needle in [
+            "DATABASE_URL",
+            "TRIOS_DATABASE_URL",
+            "host-one:5432/db1",
+            "host-two:5432/db2",
+        ] {
+            assert!(
+                msg.contains(needle),
+                "refusal must mention {needle}:\n{msg}"
+            );
+        }
+        assert!(
+            !msg.contains("pw1") && !msg.contains("pw2"),
+            "the refusal must not print a password:\n{msg}"
+        );
+    }
+
+    /// The same DSN exported under several names is a deployment that repeats
+    /// itself, not an ambiguity. Refusing it would break Railway.
+    #[test]
+    fn dsn_conflict_absent_when_several_variables_agree() {
+        let same = "postgresql://a:pw@host-one:5432/db1";
+        for names in [
+            &DSN_ENV_VARS[0..2],
+            &DSN_ENV_VARS[1..4],
+            &DSN_ENV_VARS[0..DSN_ENV_VARS.len()],
+        ] {
+            let settings: Vec<(&'static str, String)> =
+                names.iter().map(|n| (*n, same.to_string())).collect();
+            assert!(
+                dsn_conflict_message(&settings).is_none(),
+                "{names:?} all hold the same value: not a conflict"
+            );
+        }
+    }
+
+    /// Zero or one variable set can never be ambiguous.
+    #[test]
+    fn dsn_conflict_impossible_with_fewer_than_two_values() {
+        assert!(dsn_conflict_message(&[]).is_none());
+        for name in DSN_ENV_VARS {
+            let settings = vec![(name, "postgresql://a@host-one:5432/db1".to_string())];
+            assert!(dsn_conflict_message(&settings).is_none(), "{name} alone");
+        }
+    }
+
+    /// `DATABASE_URL=` is how a profile disables an inherited value. Reading it
+    /// as a third, disagreeing database would turn that idiom into a refusal.
+    #[test]
+    fn dsn_conflict_ignores_an_empty_variable() {
+        let _g = counter_guard();
+        clear_dsn_env();
+        std::env::set_var("DATABASE_URL", "   ");
+        std::env::set_var("TRIOS_DATABASE_URL", "postgres://a@host-two:5432/db2");
+        let settings = dsn_env_settings();
+        assert_eq!(
+            settings.len(),
+            1,
+            "a whitespace-only value is not a configured DSN: {settings:?}"
+        );
+        assert_eq!(settings[0].0, "TRIOS_DATABASE_URL");
+        assert!(dsn_conflict_message(&settings).is_none());
+        clear_dsn_env();
+    }
+
+    /// The list this module refuses over must be the list it reads from, or a
+    /// variable could be consulted without ever being checked for conflict.
+    #[test]
+    fn dsn_conflict_list_is_the_chain_the_module_reads() {
+        let _g = counter_guard();
+        clear_dsn_env();
+        for name in DSN_ENV_VARS {
+            clear_dsn_env();
+            std::env::set_var(name, "postgres://a@host-one:5432/db1");
+            assert_eq!(
+                resolve_dsn().as_deref(),
+                Some("postgres://a@host-one:5432/db1"),
+                "{name} must be part of the chain"
+            );
+        }
+        clear_dsn_env();
+    }
+
+    /// [`DSN_ENV_VARS`] must be the ONLY chain: this module may not read any of
+    /// those four names through a second, ungated literal.
+    ///
+    /// The companion of `dsn_conflict_list_is_the_chain_the_module_reads`,
+    /// which proves every name in the list is reachable. This one proves
+    /// nothing reaches them another way -- the failure that motivated the gate
+    /// was not a missing name, it was a duplicate chain that ran first.
+    /// Needles are built at run time so this assertion cannot match itself.
+    #[test]
+    fn dsn_env_vars_are_the_only_chain() {
+        assert_eq!(
+            NEON_DSN_ENV, "NEON_DATABASE_URL",
+            "NEON_DSN_ENV is DSN_ENV_VARS[1]; reordering the chain moved it"
+        );
+        let source = include_str!("neon_writer.rs");
+        for name in DSN_ENV_VARS {
+            let needle = format!("env::var(\"{name}\")");
+            assert!(
+                !source.contains(&needle),
+                "{needle} appears in src/neon_writer.rs: the chain must be read \
+                 only through DSN_ENV_VARS in dsn_env_settings(), so that \
+                 enforce_dsn_conflict_gate() sees every variable"
+            );
+        }
+    }
+
+    /// `src/bin/trios-train.rs` must not grow its own DSN chain back.
+    ///
+    /// It had one: `run_automigrate` inlined
+    /// DATABASE_URL -> NEON_DATABASE_URL -> TRIOS_NEON_DSN -> TRIOS_DATABASE_URL
+    /// and handed the first hit to `Migrator::up`, so schema DDL was applied to
+    /// a database the conflict gate had not yet been given the chance to refuse
+    /// -- and the refusal, when it finally printed, said "no database was
+    /// contacted". A source-level assertion is the right shape here because the
+    /// defect is a SECOND reader appearing, which no behavioural test of the
+    /// first reader can see.
+    #[test]
+    fn trios_train_has_no_inline_dsn_chain() {
+        let source = include_str!("bin/trios-train.rs");
+        for name in DSN_ENV_VARS {
+            let needle = format!("env::var(\"{name}\")");
+            assert!(
+                !source.contains(&needle),
+                "{needle} appears in src/bin/trios-train.rs: use \
+                 neon_writer::resolved_dsn(), which runs the conflict gate first"
+            );
+        }
+        assert!(
+            source.contains("enforce_dsn_conflict_gate()"),
+            "trios-train must call the gate explicitly; without it the refusal \
+             fires only at the first DSN resolution, after training has printed"
+        );
     }
 }

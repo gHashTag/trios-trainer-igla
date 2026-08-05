@@ -148,10 +148,22 @@ fn the_pre_existing_environment_survived_the_refactor() {
         env.get("TRIOS_CHECKPOINT_DIR").map(String::as_str),
         Some("/tmp/ckpt_replay-test/checkpoints")
     );
-    assert_eq!(env.get("TRIOS_CANON_NAME").map(String::as_str), Some("grid-probe"));
-    assert_eq!(env.get("TRIOS_GF16_FLOOR_EVERY").map(String::as_str), Some("1"));
-    assert_eq!(env.get("TRIOS_FORMAT_TYPE").map(String::as_str), Some("f32"));
-    assert_eq!(env.get("TRINITY_AUTOMIGRATE").map(String::as_str), Some("0"));
+    assert_eq!(
+        env.get("TRIOS_CANON_NAME").map(String::as_str),
+        Some("grid-probe")
+    );
+    assert_eq!(
+        env.get("TRIOS_GF16_FLOOR_EVERY").map(String::as_str),
+        Some("1")
+    );
+    assert_eq!(
+        env.get("TRIOS_FORMAT_TYPE").map(String::as_str),
+        Some("f32")
+    );
+    assert_eq!(
+        env.get("TRINITY_AUTOMIGRATE").map(String::as_str),
+        Some("0")
+    );
     assert_eq!(env.get("TRIOS_ATTN_SEQ").map(String::as_str), Some("64"));
     assert!(
         !env.contains_key("TRIOS_ALLOW_SYNTHETIC_DATA"),
@@ -172,7 +184,10 @@ fn an_intermediate_synthetic_record_keeps_its_two_extra_variables() {
     record["step"] = json!(100);
     record["data_synthetic"] = json!(true);
     let env = env_map(&record);
-    assert_eq!(env.get("TRIOS_CHECKPOINT_EVERY").map(String::as_str), Some("100"));
+    assert_eq!(
+        env.get("TRIOS_CHECKPOINT_EVERY").map(String::as_str),
+        Some("100")
+    );
     assert_eq!(
         env.get("TRIOS_ALLOW_SYNTHETIC_DATA").map(String::as_str),
         Some("1")

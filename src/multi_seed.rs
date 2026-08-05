@@ -100,10 +100,9 @@ impl std::fmt::Display for WelchError {
             Self::NonFiniteStatistic { t_stat } => {
                 write!(f, "non-finite Welch t statistic (t={t_stat})")
             }
-            Self::UndefinedTailProbability { t_stat, df } => write!(
-                f,
-                "Student-t tail undefined at t={t_stat}, df={df}"
-            ),
+            Self::UndefinedTailProbability { t_stat, df } => {
+                write!(f, "Student-t tail undefined at t={t_stat}, df={df}")
+            }
         }
     }
 }
@@ -301,38 +300,53 @@ fn welch(a: &ArmSamples, b: &ArmSamples) -> (f64, Result<WelchStats, WelchError>
 /// Uses the regularized incomplete beta function via a continued fraction. The
 /// non-finite case used to `return 0.0`, i.e. report the most significant
 /// p-value representable for an input that carries no information at all.
-fn two_sided_p_from_t(t_abs: f64, df: f64) -> Option<f64> {
+///
+/// `pub(crate)` because `race::victory` routes its one-sample t-test through
+/// this same implementation: two Student-t tails in one crate is one too many,
+/// and the copy in `victory.rs` was the wrong one (it dropped the `1/B(a,b)`
+/// normalization, so its p SHRANK as the sample grew).
+pub(crate) fn two_sided_p_from_t(t_abs: f64, df: f64) -> Option<f64> {
     if !t_abs.is_finite() || !df.is_finite() || df <= 0.0 {
         return None;
     }
     // p = I_{df/(df+t^2)}(df/2, 1/2)  (this is the two-sided tail probability).
     let x = df / (df + t_abs * t_abs);
-    let p = betai(df / 2.0, 0.5, x);
+    let p = betai(df / 2.0, 0.5, x)?;
     if !p.is_finite() {
         return None;
     }
     Some(p.clamp(0.0, 1.0))
 }
 
-/// Regularized incomplete beta function I_x(a, b).
-fn betai(a: f64, b: f64, x: f64) -> f64 {
+/// Regularized incomplete beta function I_x(a, b), or `None` when the
+/// continued fraction did not converge.
+pub(crate) fn betai(a: f64, b: f64, x: f64) -> Option<f64> {
     if x <= 0.0 {
-        return 0.0;
+        return Some(0.0);
     }
     if x >= 1.0 {
-        return 1.0;
+        return Some(1.0);
     }
     let ln_beta = ln_gamma(a + b) - ln_gamma(a) - ln_gamma(b);
     let front = (a * x.ln() + b * (1.0 - x).ln() + ln_beta).exp();
     if x < (a + 1.0) / (a + b + 2.0) {
-        front * betacf(a, b, x) / a
+        Some(front * betacf(a, b, x)? / a)
     } else {
-        1.0 - front * betacf(b, a, 1.0 - x) / b
+        Some(1.0 - front * betacf(b, a, 1.0 - x)? / b)
     }
 }
 
-/// Continued fraction for the incomplete beta function (Lentz's method).
-fn betacf(a: f64, b: f64, x: f64) -> f64 {
+/// Continued fraction for the incomplete beta function (Lentz's method), or
+/// `None` when the iteration budget was exhausted before the fraction
+/// converged.
+///
+/// It used to `break` on convergence and then return `h` unconditionally, so a
+/// run that fell off the end of the loop returned an unconverged partial sum
+/// that is indistinguishable, at the call site, from a converged one. A tail
+/// probability that did not converge is not a smaller tail probability; it is
+/// no tail probability at all, and the caller must say so
+/// ([`WelchError::UndefinedTailProbability`]).
+fn betacf(a: f64, b: f64, x: f64) -> Option<f64> {
     let max_iter = 200;
     let eps = 3.0e-12_f64;
     let fpmin = 1.0e-300_f64;
@@ -347,6 +361,7 @@ fn betacf(a: f64, b: f64, x: f64) -> f64 {
     }
     d = 1.0 / d;
     let mut h = d;
+    let mut converged = false;
 
     for m in 1..=max_iter {
         let m_f = m as f64;
@@ -377,10 +392,15 @@ fn betacf(a: f64, b: f64, x: f64) -> f64 {
         let del = d * c;
         h *= del;
         if (del - 1.0).abs() < eps {
+            converged = true;
             break;
         }
     }
-    h
+    if converged {
+        Some(h)
+    } else {
+        None
+    }
 }
 
 /// Lanczos approximation to ln(Gamma(z)) for z > 0.
@@ -504,6 +524,34 @@ mod tests {
                 Err(WelchError::InsufficientSamples { n_phi: 1, n_zoo: 3 })
             ),
             "expected InsufficientSamples, got {w:?}"
+        );
+    }
+
+    /// The same refusal, observed end-to-end through `run_multi_seed` rather
+    /// than on `welch` directly.
+    ///
+    /// A one-seed run is the shape a caller most easily produces by accident,
+    /// and it is the shape the old code answered with `p = 0.0`. What must come
+    /// back is `verdict: None` and an `InsufficientSamples` error - never a
+    /// p-value, and never a `Tie` standing in for one.
+    #[test]
+    fn a_single_seed_comparison_is_undefined_not_p_zero() {
+        let r = run_multi_seed(&[47], 20, 4, 64, 0.05);
+        assert_eq!(
+            r.welch.unwrap_err(),
+            WelchError::InsufficientSamples { n_phi: 1, n_zoo: 1 },
+            "one seed per arm has no variance; the comparison is undefined"
+        );
+        assert!(
+            r.verdict.is_none(),
+            "a verdict without a p-value is not a verdict; got {:?}",
+            r.verdict
+        );
+        // The arithmetic facts survive the refusal: the means exist even though
+        // the inference does not.
+        assert!(
+            r.mean_diff.is_finite(),
+            "mean_diff is a fact about the samples and must still be reported"
         );
     }
 

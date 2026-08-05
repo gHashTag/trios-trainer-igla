@@ -322,7 +322,11 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap();
         std::env::set_var(ALLOW_PUSH_ENV, "1");
         let mut calls: Vec<Vec<String>> = Vec::new();
-        let res = push_row_with("some/other/ledger.jsonl", &sample_row(), recorder(&mut calls));
+        let res = push_row_with(
+            "some/other/ledger.jsonl",
+            &sample_row(),
+            recorder(&mut calls),
+        );
         std::env::remove_var(ALLOW_PUSH_ENV);
         res.expect("armed push must succeed with a recording runner");
         assert_eq!(calls.len(), 3, "expected add, commit, push: {calls:?}");
@@ -336,7 +340,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let path = dir.path().join("seed_results.jsonl");
         let mut f = std::fs::File::create(&path).expect("create");
-        writeln!(f, r#"{{"_schema":"BPB=<v> @ step=<N> seed=<S>","version":1}}"#).expect("write");
+        writeln!(
+            f,
+            r#"{{"_schema":"BPB=<v> @ step=<N> seed=<S>","version":1}}"#
+        )
+        .expect("write");
         drop(f);
         assert_eq!(
             next_row_index(&path).expect("index"),

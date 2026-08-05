@@ -1,0 +1,58 @@
+{
+  "schema": "trios-checkpoint-record/4",
+  "canon_name": "r5-adv-recheck",
+  "seed": 47,
+  "step": 12000,
+  "path": "checkpoints/r5-adv-recheck/12000.bin",
+  "sha256": "8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 12000,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 2.6347548961639404,
+  "best_val_bpb": 2.6347548961639404,
+  "ema_bpb": 2.6706762313842773,
+  "git_sha": "3c1f751cf4376c13d26e247c2cd86357ab51dd20",
+  "git_provenance": "verified-local",
+  "git_dirty": true,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare.txt",
+      "bytes": 1015394,
+      "sha256": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_val.txt",
+      "bytes": 100000,
+      "sha256": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+    }
+  },
+  "run_id": "",
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-02T21:33:33.829584+00:00",
+  "lr": 0.003000000026077032,
+  "attn_scale": 0.10000000149011612,
+  "attn_seq": 8,
+  "platform": {
+    "os": "macos",
+    "arch": "aarch64",
+    "pointer_width": 64,
+    "libc": "undetermined",
+    "toolchain": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "toolchain_provenance": "runtime-path-query"
+  },
+  "source_sha256": "19aa22fb7cd187774b71cbde7cb89b664aff7260b57f55afd865dd447707108b",
+  "trainer": {
+    "path": "/Users/playra/trios-trainer-igla/target/release/trios-train",
+    "sha256": "73fae5db63b3279457a85757492b2cac88da9119e0ce71894d7c6cfcacf263ae",
+    "provenance": "self-hashed"
+  },
+  "vocab": 128
+}

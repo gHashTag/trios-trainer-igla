@@ -1,7 +1,22 @@
+//! Race ledger backend -- DELIBERATELY UNIMPLEMENTED, AND SAYS SO.
+//!
+//! `NeonDb` never opened a socket. `connect` slept 50ms, logged
+//! "Connected to Neon (STUB)" and returned `Ok`; every writer returned `Ok(())`
+//! after writing nothing; `query` returned an empty row set. That is the same
+//! shape as the `checkpoint::save` stub that returned `Ok(())` for 1,851
+//! experiments and produced zero artifacts -- and here it was worse, because
+//! `tri race status` / `tri race best` turned the empty row set into positive
+//! factual claims about a shared ledger ("No completed trials yet") that
+//! nothing had been asked.
+//!
+//! So the type now refuses. `connect` returns `Err` for every connection
+//! string, well-formed or not, and every method returns the same `Err`. A
+//! caller cannot obtain a `NeonDb`, so it cannot receive an answer that was
+//! never measured. Restoring the backend means implementing `connect` against
+//! a real `tokio_postgres` client, not deleting the refusal.
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
-use tracing::info;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -63,16 +78,35 @@ pub struct LessonEntry {
     pub pattern_count: i32,
 }
 
+/// The single refusal every race-backend entry point returns.
+///
+/// Printed by `tri race status` / `tri race best` / `tri race start` on stderr
+/// before they exit non-zero.
+pub const STUB_REFUSAL: &str =
+    "race backend is a stub: no database is contacted, and no answer from it is a measurement";
+
+fn refuse<T>() -> Result<T> {
+    Err(anyhow::anyhow!("{STUB_REFUSAL}"))
+}
+
+/// A handle that cannot be obtained.
+///
+/// The private field keeps construction inside this module, and this module
+/// never constructs one -- so every method below is unreachable by design and
+/// exists only to keep the callers (`race::status`, `race::lessons`,
+/// `race::asha`) compiling against the shape a real backend would have.
 pub struct NeonDb {
-    _dummy: (),
+    _uninhabitable: (),
 }
 
 impl NeonDb {
+    /// Always `Err`, for every connection string.
+    ///
+    /// A well-formed DSN is not evidence that anything is reachable, and this
+    /// module reaches nothing. See `STUB_REFUSAL`.
     pub async fn connect(conn_str: &str) -> Result<Self> {
-        info!("Connecting to Neon: {conn_str} (STUB MODE)");
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        info!("Connected to Neon (STUB)");
-        Ok(Self { _dummy: () })
+        let _ = conn_str;
+        refuse()
     }
 
     pub fn client(&self) -> &Self {
@@ -86,48 +120,59 @@ impl NeonDb {
         worker_id: i32,
         config_json: &str,
     ) -> Result<()> {
-        info!("Trial registered (STUB): trial_id={trial_id} machine={machine_id} worker={worker_id} config={config_json}");
-        Ok(())
+        let _ = (trial_id, machine_id, worker_id, config_json);
+        refuse()
     }
 
     pub async fn record_checkpoint(&self, trial_id: &Uuid, rung: i32, bpb: f64) -> Result<()> {
-        info!("Checkpoint recorded (STUB): trial={trial_id} rung={rung} BPB={bpb:.4}");
-        Ok(())
+        let _ = (trial_id, rung, bpb);
+        refuse()
     }
 
     pub async fn update_rung(&self, trial_id: &str, rung_steps: usize, bpb: f64) -> Result<()> {
-        info!("Rung updated (STUB): trial={trial_id} rung={rung_steps} BPB={bpb:.4}");
-        Ok(())
+        let _ = (trial_id, rung_steps, bpb);
+        refuse()
     }
 
     pub async fn update_heartbeat(&self, trial_id: &str) -> Result<()> {
-        info!("Heartbeat (STUB): trial_id={trial_id}");
-        Ok(())
+        let _ = trial_id;
+        refuse()
     }
 
     pub async fn mark_pruned(&self, trial_id: &Uuid, at_step: i32, bpb: f64) -> Result<()> {
-        info!("Trial pruned (STUB): trial={trial_id} step={at_step} bpb={bpb:.4}");
-        Ok(())
+        let _ = (trial_id, at_step, bpb);
+        refuse()
+    }
+
+    /// Record that the trainer died before producing a reading.
+    ///
+    /// Deliberately takes no BPB: a crash has no bits-per-byte. The previous
+    /// caller passed the magic float `999.0` into `mark_pruned`, which is
+    /// exactly what `neon_writer::reject_bpb` exists to catch on the other
+    /// writer.
+    pub async fn mark_crashed(&self, trial_id: &Uuid, at_step: i32, detail: &str) -> Result<()> {
+        let _ = (trial_id, at_step, detail);
+        refuse()
     }
 
     pub async fn mark_completed(&self, trial_id: &Uuid, bpb: f64, steps: i32) -> Result<()> {
-        info!("Trial completed (STUB): trial={trial_id} BPB={bpb:.4} steps={steps}");
-        Ok(())
+        let _ = (trial_id, bpb, steps);
+        refuse()
     }
 
     pub async fn mark_winner(&self, trial_id: &str, bpb: f64, steps: usize) -> Result<()> {
-        info!("IGLA FOUND (STUB): trial={trial_id} BPB={bpb:.4} steps={steps}");
-        Ok(())
+        let _ = (trial_id, bpb, steps);
+        refuse()
     }
 
     pub async fn is_config_running(&self, machine_id: &str, config_json: &str) -> Result<bool> {
         let _ = (machine_id, config_json);
-        Ok(false)
+        refuse()
     }
 
     pub async fn get_median_bpb_at_rung(&self, rung_steps: usize) -> Result<Option<f64>> {
         let _ = rung_steps;
-        Ok(None)
+        refuse()
     }
 
     pub async fn store_lesson(
@@ -139,13 +184,20 @@ impl NeonDb {
         lesson: &str,
         lesson_type: &str,
     ) -> Result<()> {
-        info!("Lesson stored (STUB): trial={trial_id} outcome={outcome} rung={pruned_at_rung} bpb={bpb_at_pruned:.4} type={lesson_type} lesson={lesson}");
-        Ok(())
+        let _ = (
+            trial_id,
+            outcome,
+            pruned_at_rung,
+            bpb_at_pruned,
+            lesson,
+            lesson_type,
+        );
+        refuse()
     }
 
     pub async fn get_top_lessons(&self, limit: i32) -> Result<Vec<LessonEntry>> {
         let _ = limit;
-        Ok(vec![])
+        refuse()
     }
 
     pub async fn query(
@@ -153,11 +205,8 @@ impl NeonDb {
         query: &str,
         _params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<Vec<tokio_postgres::Row>> {
-        info!(
-            "Query (STUB): {}",
-            query.trim().chars().take(80).collect::<String>()
-        );
-        Ok(vec![])
+        let _ = query;
+        refuse()
     }
 
     pub async fn query_one(
@@ -165,23 +214,9 @@ impl NeonDb {
         query: &str,
         _params: &[&(dyn tokio_postgres::types::ToSql + Sync)],
     ) -> Result<tokio_postgres::Row> {
-        info!(
-            "Query one (STUB): {}",
-            query.trim().chars().take(80).collect::<String>()
-        );
-        Err(anyhow::anyhow!("no rows (STUB)"))
+        let _ = query;
+        refuse()
     }
-}
-
-pub fn spawn_heartbeat(db: NeonDb, trial_id: String) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            if let Err(e) = db.update_heartbeat(&trial_id).await {
-                tracing::warn!("Heartbeat failed for {}: {}", trial_id, e);
-            }
-        }
-    })
 }
 
 pub const SCHEMA_MIGRATION: &str = r#"

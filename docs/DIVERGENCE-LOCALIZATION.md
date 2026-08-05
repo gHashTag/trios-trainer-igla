@@ -21,6 +21,12 @@ clean -- OS, libm vendor, kernel and filesystem are held fixed and only the ISA
 target moves -- and it is also the reason this result **constrains** the native
 x86_64 Linux arm rather than replacing it.
 
+The whole experiment is one command, `scripts/local_isa_probe.py`, which
+rebuilds both arms, re-runs all four measurements, checks its own
+preconditions and prints the verdict. It is the executable form of everything
+on this page; a reader who does not trust the tables is meant to run it rather
+than to read harder.
+
 ## The question
 
 GitHub Actions run 30767491098 measured that the documented seed-47 12000-step
@@ -34,10 +40,29 @@ recorded on aarch64 macOS:
 
 The compiler was pinned byte-identical by `rust-toolchain.toml`, dependencies
 were built `--locked`, and all three corpus hashes (train, val, and the union
-hash that proves the split is a partition) passed before training started. The
-two hosts differ in CPU architecture **and** OS **and** libc, which is why that
-run can report *that* the artifacts disagree but cannot attribute the
-disagreement to any one of the three.
+hash that proves the split is a partition) passed before training started.
+
+### The attribution that run cannot make
+
+**That run changed two things at once and can attribute its result to
+neither.** The hosts differ in instruction set **and** in operating system, and
+with the OS in libm and in libc: Apple's arm64 libm on Darwin against glibc
+2.39 on Linux. Naming both variables is not the same as controlling either. So
+run 30767491098 is evidence *that* the artifacts disagree and is not evidence
+about *why*, and no summary of this repository -- pitch, README, or workflow
+header -- may call it a CPU-architecture result. The header of
+`.github/workflows/cross-arch-repro.yml` has been rewritten to say so at the
+point of use, because that is where the number gets quoted from.
+
+There is a further reason to distrust the architecture story specifically, and
+it is worth stating before any expensive work is scheduled on the strength of
+it: rustc does not enable fast-math or floating-point contraction, so LLVM is
+not licensed to reassociate sums or to fuse `a*b + c` into an FMA in the
+trainer's own code. Disassembly confirms it held -- see "What the mechanism is
+not" below, where neither binary is found to contain a single FMA instruction.
+That makes libm the stronger prior of the two candidates, and it makes the
+single-variable experiment worth running *before* anyone constrains the
+arithmetic at a cost in speed.
 
 That run also says nothing about **where** the divergence begins, because the
 earliest artifact it produces is 12000 optimizer steps deep. Two different
@@ -233,9 +258,73 @@ inferred from its end state:
 | 200 | 40,864 (19.19%) | 1 | 1.436e-03 |
 | 12000 | 93,071 (43.70%) | 52,110 | 4.756e-01 |
 
+"Parameters differing" in every row of this table means **differing in value**,
+out of 212,992. On the 12000-step row a further 2,073 parameters differ
+*bitwise* only in the sign of zero and are numerically equal, so the bitwise
+count there is 95,144 (44.67%); `43.70%` is the conservative of the two
+definitions and is the one quoted here and elsewhere. The reconciliation and
+the census are in
+[`CANONICAL-SERIALIZATION.md`](CANONICAL-SERIALIZATION.md).
+
 The 12000-step row is the CI pair (x86_64 Linux against aarch64 macOS), not this
 Rosetta pair, and is included to show the trajectory, not as a fourth point on
 one curve.
+
+### Independently replicated, 2026-08-05, by one command
+
+The experiment above was assembled by hand. It has since been re-run start to
+finish by `scripts/local_isa_probe.py`, which rebuilds both targets from the
+working tree, runs each arm **twice**, and re-derives all four hashes:
+
+```bash
+python3 scripts/local_isa_probe.py --json evidence/xarch-local-isa/probe.json
+```
+
+Verdict `ISA_SUFFICIENT_TO_DIVERGE`, control passing on both arms, from a *newly
+built* pair of binaries -- `709fcbf2...` (aarch64) and `1083862c...` (x86_64),
+neither of which is the pair the tables above were measured with. The four
+hashes came back unchanged: `4f854c82...` at init on both instruction sets,
+`efef1cba...` against `5913542e...` at step 10. Two further back-to-back
+invocations of the probe reproduced the same four hashes again.
+
+The verdict string said ONLY where it now says SUFFICIENT when those runs were
+taken; the archived record reads `ISA_SUFFICIENT_TO_DIVERGE` because
+`probe.json` was **re-minted by re-running the probe**, not edited. See "The
+verdict string was too strong" below for why the name changed. The re-run used a
+third pair of freshly built binaries -- `faec0870...` (aarch64) and
+`a213d226...` (x86_64) -- and returned all four hashes identical again.
+
+This matters for one specific doubt. The measurements above were taken from a
+dirty tree while other work was landing in it, which is a real objection to
+them. The anchor has now been reproduced under **six** distinct trainer binaries
+-- the re-run above added the third pair -- built from six recorded source
+states, so the concurrent edits demonstrably do not reach the numerics.
+
+One caveat on the archive, stated because the directory is the evidence: the
+`.bin` files under `evidence/xarch-local-isa/` are the ones the *earlier* pair of
+binaries wrote. They are byte-identical to what the re-run produced -- that is
+what "all four hashes identical" means -- so they were not replaced, and their
+sidecars therefore still carry the record schema of the day they were minted.
+`probe.json` and `probe-stdout.txt` are from the re-run.
+
+The probe also proves rather than assumes the two properties the experiment
+depends on. It reads `platform.arch` back out of each run's own sidecar --
+`aarch64` and `x86_64`, with `os=macos` on both -- so "the ISA was varied and
+the OS was not" is an observation from inside the two processes, not an
+inference from the command line. And it re-hashes both binaries after the last
+run to confirm neither changed underneath the measurement, which on this tree
+is a live hazard rather than a theoretical one.
+
+Artifacts, sidecars and the probe's full stdout are archived under
+`evidence/xarch-local-isa/`. **They are staged, not committed**, and the
+distinction matters to a reader rather than to the author, so it is stated
+here: `git ls-tree -r HEAD --name-only evidence/xarch-local-isa` returns
+nothing, while `git ls-files` on the same path lists them, because it counts
+the author's index. Until that directory is committed, this section's evidence
+is reproducible by re-running the probe but is **not** obtainable from a clone.
+Each invocation writes into its own timestamped
+directory under `checkpoints/isa-probe/`, so re-running never overwrites or
+deletes a previous measurement.
 
 ### And the metric, at every step count
 
@@ -262,7 +351,7 @@ otool -tv target/release/trios-train \
   | grep -cE '\b(fmadd|fmsub|fnmadd|fnmsub|fmla|fmls)\b'
 #   0
 otool -tv target/x86_64-apple-darwin/release/trios-train \
-  | grep -cE '\bvfm[a-z]+\b'
+  | grep -cE 'vfm(add|sub|nmadd|nmsub)'
 #   0
 ```
 
@@ -272,13 +361,81 @@ Rust does not enable floating-point contraction by default, and this confirms it
 held here. What the platform libm does inside its own implementations is not
 observable this way and is not excluded.
 
+Both counts re-measured 2026-08-05 on the second pair of binaries
+(`709fcbf2a95342a8bbf70dab6ea3acdc157b8e771b908386ae5e9bb72db36845`,
+`1083862c3166dbafdc9e9db66b76c3ef78d9d7d89584902def8b77365a0833e4`): **0** and
+**0**. The count is a property of how this trainer is compiled, not of the
+particular build the claim was first read off.
+
+#### Positive control: the check is capable of firing
+
+A grep that returns 0 is worthless until you have seen it return 1. Both
+patterns above were run against a deliberately FMA-carrying object, built on
+this machine on 2026-08-05:
+
+```bash
+printf 'float f(float a,float b,float c){return a*b+c;}\n' > /tmp/fma_pos.c
+clang -target x86_64-apple-darwin -O2 -mfma -c /tmp/fma_pos.c -o /tmp/fma_pos.o
+otool -tv /tmp/fma_pos.o | grep -cE 'vfm(add|sub|nmadd|nmsub)'
+#   1        the instruction is `vfmadd213ss %xmm2, %xmm1, %xmm0`
+```
+
+and, for the other arm, with no `-m` flag at all, because FMA is in the AArch64
+baseline and needs no opting in:
+
+```bash
+clang -target arm64-apple-darwin -O2 -c /tmp/fma_pos.c -o /tmp/fma_pos_arm.o
+otool -tv /tmp/fma_pos_arm.o \
+  | grep -cE '\b(fmadd|fmsub|fnmadd|fnmsub|fmla|fmls)\b'
+#   1        the instruction is `fmadd s0, s0, s1, s2`
+```
+
+That second control is what gives the aarch64 zero its force: `fmadd` was
+available to the compiler on that target and was not emitted.
+
+**A correction, recorded rather than quietly applied.** Until 2026-08-05 the
+x86_64 arm above matched the literal `vfm` followed by a *lowercase-letters-only*
+character class, fenced by word boundaries on both sides. That pattern **cannot
+match any x86 FMA mnemonic**, because every one of them carries digits: in
+`vfmadd213ss` there is no word boundary between the `d` and the `2`, so a
+lowercase-only run can never reach a boundary at the end of the token. Run
+against `/tmp/fma_pos.o` the old pattern returns **0** -- on an object that
+provably contains `vfmadd213ss`. The old pattern is deliberately not reproduced
+here in copyable form, so that nobody re-inherits it.
+
+The check was vacuous, and it sat beside an aarch64 check that was sound, which
+is the worst possible arrangement: two commands that look symmetric, only one of
+which was capable of failing. The **conclusion is unchanged** -- the corrected
+pattern still returns 0 on the real binary -- but on the x86_64 arm that
+conclusion was, until this correction, unevidenced rather than wrong. A check
+that cannot fire proves nothing, and it is more dangerous than no check at all,
+because it looks like one.
+
+**The stronger and cheaper argument needs no disassembly at all.** The x86_64
+build targets baseline x86-64, and that target simply has no FMA feature
+enabled:
+
+```bash
+rustc --print cfg --target x86_64-apple-darwin | grep target_feature
+#   cmpxchg16b, fxsr, sse, sse2, sse3, sse4.1, ssse3   -- and no `fma`
+```
+
+Absence of FMA in that binary is therefore a property of the target
+specification, guaranteed before a single byte is disassembled; the
+disassembly only confirms that nothing overrode it. The aarch64 arm gets no
+such guarantee, since `fmadd` *is* baseline there, which is precisely why the
+disassembly is doing real work on that side and the positive control above
+matters.
+
 What remains, both evidenced, neither isolated:
 
 * **Reduction order.** Both backends auto-vectorised the float arithmetic, and
   differently: 326 `fadd.4s` and 695 `fmul.4s` on aarch64 against 282 `addps`
   and 392 `mulps` on x86_64. Floating-point addition is not associative, so two
   different vectorisation schedules over the same sum are entitled to two
-  different results.
+  different results. (On the second pair of binaries the same counts read
+  324 / 692 / 282 / 392. They drift with the tree, as instruction counts do;
+  what does not drift is that the two schedules differ.)
 * **libm.** Both binaries import the same four symbols -- `_expf`, `_log`,
   `_logf`, `_pow` -- and resolve them against **different architecture slices**
   of the platform libm. None of those four is bit-specified by IEEE-754, so the
@@ -329,13 +486,71 @@ So, explicitly, **which result each claim rests on**:
 **Do not read this experiment as having retired the native x86_64 Linux arm.**
 It constrains it. Before this, a native-Linux mismatch was consistent with an
 init/RNG bug, with an arithmetic difference, with a libc difference and with
-plain non-repeatability. Two of those four are now unlikely: initialisation
-carried across an ISA change, and the trainer repeated itself on an x86_64
-build. What is still open is whether the *native* x86_64 arm behaves as the
+plain non-repeatability. Two of those four were made unlikely here:
+initialisation carried across an ISA change, and the trainer repeated itself on
+an x86_64 build. What this experiment could not see -- because it holds the OS
+fixed by construction -- is whether the *native* x86_64 arm behaves as the
 translated one does, and whether glibc's libm contributes on top of the ISA.
-Only a native x86_64 host answers that, and the job that would ask
-(`localize-divergence` in `.github/workflows/cross-arch-repro.yml`) has not been
-run.
+Only a native x86_64 host answers that. **As of 2026-08-05 one has**; see
+directly below.
+
+### The CI job that asks this has now run, and it answered
+
+This section used to say the job could not run, because
+`TRIOS_CHECKPOINT_INIT=1` existed "only in the working tree". That blocker is
+gone. Both commands the section printed as proof now return the opposite of
+what it claimed, re-measured 2026-08-05:
+
+```
+$ git show HEAD:src/train_loop.rs | grep -c TRIOS_CHECKPOINT_INIT
+5
+$ git log --all -S TRIOS_CHECKPOINT_INIT --oneline
+ba272b9 feat(repro): localize the cross-architecture divergence, and retract what it invalidates
+```
+
+The variable landed in `ba272b9`, that commit is on `origin/fix/509-qat-v2`, and
+`actions/checkout@v4` therefore now fetches a trainer that honours it. The old
+paragraph is preserved above in summary rather than deleted, because a document
+that silently drops its own retracted claims cannot be audited.
+
+**`localize-divergence` ran on 2026-08-05 in run `31004703001`, on native
+x86_64 Linux, and reported:**
+
+```
+ init   x86_64 linux : 4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457
+ init   aarch64 macos: 4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457
+ step10 x86_64 linux : a32e9b2ab0043b91aaaae96f3e6945a419ef305e375fa2aaf2ba38a6deba19d1
+ step10 aarch64 macos: efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac
+ bytes  : 852272 / 852272
+INIT MATCH
+STEP10 MISMATCH
+```
+
+Environment recorded by the job itself: `rustc 1.96.0 (ac68faa20 2026-05-25)`,
+`ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39`.
+
+**The job's GitHub conclusion is `failure`. That is the designed outcome, not a
+malfunction.** The step exits 1 on `STEP10 MISMATCH` precisely so the finding
+cannot be mistaken for a pass. Red here means *measured*.
+
+Two things follow, and they are worth separating:
+
+* **The native arm lands in the same cell as the Rosetta pair: MATCH /
+  MISMATCH.** Initialisation is byte-identical across architecture, OS *and*
+  libc taken together -- `4f854c82...` is the same init hash this document
+  anchors locally on aarch64 macOS and under Rosetta. The divergence is
+  introduced by the training arithmetic, within ten gradient steps. What the
+  local probe showed with the OS held fixed, CI now shows with the OS varying
+  too.
+* **It does not isolate ISA from OS/libm.** This job varies both at once. The
+  local Rosetta probe is what holds the OS fixed; the two together say the ISA
+  alone is *sufficient*, and that adding a second OS and libc does not change
+  the verdict. Neither says libm contributes nothing.
+
+The step-10 x86_64 Linux hash `a32e9b2a...` also differs from the x86_64 Rosetta
+step-10 hash `5913542e...` recorded above. Those two are not a controlled pair --
+different OS, different libc, different host -- so the difference is recorded and
+not attributed.
 
 ### Limits on the local reference itself
 
@@ -387,7 +602,7 @@ because a native x86_64 run will land in one of these cells.
 |---|---|---|---|
 | MATCH | MATCH | The artifact carries across at both points, at 10 steps. Says nothing about 12000 -- run 30767491098 measured a mismatch there -- so this would mean the divergence accumulates later and the next step is to bisect the step count. | n/a; bisect |
 | MISMATCH | MISMATCH | The divergence is present **before any gradient step**. Cause: initialisation / RNG, not floating-point arithmetic. | Outright: make weight initialisation platform-independent (integer RNG, explicit bit-level conversion). No speed cost. |
-| **MATCH** | **MISMATCH** | **Observed here, on the Rosetta pair.** Initialisation is byte-identical; the divergence is introduced by the training arithmetic within 10 steps. Cause: reduction order or libm (FMA contraction excluded by disassembly). | Only by constraining the arithmetic: fix summation order, avoid libm where a correctly-rounded substitute exists. Costs speed. |
+| **MATCH** | **MISMATCH** | **Observed twice: here on the Rosetta pair, and on native x86_64 Linux in CI run `31004703001` (2026-08-05).** Initialisation is byte-identical; the divergence is introduced by the training arithmetic within 10 steps. Cause: reduction order or libm (FMA contraction excluded by disassembly *and* by the x86_64 target spec, which carries no `fma` feature). | Only by constraining the arithmetic: fix summation order, avoid libm where a correctly-rounded substitute exists. Costs speed. |
 | MISMATCH | MATCH | Contradictory: different starting weights cannot yield identical weights 10 steps later. Treat the run as broken and re-run before drawing any conclusion. | n/a; the experiment failed |
 
 ## Scope of every claim on this page
@@ -397,19 +612,78 @@ because a native x86_64 run will land in one of these cells.
 * Same-machine determinism, x86_64 under Rosetta 2 on the same host:
   **measured**, at init, at 10 steps and at 200 steps, two independent runs at
   each. This is the repeatability control, and it passes.
-* Same-machine determinism on **native** x86_64 Linux: **still not measured.**
-  The `repro` job of `.github/workflows/cross-arch-repro.yml` now trains the
-  documented seed twice on that arm, but that job has not been run.
+* Same-machine determinism on **native** x86_64 Linux: **measured 2026-08-05**,
+  run `31004703001`. The `repro` job of `.github/workflows/cross-arch-repro.yml`
+  trained the documented seed twice on that arm; both runs produced
+  `bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3` at 852272
+  bytes -- "SELF-MATCH - two independent x86_64 runs produced identical bytes."
+  That is also the hash run `30767491098` recorded three days earlier on a
+  different runner instance. This bullet said "still not measured" until the
+  job was run.
+* Cross-platform behaviour at **0 and 10 steps**, native x86_64 Linux against
+  aarch64 macOS: **measured 2026-08-05**, same run, `localize-divergence` job:
+  `INIT MATCH`, `STEP10 MISMATCH`. This bullet previously said the job could not
+  run at all; see the section above for the full output and for what it does and
+  does not isolate.
 * Cross-ISA behaviour at 0, 10 and 200 steps, macOS host, Rosetta:
-  **measured**, and reported above.
+  **measured**, and reported above. The 0- and 10-step pair is **replicated**
+  by `scripts/local_isa_probe.py` across two pairs of binaries, five
+  invocations, the same four hashes every time. The verdict string those runs
+  emit is `ISA_SUFFICIENT_TO_DIVERGE`; in the first three it said ONLY in place
+  of SUFFICIENT, which claimed more than the data supports -- see below.
+* The **separation of ISA from OS/libm** as the cause of run 30767491098's
+  mismatch: **partly measured.** The ISA alone is shown to be *sufficient* to
+  move the artifact. Whether OS/libm *also* contributes there, and how much, is
+  **not measured** -- this page holds the OS fixed by construction and so cannot
+  see that contribution at all.
+
 * Cross-platform behaviour at 12000 steps, x86_64 Linux against aarch64 macOS:
-  measured once per arm, and the two checkpoints differ (run 30767491098). That
-  the difference is attributable to architecture *rather than to OS or libc* is
-  still not established by that run; this page narrows it by showing that an ISA
-  change alone is sufficient to produce a divergence, which is not the same as
-  showing it is the only cause operating there.
-* A native x86_64 CPU, a second libc, a second compiler version, a third
-  architecture: **not measured.**
+  the two checkpoints differ (run 30767491098, reproduced in run 31004703001).
+  The x86_64 arm has now been repeated -- three times in total across two runs,
+  all `bb14ab18...` -- so the within-arm control that this bullet used to lack
+  is present on that side. The aarch64 arm is still n=1 *in CI*; it is repeated
+  locally, but not by a job a reader can re-run. That the difference is
+  attributable to architecture *rather than to OS or libc* is still not
+  established by these runs; this page narrows it by showing that an ISA change
+  alone is sufficient to produce a divergence, which is not the same as showing
+  it is the only cause operating there.
+* A native x86_64 CPU and a second libc: **measured 2026-08-05** (GitHub-hosted
+  Ubuntu runner, `ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39`), at 0, 10 and 12000
+  steps. A second compiler version and a third architecture: **not measured** on
+  this page.
+
+### The verdict string was too strong
+
+`scripts/local_isa_probe.py` emitted a machine-readable label that said the ISA
+was the ONLY thing that diverged. The prose beside it always said the right
+thing -- "that does not make it the only cause operating here" -- but a JSON key
+is what a machine reads, and that key said ONLY. This page's own data denies it.
+Three step-10 hashes exist for the same declared inputs:
+
+```
+efef1cba...  aarch64  macOS               native
+5913542e...  x86_64   macOS, Rosetta 2    translated
+a32e9b2a...  x86_64   Linux, glibc 2.39   CI run 31004703001
+```
+
+The last two carry the **same declared architecture** and differ anyway. At
+fixed `arch=x86_64`, a change of OS and libc moves the bytes too, so varying the
+ISA is *sufficient* to diverge and is demonstrably not the only thing that is.
+The constant is now `ISA_SUFFICIENT_TO_DIVERGE`, and the probe prints the three
+hashes above in its own verdict block rather than leaving the qualification in a
+document the reader may not have open.
+
+The retracted spelling is described rather than quoted, here and in the script,
+for one checkable reason: it was never persisted. `git log --all -S` finds it in
+no commit -- the probe and its evidence are themselves still uncommitted -- so
+no artifact anywhere carries it and no reader can hold one to search for. That
+is the same test applied to the checkpoint record schema in `src/checkpoint.rs`,
+and it is the only thing that makes dropping a string safe.
+
+The same run also pushed the Rosetta disclosure down onto each arm's
+`declared_platform` entry. The record carried it once at the top level, so a
+consumer slicing out `declared_platform["isa-probe-x86_64"]` read
+`arch: x86_64, os: macos` with nothing to say it was not native silicon.
 
 The word "reproducible" is not used unqualified anywhere in this document on
 purpose. A checkpoint hash is a measurement, and a measurement without the
