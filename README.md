@@ -8,7 +8,29 @@ Anchor: `phi^2 + phi^-2 = 3`.
 
 > **Canonical Zenodo SOT:** [zenodo.org/communities/trinity-s3ai](https://zenodo.org/communities/trinity-s3ai/). The anchor badge resolves to record [19227877 (VSA Operations v5.0, B007)](https://doi.org/10.5281/zenodo.19227877), which is canonical inside the SOT community.
 
-**Champion: BPB=2.2111** (seed=43, 81K steps, AdamW, hidden=384, Railway).
+> ### The BPB figures in this README are withdrawn
+>
+> They are left visible below rather than deleted. A number that quietly
+> disappears is indistinguishable from one that was never wrong, and anyone who
+> quoted these should be able to find out why they should not.
+>
+> **No model artifact exists for any of them.** `checkpoint::save` on this branch
+> is a stub that returns `Ok(())` and writes nothing
+> ([`src/checkpoint.rs:116`](src/checkpoint.rs#L116)). There is nothing on disk to
+> re-evaluate, so no figure here can be reproduced, even in principle.
+>
+> **The quick start below contradicted this repository's own leak guard.** It
+> built the validation file as a verbatim prefix of the training file --- which
+> is the exact condition `assert_train_val_disjoint`
+> ([`src/train_loop.rs:114`](src/train_loop.rs#L114)) aborts on, and whose panic
+> message prescribes the correct split. Following the old instructions did not
+> produce a quiet leak; it produced an immediate assertion failure. The split
+> below is now the one the guard asks for.
+>
+> An atomic checkpoint save whose sha256 is taken over bytes re-read from disk,
+> with the provenance record and uncertainty budget that belong beside it, is on
+> branch `fix/509-qat-v2` and **is not merged here**. Nothing in this repository
+> has been re-measured under that code.
 
 ## Quick start
 
@@ -19,8 +41,14 @@ cd trios-trainer-igla
 # Download data
 mkdir -p data
 curl -sL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt \
-    > data/tiny_shakespeare.txt
-head -c 100000 data/tiny_shakespeare.txt > data/tiny_shakespeare_val.txt
+    > data/tiny_shakespeare_full.txt
+
+# Byte-disjoint split, as assert_train_val_disjoint requires: validation is the
+# LAST 100000 bytes, training is everything before it. Concatenating the two
+# reconstructs the original file byte for byte.
+FULL=$(wc -c < data/tiny_shakespeare_full.txt)
+head -c $((FULL - 100000)) data/tiny_shakespeare_full.txt > data/tiny_shakespeare.txt
+tail -c 100000            data/tiny_shakespeare_full.txt > data/tiny_shakespeare_val.txt
 
 # Build
 cargo build --release
@@ -104,7 +132,10 @@ Commands:
 | `ledger_check` | Validate ledger format |
 | `qk_gain_check` | Check QK-gain against INV-13 (--lr, --gain) |
 
-## Results (Railway, 2026-04-27)
+## Results (Railway, 2026-04-27) --- withdrawn
+
+Every figure in this table is covered by the withdrawal note at the top of this
+file: it was produced by a build that persisted no checkpoint.
 
 | Config | Seed 42 | Seed 43 | Seed 44 | Avg |
 |--------|---------|---------|---------|-----|
@@ -142,13 +173,18 @@ cargo test --release          # unit + integration (9 tests)
 cargo test --release -- --ignored  # champion reproduction (long)
 ```
 
-## Gate-2 target
+## Gate-2 target --- historical
+
+The deadline below passed on 2026-04-30 and the figures quoted in it are
+withdrawn. Kept for provenance.
 
 - **BPB < 1.85** on 3 seeds {42, 43, 44}, step >= 4000
 - Deadline: 2026-04-30 23:59 UTC
 - Current gap: +0.36 (BPB=2.21 → target 1.85)
 
-## Roadmap
+## Roadmap --- historical
+
+The result column quotes withdrawn figures. Kept for provenance.
 
 | Phase | Status | Result |
 |-------|--------|--------|

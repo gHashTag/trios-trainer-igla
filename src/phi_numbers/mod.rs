@@ -16,6 +16,7 @@ pub mod gf64;
 pub mod gf8;
 pub mod gfternary;
 pub mod phi_constants;
+pub mod scale_aware;
 
 pub use fibonacci_dims::*;
 pub use gf12::GF12;
@@ -29,6 +30,7 @@ pub use gf64::GF64;
 pub use gf8::GF8;
 pub use gfternary::GFTernary;
 pub use phi_constants::*;
+pub use scale_aware::{fake_quantize_ternary_scale_aware, ScaleAwareTernary};
 
 /// Main Trinity identity: φ² + 1/φ² = 3
 pub const TRINITY_IDENTITY: f64 = 3.0;

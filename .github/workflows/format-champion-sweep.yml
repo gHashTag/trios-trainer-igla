@@ -1,0 +1,80 @@
+name: format-champion-sweep
+
+# Champion-scale per-format BPB sweep (issue #183).
+#
+# Drives the REAL champion harness (train_loop::run_single) across every
+# real-kernel numeric format, over >= 11 seeds (Fibonacci/Lucas canon), at
+# champion depth. This is the long-running home for the sweep — the in-repo
+# `format_champion_sweep` binary is validated in the sandbox at reduced depth;
+# full champion depth (hidden=828, steps=27000) belongs in CI.
+#
+# HONESTY: train_loop::VOCAB is a compile-time const = 128, so BPB here is a
+# byte-level (vocab-128) metric — internally comparable across formats at a
+# fixed budget, NOT the vocab-32000 champion-lock number (#181, 2.1919).
+
+on:
+  workflow_dispatch:
+    inputs:
+      hidden:
+        description: "hidden width"
+        default: "828"
+      steps:
+        description: "training steps"
+        default: "27000"
+      seeds:
+        description: "comma seeds (>=11, Fib/Lucas; forbidden 42-45)"
+        default: "1,2,3,5,8,13,21,34,55,89,144"
+      formats:
+        description: "comma format list (empty = all real-kernel)"
+        default: ""
+      lr:
+        default: "0.003"
+      attn_layers:
+        default: "2"
+      eval_every:
+        default: "1000"
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch real corpus (tiny_shakespeare), build 90/10 byte split
+        run: |
+          curl -sSL https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt -o /tmp/tinysp.txt
+          python3 - <<'PY'
+          data=open('/tmp/tinysp.txt','rb').read()
+          n=len(data); cut=int(n*0.9)
+          import os; os.makedirs('data', exist_ok=True)
+          open('data/champ_train.bin','wb').write(data[:cut])
+          open('data/champ_val.bin','wb').write(data[cut:])
+          print("train",cut,"val",n-cut)
+          PY
+
+      - name: Build sweep binary
+        run: cargo build --release --bin format_champion_sweep
+
+      - name: Run champion sweep
+        run: |
+          FMT_ARG=""
+          if [ -n "${{ inputs.formats }}" ]; then FMT_ARG="--formats ${{ inputs.formats }}"; fi
+          ./target/release/format_champion_sweep \
+            --hidden ${{ inputs.hidden }} --steps ${{ inputs.steps }} \
+            --lr ${{ inputs.lr }} --attn-layers ${{ inputs.attn_layers }} \
+            --eval-every ${{ inputs.eval_every }} \
+            --seeds ${{ inputs.seeds }} $FMT_ARG \
+            --train data/champ_train.bin --val data/champ_val.bin \
+            --out format_champion_sweep.jsonl
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: format-champion-sweep-jsonl
+          path: format_champion_sweep.jsonl
