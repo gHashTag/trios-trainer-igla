@@ -50,13 +50,21 @@ fn main() {
     let val_data = env_or("TRIOS_VAL_DATA", "/work/data/tiny_shakespeare_val.txt");
 
     let trainer = env_or("TRIOS_TRAINER_BIN", "trios-train");
+    // Arch breakthrough (2026-05-15): tjepa_train + hybrid_train added so the
+    // Railway fleet can dispatch multi-objective JEPA-T / NCA / Hybrid lanes
+    // and break the 2.5719 NTP-only plateau. See PR `feat/unlock-jepa-nca-trainers`.
     if !matches!(
         trainer.as_str(),
-        "trios-train" | "scarab" | "gf16_test" | "ngram_train_gf16"
+        "trios-train"
+            | "scarab"
+            | "gf16_test"
+            | "ngram_train_gf16"
+            | "tjepa_train"
+            | "hybrid_train"
     ) {
         eprintln!(
             "[entrypoint] TRIOS_TRAINER_BIN={trainer:?} is not in the allowed set \
-             {{trios-train, gf16_test, ngram_train_gf16}}"
+             {{trios-train, scarab, gf16_test, ngram_train_gf16, tjepa_train, hybrid_train}}"
         );
         std::process::exit(2);
     }

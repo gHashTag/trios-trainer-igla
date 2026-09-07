@@ -162,6 +162,13 @@ path = "src/bin/tjepa_train.rs"
 name = "tri"
 path = "src/bin/tri.rs"
 
+# F2 breadth-as-moat harness (CPU proxy). phi-ladder vs heterogeneous zoo over
+# multiple seeds with a Welch two-sample read + lossy-conversion accounting.
+# Refs: gHashTag/t27#1021 (real BPB head-to-head, BLOCKED on compute); FL-002.
+[[bin]]
+name = "f2_harness"
+path = "src/bin/f2_harness.rs"
+
 [features]
 # Default builds standalone with internal stub modules. No network deps required.
 default = []
@@ -286,3 +293,7 @@ path = "src/bin/matrix_runner.rs"
 name = "matrix_ledger"
 path = "src/bin/matrix_ledger.rs"
 
+
+[[bin]]
+name = "format_champion_sweep"
+path = "src/bin/format_champion_sweep.rs"

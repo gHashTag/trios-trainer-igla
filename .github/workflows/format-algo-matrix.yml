@@ -22,25 +22,33 @@ on:
   workflow_dispatch:
     inputs:
       formats:
-        description: "Comma-separated TRIOS_FORMAT_TYPE values"
+        description: "Comma-separated TRIOS_FORMAT_TYPE values (real kernels only: fp32 fp16 bf16 fp8_e4m3 fp8_e5m2 gf16 int8 int4 nf4 posit16 fp80)"
         required: false
-        default: "f32,gf16,bf16,fp16,int8"
+        default: "fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
       algos:
-        description: "Comma-separated TRIOS_ALGO_TYPE values"
+        description: "Comma-separated TRIOS_ALGO_TYPE values (whitelist: adamw, muon) — R5: trios-trainer-igla#140 ALGO_WHITELIST. NOTE: muon-cwd removed 2026-05-14 until cpu_train.rs implements it (#146)."
         required: false
-        default: "adamw,muon,sgdm,lion"
+        default: "adamw,muon"
       seeds:
-        description: "Comma-separated seeds"
+        description: "Comma-separated seeds (Fibonacci/Lucas canon — FORBIDDEN: 42 43 44 45)"
         required: false
-        default: "42"
+        default: "47,89,144,1597,2584"
       hidden:
-        description: "Hidden size"
+        description: "Comma-separated hidden sizes (3D matrix sweep: Format × Algo × Hidden)"
         required: false
-        default: "96"
+        default: "64,128,256"
+      lr:
+        description: "Comma-separated learning rates"
+        required: false
+        default: "0.001,0.0001"
       steps:
         description: "Training steps per cell"
         required: false
         default: "3000"
+      lane:
+        description: "LANE token for canon_name (e.g. SHORT-WAVE-MATRIX, MATRIX, COVERAGE-A)"
+        required: false
+        default: "MATRIX"
   schedule:
     # Daily nightly sweep, 03:17 UTC — off-peak for GHA quota.
     - cron: "17 3 * * *"
@@ -77,48 +85,70 @@ jobs:
               ALGOS="${{ github.event.inputs.algos }}"
               SEEDS="${{ github.event.inputs.seeds }}"
               HIDDEN="${{ github.event.inputs.hidden }}"
+              LR="${{ github.event.inputs.lr }}"
               STEPS="${{ github.event.inputs.steps }}"
+              LANE="${{ github.event.inputs.lane }}"
               ;;
             schedule)
-              # Nightly: walk a rotating stripe of 8 formats × 4 algos = 32
-              # cells keyed by day-of-year so we eventually cover all 312.
-              FORMATS="f32,gf16,bf16,fp16,int8,posit16,nf4,fp8_e5m2"
-              ALGOS="adamw,muon,sgdm,lion"
-              SEEDS="42"
-              HIDDEN="96"
+              # Nightly 3D sweep: 11 formats × 2 algos × 2 seeds × 2 hidden × 1 lr = 88 cells.
+              # R5 canonical: real kernels only (matches FormatKind::from_str + ALGO_WHITELIST).
+              # Fibonacci/Lucas seeds only (forbidden: 42-45). 3D Format×Algo×Hidden coverage.
+              # muon-cwd dropped 2026-05-14 (cpu_train.rs lacks impl) — see #146.
+              FORMATS="fp32,gf16,bf16,fp16,fp8_e4m3,fp8_e5m2,int8,int4,nf4,posit16,fp80"
+              ALGOS="adamw,muon"
+              SEEDS="1597,2584"
+              HIDDEN="128,256"
+              LR="0.001"
               STEPS="3000"
+              LANE="SHORT-WAVE-MATRIX"
               ;;
             *)
-              # PR smoke: 2 formats × 2 algos = 4 cells, short steps.
-              FORMATS="f32,gf16"
+              # PR smoke: 3 formats × 2 algos × 1 seed × 1 hidden = 6 cells, short steps.
+              # Use canonical real kernels + ALGO_WHITELIST so smoke tests are R5-clean.
+              FORMATS="fp32,gf16,fp16"
               ALGOS="adamw,muon"
-              SEEDS="42"
-              HIDDEN="96"
+              SEEDS="1597"
+              HIDDEN="128"
+              LR="0.001"
               STEPS="500"
+              LANE="MATRIX"
               ;;
           esac
-          # Always include the baseline cell so the anti-fake-pass guard has
-          # a reference row regardless of input.
-          case ",$FORMATS," in *",f32,"*) ;; *) FORMATS="f32,$FORMATS" ;; esac
+          # R5 canonical: always include fp32+adamw baseline for anti-fake-pass guard.
+          case ",$FORMATS," in *",fp32,"*|*",f32,"*) ;; *) FORMATS="fp32,$FORMATS" ;; esac
           case ",$ALGOS," in *",adamw,"*) ;; *) ALGOS="adamw,$ALGOS" ;; esac
           python3 - <<PY
           import json, os
-          formats = [x for x in "$FORMATS".split(",") if x]
+          # R5: legacy 'f32' alias normalised to canonical 'fp32' (matches matrix_runner::normalize_format).
+          formats = [(x if x != "f32" else "fp32") for x in "$FORMATS".split(",") if x]
           algos   = [x for x in "$ALGOS".split(",") if x]
           seeds   = [int(x) for x in "$SEEDS".split(",") if x]
-          hidden  = int("$HIDDEN")
+          hiddens = [int(x) for x in "$HIDDEN".split(",") if x]
+          lrs     = [float(x) for x in "$LR".split(",") if x]
           steps   = int("$STEPS")
+          lane    = "$LANE".strip() or "MATRIX"
+          # Forbidden seeds guard — matches matrix_runner SEED_CANON.
+          FORBIDDEN = {42, 43, 44, 45}
+          seeds = [s for s in seeds if s not in FORBIDDEN]
+          # Algo whitelist guard — matches matrix_runner ALGO_WHITELIST.
+          # muon-cwd intentionally absent (2026-05-14 hotfix, follow-up #146).
+          ALGO_WHITELIST = {"adamw", "muon"}
+          algos = [a for a in algos if a in ALGO_WHITELIST]
           cells = []
           for fmt in formats:
               for algo in algos:
                   for seed in seeds:
-                      cells.append({
-                          "format": fmt,
-                          "algo":   algo,
-                          "seed":   seed,
-                          "hidden": hidden,
-                          "steps":  steps,
-                      })
+                      for hid in hiddens:
+                          for lr in lrs:
+                              cells.append({
+                                  "format": fmt,
+                                  "algo":   algo,
+                                  "seed":   seed,
+                                  "hidden": hid,
+                                  "lr":     lr,
+                                  "steps":  steps,
+                                  "lane":   lane,
+                              })
           with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
               fh.write("cells=" + json.dumps(cells) + "\n")
           print(f"Planned {len(cells)} cells")
@@ -160,6 +190,8 @@ jobs:
             --algo=${{ matrix.cell.algo }} \
             --seed=${{ matrix.cell.seed }} \
             --hidden=${{ matrix.cell.hidden }} \
+            --lr=${{ matrix.cell.lr }} \
+            --lane=${{ matrix.cell.lane }} \
             --steps=${{ matrix.cell.steps }} \
             --vocab=128 --seq=32 \
             2>&1 | tee cell.log
@@ -195,7 +227,7 @@ jobs:
         with:
           path: artefacts
 
-      - name: Verify every non-baseline cell diverges from f32+adamw
+      - name: Verify every non-baseline cell diverges from fp32+adamw
         shell: bash
         run: |
           set -euo pipefail
@@ -216,14 +248,14 @@ jobs:
           # Build baseline index: (hidden -> bpb) at f32+adamw for each seed.
           baseline = {}
           for r in rows:
-              if r["format"] == "f32" and r["algo"] == "adamw":
+              if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
                   baseline[(r["hidden"], r["seed"])] = r["bpb"]
           if not baseline:
-              print("WARN: no f32+adamw baseline in matrix; guard is advisory.")
+              print("WARN: no fp32+adamw baseline in matrix; guard is advisory.")
           offenders = []
           EPS = 1e-6
           for r in rows:
-              if r["format"] == "f32" and r["algo"] == "adamw":
+              if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
                   continue
               ref = baseline.get((r["hidden"], r["seed"]))
               if ref is None:
@@ -253,7 +285,7 @@ jobs:
               ref = baseline.get((r["hidden"], r["seed"]))
               if ref is None:
                   continue
-              if r["format"] == "f32" and r["algo"] == "adamw":
+              if r["format"] in ("fp32", "f32") and r["algo"] == "adamw":
                   continue
               if r["step"] < min_steps:
                   continue
@@ -269,9 +301,9 @@ jobs:
                         f"bpb={r['bpb']} ref={ref} |Δ|={delta}")
           if not any_diverged and not advisory:
               eligible = [r for r in rows if r["step"] >= min_steps
-                          and not (r["format"] == "f32" and r["algo"] == "adamw")]
+                          and not (r["format"] in ("fp32", "f32") and r["algo"] == "adamw")]
               if eligible:
-                  print("\nFAIL: NO non-baseline cell diverges from f32+adamw. "
+                  print("\nFAIL: NO non-baseline cell diverges from fp32+adamw. "
                         "FakeQuant / optimizer dispatch likely a no-op.",
                         file=sys.stderr)
                   sys.exit(1)

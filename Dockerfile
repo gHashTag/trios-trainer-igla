@@ -24,6 +24,8 @@ RUN set -e; \
         --bin gf16_test \
         --bin ngram_train_gf16 \
         --bin bpb_smoke \
+        --bin tjepa_train \
+        --bin hybrid_train \
         -p trios-trainer \
         ${FEATURES_FLAG}
 
@@ -40,6 +42,14 @@ COPY --from=builder /build/target/release/scarab /usr/local/bin/scarab
 COPY --from=builder /build/target/release/gf16_test /usr/local/bin/gf16_test
 COPY --from=builder /build/target/release/ngram_train_gf16 /usr/local/bin/ngram_train_gf16
 COPY --from=builder /build/target/release/bpb_smoke /usr/local/bin/bpb_smoke
+# Arch breakthrough (2026-05-15): JEPA-T + NCA + Hybrid trainers reachable from
+# Railway services via TRIOS_TRAINER_BIN={tjepa_train,hybrid_train}. Required
+# to break the gf256-h256 NTP-only plateau at BPB=2.5719 (champion lock).
+# Multi-objective L = w_CE·NTP + w_JEPA·JEPA + w_NCA·NCA, see
+# crates/trios-railway-mcp/src/tools.rs::gate2-final template for canonical
+# weights (w_CE=1.0, w_JEPA=0.15, w_NCA=0.10).
+COPY --from=builder /build/target/release/tjepa_train /usr/local/bin/tjepa_train
+COPY --from=builder /build/target/release/hybrid_train /usr/local/bin/hybrid_train
 
 # Byte-disjoint train/val split. The previous version ran
 #   head -c 100000 tiny_shakespeare.txt > tiny_shakespeare_val.txt

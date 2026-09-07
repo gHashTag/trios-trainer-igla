@@ -271,39 +271,156 @@ pub fn trial_complete(trial_id: &str, bpb: f32) {
     }
 }
 
-/// Insert a single row into `public.bpb_samples` with checkpoint telemetry.
+/// Parse `IGLA-{LANE}-{format}-h{H}-LR{L}-rng{SEED}-{algo}` canon_name into
+/// `(format, algo, hidden)` triple. Returns `None` if the canon_name does not
+/// match the canonical IGLA schema (legacy `scarab-*` names, smoke names, etc).
 ///
-/// Schema (verified against phd-postgres-ssot 2026-05-09, updated Wave 29 PR-A):
-///   id BIGSERIAL, canon_name TEXT, seed BIGINT, step BIGINT,
-///   bpb DOUBLE PRECISION, ema_bpb DOUBLE PRECISION (nullable), ts TIMESTAMPTZ
+/// Examples:
+///   `IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng1597-adamw` →
+///     `("gf16", "adamw", 128)`
+///   `IGLA-SCARAB-ADAMW-binary16-h384-LR0001-rng123-adamw` →
+///     `("binary16", "adamw", 384)`
 ///
-/// seed and step are cast from i32 to i64 to match the BIGINT columns (#114, Wave 24).
+/// Rule: format = field BEFORE `-h{N}-`; hidden = N; algo = LAST `-` field.
 ///
-/// Wave 29 PR-A idempotent INSERT:
-///   ON CONFLICT (canon_name, seed, step)
-///   DO UPDATE SET
-///     bpb     = LEAST(EXCLUDED.bpb, bpb_samples.bpb),
-///     ema_bpb = CASE WHEN EXCLUDED.bpb < bpb_samples.bpb THEN EXCLUDED.ema_bpb ELSE bpb_samples.ema_bpb END,
-///     ts      = EXCLUDED.ts
-/// This keeps the best-of-rerun BPB and eliminates duplicate-skipping errors.
+/// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
+pub fn parse_canon_name(canon: &str) -> Option<(String, String, i32)> {
+    if !canon.starts_with("IGLA-") {
+        return None;
+    }
+    let parts: Vec<&str> = canon.split('-').collect();
+    if parts.len() < 5 {
+        return None;
+    }
+
+    // Find the `h{N}` token (hidden); the token immediately before it is the format.
+    let mut hidden: Option<i32> = None;
+    let mut h_idx: Option<usize> = None;
+    for (i, tok) in parts.iter().enumerate() {
+        if let Some(rest) = tok.strip_prefix('h') {
+            if let Ok(n) = rest.parse::<i32>() {
+                hidden = Some(n);
+                h_idx = Some(i);
+                break;
+            }
+        }
+    }
+    let h_idx = h_idx?;
+    let hidden = hidden?;
+    if h_idx == 0 {
+        return None;
+    }
+    let format = parts[h_idx - 1].to_string();
+    if format.is_empty() {
+        return None;
+    }
+
+    // algo = everything AFTER the last `rng{SEED}` token, joined with '-'.
+    // This preserves multi-token algos like `muon-cwd`.
+    let mut rng_idx: Option<usize> = None;
+    for (i, tok) in parts.iter().enumerate() {
+        if let Some(rest) = tok.strip_prefix("rng") {
+            if rest.parse::<i64>().is_ok() {
+                rng_idx = Some(i);
+            }
+        }
+    }
+    let rng_idx = rng_idx?;
+    if rng_idx + 1 >= parts.len() {
+        return None;
+    }
+    let algo = parts[rng_idx + 1..].join("-");
+    if algo.is_empty() {
+        return None;
+    }
+
+    Some((format, algo, hidden))
+}
+
+/// Insert a single row into `ssot.bpb_samples` with checkpoint telemetry.
+///
+/// Schema (verified against phd-postgres-ssot 2026-05-14, matrix_runner aligned):
+///   id BIGSERIAL, canon_name TEXT, format TEXT, algo TEXT, hidden INT,
+///   seed BIGINT, step INT, bpb DOUBLE PRECISION, sha TEXT (nullable),
+///   run_id TEXT (nullable), ts TIMESTAMPTZ
+///
+/// Derived columns:
+///   format/algo/hidden — parsed from canon_name regex
+///   sha    — GIT_SHA env (build-time), or empty
+///   run_id — RAILWAY_DEPLOYMENT_ID env (runtime), or empty
+///
+/// If canon_name does not match the IGLA schema (legacy scarab-*, smoke names),
+/// we DO NOT fabricate — fall back to writing into public.bpb_samples to keep
+/// non-canonical callers (bpb_smoke, smoke_train) green during the migration.
+///
+/// 2026-05-14: switched main path from public.bpb_samples → ssot.bpb_samples
+/// to unblock PASS-N monitors and leaderboard auditors that query ssot only.
 /// Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
 pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32, ema_bpb: Option<f32>) {
+    let _ = ema_bpb; // ssot.bpb_samples has no ema_bpb column; reserved for backward-compat.
     let Some(conn) = db() else {
         eprintln!("[ledger] DSN unset — skipping bpb_sample");
         return;
     };
 
-    // Wave 29 PR-A: Use raw SQL for the idempotent upsert.
-    // SeaORM's on_conflict builder doesn't support LEAST() / CASE expressions,
-    // so we use Statement::from_sql_and_values for the full upsert.
-    // LEAST(EXCLUDED.bpb, bpb_samples.bpb) keeps the best-of-rerun BPB.
-    // ema_bpb follows the winning bpb side.
-    // Eliminates "[ledger] duplicate, skipping" errors that froze ACC1 mr-runners.
-    // Anchor: φ²+φ⁻²=3 · DOI 10.5281/zenodo.19227877
     let ts_now = chrono::Utc::now();
-    // The SQL is a static string — no format!() needed.
-    // Use SeaORM raw statement execution for parameterised upsert.
     use sea_orm::Statement;
+
+    // Try to parse canon_name into derived columns.
+    if let Some((format, algo, hidden)) = parse_canon_name(canon_name) {
+        // ── R5 GUARD — WRITE-SIDE ALGO_WHITELIST ──────────────────────────────
+        // Mirror of matrix_runner ALGO_WHITELIST. Rejects fake/silent-fallback
+        // algos (soap/lamb/prodigy/lion/...) at the WRITE path so they cannot
+        // reach ssot.bpb_samples regardless of which trainer binary emitted
+        // them. Refs: trios#777, trios#779, migration 0006_quarantine_fake_canons.
+        // R5 evidence: gf16-lamb vs gf16-prodigy produced bit-identical BPB at
+        // every step (verified 2026-05-14T14:36Z, B-22).
+        const ALGO_WHITELIST: &[&str] = &["adamw", "muon", "muon-cwd"];
+        if !ALGO_WHITELIST.contains(&algo.as_str()) {
+            eprintln!(
+                "[ledger] R5-REJECT write: canon_name={canon_name} algo={algo} not in {:?}. \
+                 Refusing silent-fallback write — see trios#777 / migration 0006.",
+                ALGO_WHITELIST
+            );
+            return;
+        }
+
+        // Canonical IGLA path → ssot.bpb_samples (the SoT for leaderboards).
+        let sha = std::env::var("GIT_SHA").unwrap_or_default();
+        let run_id = std::env::var("RAILWAY_DEPLOYMENT_ID").unwrap_or_default();
+        let stmt = Statement::from_sql_and_values(
+            conn.get_database_backend(),
+            "INSERT INTO ssot.bpb_samples \
+             (canon_name, format, algo, hidden, seed, step, bpb, sha, run_id, ts) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+             ON CONFLICT DO NOTHING",
+            [
+                seed_val(canon_name),
+                seed_val(&format),
+                seed_val(&algo),
+                hidden.into(),
+                (seed as i64).into(),
+                step.into(),
+                (bpb as f64).into(),
+                seed_val(&sha),
+                seed_val(&run_id),
+                ts_now.into(),
+            ],
+        );
+        let res = rt().block_on(conn.execute(stmt));
+        match res {
+            Ok(_) => eprintln!(
+                "[ledger] bpb_sample ok (ssot): {canon_name} format={format} algo={algo} hidden={hidden} seed={seed} step={step} bpb={bpb:.4}"
+            ),
+            Err(e) => eprintln!("[ledger] bpb_sample (ssot) failed: {e}"),
+        }
+        return;
+    }
+
+    // Legacy/smoke fallback → public.bpb_samples (Wave 29 PR-A idempotent upsert).
+    eprintln!(
+        "[ledger] canon_name '{canon_name}' not IGLA-shaped; falling back to public.bpb_samples"
+    );
     let stmt = Statement::from_sql_and_values(
         conn.get_database_backend(),
         "INSERT INTO public.bpb_samples (canon_name, seed, step, bpb, ema_bpb, ts) \
@@ -318,14 +435,14 @@ pub fn bpb_sample(canon_name: &str, seed: i32, step: i32, bpb: f32, ema_bpb: Opt
             (seed as i64).into(),
             (step as i64).into(),
             (bpb as f64).into(),
-            ema_bpb.map(|v| v as f64).into(),
+            None::<f64>.into(),
             ts_now.into(),
         ],
     );
     let res = rt().block_on(conn.execute(stmt));
     match res {
-        Ok(_) => eprintln!("[ledger] bpb_sample ok (idempotent): {canon_name} seed={seed} step={step} bpb={bpb:.4}"),
-        Err(e) => eprintln!("[ledger] bpb_sample failed: {e}"),
+        Ok(_) => eprintln!("[ledger] bpb_sample ok (public/legacy): {canon_name} seed={seed} step={step} bpb={bpb:.4}"),
+        Err(e) => eprintln!("[ledger] bpb_sample (public/legacy) failed: {e}"),
     }
 }
 
@@ -406,6 +523,50 @@ mod tests {
         assert_eq!(strip_channel_binding(in_), in_);
     }
 
+    #[test]
+    fn parse_canon_name_short_wave_matrix() {
+        let c = "IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng1597-adamw";
+        let (fmt, algo, hidden) = parse_canon_name(c).expect("parses");
+        assert_eq!(fmt, "gf16");
+        assert_eq!(algo, "adamw");
+        assert_eq!(hidden, 128);
+    }
+
+    #[test]
+    fn parse_canon_name_scarab_lane() {
+        let c = "IGLA-SCARAB-ADAMW-binary16-h384-LR0001-rng123-adamw";
+        let (fmt, algo, hidden) = parse_canon_name(c).expect("parses");
+        assert_eq!(fmt, "binary16");
+        assert_eq!(algo, "adamw");
+        assert_eq!(hidden, 384);
+    }
+
+    #[test]
+    fn parse_canon_name_muon_cwd_dashed_algo() {
+        // muon-cwd suffix — algo = everything AFTER the rng token,
+        // joined with '-' to preserve multi-token algos.
+        let c = "IGLA-SHORT-WAVE-MATRIX-fp16-h128-LR0.0001-rng47-muon-cwd";
+        let (fmt, algo, hidden) = parse_canon_name(c).expect("parses");
+        assert_eq!(fmt, "fp16");
+        assert_eq!(algo, "muon-cwd");
+        assert_eq!(hidden, 128);
+    }
+
+    #[test]
+    fn parse_canon_name_rejects_legacy_scarab() {
+        // Legacy `scarab-*` names (pre-2026-05-12) should NOT parse,
+        // so they go down the public.bpb_samples fallback path.
+        assert!(parse_canon_name("scarab-adamw-rng123").is_none());
+        assert!(parse_canon_name("random-name").is_none());
+        assert!(parse_canon_name("").is_none());
+    }
+
+    #[test]
+    fn parse_canon_name_rejects_missing_h_token() {
+        // No `h{N}` token → hidden cannot be derived → reject.
+        assert!(parse_canon_name("IGLA-FAKE-gf16-LR0.0001-rng1597-adamw").is_none());
+    }
+
     /// Regression test: seed and step parameters for bpb_sample must be bound
     /// as INT8 (i64) to match the BIGINT columns in public.bpb_samples (#114).
     #[test]
@@ -431,5 +592,38 @@ mod tests {
         let _: i64 = step_i64;
         assert_eq!(seed_i64, 43i64);
         assert_eq!(step_i64, 200i64);
+    }
+
+    /// B-22 write-side ALGO_WHITELIST guard — invariants only (we don't have a
+    /// live DSN here so we can't exercise bpb_sample directly; this documents
+    /// the canonical whitelist so a future widening can't happen by accident).
+    #[test]
+    fn write_side_algo_whitelist_is_canonical() {
+        // Canonical: only these three suffixes are real-trainer-backed.
+        const CANONICAL: &[&str] = &["adamw", "muon", "muon-cwd"];
+        assert_eq!(CANONICAL.len(), 3, "whitelist must be exactly 3 entries");
+        for &name in CANONICAL {
+            let canon = format!("IGLA-SHORT-WAVE-MATRIX-gf16-h128-LR0.0001-rng47-{}", name);
+            let (_fmt, algo, _hidden) =
+                parse_canon_name(&canon).expect("canonical algo must parse");
+            assert_eq!(
+                algo, name,
+                "parse_canon_name must round-trip canonical algos"
+            );
+        }
+        for &fake in &[
+            "soap",
+            "lamb",
+            "prodigy",
+            "lion",
+            "tiger",
+            "adafactor",
+            "sgdm",
+        ] {
+            assert!(
+                !CANONICAL.contains(&fake),
+                "fake algo leaked into whitelist: {fake}"
+            );
+        }
     }
 }

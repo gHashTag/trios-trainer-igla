@@ -189,6 +189,36 @@ fn main() -> Result<()> {
     use std::io::Write as _;
     let _ = std::io::stderr().flush();
 
+    // trios#777 fix: promote un-prefixed env aliases set by wave-a-dispatch.yml
+    // (`OPTIMIZER`, `FORMAT`, `HIDDEN`) into the canonical `TRIOS_*` names BEFORE
+    // clap parses, so the CLI struct picks them up via #[arg(env = "TRIOS_*")].
+    //
+    // Without this promotion, 47 distinct canon_name configs (ranger/adafactor/
+    // adamw/adopt/demo on binary16) all collapsed to bit-identical bpb=2.9504
+    // because every trainer silently fell back to the clap defaults
+    // (adamw / None→f32 / hidden=828). R5-evidence: ssot.bpb_samples shows 94
+    // rows across 47 canons with bpb=2.9504425525665283 at step 80000.
+    //
+    // Resolution: TRIOS_* (canonical) > alias (un-prefixed) > clap default.
+    // The alias only fires when the canonical env is unset, so existing
+    // TRIOS_OPTIMIZER/TRIOS_FORMAT_TYPE/TRIOS_HIDDEN users are unaffected.
+    //
+    // Anchor: phi^2 + phi^-2 = 3 · DOI 10.5281/zenodo.19227877.
+    for (canonical, alias) in [
+        ("TRIOS_OPTIMIZER", "OPTIMIZER"),
+        ("TRIOS_FORMAT_TYPE", "FORMAT"),
+        ("TRIOS_HIDDEN", "HIDDEN"),
+    ] {
+        if std::env::var(canonical).is_err() {
+            if let Ok(v) = std::env::var(alias) {
+                if !v.is_empty() {
+                    eprintln!("[trios-train][trios#777] promoting {alias}={v} -> {canonical}");
+                    std::env::set_var(canonical, v);
+                }
+            }
+        }
+    }
+
     let mut cli = Cli::parse();
 
     // Canon #93 enforcement.
