@@ -143,8 +143,19 @@ ALTER TABLE ssot.scarab_strategy ADD CONSTRAINT scarab_strategy_optimizer_check 
 
 ALTER TABLE ssot.scarab_strategy DROP CONSTRAINT IF EXISTS scarab_strategy_format_check;
 ALTER TABLE ssot.scarab_strategy ADD CONSTRAINT scarab_strategy_format_check CHECK (
-  format IN ('fp32','fp16','bf16','fp8_e4m3','fp8_e5m2',
-             'gf16','gf256','int4','int8','nf4','posit16','binary16')
+  -- Golden Float Family — ВСЯ семья (PhD Glava 06 / 09 / 23)
+  format IN (
+    'fp16','fp32','fp64','fp80','bf16',
+    'binary16','binary128','binary256',
+    'fp8_e4m3','fp8_e5m2','mxfp8',
+    'fp6_e2m3','fp6_e3m2','fp4_e2m1',
+    'gfternary',
+    'gf4','gf8','gf12','gf16','gf20','gf24',
+    'gf32','gf64','gf128','gf256',
+    'posit8','posit16',
+    'int4','int8','uint8',
+    'nf4'
+  )
 );
 
 ALTER TABLE ssot.scarab_strategy DROP CONSTRAINT IF EXISTS scarab_strategy_hidden_check;
