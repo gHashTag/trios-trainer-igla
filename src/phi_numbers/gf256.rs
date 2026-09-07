@@ -126,7 +126,7 @@ impl GF256 {
 
 impl Clone for GF256 {
     fn clone(&self) -> Self {
-        Self { limbs: self.limbs }
+        *self
     }
 }
 impl Copy for GF256 {}
