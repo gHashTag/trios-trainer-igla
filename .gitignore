@@ -1,13 +1,11 @@
 /target
 **/*.rs.bk
 Cargo.lock.bak
-
 # Editor / OS
 .DS_Store
 .idea/
 .vscode/
 *.swp
-
 # Local ledger artifacts
 /assertions/
 /checkpoints/
@@ -49,21 +47,17 @@ Cargo.lock.bak
 # defect is more useful than a missing one, but only if a clone has it.
 !/data/fineweb_train_duplicate.bin
 *.jsonl.tmp
-
 # Training logs (thousands of files choke git)
 .trinity/results/
 .trinity/auto_launch.log
 .trinity/gardener.log
-
 # Build cache
 .cargo/
-
 # PDF pipeline artifacts
 pdf-build/
 pdf-output/
 templates/
 filters/
-
 # Logs
 LOG
 $LOG
@@ -76,15 +70,14 @@ $LOG
 # committed. The negation fires here because no parent directory of these files
 # is excluded (git never descends into an excluded directory).
 !evidence/**/*.log
-
 # History / eval artifacts
 .trinity/history/
-
 # Brochure outputs
 trinity-brochure.pdf
-
 # Constitution (generated)
 trinity_constitution/
-
 .env*
 !.env.example
+node_modules/
+target/
+.zig-cache/
