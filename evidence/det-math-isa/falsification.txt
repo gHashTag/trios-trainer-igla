@@ -1,0 +1,129 @@
+BREAKING THE GUARD - transcript
+===============================
+
+2026-08-06, /Users/playra/trios-trainer-igla, branch fix/509-qat-v2.
+Command in every case:
+
+    cargo test --release --test det_math_bit_exact
+
+Each perturbation was made in src/det_math.rs, the test run, and the file then
+restored from a byte-identical copy taken before the perturbation. The tree is
+shared with other agents, so no perturbed constant was left in place for longer
+than one test run, and the sensitivity SURVEY below was done in an out-of-tree
+replica rather than by perturbing the shipped file eight times.
+
+
+ATTEMPT 1 - the last Horner coefficient, C6, +1 ULP (0x3ab60b6a -> 0x3ab60b6b)
+------------------------------------------------------------------------------
+This was the break the work item specified. IT DID NOT FAIL:
+
+    running 3 tests
+    test documented_edges_hold ... ok
+    test frozen_vector_is_bit_identical ... ok
+    test within_three_ulp_of_libm ... ok
+    test result: ok. 3 passed; 0 failed
+
+That is correct behaviour, not a weak test. C6 * r^6 contributes at most 2.4e-6
+to a polynomial of value ~1, so a 6e-8 relative change to C6 moves the answer by
+~1.4e-13 relative, against an f32 ULP of 6e-8. The perturbed function is
+BIT-IDENTICAL to the pristine one. There was nothing to detect.
+
+
+SURVEY - which constants are observable at all
+----------------------------------------------
+See coefficient_sensitivity_replica.rs (a replica first asserted to reproduce
+all 28 frozen pairs exactly) and coefficient_sensitivity.txt. Each constant
+moved up by one ULP:
+
+    const       frozen/28      sweep      of 400001  first differing x
+    LOG2E               0          0         400001  -
+    LN2_HI             17     371874         400001  -8
+    LN2_LO              0          0         400001  -
+    C2                  1      12101         400001  -7.99904
+    C3                  0        775         400001  -7.98152
+    C4                  0         55         400001  -7.87224
+    C5                  0          5         400001  -7.81336
+    C6                  0          0         400001  -
+
+Two consequences, both acted on:
+  * LOG2E, LN2_LO and C6 are unobservable at f32 precision. No test can guard
+    them and the test file says so.
+  * C3, C4 and C5 move 775 / 55 / 5 outputs while moving NONE of the 28 frozen
+    pairs and staying inside the 3-ULP bound. The 28-point guard would have
+    waved a real change through. `sweep_digest_is_frozen` was added because of
+    this line, and the two attempts below are what proves it works.
+
+
+ATTEMPT 2 - C3 +1 ULP (0x3e2aaaab -> 0x3e2aaaac)
+------------------------------------------------
+The frozen vector stays green and the digest catches it, which is exactly the
+case the digest was added for:
+
+    running 4 tests
+    test documented_edges_hold ... ok
+    test frozen_vector_is_bit_identical ... ok
+    test sweep_digest_is_frozen ... FAILED
+    test within_three_ulp_of_libm ... ok
+
+    ---- sweep_digest_is_frozen stdout ----
+    assertion `left == right` failed: exp_det produced different output bits
+    somewhere in [-8.0, 8.0].
+    digest 0xca03da8d1a340686, frozen 0x0e011a2586914fb2.
+
+    test result: FAILED. 3 passed; 1 failed
+
+
+ATTEMPT 3 - LN2_HI +1 ULP (0x3f317200 -> 0x3f317201)
+----------------------------------------------------
+All four tests fail, and the frozen-vector assertion names the first differing
+input as it is meant to:
+
+    ---- frozen_vector_is_bit_identical stdout ----
+    first differing input: exp_det(1e0) [input bits 0x3f800000] gave 0x402df853,
+                           frozen value is 0x402df854
+    17 of 28 pairs moved:
+      exp_det(1e0)  [0x3f800000] gave 0x402df853, frozen 0x402df854
+      exp_det(-1e0) [0xbf800000] gave 0x3ebc5ab3, frozen 0x3ebc5ab2
+      exp_det(2e0)  [0x40000000] gave 0x40ec7322, frozen 0x40ec7326
+      exp_det(-2e0) [0xc0000000] gave 0x3e0a9557, frozen 0x3e0a9555
+      exp_det(7e0)  [0x40e00000] gave 0x4489143f, frozen 0x44891443
+      exp_det(-7e0) [0xc0e00000] gave 0x3a6f0b64, frozen 0x3a6f0b5d
+      exp_det(6.931472e-1) [0x3f317218] gave 0x3fffffff, frozen 0x40000000
+      exp_det(3.1415927e0) [0x40490fdb] gave 0x41b92023, frozen 0x41b92026
+      exp_det(-3.1415927e0) [0xc0490fdb] gave 0x3d310115, frozen 0x3d310112
+      exp_det(1.15e1)  [0x41380000] gave 0x47c0cdd7, frozen 0x47c0cde3
+      exp_det(-1.15e1) [0xc1380000] gave 0x3729f476, frozen 0x3729f46c
+      exp_det(8.7e1)   [0x42ae0000] gave 0x7e36d7af, frozen 0x7e36d80a
+      exp_det(-8.7e1)  [0xc2ae0000] gave 0x00b336e0, frozen 0x00b33686
+      exp_det(3.465736e-1)  [0x3eb17218] gave 0x3fb504f4, frozen 0x3fb504f5
+      exp_det(-3.465736e-1) [0xbeb17218] gave 0x3f3504f3, frozen 0x3f3504f2
+      exp_det(2.025e1)  [0x41a20000] gave 0x4e1486a9, frozen 0x4e1486bc
+      exp_det(-2.025e1) [0xc1a20000] gave 0x30dc9f0c, frozen 0x30dc9ef1
+
+    ---- sweep_digest_is_frozen stdout ----
+    digest 0xeb5bf7e65f3d6f90, frozen 0x0e011a2586914fb2.
+
+    ---- within_three_ulp_of_libm stdout ----
+    exp_det vs f32::exp over [-8.0, 8.0]: n=400001, differing=375451,
+      max |ULP|=11 at x=-7.99988
+    exp_det drifted to 11 ULP from libm at x=-7.99988; the documented bound is 3
+
+    test result: FAILED. 0 passed; 4 failed
+
+
+RESTORED
+--------
+    running 4 tests
+    test documented_edges_hold ... ok
+    test frozen_vector_is_bit_identical ... ok
+    test sweep_digest_is_frozen ... ok
+    exp_det vs f32::exp over [-8.0, 8.0]: n=400001, differing=83007,
+      max |ULP|=3 at x=-7.96984
+    test within_three_ulp_of_libm ... ok
+    test result: ok. 4 passed; 0 failed
+
+And N1 re-run against the FINAL state of the tree, after every perturbation was
+reverted, to show the published artifact is still where it was:
+
+    4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457  0.bin
+    efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac  10.bin

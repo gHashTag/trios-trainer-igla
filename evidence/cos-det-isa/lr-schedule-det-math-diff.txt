@@ -1,0 +1,4 @@
+# aarch64-apple-darwin vs x86_64-apple-darwin (Rosetta 2)
+# feature state: det-math
+# lines compared: 12000
+# lines differing: 0

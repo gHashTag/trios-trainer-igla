@@ -1,0 +1,63 @@
+{
+  "binaries": {
+    "aarch64-apple-darwin": {
+      "file": "Mach-O 64-bit executable arm64",
+      "sha256": "8e78210122343f5b8df75836bb09fc5f640bb43bdb7e080035b660d06abe4324",
+      "translation": "native execution"
+    },
+    "x86_64-apple-darwin": {
+      "file": "Mach-O 64-bit executable x86_64",
+      "sha256": "e933b0fe66df9ae8c679065ae4930036fa92cbea7d90f86c56df830971e2b06b",
+      "translation": "Rosetta 2 binary translation, not native x86_64 silicon"
+    }
+  },
+  "cargo_target_dir": "/Users/playra/igla-target-stage-trace",
+  "checkpoint_step10": {
+    "aarch64": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "aarch64-b": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "x86_64": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab",
+    "x86_64-b": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab"
+  },
+  "checkpoint_step10_untraced": {
+    "aarch64": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac",
+    "x86_64": "5913542eb613abc3780ac959a0262af059f7b11ea6ed61b23bd0d62b9c8897ab"
+  },
+  "control_passed": true,
+  "control_ran": true,
+  "corpus": {
+    "train": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d",
+    "val": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+  },
+  "first_divergence": {
+    "aarch64": "f93988580b7ae44679209792bfdc9d8d9d88296fa68e3eef72330785dd6da07c",
+    "stage": "l1_scores_post_softmax",
+    "x86_64": "095bec698a30d2eb959d47b31f5d27e4c2771cafe46933d4e6829aa7267b4302"
+  },
+  "flags": [
+    "--seed",
+    "47",
+    "--steps",
+    "10",
+    "--hidden",
+    "384",
+    "--attn-layers",
+    "2",
+    "--eval-every",
+    "1000",
+    "--lr",
+    "0.003",
+    "--optimizer",
+    "adamw",
+    "--train-data",
+    "data/tiny_shakespeare.txt",
+    "--val-data",
+    "data/tiny_shakespeare_val.txt"
+  ],
+  "generated_utc": "20260806T145310Z",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "scope": "One macOS host, one pinned rustc, one working tree; the ISA target is the only variable. The x86_64 arm runs under Rosetta 2 binary translation, NOT native x86_64 silicon.",
+  "stages_compared": 53,
+  "stages_differing": 18,
+  "trace_is_inert_in_situ": true,
+  "verdict": "FIRST DIVERGENCE: l1_scores_post_softmax aarch64=f93988580b7ae44679209792bfdc9d8d9d88296fa68e3eef72330785dd6da07c x86_64=095bec698a30d2eb959d47b31f5d27e4c2771cafe46933d4e6829aa7267b4302"
+}

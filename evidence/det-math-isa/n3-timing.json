@@ -1,0 +1,33 @@
+{
+  "host": "Darwin playras-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64",
+  "note": "trainer wall-clock, not a per-call microbenchmark",
+  "ratio": {
+    "median": 0.9759096732778768,
+    "min": 0.9698649234968635
+  },
+  "repeats": 3,
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "schema": "trios-det-math-timing/1",
+  "seconds": {
+    "default": {
+      "median": 32.96779489517212,
+      "min": 32.75724506378174,
+      "runs": [
+        32.96779489517212,
+        32.98987913131714,
+        32.75724506378174
+      ]
+    },
+    "det-math": {
+      "median": 32.17358994483948,
+      "min": 31.770102977752686,
+      "runs": [
+        32.17358994483948,
+        33.468405961990356,
+        31.770102977752686
+      ]
+    }
+  },
+  "steps": 1000,
+  "target": "aarch64-apple-darwin"
+}

@@ -1,0 +1,11 @@
+replica reproduces all 28 frozen pairs with pristine constants
+
+const       frozen/28      sweep      of 400001  first differing x
+LOG2E               0          0         400001  -
+LN2_HI             17     371874         400001  -8
+LN2_LO              0          0         400001  -
+C2                  1      12101         400001  -7.99904
+C3                  0        775         400001  -7.98152
+C4                  0         55         400001  -7.87224
+C5                  0          5         400001  -7.81336
+C6                  0          0         400001  -

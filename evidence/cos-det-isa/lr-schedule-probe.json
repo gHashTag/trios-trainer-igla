@@ -1,0 +1,77 @@
+{
+  "arms": [
+    {
+      "arm": "default",
+      "binaries": {
+        "aarch64-apple-darwin": {
+          "dump_path": "evidence/cos-det-isa/lr-schedule-default-aarch64-apple-darwin.txt",
+          "dump_sha256": "533a71b317c23660516b8e7bb9699c7f945e5004935079c27a94659e192fddc4",
+          "file": "Mach-O 64-bit executable arm64",
+          "path": "target/lr-schedule-probe/lr_schedule_dump-aarch64-apple-darwin-default",
+          "sha256": "cd2938d66c7e0d6bde5d0da5e5699082d6c6115fc277627b185bfaa005dd7025"
+        },
+        "x86_64-apple-darwin": {
+          "dump_path": "evidence/cos-det-isa/lr-schedule-default-x86_64-apple-darwin.txt",
+          "dump_sha256": "fef08ee98df46cfd9947399cc57b89c2fa4e4aa8946796cf982bd4b2f4a300fa",
+          "file": "Mach-O 64-bit executable x86_64",
+          "path": "target/lr-schedule-probe/lr_schedule_dump-x86_64-apple-darwin-default",
+          "sha256": "cc0bf401e9c069de2d17f29821d62687368296f8508a75664482e53329b9a833"
+        }
+      },
+      "det_math": false,
+      "diff_path": "evidence/cos-det-isa/lr-schedule-default-diff.txt",
+      "differing": 58,
+      "first_differing_bits": {
+        "aarch64-apple-darwin": "3b25032e",
+        "x86_64-apple-darwin": "3b25032d"
+      },
+      "first_differing_step": 4041,
+      "steps_compared": 12000,
+      "translation": {
+        "aarch64-apple-darwin": "native execution",
+        "x86_64-apple-darwin": "Rosetta 2 binary translation, not native x86_64 silicon"
+      }
+    },
+    {
+      "arm": "det-math",
+      "binaries": {
+        "aarch64-apple-darwin": {
+          "dump_path": "evidence/cos-det-isa/lr-schedule-det-math-aarch64-apple-darwin.txt",
+          "dump_sha256": "d1625dddb18767f5d05d1acfe4e58da9e7d31dddd1a2ed753af5a28720220391",
+          "file": "Mach-O 64-bit executable arm64",
+          "path": "target/lr-schedule-probe/lr_schedule_dump-aarch64-apple-darwin-detmath",
+          "sha256": "38d5ade24bce49ed71fcecb2cc15ba769bc6ca5af496bdb103e0c381b44f5127"
+        },
+        "x86_64-apple-darwin": {
+          "dump_path": "evidence/cos-det-isa/lr-schedule-det-math-x86_64-apple-darwin.txt",
+          "dump_sha256": "d1625dddb18767f5d05d1acfe4e58da9e7d31dddd1a2ed753af5a28720220391",
+          "file": "Mach-O 64-bit executable x86_64",
+          "path": "target/lr-schedule-probe/lr_schedule_dump-x86_64-apple-darwin-detmath",
+          "sha256": "0104eada469b5cde8ebbfcc9f6dd53689332d5b8344d867d5c92c476947eacdf"
+        }
+      },
+      "det_math": true,
+      "diff_path": "evidence/cos-det-isa/lr-schedule-det-math-diff.txt",
+      "differing": 0,
+      "first_differing_bits": null,
+      "first_differing_step": null,
+      "steps_compared": 12000,
+      "translation": {
+        "aarch64-apple-darwin": "native execution",
+        "x86_64-apple-darwin": "Rosetta 2 binary translation, not native x86_64 silicon"
+      }
+    }
+  ],
+  "baseline": {
+    "differing": 58,
+    "first_differing_bits": {
+      "aarch64-apple-darwin": "3b25032e",
+      "x86_64-apple-darwin": "3b25032d"
+    },
+    "first_differing_step": 4041
+  },
+  "host": "Darwin playras-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "schema": "trios-lr-schedule-isa-probe/1",
+  "scope": "Rosetta 2 binary translation, not native x86_64 silicon"
+}

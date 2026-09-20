@@ -1,0 +1,40 @@
+==========================================================================
+ DET-MATH ISA PROBE - does a bit-exact exp close the cross-ISA gap?
+==========================================================================
+PRECONDITIONS
+  targets installed              aarch64-apple-darwin
+  corpus train                   1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  corpus val                     2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+  rustc                          rustc 1.96.0 (ac68faa20 2026-05-25)
+  host                           arm64
+  run directory                  checkpoints/det-math-isa/20260806T161421Z
+  measurement                    timing
+
+N3 THE PRICE - trainer wall-clock, aarch64, 1000 steps, n=3 per arm
+  This is the cost of the FEATURE on the TRAINER. A per-call
+  microbenchmark of exp_det against expf in isolation reports a much
+  larger ratio; that number is not this number and must not be quoted
+  as the trainer's cost.
+
+  no DSN alias reaches the trainer; automigrate is off
+  (this shell has DATABASE_URL set; the scrub is what removes it)
+
+  cargo build trios-train (host) [default features]     0.6s  ok
+  train det-math-timing-default-0               33.0s  ok
+  train det-math-timing-default-1               33.0s  ok
+  train det-math-timing-default-2               32.8s  ok
+
+  cargo build trios-train (host) --features det-math     0.6s  ok
+  train det-math-timing-det-math-0              32.2s  ok
+  train det-math-timing-det-math-1              33.5s  ok
+  train det-math-timing-det-math-2              31.8s  ok
+
+==========================================================================
+ N3 RESULT
+==========================================================================
+ default    min   32.76s  median   32.97s   (32.97, 32.99, 32.76)
+ det-math   min   31.77s  median   32.17s   (32.17, 33.47, 31.77)
+ ratio det-math/default    min 0.97   median 0.98
+==========================================================================
+
+wrote evidence/det-math-isa/n3-timing.json

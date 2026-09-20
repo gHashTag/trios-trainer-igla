@@ -1,0 +1,51 @@
+[trios-train] startup args=["./target/release/trios-train", "--seed", "47", "--steps", "12000", "--hidden", "384", "--attn-layers", "2", "--eval-every", "1000", "--lr", "0.003", "--train-data", "data/tiny_shakespeare.txt", "--val-data", "data/tiny_shakespeare_val.txt"] cwd=Some("/Users/playra/trios-trainer-igla-remint")
+[trios-train] Canon #93 OK: seed=47 (no SEED env, validated cli.seed)
+[migrator] NoDsn: no DSN in environment - nothing to migrate
+[trios-train] eval_chunks=40 (default)
+[trios-train] parsed seed=47 steps=12000 hidden=384 lr=0.003 ctx=None optimizer=adamw neon=None
+=== trios-train seed=47 steps=12000 hidden=384 lr=0.0030 attn_layers=2 eval_every=1000 gf16_enabled=true gf16_floor_every=1 checkpoint_every=0 checkpoint_init=false ===
+train=1015394 val=100000
+params=196608 (196.6K) attn_d=64 attn_layers=2
+Initial val_bpb=7.0002 over 40 windows of 129 tokens (5.16% of 100000 val tokens)
+EVAL-PLAN: seed=47 step=0 val_bpb_mean=7.000166 val_bpb_stdev=0.007817 val_bpb_stderr=0.001204 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+seed=47 step=1000 val_bpb=3.3097 ema_bpb=5.5906 best_val_bpb=3.3097 nca_h=1.008 t=177.1s
+EVAL-PLAN: seed=47 step=1000 val_bpb_mean=3.309748 val_bpb_stdev=0.215898 val_bpb_stderr=0.033244 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=2000 val_bpb=3.1396 ema_bpb=4.6544 best_val_bpb=3.1396 nca_h=0.588 t=292.9s
+EVAL-PLAN: seed=47 step=2000 val_bpb_mean=3.139585 val_bpb_stdev=0.279242 val_bpb_stderr=0.042998 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=3000 val_bpb=3.0771 ema_bpb=4.0519 best_val_bpb=3.0771 nca_h=0.225 t=359.8s
+EVAL-PLAN: seed=47 step=3000 val_bpb_mean=3.077060 val_bpb_stdev=0.289816 val_bpb_stderr=0.044626 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=4000 val_bpb=2.9554 ema_bpb=3.6331 best_val_bpb=2.9554 nca_h=0.463 t=415.6s
+EVAL-PLAN: seed=47 step=4000 val_bpb_mean=2.955426 val_bpb_stdev=0.252332 val_bpb_stderr=0.038854 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=5000 val_bpb=2.8896 ema_bpb=3.3491 best_val_bpb=2.8896 nca_h=0.094 t=449.3s
+EVAL-PLAN: seed=47 step=5000 val_bpb_mean=2.889574 val_bpb_stdev=0.311433 val_bpb_stderr=0.047954 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=6000 val_bpb=2.8116 ema_bpb=3.1438 best_val_bpb=2.8116 nca_h=0.082 t=478.6s
+EVAL-PLAN: seed=47 step=6000 val_bpb_mean=2.811624 val_bpb_stdev=0.313970 val_bpb_stderr=0.048345 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=7000 val_bpb=2.7386 ema_bpb=2.9890 best_val_bpb=2.7386 nca_h=0.100 t=507.6s
+EVAL-PLAN: seed=47 step=7000 val_bpb_mean=2.738563 val_bpb_stdev=0.324077 val_bpb_stderr=0.049901 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=8000 val_bpb=2.6455 ema_bpb=2.8578 best_val_bpb=2.6455 nca_h=0.276 t=537.1s
+EVAL-PLAN: seed=47 step=8000 val_bpb_mean=2.645456 val_bpb_stdev=0.316768 val_bpb_stderr=0.048776 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=9000 val_bpb=2.6563 ema_bpb=2.7808 best_val_bpb=2.6455 nca_h=0.245 t=572.0s
+EVAL-PLAN: seed=47 step=9000 val_bpb_mean=2.656333 val_bpb_stdev=0.353142 val_bpb_stderr=0.054377 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=10000 val_bpb=2.6433 ema_bpb=2.7283 best_val_bpb=2.6433 nca_h=0.689 t=604.2s
+EVAL-PLAN: seed=47 step=10000 val_bpb_mean=2.643335 val_bpb_stdev=0.350874 val_bpb_stderr=0.054027 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=11000 val_bpb=2.6355 ema_bpb=2.6929 best_val_bpb=2.6355 nca_h=0.105 t=655.8s
+EVAL-PLAN: seed=47 step=11000 val_bpb_mean=2.635536 val_bpb_stdev=0.349132 val_bpb_stderr=0.053759 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+seed=47 step=12000 val_bpb=2.6348 ema_bpb=2.6707 best_val_bpb=2.6348 nca_h=0.654 t=692.0s
+EVAL-PLAN: seed=47 step=12000 val_bpb_mean=2.634755 val_bpb_stdev=0.348466 val_bpb_stderr=0.053657 eval_chunks=40 eval_chunks_target=40 eval_seq=129 eval_stride=2496 eval_tokens=5160 val_tokens=100000 coverage=0.0516
+[ledger] no connection (DSN unset) - skipping bpb_sample, recorded as skipped-no-dsn
+[ledger] no connection (DSN unset) - skipping checkpoint_record, recorded as skipped-no-dsn
+[ckpt] checkpoints/r9-headline/12000.bin sha256=8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c bytes=852272 ledger=skipped-no-dsn eval_chunks=40 eval_tokens=5160 coverage=0.0516
+[resume] checkpoints/r9-headline/12000.resume sha256=1b885ef767164eac3e3a5af11893465a526c2c4e2e3e56d5bd399e037b0c1857 bytes=1704696 step=12000 of 12000 instances=12 pairs_with=8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+DONE: seed=47 bpb=2.6348 steps=12000 opt=adamw
+LEDGER: no DSN configured; no rows attempted

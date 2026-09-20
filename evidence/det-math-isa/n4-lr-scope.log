@@ -1,0 +1,40 @@
+==========================================================================
+ DET-MATH ISA PROBE - does a bit-exact exp close the cross-ISA gap?
+==========================================================================
+PRECONDITIONS
+  targets installed              aarch64-apple-darwin, x86_64-apple-darwin
+  rosetta 2                      executes x86_64
+  corpus train                   1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  corpus val                     2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+  rustc                          rustc 1.96.0 (ac68faa20 2026-05-25)
+  host                           arm64
+  run directory                  checkpoints/det-math-isa/20260806T160258Z
+  measurement                    lr
+
+N4 THE SCOPE LIMIT - the learning-rate schedule across the ISA change
+  cosine_lr calls cosf. The det-math feature replaces exp and NOTHING
+  ELSE. If the schedule diverges, the 12000-step headline diverges
+  through a path the forward pass never touches, and no 10-step MATCH
+  can speak for it.
+
+  cargo build lr_schedule_dump (host) [default features]     0.5s  ok
+  lr_schedule_dump aarch64-apple-darwin          0.6s  ok
+  aarch64-apple-darwin         29afc3daf525e60e  wrote evidence/det-math-isa/lr-schedule-aarch64-apple-darwin.txt
+  cargo build lr_schedule_dump --target x86_64-apple-darwin [default features]   141.1s  ok
+  lr_schedule_dump x86_64-apple-darwin           3.2s  ok
+  x86_64-apple-darwin          7f02fa76cbb162bf  wrote evidence/det-math-isa/lr-schedule-x86_64-apple-darwin.txt
+
+==========================================================================
+ N4 RESULT
+==========================================================================
+ steps compared         12000
+ lr values differing    58
+ first differing step   4041
+   aarch64  LR 4041 3b25032e
+   x86_64   LR 4041 3b25032d
+ A 10-step cross-ISA MATCH does NOT extend to the 12000-step
+ headline: the schedule diverges on its own, through cosf, which
+ the det-math feature does not touch.
+==========================================================================
+
+wrote evidence/det-math-isa/n4-lr-scope.json

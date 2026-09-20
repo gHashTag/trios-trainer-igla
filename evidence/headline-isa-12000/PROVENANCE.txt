@@ -1,0 +1,226 @@
+HEADLINE CROSS-ISA RESULT AT 12000 STEPS
+========================================
+
+Four training runs of the same 12000-step configuration, differing only in
+(a) the compiled instruction set and (b) whether the `det-math` feature was
+enabled. The four checkpoint records in this directory are the deliverable.
+The 852272-byte `.bin` artifacts themselves are NOT committed: `/checkpoints/`
+is excluded by .gitignore:13 and each sidecar already carries the sha256 of
+its own artifact, so the record is what a third party checks.
+
+
+1. THE FOUR HASHES
+------------------
+
+sha256 of the 12000-step checkpoint container, one per arm:
+
+  det-math  aarch64  65f36543520c5b88cd419ae458fe965d15b11d5d620448b8dc2188b9087dbd45
+  det-math  x86_64   65f36543520c5b88cd419ae458fe965d15b11d5d620448b8dc2188b9087dbd45
+  default   aarch64  8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+  default   x86_64   cb7b24cad35b80e4f1b6f54fd724d0aa1d19d5a6610523ac14aae0e0d7904b34
+
+  det-math  arm64 == x86_64   MATCH
+  default   arm64 != x86_64   DIFFER
+
+All four artifacts are 852272 bytes.
+
+Record filenames in this directory:
+
+  dm-arm64-12000.json    det-math aarch64   canon_name h12k-dm-arm
+  dm-x86_64-12000.json   det-math x86_64    canon_name h12k-dm-x86
+  df-arm64-12000.json    default  aarch64   canon_name h12k-df-arm
+  df-x86_64-12000.json   default  x86_64    canon_name h12k-df-x86
+
+Each was copied byte-for-byte from
+checkpoints/isa-probe/headline-12000/<canon_name>/12000.json. The `path` field
+inside each record still names that original location, which is where the
+`.bin` it hashes lives on the machine that produced it.
+
+Every sha256 above was re-derived on 2026-08-07 with
+`shasum -a 256 checkpoints/isa-probe/headline-12000/*/12000.bin` and compared
+against the `sha256` field the corresponding record states about itself. All
+four agreed. The records are not transcriptions of a number from somewhere
+else; each one was checked against the bytes it describes.
+
+
+2. THE DET-MATH PAIR IS BYTE-IDENTICAL, THE DEFAULT PAIR IS NOT
+---------------------------------------------------------------
+
+The det-math pair is the result. Two builds of one working tree, one compiler,
+one host, differing only in `--target`, ran 12000 gradient steps and wrote
+byte-identical weights. The previously published cross-ISA MATCH from this
+project reached ten steps; this reaches twelve thousand.
+
+A second, independent signal points the same way. The evaluation numbers are
+bit-identical across the det-math pair and are NOT bit-identical across the
+default pair:
+
+                        det-math arm64   det-math x86_64
+  final_val_bpb         2.6494300365448  2.6494300365448   equal
+  ema_bpb               2.684941291809082 2.684941291809082 equal
+  val_bpb_stderr        0.05594641715288162 0.05594641715288162 equal
+
+                        default arm64    default x86_64
+  final_val_bpb         2.6347548961639404 2.6466174125671387  differ
+  ema_bpb               2.6706762313842773 2.6813371181488037  differ
+  val_bpb_stderr        0.053656626492738724 0.0559522807598114 differ
+
+These are floats the trainer computed, not the container digest, so they are
+not a restatement of line 1.
+
+
+3. THE DEFAULT AARCH64 VALUE EQUALS THE PUBLISHED HEADLINE
+-----------------------------------------------------------
+
+CHECKED, not assumed:
+
+  evidence/r9-headline/12000.json      sha256 8a86fe69...c186012c
+  df-arm64-12000.json                  sha256 8a86fe69...c186012c
+  equal
+
+`final_val_bpb` also agrees exactly (2.6347548961639404), so the default
+aarch64 arm of this experiment is the published headline run and not merely a
+run that resembles it.
+
+That comparison is worth reading twice, because the two records do NOT agree
+about their inputs. The published headline and the default aarch64 arm here
+differ in `source_sha256` (ce9aa66b... vs e7dc92f8...), in
+`platform.remap_applied` (false vs true), in `platform.rustflags_source`
+(absent vs cargo-config-toml), in `trainer.sha256` (two different binaries),
+and in `git_dirty`/`git_untracked` (false/false vs true/true) -- and they
+still produced the same 852272 bytes. MEASURED: those particular differences
+did not move this artifact. NOT MEASURED, and not claimed: that they can never
+move an artifact. `source_sha256` is not a tight predictor of the weights, and
+this pair is the evidence for that statement rather than against it.
+
+Note also that `platform.features` in the published headline record carries no
+`det-math` key at all, while all four records here carry one explicitly
+(`det-math=0` or `det-math=1`). The feature string grew an entry between the
+two runs. A reader diffing the records will see it; it is not a discrepancy.
+
+
+4. THE TRAINER INVOCATION
+-------------------------
+
+Identical for all four arms:
+
+  --seed 47 --steps 12000 --hidden 384 --attn-layers 2 --eval-every 1000
+  --lr 0.003 --optimizer adamw
+  --train-data data/tiny_shakespeare.txt --val-data data/tiny_shakespeare_val.txt
+
+Environment, per arm, via `env -i` with an explicit allowlist:
+
+  PATH, HOME, TRINITY_AUTOMIGRATE=0, TRIOS_CHECKPOINT_INIT=1,
+  TRIOS_CHECKPOINT_DIR=checkpoints/isa-probe/headline-12000,
+  TRIOS_CANON_NAME=<h12k-dm-arm | h12k-dm-x86 | h12k-df-arm | h12k-df-x86>
+
+The x86_64 arms were launched through `/usr/bin/arch -x86_64`.
+
+Corpus, verified against data/MANIFEST.sha256 before training:
+
+  train  data/tiny_shakespeare.txt      1015394 bytes
+         1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  val    data/tiny_shakespeare_val.txt   100000 bytes
+         2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+
+Toolchain, as recorded by all four sidecars:
+
+  rustc 1.96.0 (ac68faa20 2026-05-25)
+  toolchain_provenance: runtime-path-query
+
+`scripts/headline_isa_probe.py` in this repository reproduces the four runs
+from the branch. It is not the script that produced these four records: those
+came from an ad-hoc shell script in /tmp that was never in the repository,
+which is the defect this directory exists to fix.
+
+
+5. THE X86_64 ARM RAN UNDER ROSETTA 2, NOT ON X86_64 SILICON
+-------------------------------------------------------------
+
+Both x86_64 arms were executed by Rosetta 2 binary translation on an aarch64
+macOS host (Darwin 25.5.0). No x86_64 processor executed these instructions.
+Rosetta 2 is a translator, and a translator is free to implement an x86_64
+floating-point operation by whatever aarch64 sequence produces the architected
+result; it is not obliged to reproduce what an Intel or AMD part would do, and
+nothing here measured whether it does.
+
+The claim this directory supports is therefore about a TRANSLATED x86_64 arm
+only. It must be re-run on native x86_64 Linux hardware before anyone
+describes it as ISA portability in general. Until that run exists, "the
+det-math build is byte-portable across ISA" is an overstatement of what was
+measured; "the det-math build is byte-identical between aarch64-apple-darwin
+and x86_64-apple-darwin-under-Rosetta-2 on one host at 12000 steps" is the
+whole of it.
+
+The cross-arch CI job (`.github/workflows/cross-arch-repro.yml`) is the arm
+that would settle this, and it is red by design against the DEFAULT build.
+
+
+6. WHY TWO RECORDS WITH THE SAME SHA256 ARE NOT THE SAME FILE
+--------------------------------------------------------------
+
+dm-arm64-12000.json and dm-x86_64-12000.json state the same `sha256` and are
+not identical files. Of 64 leaf fields they differ in exactly six, and every
+one of the six is derived from the host, the clock or the run name rather than
+from the computation:
+
+  canon_name       h12k-dm-arm  /  h12k-dm-x86
+  path             .../h12k-dm-arm/12000.bin  /  .../h12k-dm-x86/12000.bin
+  platform.arch    aarch64  /  x86_64
+  trainer.path     outside-scope:tt-arm64-detmath  /  outside-scope:tt-x86-detmath
+  trainer.sha256   64e8d9a8...d127c911  /  3ac5c08d...b0f61bf8
+  ts               2026-08-06T19:21:22.586556+00:00 / 2026-08-06T19:23:00.917288+00:00
+
+`trainer.sha256` differs because the two arms ARE two different binaries -- an
+aarch64 executable and an x86_64 executable. That field differing is the
+experiment working, not a flaw in it. `ts` differs because the four runs did
+not finish at the same instant.
+
+Every other field, including all 58 that describe the computation, is equal.
+
+The default pair differs in those same six fields plus five that are results:
+`sha256`, `final_val_bpb`, `min_observed_val_bpb`, `ema_bpb`, and
+`val_bpb_stderr`.
+
+
+7. SCOPE LIMITS, STATED SO THEY ARE NOT DISCOVERED LATER
+---------------------------------------------------------
+
+  a. TRANSLATED, NOT NATIVE. Section 5. This is the largest limit.
+
+  b. DIRTY TREE. All four records carry `git_sha`
+     e9eec901d22806c66d524f8f398a8d92fc64dc20 with `git_dirty: true` and
+     `git_untracked: true`. The runs were made from a working tree that was
+     modified relative to that commit. A third party checking out e9eec901
+     clean is NOT guaranteed to reproduce these bytes, and no run in this
+     directory demonstrates that they would. `scripts/headline_isa_probe.py`
+     prints the git state of the tree it runs in for exactly this reason.
+
+  c. ONE HOST, n=1 PER ARM. Each arm was run once. The within-arm repeat
+     control that scripts/local_isa_probe.py carries was not re-run at 12000
+     steps; the same-machine determinism it established was measured at ten
+     steps and in CI, not here.
+
+  d. FOUR CONCURRENT PROCESSES. The four arms were launched in parallel on one
+     machine and waited on together. That affects wall-clock only -- no timing
+     number is published from these runs, and none should be derived from
+     their `ts` fields.
+
+  e. SCHEMA. All four records are `trios-checkpoint-record/9`.
+
+
+8. VERIFYING THIS DIRECTORY
+----------------------------
+
+  cargo test --release --test headline_isa_12000
+
+That test re-reads all four records from the repository root and fails if any
+of the four hashes, the det-math feature flags, the step count or the seed is
+edited. It has no skip-on-missing-file path: these four files are the
+deliverable, so their absence is a failure and not a skip.
+
+These records have no `.bin` sibling under evidence/, so they are not a pair.
+`python3 interop/triosckp_reader.py --verify-all evidence` does not visit them
+and its pair count is unchanged by their presence (17 pairs before and after,
+exit 0, output byte-identical), which is why they need no line in
+evidence/SEALS.txt.

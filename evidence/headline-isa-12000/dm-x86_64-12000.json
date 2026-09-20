@@ -1,0 +1,78 @@
+{
+  "schema": "trios-checkpoint-record/9",
+  "canon_name": "h12k-dm-x86",
+  "seed": 47,
+  "step": 12000,
+  "path": "checkpoints/isa-probe/headline-12000/h12k-dm-x86/12000.bin",
+  "sha256": "65f36543520c5b88cd419ae458fe965d15b11d5d620448b8dc2188b9087dbd45",
+  "bytes": 852272,
+  "format_version": 1,
+  "hidden": 384,
+  "d_model": 64,
+  "num_attn_layers": 2,
+  "optimizer": "adamw",
+  "fake_quant_format": "f32",
+  "data_synthetic": false,
+  "steps_total": 12000,
+  "gf16_floor_every": 1,
+  "eval_every": 1000,
+  "final_val_bpb": 2.6494300365448,
+  "min_observed_val_bpb": 2.6494300365448,
+  "ema_bpb": 2.684941291809082,
+  "git_sha": "e9eec901d22806c66d524f8f398a8d92fc64dc20",
+  "git_provenance": "verified-local",
+  "git_dirty": true,
+  "corpus": {
+    "train": {
+      "path": "data/tiny_shakespeare.txt",
+      "bytes": 1015394,
+      "sha256": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d"
+    },
+    "val": {
+      "path": "data/tiny_shakespeare_val.txt",
+      "bytes": 100000,
+      "sha256": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+    }
+  },
+  "ledger": "skipped-no-dsn",
+  "ts": "2026-08-06T19:23:00.917288+00:00",
+  "lr": 0.003000000026077032,
+  "attn_scale": 0.10000000149011612,
+  "attn_seq": 8,
+  "platform": {
+    "os": "macos",
+    "arch": "x86_64",
+    "pointer_width": 64,
+    "libc": "undetermined",
+    "toolchain": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+    "toolchain_provenance": "runtime-path-query",
+    "source_digest_scope": "repository-root",
+    "rustflags_source": "cargo-config-toml",
+    "rustflags_sha256": "b18ac6a3a1eaa5f2126007da415a13b27913ec13f0412df94a9baaa7a8e8ac58",
+    "remap_applied": true,
+    "libc_version": "25.5.0",
+    "libc_provenance": "uname-release-runtime",
+    "features": "ci-strict=0,det-math=1,gf16=0,gpu=0,race=0,smoke=0,trios-integration=0"
+  },
+  "source_sha256": "048ed26295c23e31c914eac6a83812ac966c71c1d5e16d36e4fa838ea1e76e72",
+  "trainer": {
+    "path": "outside-scope:tt-x86-detmath",
+    "sha256": "3ac5c08dce5d7daac9f9d65467b0487ff69a5203802e1338d4d61711b0f61bf8",
+    "provenance": "self-hashed"
+  },
+  "vocab": 128,
+  "gf16_enabled": true,
+  "eval_chunks": 40,
+  "eval_tokens": 5160,
+  "eval_seq": 129,
+  "val_bpb_stderr": 0.05594641715288162,
+  "optimizer_params": {
+    "beta1": 0.8999999761581421,
+    "beta2": 0.9990000128746033,
+    "eps": 9.99999993922529e-9,
+    "weight_decay": 0.03999999910593033,
+    "source": "train_loop::AdamW"
+  },
+  "format_faithful": true,
+  "git_untracked": true
+}

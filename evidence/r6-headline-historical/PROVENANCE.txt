@@ -1,0 +1,105 @@
+Evidence package: the superseded schema-/6 headline record, kept where git
+will accept it
+============================================================================
+
+What this directory is
+----------------------
+
+`12000.json` here is a VERBATIM byte-for-byte copy of
+`checkpoints/r6-headline/12000.json`, the schema-`trios-checkpoint-record/6`
+record written on 2026-08-02 for the headline calibration checkpoint. Nothing
+in it was edited, re-minted, re-ordered or re-formatted. It is the same bytes:
+
+    $ shasum -a 256 checkpoints/r6-headline/12000.json \
+                    evidence/r6-headline-historical/12000.json
+    e83d18e2a3cad6245f55ac4016aef6ca3aae27b743b8ae00b05dea3fbd5a8c37  checkpoints/r6-headline/12000.json
+    e83d18e2a3cad6245f55ac4016aef6ca3aae27b743b8ae00b05dea3fbd5a8c37  evidence/r6-headline-historical/12000.json
+
+(Measured 2026-08-07. That digest is over the JSON SIDECAR, not over the
+weights; the weights' digest is the `sha256` field inside the record.)
+
+The `.json` ONLY is copied. `12000.bin` is deliberately NOT copied, so this
+record is not reached by the interop reader's `--verify-all evidence` pair
+sweep, which pairs every `<step>.bin` with its `<step>.json`. A record with no
+`.bin` beside it is reported by that sweep as "published but not reached", and
+that is the correct standing for a superseded record: it is retained as a
+citation target, not offered as a checkable artifact. It therefore needs no
+line in `evidence/SEALS.txt` and has none.
+
+Why the copy exists at all
+--------------------------
+
+`checkpoints/` is gitignored:
+
+    $ git check-ignore -v checkpoints/r6-headline/12000.json
+    .gitignore:13:/checkpoints/	checkpoints/r6-headline/12000.json
+
+So `git add checkpoints/r6-headline/12000.json` is REFUSED. The original was
+never in any clone and no commit can ever put it in one. Every citation of that
+path -- and this repository's documents carry many -- resolves to nothing for
+anybody who obtained the tree by `git clone`.
+
+That is not merely a broken link. `tests/fleet_count_label_truth.rs` READS the
+historical record with a panicking `read()`, to recompute an anchor rather than
+transcribe it. Pointed at the gitignored path, that test could not pass in CI on
+any commit, ever, and its own panic message told the reader to `git add` a path
+git will not accept. This directory is what makes that test committable.
+
+    $ git check-ignore -v evidence/r6-headline-historical/12000.json
+    (no output, exit 1 -- not ignored)
+
+Why the record is retained rather than deleted
+----------------------------------------------
+
+`docs/EVAL-UNCERTAINTY.md` section 3b cites this record's `val_bpb_stderr` as
+the PRE-CORRECTION value of the uncertainty budget's row 0:
+
+    val_bpb_stderr = 0.05509733036160469     (this record, schema /6)
+    val_bpb_stderr = 0.053656626492738724    (evidence/r9-headline/12000.json,
+                                              schema /9, the current record)
+
+The two differ because the finite-population correction of section 5b entered
+at `ba272b9` (`src/train_loop.rs`). Deleting the superseded number would leave a
+figure that was published with no record behind it, which is the failure this
+repository refuses. The historical value has to stay legible, with its source.
+
+The current record is `evidence/r9-headline/12000.json`. Cite that one. This
+one is history and is labelled as history by its own `schema` field, which
+reads `trios-checkpoint-record/6` while the crate's `CHECKPOINT_RECORD_SCHEMA`
+reads `trios-checkpoint-record/9`.
+
+The two records name byte-identical weights -- VERIFIED, not assumed
+--------------------------------------------------------------------
+
+This is the load-bearing premise of section 3b: the two `val_bpb_stderr` values
+are one measurand under two estimators, not two different models. It holds only
+if the weights are the same bytes. Compared 2026-08-07 by reading the `sha256`
+field out of each record:
+
+    evidence/r6-headline-historical/12000.json   sha256
+        8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+    evidence/r9-headline/12000.json              sha256
+        8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+
+    IDENTICAL.
+
+`final_val_bpb` also agrees exactly: 2.6347548961639404 in both. So the stderr
+revision is an estimator change and nothing else.
+`tests/fleet_count_label_truth.rs::both_records_describe_byte_identical_weights`
+re-derives this comparison on every run rather than trusting this paragraph,
+and `::the_two_stderrs_differ_only_by_the_finite_population_factor` re-derives
+the correction itself.
+
+Scope, stated so it is not overread
+-----------------------------------
+
+MEASURED here: the copy is byte-identical to the original; the original path is
+gitignored and the new one is not; the two records' `sha256` and
+`final_val_bpb` fields agree.
+
+NOT measured here, and not claimed: that the `.bin` those records describe is
+still reproducible on another machine. It is not byte-portable across ISA --
+see `evidence/xarch-probe/` and `docs/DIVERGENCE-MECHANISM.md`. Reproducibility
+of these weights is scoped to the same (os, arch, rustc, build flags).
+
+Anchor: phi^2 + phi^-2 = 3.

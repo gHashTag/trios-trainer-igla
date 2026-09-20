@@ -1,0 +1,86 @@
+DET-MATH ISA SUBSTITUTION - PROVENANCE
+======================================
+
+Everything in this directory was produced on 2026-08-06 by
+scripts/det_math_isa_probe.py, run from /Users/playra/trios-trainer-igla on
+branch fix/509-qat-v2. Nothing here was hand-edited after the fact; the .log
+files are the probe's stdout verbatim and the .json files are the probe's own
+records.
+
+HOST
+  Darwin playras-MacBook-Pro.local 25.5.0
+  Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026;
+  root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64
+  macOS 26.5.2, Apple silicon (T6000)
+
+TOOLCHAIN
+  rustc 1.96.0 (ac68faa20 2026-05-25), pinned by rust-toolchain.toml
+  targets: aarch64-apple-darwin (native), x86_64-apple-darwin (Rosetta 2)
+  cargo build --release --locked, one working tree, one compiler
+
+GIT
+  HEAD e9eec901d22806c66d524f8f398a8d92fc64dc20
+  The tree was DIRTY when these runs were taken: this work item's own edits
+  (src/det_math.rs, the two gated call sites, Cargo.toml, the new bin and
+  test) plus concurrent work by other agents in files this item does not own.
+  Every sidecar under sidecars/ records git_sha, git_dirty and git_untracked
+  itself; read them rather than this paragraph if the distinction matters.
+
+CORPUS, verified against data/MANIFEST.sha256 before every run
+  train 1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  val   2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+
+ENVIRONMENT
+  Every training run executed under an `env -i` allowlist - PATH, HOME,
+  TRINITY_AUTOMIGRATE=0, TRIOS_CANON_NAME, TRIOS_CHECKPOINT_INIT,
+  TRIOS_CHECKPOINT_DIR - and the child environment was PROVED empty of
+  DATABASE_URL, NEON_DATABASE_URL, TRIOS_NEON_DSN and TRIOS_DATABASE_URL by
+  inspecting what a child actually receives. The invoking shell HAD
+  DATABASE_URL set; the scrub is what removed it. See the "ENVIRONMENT SCRUB"
+  block in n1-n2-isa.log.
+
+THE SCOPE LIMIT, which may not be dropped when any number here is quoted
+  * ONE macOS host, ONE rustc, ONE working tree. The ISA target is the only
+    variable that moved.
+  * The x86_64 arm ran under ROSETTA 2. That is binary translation, not
+    native x86_64 silicon, and Apple's x86_64 libm is not glibc's. These runs
+    CONSTRAIN the native x86_64 Linux arm; they do not replace it.
+  * n=1 per arm for every hash, with an n=2 within-arm repeatability control
+    that passed on both arms. n=3 per arm for the timing only.
+  * TEN training steps, not 12000. See N4.
+
+FILES
+  n1-n2-isa.log      stdout of `--only isa`: N1 control + N2 result
+  n2-isa.json        the same run's machine-readable record
+  n3-timing.log      stdout of `--only timing`
+  n3-timing.json     the same
+  n4-lr-scope.log    stdout of `--only lr`
+  n4-lr-scope.json   the same
+  lr-schedule-aarch64-apple-darwin.txt   12000 lines, `LR <step> <lr bits>`
+  lr-schedule-x86_64-apple-darwin.txt    the same schedule, x86_64 build
+  lr-schedule-diff.txt                   the 58 differing lines
+  sidecars/          the checkpoint sidecars of all five 10-step runs
+
+RESULTS, in one line each
+  N1  default features, aarch64, 10 steps: 0.bin 4f854c82... and 10.bin
+      efef1cba128a8c96... UNCHANGED. The edits did not move the published
+      artifact.
+  N2  --features det-math, both ISAs, 10 steps: MATCH.
+      both arms 7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258
+  N3  1000 steps on aarch64, n=3: default min 32.76s median 32.97s;
+      det-math min 31.77s median 32.17s; ratio 0.97 min / 0.98 median.
+      The difference is INSIDE the run-to-run spread. See docs/DET-MATH.md.
+  N4  12000-step lr schedule across the ISA change: 58 of 12000 values
+      differ, first at step 4041.
+
+A KNOWN HOLE IN THIS EVIDENCE, found while assembling it
+  The sidecars in sidecars/ CANNOT distinguish a det-math run from a default
+  run. `platform.features` reads
+      ci-strict=0,gf16=0,gpu=0,race=0,smoke=0,trios-integration=0
+  on BOTH, and `source_sha256` is fda0dd21... on both, while the weight
+  digests differ (efef1cba... vs 7459c716...). Two artifacts with different
+  bytes carry identical provenance. The cause is that
+  `declared_feature_states()` in src/checkpoint.rs is a hand-maintained list
+  and `det-math` is not in it. That file is NOT owned by this work item and
+  was deliberately not touched. Until it is fixed, the ONLY thing that ties
+  7459c716... to a det-math build is this directory.

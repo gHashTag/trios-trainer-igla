@@ -1,0 +1,176 @@
+THE 12000-STEP HEADLINE LEARNING-RATE SCHEDULE ACROSS AN ISA CHANGE
+58 of 12000 differing without cos_det, 0 of 12000 with it
+Measured 2026-08-07. Probe: scripts/lr_schedule_isa_probe.py
+
+==============================================================================
+ THE SCOPE LIMIT, VERBATIM, AND IT MAY NOT BE DROPPED WHEN THESE ARE QUOTED
+==============================================================================
+
+ONE macOS host. ONE pinned toolchain. ONE working tree, with the --target
+triple as the only variable that moved. The x86_64 arm ran under Rosetta 2
+BINARY TRANSLATION, NOT NATIVE x86_64 SILICON, and Apple's x86_64 libm is not
+glibc's. This constrains a native x86_64 Linux arm; it does not replace it.
+
+    host      Darwin playras-MacBook-Pro.local 25.5.0
+              Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026
+              root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64
+    macOS     26.5.2
+    rustc     rustc 1.96.0 (ac68faa20 2026-05-25), pinned by rust-toolchain.toml
+    branch    fix/509-qat-v2
+
+n = 1 per arm for each dump. The dumps are pure functions of the binary - no
+corpus, no checkpoint, no environment, no RNG - so a within-arm repeat would
+re-run a deterministic program and is not the control that matters here. The
+CONTROL that matters is the default arm, which is why both arms were run.
+
+==============================================================================
+ WHAT WAS MEASURED
+==============================================================================
+
+src/bin/lr_schedule_dump.rs prints one line per step for steps 1..=12000 of the
+headline schedule (max_steps 12000, warmup 1200, base_lr 0.003), as the raw u32
+bit pattern of each f32, by CALLING train_loop::cosine_lr rather than a replica
+of it. Bits, not decimals: the question is byte-identity and a decimal
+rendering rounds two different floats onto one string.
+
+------------------------------------------------------------------ BEFORE ---
+ARM: default features - THE CONTROL
+
+    lines compared            12000
+    lines differing           58
+    first differing step      4041
+      aarch64-apple-darwin    LR 4041 3b25032e
+      x86_64-apple-darwin     LR 4041 3b25032d
+    last differing step       11966
+      aarch64-apple-darwin    LR 11966 3728ff81
+      x86_64-apple-darwin     LR 11966 3728ffe3
+
+    Most differences are 1 ULP. The last one is larger because near the end of
+    the cosine the schedule subtracts two nearly equal numbers and a 1-ULP
+    disagreement in cosf is amplified by the cancellation.
+
+------------------------------------------------------------------- AFTER ---
+ARM: --features det-math - THE RESULT
+
+    lines compared            12000
+    lines differing           0
+    first differing step      none
+
+    Both dumps hash to the same value, byte for byte, across the ISA change.
+
+==============================================================================
+ SHA-256 OF EVERY ARTIFACT
+==============================================================================
+
+DUMPS (the thing that was claimed to be portable)
+
+533a71b317c23660516b8e7bb9699c7f945e5004935079c27a94659e192fddc4
+    evidence/cos-det-isa/lr-schedule-default-aarch64-apple-darwin.txt
+fef08ee98df46cfd9947399cc57b89c2fa4e4aa8946796cf982bd4b2f4a300fa
+    evidence/cos-det-isa/lr-schedule-default-x86_64-apple-darwin.txt
+        -> DIFFERENT. 58 lines apart.
+
+d1625dddb18767f5d05d1acfe4e58da9e7d31dddd1a2ed753af5a28720220391
+    evidence/cos-det-isa/lr-schedule-det-math-aarch64-apple-darwin.txt
+d1625dddb18767f5d05d1acfe4e58da9e7d31dddd1a2ed753af5a28720220391
+    evidence/cos-det-isa/lr-schedule-det-math-x86_64-apple-darwin.txt
+        -> IDENTICAL.
+
+DIFF FILES
+
+8296cd9d7532ac8c250a399234310ef7900829eda6e1ae38f2c67dac290bd736
+    evidence/cos-det-isa/lr-schedule-default-diff.txt   (58 pairs)
+6cdf0892795062b9f2d793968eaee9914867d602a12189f6ff4c3e341bd8d275
+    evidence/cos-det-isa/lr-schedule-det-math-diff.txt  (0 pairs)
+
+BINARIES. The two binary hashes within an arm DIFFER and that carries no
+information: different machine code for a different instruction set cannot hash
+the same. Only the dump was ever claimed to be portable. They are recorded so
+the run can be identified, not compared.
+
+cd2938d66c7e0d6bde5d0da5e5699082d6c6115fc277627b185bfaa005dd7025
+    lr_schedule_dump aarch64-apple-darwin default
+cc0bf401e9c069de2d17f29821d62687368296f8508a75664482e53329b9a833
+    lr_schedule_dump x86_64-apple-darwin  default
+38d5ade24bce49ed71fcecb2cc15ba769bc6ca5af496bdb103e0c381b44f5127
+    lr_schedule_dump aarch64-apple-darwin det-math
+0104eada469b5cde8ebbfcc9f6dd53689332d5b8344d867d5c92c476947eacdf
+    lr_schedule_dump x86_64-apple-darwin  det-math
+
+FNV-1a OVER THE 12000 LR BIT PATTERNS, derived from the four files above by a
+script outside the crate, and independently by the crate's own test:
+
+    default  aarch64    0xf9a4154bfc808608
+    default  x86_64     0xa06fa3a8926406f1     two numbers, one schedule
+    det-math aarch64    0x73e100bcf8e669fd
+    det-math x86_64     0x73e100bcf8e669fd     one number
+
+tests/det_math_bit_exact.rs::headline_schedule_digest_is_frozen asserts
+0x73e100bcf8e669fd against the code in the tree. That is what stops this file
+and the implementation drifting apart: if cosine_lr or cos_det changes, the
+test fails and names the digest that moved.
+
+==============================================================================
+ EXACT BUILD AND RUN COMMANDS
+==============================================================================
+
+Both arms are built with an EXPLICIT --target, including the one that is also
+the host. `cargo build` and `cargo build --target <host triple>` are not the
+same invocation and do not write to the same path; making both explicit is what
+keeps the triple the only moving variable.
+
+    cargo build --release --locked --target aarch64-apple-darwin \
+        --bin lr_schedule_dump
+    cargo build --release --locked --target x86_64-apple-darwin \
+        --bin lr_schedule_dump
+    cargo build --release --locked --target aarch64-apple-darwin \
+        --bin lr_schedule_dump --features det-math
+    cargo build --release --locked --target x86_64-apple-darwin \
+        --bin lr_schedule_dump --features det-math
+
+Each binary is copied to target/lr-schedule-probe/<name> the moment it is
+built, hashed there, and RUN from there, because the default and det-math
+builds write to the SAME cargo output path and would otherwise overwrite each
+other. The probe re-hashes every binary after the runs and refuses to report if
+one changed underneath it.
+
+    target/lr-schedule-probe/lr_schedule_dump-aarch64-apple-darwin-<arm>
+    /usr/bin/arch -x86_64 \
+        target/lr-schedule-probe/lr_schedule_dump-x86_64-apple-darwin-<arm>
+
+To reproduce both arms and the baseline assertion in one command:
+
+    python3 scripts/lr_schedule_isa_probe.py --both
+
+The default arm is checked against 58 / step 4041 / 3b25032e vs 3b25032d before
+the det-math arm is read. If the baseline ever stops reproducing, the probe
+exits 2 and says so rather than reporting a comparison against a control that
+moved.
+
+==============================================================================
+ WHY THIS IS ABOUT cos_det AND NOT SOMETHING ELSE
+==============================================================================
+
+Both arms were run in the SAME working tree on the SAME host minutes apart,
+after every edit. The default arm still reports 58 at step 4041 - the number
+published before cos_det existed, and re-derived three times including once in
+standalone C outside this repository. A cos_det that closed the gap in BOTH
+builds would mean something other than cos_det moved and the measurement would
+not be about cos_det at all. It did not.
+
+WHAT IS MEASURED: the schedule, at 12000 steps, on this host, with the ISA as
+the only variable. 58 -> 0.
+
+WHAT IS NOT MEASURED: the 12000-step CHECKPOINT. The schedule is 12000 numbers;
+the headline is 12000 optimizer steps of a whole model. Closing the schedule
+removes the one site that was MEASURED to break the headline, at step 4041. It
+does not establish that the checkpoint is byte-portable, and nothing in this
+file should be read as saying it does. The longest cross-ISA checkpoint MATCH
+that has been run remains TEN steps (evidence/det-math-isa/).
+
+A TRAP, recorded because it produced a wrong number once. Anyone re-deriving
+the 58 baseline in C must pass -ffp-contract=off. clang defaults to
+-ffp-contract=on, and a contracted build of the same schedule expression
+reports 3413 of 12000 differing, first at step 1203 - a ~59x larger effect than
+libm's, and not a measurement of libm at all. rustc never contracts, so the
+Rust numbers here do not carry this hazard.

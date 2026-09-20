@@ -1,0 +1,91 @@
+{
+  "binaries": {
+    "aarch64-apple-darwin": {
+      "file": "Mach-O 64-bit executable arm64",
+      "path": "target/det-math-probe/trios-train-aarch64-apple-darwin-detmath",
+      "sha256": "0c0d1ec8dbe766bb80c68975b4bd8739ea55fac7e80f8792b48ab20cc79ef296"
+    },
+    "control-aarch64-apple-darwin": {
+      "file": "Mach-O 64-bit executable arm64",
+      "path": "target/det-math-probe/trios-train-aarch64-apple-darwin-default",
+      "sha256": "92b49bbe9af87bf76b7c8aafeb68eaf0e68158fbb01e4504a437d001362b6db9"
+    },
+    "x86_64-apple-darwin": {
+      "file": "Mach-O 64-bit executable x86_64",
+      "path": "target/det-math-probe/trios-train-x86_64-apple-darwin-detmath",
+      "sha256": "34bad8396e97b7bbd63d085fa300cfc6da28c8d08936d89ff336a60a5e244dcf"
+    }
+  },
+  "control": {
+    "passed": true,
+    "ran": true
+  },
+  "corpus": {
+    "train": "1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d",
+    "val": "2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502"
+  },
+  "declared_platform": {
+    "det-math-aarch64": {
+      "arch": "aarch64",
+      "os": "macos",
+      "translation": "native execution"
+    },
+    "det-math-x86_64": {
+      "arch": "x86_64",
+      "os": "macos",
+      "translation": "Rosetta 2 binary translation, not native x86_64 silicon"
+    }
+  },
+  "flags": [
+    "--seed",
+    "47",
+    "--steps",
+    "10",
+    "--hidden",
+    "384",
+    "--attn-layers",
+    "2",
+    "--eval-every",
+    "1000",
+    "--lr",
+    "0.003",
+    "--optimizer",
+    "adamw",
+    "--train-data",
+    "data/tiny_shakespeare.txt",
+    "--val-data",
+    "data/tiny_shakespeare_val.txt"
+  ],
+  "hashes": {
+    "det-math-aarch64-b/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "det-math-aarch64-b/10": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258",
+    "det-math-aarch64/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "det-math-aarch64/10": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258",
+    "det-math-x86_64-b/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "det-math-x86_64-b/10": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258",
+    "det-math-x86_64/0": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "det-math-x86_64/10": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258"
+  },
+  "host": "Darwin playras-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64",
+  "n1_control": {
+    "baseline_init_prefix": "4f854c82",
+    "baseline_step10_prefix": "efef1cba128a8c96",
+    "init": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "passed": true,
+    "step10": "efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac"
+  },
+  "n2_init": {
+    "aarch64": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457",
+    "match": true,
+    "x86_64": "4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457"
+  },
+  "n2_step10": {
+    "aarch64": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258",
+    "match": true,
+    "x86_64": "7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258"
+  },
+  "run_dir": "checkpoints/det-math-isa/20260806T161223Z",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "schema": "trios-det-math-isa-probe/1",
+  "verdict": "DET_MATH_CLOSES_THE_ISA_GAP_AT_10_STEPS"
+}

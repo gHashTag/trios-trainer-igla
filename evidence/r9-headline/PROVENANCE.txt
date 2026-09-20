@@ -1,0 +1,183 @@
+Evidence package: the re-minted headline record, from a tree that has a name
+============================================================================
+
+What this directory is
+----------------------
+
+The headline calibration checkpoint of this repository, RE-RUN on 2026-08-06
+from a clean clone of commit `e9eec90`, so that the record beside the weights
+states a source tree a second party can check out. It supersedes
+`checkpoints/r6-headline/12000.json` as the record to cite. It does not
+supersede the NUMBER: the weights are byte-identical to the ones r6-headline
+produced, and that identity is the main result of this directory.
+
+Why a re-RUN and not a re-write of the old sidecar. Six of the fields the
+current schema carries - `rustflags_source`, `rustflags_sha256`,
+`remap_applied`, `features`, `git_untracked`, `libc_version` - are properties
+of the BUILD that produced the artifact. The r6-headline build is gone: its
+sidecar names `/tmp/r6-headline-bin/trios-train` and `/tmp` was reaped. Writing
+today's build flags into a 2026-08-02 record would have minted exactly the
+authoritative-looking-but-guessed field that PlatformProvenance exists to
+prevent. So the recipe was executed again, from scratch, and the fields below
+describe the build that actually ran.
+
+The three defects of the superseded record, stated rather than erased
+---------------------------------------------------------------------
+
+  1. `checkpoints/` is gitignored (`.gitignore:13`), so `git ls-files
+     checkpoints/` returns 0 and a fresh clone received none of it. Fifteen
+     citations pointed into a directory that does not exist after `git clone`.
+  2. It self-reports `"git_dirty": true`. Its `git_sha`
+     `3c1f751cf4376c13d26e247c2cd86357ab51dd20` therefore identifies a
+     NEIGHBOURING tree, not the one that ran.
+  3. It is schema `trios-checkpoint-record/6`: no PlatformProvenance block, so
+     libc reads `undetermined`, `toolchain_provenance` reads
+     `runtime-path-query`, and there is no `features`, `libc_version`,
+     `git_untracked` or build-flags evidence at all.
+
+This directory fixes 1 and 2 and closes most of 3. It is TRACKED (`evidence/`
+is in the tree; `checkpoints/` is not), the record reads `"git_dirty": false`,
+and the schema is `/9`.
+
+Files, with the sha256 of the bytes as published
+------------------------------------------------
+
+  8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c  12000.bin
+  8aa4e4d829811f883eeb8b69533e3ef85b9745aea89b5b6f8f5d7c04e9631755  12000.json
+  ab86de712392661aeed64758a770335d472027ca8b381468119339e357f665ae  run.log
+  (this file is not hashed by itself; it is the description, not the evidence)
+
+  12000.bin   852272 bytes, TRIOSCKP container version 1
+  12000.json  2355 bytes, sidecar record schema trios-checkpoint-record/9
+
+Verify with:
+
+  shasum -a 256 evidence/r9-headline/12000.bin evidence/r9-headline/12000.json
+
+The declaration seal of the sidecar is published in `evidence/SEALS.txt` as
+`sha256:8c0a582313c9b8de3e1c23eec689e40af90478969e10bba7343e31244504fd06`,
+covering 32 declared fields including `git_dirty`. Recompute it with:
+
+  ./target/release/ckpt_replay --record evidence/r9-headline/12000.json \
+    --provenance-seal
+
+THE RESULT: the bytes did not move
+----------------------------------
+
+  cited   8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+  re-run  8a86fe691aef64fcb637b90d4cf62650c217c3b000b6252846a8ab70c186012c
+  852272 bytes both; `cmp` against evidence/xarch-aarch64-reference/12000.bin
+  reports no difference.
+
+That comparison crosses more than a rebuild. The cited bytes were produced at
+commit `3c1f751` on a DIRTY tree with a binary that no longer exists; these were
+produced at commit `e9eec90` - 5 commits later, including the gf16_floor cadence
+fix, the truth-path work and the schema 7/8/9 additions - on a CLEAN tree with a
+freshly compiled binary of a different hash
+(`f68973220aa4c2533081e04a61ea49c3485e1207e5d416eb299af48a30bc739e`, against the
+old `5a59f44e...`). That makes THREE trainer binaries whose hash is READ OUT OF
+ITS OWN RECORD - `73fae5db...` (r5-adv-recheck, schema 4), `5a59f44e...`
+(r6-headline, schema 6) and `f6897322...` (this record, schema 9) - agreeing on
+these 852 272 bytes. A fourth, `6c45b74b...` for `r4-docs-repro`, is ATTRIBUTED
+rather than recorded: schema 3 has no `trainer.sha256` field, which is why
+`docs/REPRODUCIBILITY-GRADING.md` grades that row INCOMPARABLE. Three recorded,
+one attributed; the distinction is the point and the larger number is not the
+citable one.
+
+SCOPE, and it is the whole claim. This is same (os, arch, rustc, build flags):
+macOS, aarch64, `rustc 1.96.0 (ac68faa20 2026-05-25)`, no `.cargo/config.toml`
+in either tree. It says NOTHING about the crossing in
+`docs/CROSS-ARCH-DIVERGENCE.md`, which is unchanged by this directory: the same
+852 272 bytes still disagree with the x86_64 Linux arm
+(`bb14ab18f2c8e7a9a4c19f452471018f3a72cc18765175db44858c2c4e5c03f3`).
+
+What DID move: the reported uncertainty
+---------------------------------------
+
+The weights are bit-identical and so is the point estimate, to the last digit
+of the f32:
+
+  final_val_bpb   2.6347548961639404   (r6-headline and r9-headline alike)
+  val_bpb_stdev   0.348466             (identical in both run logs)
+  val_bpb_stderr  0.05509733036160469  r6-headline
+                  0.05365662649273872  r9-headline
+
+The stderr is the ONLY figure that moved, and it did not move because the model
+did. A finite-population correction landed in `evaluate`
+(`src/train_loop.rs`, `fpc = sqrt(1 - n/N)`) between the two commits: the grid
+reads 40 windows of a finite val stream WITHOUT replacement, so the naive
+`s/sqrt(n)` overstated the spread. `0.05509733 * sqrt(1 - 5160/100000) =
+0.05365699`, which is the new value to seven digits. Cite `val_bpb_stderr`
+from the record in front of you, never from a document.
+
+The quoted figure remains **2.63 +/- 0.13 bpb at k = 2**. It does not tighten
+just because the within-grid component shrank: `u_c` in
+`docs/EVAL-UNCERTAINTY.md` section 3b combines that component with a
+between-grid sigma of `0.0358`, and the unquantified components (corpus choice,
+seed, platform, step count, selection) are unchanged, so `U` remains a LOWER
+BOUND. `+/- 0.04` was never a band and must not reappear.
+
+How the tree was obtained
+-------------------------
+
+Full procedure, and the reason for each step, in
+`docs/CLEAN-TREE-PROVENANCE.md` section "The 2026-08-06 headline re-mint". In
+brief: the working repository is edited by several agents concurrently, so a
+re-mint performed IN it would have reproduced the very `git_dirty: true` defect
+it exists to remove. A clone was made outside the repository and outside `/tmp`
+(which is reaped between sessions - that is how the r6-headline binary was
+lost), parked at `e9eec90`, and `git status --porcelain` printed nothing both
+before the build and after it.
+
+  clone            /Users/playra/trios-trainer-igla-remint
+  git rev-parse    e9eec901d22806c66d524f8f398a8d92fc64dc20
+  status           empty, checked before `cargo build` and again after it
+  build            cargo build --release --bin trios-train --bin ckpt_replay
+  ledger           env -u DATABASE_URL -u NEON_DATABASE_URL -u TRIOS_DATABASE_URL
+
+The `env -u` prefix is the stricter provenance guard the README recommends and
+the r6-headline run did NOT use: that record reads `"ledger": "written"`,
+meaning a DSN was set and a row was published; this one reads
+`"ledger": "skipped-no-dsn"`, so nothing outside the checkout could have
+supplied a number.
+
+The corpus is no longer copied in by hand. Commit `e9eec90` tracks
+`data/`, so the clone arrived with the corpus already present and
+`git status --porcelain` stayed empty - which is why the hashes below are the
+tree's, not a copy's:
+
+  1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d  train (1 015 394 B)
+  2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502  val   (   100 000 B)
+
+Four cautions a reader should not have to discover
+--------------------------------------------------
+
+1. `run.log` is the verbatim stdout and its first line names the producing
+   directory, `/Users/playra/trios-trainer-igla-remint`. That is a home path in
+   a tracked file, and it is published unaltered because editing a log to make
+   it prettier is editing evidence. The RECORD leaks no such path: the schema 7
+   work replaced the absolute working directory with
+   `"source_digest_scope": "repository-root"` and `trainer.path` is relative.
+
+2. `12000.json` keeps `"path": "checkpoints/r9-headline/12000.bin"` - the path
+   in the PRODUCING clone, not the path in this directory. That is the same
+   convention as `evidence/xarch-aarch64-reference/12000.json`, which still
+   reads `checkpoints/r5-adv-recheck/12000.bin`. The record is copied
+   byte-for-byte or it is not the record.
+
+3. `rustflags_source` and `rustflags_sha256` are ABSENT from the record, not
+   empty. They are `skip_serializing_if = "Option::is_none"`, and
+   `resolve_build_flags_provenance` returns `None` when no `.cargo/config.toml`
+   is found - "which is the state of every fresh clone", and was the state of
+   this one. Absent means no flags file was underfoot. It does not mean
+   unknown, and it must not be read as "default flags".
+
+4. The run also wrote `checkpoints/r9-headline/12000.resume`, 1 704 696 bytes,
+   sha256 `1b885ef767164eac3e3a5af11893465a526c2c4e2e3e56d5bd399e037b0c1857`.
+   It is NOT published here. It is an optimizer-state artifact, nothing cites
+   it, and it is three times the size of the weights; its hash is recorded in
+   `run.log` and above so that its absence is a decision on the record rather
+   than a gap.
+
+Nothing in this directory is regenerated by a script. If a byte changes here,
+the evidence is gone, not updated.

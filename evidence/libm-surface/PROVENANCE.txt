@@ -1,0 +1,186 @@
+LIBM-SURFACE 1
+The undefined-symbol lists of the release trainer, on both feature settings,
+and what each remaining maths symbol was traced to.
+
+WHY THIS DIRECTORY EXISTS
+
+  src/train_loop.rs:842-847 concedes, in a comment beside the gated cosine:
+
+      "That is not a proof that no other call exists; see docs/DET-MATH.md,
+       'What was assumed, and what was not'."
+
+  and docs/DET-MATH.md restates it as an assumption:
+
+      "That is not the same as a proof that no other call exists, and no
+       census has been run over the whole trainer."
+
+  The linker settles it. `nm -u` lists every symbol the binary needs and does
+  not define, so a libm entry point that is called from anywhere in the linked
+  program - trainer code, a dependency, a monomorphised generic - appears in
+  that list, and one that is called from nowhere does not. That is an
+  enumeration of the WHOLE binary, not a grep of the files somebody thought to
+  look in.
+
+  What was NOT new here: `nm -u` had been run on the DEFAULT build before, and
+  three of these facts are already written down - docs/REPRODUCIBILITY-GRADING.md
+  quotes `_cosf _expf _logf`, docs/DIVERGENCE-MECHANISM.md uses the absence of
+  `_sqrtf` as the sqrt control, and src/bin/xarch_probe.rs:574 already records
+  that `_powf` is absent. What was new: the same command on the `det-math`
+  build, the full 161- and 159-symbol lists as artifacts rather than as greps
+  of five names, and the per-call-site attribution below.
+
+HOW TO REPRODUCE
+
+  cargo build --release
+  nm -u target/release/trios-train | sort > evidence/libm-surface/nm-default.txt
+  cargo build --release --features det-math
+  nm -u target/release/trios-train | sort > evidence/libm-surface/nm-det-math.txt
+  cargo build --release          # leave the tree on the default build
+
+  Attribution, which `nm` alone cannot give - it names the symbol, not the
+  caller. Disassemble and read the enclosing label of each call:
+
+  otool -tV target/release/trios-train | awk '
+    /^_?_?ZN|^[_A-Za-z].*:$/ { label = $0 }
+    /symbol stub for: _(logf|log|log2|pow|powf|expf|cosf|sqrtf)$/ {
+      n = split($0, a, ": "); print a[n] "\t<- " label }' | sort | uniq -c
+
+  On Linux substitute `objdump -d` and drop the leading underscores.
+
+PLATFORM
+
+  host              aarch64-apple-darwin (macOS)
+  rustc             1.96.0 (ac68faa20 2026-05-25), pinned by rust-toolchain.toml
+  nm                llvm-nm, Apple LLVM version 21.0.0
+  profile           release
+  branch            fix/509-qat-v2
+  taken             2026-08-07
+
+ARTIFACTS
+
+  nm-default.txt    161 undefined symbols   sha256 433c3965469633bf3f9786711bc7b2d8c664221d1ce29e5a8bac4cee1130c7c6
+  nm-det-math.txt   159 undefined symbols   sha256 5bae41e75f6d69f70ded9e6ee2e9ee2eb2d72f02717d805e403877d2af52ba8e
+
+  The binaries they were taken from, at capture time. These are of a WORKING
+  TREE that carried in-flight work; they identify the run, they are not
+  published constants:
+
+  trios-train, default    f68b7678e1dbe1508570addd70958fb7886cd296896a7e900282e24050d32530
+  trios-train, det-math   ab19e34c92b3e321da073fb291da40b9d5854596ec19234db1f879a723cb93f8
+  ulp_census (control)    e6c3a21801ef1ac38218c65c3f67913c68fb0eb89ab0a53a8f99e620eac9cd40
+
+THE SET DIFFERENCE, MEASURED
+
+  comm -23 nm-default.txt nm-det-math.txt   ->  _cosf  _expf
+  comm -13 nm-default.txt nm-det-math.txt   ->  (empty)
+
+  So `det-math` removes exactly two dynamic maths symbols and adds none. That
+  is what the feature claims - `exp_det` and `cos_det` replacing the two
+  `softmax` exponentials and `cosine_lr`'s cosine - and it is now a property of
+  the linked binary rather than a property of three `#[cfg]` lines.
+
+WHAT REMAINS BOUND IN THE det-math BUILD, RANKED
+
+  Rank 1 - REACHES THE WEIGHTS.
+
+    _log   f64 natural log, one call site, in
+           trios_trainer::objective::shannon_entropy
+           (src/objective.rs:246, `entropy -= p * p.ln()`).
+
+           Reached every step of the default trainer path. src/train_loop.rs
+           :3023 calls `nca_entropy_loss`, which calls `shannon_entropy`; the
+           result becomes `nca_loss_val`, and at src/train_loop.rs:3035-3038
+           `gp` - a gradient buffer - is multiplied element-wise by
+           `1.0 + nca_loss_val.min(5.0)`. The block is not behind a flag.
+
+           This is the strongest finding in this directory: `det-math` does NOT
+           make the training path libm-free. One f64 libm call survives it and
+           it scales gradients. The comment at src/train_loop.rs:2991-2998
+           already notes that this amplifier is DISCONTINUOUS - `nca_state` is
+           a `.round()` into k buckets - so a last-bit difference here is one
+           of the few places in the loop that can become a macroscopic one in a
+           single step.
+
+           Not a prediction of divergence: xarch_probe's `shannon_entropy_f64`
+           primitive measured SAME across the two arms on its grid. It is a
+           statement about SCOPE - the arm that was measured to agree is not
+           the arm `det-math` replaced, and nothing pins it.
+
+  Rank 2 - REACHES REPORTED METRICS AND THE SIDECAR, NOT THE UPDATE.
+
+    _logf  f32 natural log, one call site, in
+           trios_trainer::train_loop::evaluate
+           (`loss_on_seq` is inlined into it; src/train_loop.rs:1436,
+           `total -= p.ln()`).
+
+           `evaluate` produces `val_bpb`, which feeds `ema_bpb`,
+           `best_val_bpb`, `final_val_bpb`, the printed line and the checkpoint
+           sidecar. No weight reads it. It can still end a run: `guard_bpb`
+           turns an out-of-range reading into an error, so this symbol decides
+           whether an artifact exists, not what is in it.
+
+           This is the call site the `REACH` band of src/bin/ulp_census.rs was
+           added for. Its argument is a softmax probability in (0, 1]; the
+           sparse and dense `ln` cells sample [0.2509801, 4.1239854].
+
+  Rank 3 - OFF THE TRAINER ENTIRELY. Dependency code.
+
+    _log2  f64 log base 2, one call site, in
+           num_bigint::biguint::convert::to_radix_le. Decimal formatting of a
+           big integer. No trainer arithmetic passes through it.
+
+    _pow   f64 powf, two call sites, both in
+           tokio::runtime::scheduler::multi_thread::worker::Context::run.
+           Runtime scheduler book-keeping. Same reading.
+
+  ABSENT FROM BOTH BUILDS.
+
+    _powf  Not linked at all. The only callers of
+           model_hybrid_attn::rope_angle at e9eec90 are inside `#[cfg(test)]`.
+           src/bin/ulp_census.rs still publishes a `powf` cell (25 of 4096
+           differing, 0.610%, 1 ULP): that cell prices a call site the shipped
+           trainer cannot reach. It is kept deliberately, so a revived RoPE
+           path arrives with its number already taken, and the `BAND` line for
+           it says which grid it is about.
+
+    _sqrtf Not linked either, on any of the three binaries below. LLVM lowers
+           `f32::sqrt` to the hardware square-root instruction, which IEEE 754
+           pins exactly.
+
+THE METHOD IS SENSITIVE, NOT VACUOUS
+
+  A test that says "the symbol is absent" is worth nothing until it is shown
+  that the same test says "present" when it should. src/bin/ulp_census.rs is
+  the control: it calls exp, ln, sqrt, powf and cos on 4096 elements each, and
+  sqrt on a further 65536.
+
+  nm -u target/release/ulp_census | grep -E '^_(cosf|expf|logf|powf|sqrtf)$'
+    _cosf
+    _expf
+    _logf
+    _powf
+
+  `_sqrtf` is absent from that list - from a binary that takes 69632 square
+  roots. It is absent because the compiler emitted the instruction instead:
+
+  otool -tV target/release/ulp_census | grep -c fsqrt
+    8
+
+  So the four functions that go through libm show up and the one that does not
+  is missing, in a binary where all five are demonstrably called. The absence
+  of `_powf` from the trainer is therefore a fact about the trainer, not an
+  artefact of the lens.
+
+WHAT THIS DOES AND DOES NOT SETTLE
+
+  Settles - which libm entry points the linked trainer can call at all, on this
+  host, at this commit, for each of the two feature settings. That is a
+  complete enumeration of the DYNAMIC surface and it closes the "no census has
+  been run over the whole trainer" assumption in docs/DET-MATH.md.
+
+  Does NOT settle - anything statically linked. compiler-rt routines such as
+  `__powisf2` are inlined or linked as defined local symbols and `nm -u` cannot
+  see them by construction; evidence/xarch-probe/PROVENANCE.txt records that
+  lens error and the full-symbol-table check that replaced it. Nor does it say
+  anything about a Linux/glibc build: `nm -u` there would list glibc-versioned
+  names and possibly a different set, and no such capture has been taken.

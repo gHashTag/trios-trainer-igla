@@ -1,0 +1,13 @@
+{
+  "differing": 58,
+  "first_differing": {
+    "aarch64": "LR 4041 3b25032e",
+    "x86_64": "LR 4041 3b25032d"
+  },
+  "first_differing_step": 4041,
+  "host": "Darwin playras-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Tue Jun  9 22:18:58 PDT 2026; root:xnu-12377.121.10~1/RELEASE_ARM64_T6000 arm64",
+  "note": "cosine_lr calls cosf; --features det-math replaces exp only",
+  "rustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+  "schema": "trios-det-math-lr-scope/1",
+  "steps_compared": 12000
+}

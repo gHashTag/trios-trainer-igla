@@ -1,0 +1,88 @@
+==========================================================================
+ DET-MATH ISA PROBE - does a bit-exact exp close the cross-ISA gap?
+==========================================================================
+PRECONDITIONS
+  targets installed              aarch64-apple-darwin, x86_64-apple-darwin
+  rosetta 2                      executes x86_64
+  corpus train                   1a5aead1db78653f48ee799c4145ef71265f6aadd2c79ebffc9f0260cac1fb0d
+  corpus val                     2088af36b1c7831083ef22c0f6e1999b1dece15b9fbe2d4695364e95d497d502
+  rustc                          rustc 1.96.0 (ac68faa20 2026-05-25)
+  host                           arm64
+  run directory                  checkpoints/det-math-isa/20260806T161223Z
+  measurement                    isa
+
+ENVIRONMENT SCRUB
+  no DSN alias reaches the trainer; automigrate is off
+  (this shell has DATABASE_URL set; the scrub is what removes it)
+
+N1 CONTROL - default features, aarch64, 10 steps
+  If either hash below moved, the det-math edits changed the PUBLISHED
+  artifact and nothing after this point is readable.
+  cargo build trios-train (host) [default features]    50.9s  ok
+  train det-math-control                         7.1s  ok
+  INIT   4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457   expected prefix 4f854c82
+  STEP10 efef1cba128a8c96e23124d1f139f73c11f8e00261b6148fcfb8cc427aaa0cac   expected prefix efef1cba128a8c96
+  N1 PASSES: the default build still produces the published bytes.
+
+N2 BUILD - one working tree, two targets, --features det-math
+  cargo build trios-train (host) --features det-math    19.0s  ok
+  cargo build trios-train --target x86_64-apple-darwin --features det-math     0.6s  ok
+  aarch64-apple-darwin         0c0d1ec8dbe766bb80c68975b4bd8739ea55fac7e80f8792b48ab20cc79ef296
+      Mach-O 64-bit executable arm64
+  x86_64-apple-darwin          34bad8396e97b7bbd63d085fa300cfc6da28c8d08936d89ff336a60a5e244dcf
+      Mach-O 64-bit executable x86_64
+  The two BINARY hashes differ, and that carries no information:
+  different machine code for a different instruction set cannot hash
+  the same. Only the CHECKPOINT was ever claimed to be portable.
+  The default-feature host binary hashed 92b49bbe9af87bf7; it is a THIRD
+  binary and is not compared to these.
+
+N2 RUNS
+  train det-math-aarch64                         7.1s  ok
+  train det-math-x86_64                          8.3s  ok
+  train det-math-aarch64-b                       6.6s  ok
+  train det-math-x86_64-b                        6.5s  ok
+
+BINARIES UNCHANGED THROUGHOUT.
+
+DECLARED PLATFORM, read back out of each run's own sidecar
+  det-math-aarch64               os=macos arch=aarch64 [native execution]
+  det-math-x86_64                os=macos arch=x86_64 [Rosetta 2 binary translation, not native x86_64 silicon]
+  ISA varied, OS held fixed: this is the single-variable experiment.
+
+==========================================================================
+ WITHIN-ARM REPEATABILITY CONTROL (n=2 per arm, det-math build)
+==========================================================================
+ det-math-aarch64     step 0   SELF-MATCH
+ det-math-aarch64     step 10  SELF-MATCH
+ det-math-x86_64      step 0   SELF-MATCH
+ det-math-x86_64      step 10  SELF-MATCH
+ Both arms repeat themselves byte for byte.
+
+==========================================================================
+ N2 CROSS-ISA COMPARISON UNDER --features det-math
+==========================================================================
+ INIT   aarch64 4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457
+ INIT   x86_64  4f854c82177fadc41de92f754884dd290f0bbc426916dc840f499bafa66d5457   MATCH
+ STEP10 aarch64 7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258
+ STEP10 x86_64  7459c716a04ac89b0f590a4e645c47176d013b167bd5a138270df33dec8d6258   MATCH
+==========================================================================
+
+VERDICT: DET_MATH_CLOSES_THE_ISA_GAP_AT_10_STEPS
+
+  With `exp` pinned to a bit-exact implementation, the step-10
+  checkpoint is byte-identical across the ISA change on this host.
+  libm's `expf` accounts for the whole of the divergence the earlier
+  probe measured at this step count.
+
+  SCOPE, which may not be dropped when this is quoted:
+    * TEN steps, not 12000. See N4: `cosine_lr` calls `cosf`, which
+      this feature does not replace, and at 10 steps warmup=1 so the
+      schedule barely moves. A 10-step MATCH does NOT extend to the
+      headline.
+    * ONE macOS host. Rosetta 2 is binary translation, not native
+      x86_64 silicon, and Apple's x86_64 libm is not glibc's. This
+      constrains the native x86_64 Linux arm; it does not replace it.
+    * n=1 per arm for the hashes, with an n=2 within-arm control.
+
+wrote evidence/det-math-isa/n2-isa.json
